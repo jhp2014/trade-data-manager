@@ -72,6 +72,10 @@ function AssignBody(): JSX.Element {
             await Promise.all([
                 qc.invalidateQueries({ queryKey: ["theme-context"] }),
                 qc.invalidateQueries({ queryKey: ["theme-members-all"] }), // 전량 인덱스 — 안 비우면 방금 배정한 종목이 테마 파생(순위 평면·묶음 필터)에서 그 테마 밖
+                // 순위 단면은 **서빙 시점에 테마로 접혀서** 온다 — 멤버십이 바뀌면 접힌 행 집합도 바뀐다.
+                // 안 비우면 클라 멤버십(새 것)과 서버가 접을 때 본 멤버십(옛 것)이 갈려, 새 동료가 행 없이
+                // 조용히 분모에서 빠진다(결손이 아니라 **틀린 값**이 된다).
+                qc.invalidateQueries({ queryKey: ["rank-sections"] }),
                 qc.invalidateQueries({ queryKey: ["day-summary"] }),
                 qc.invalidateQueries({ queryKey: ["day-replay"] }),
             ]);
@@ -100,6 +104,7 @@ function AssignBody(): JSX.Element {
             await Promise.all([
                 qc.invalidateQueries({ queryKey: ["theme-context"] }),
                 qc.invalidateQueries({ queryKey: ["theme-members-all"] }),
+                qc.invalidateQueries({ queryKey: ["rank-sections"] }), // 접힌 행 = 멤버십의 함수(위 주석)
                 qc.invalidateQueries({ queryKey: ["day-summary"] }),
                 qc.invalidateQueries({ queryKey: ["day-replay"] }),
             ]);

@@ -19,7 +19,7 @@ export type PointKey = string;
 
 const SEP = "|";
 
-/** 필드 3개로 직접 — ActivePoint({code,date,time}) 처럼 필드명이 다른 값에서 만들 때. */
+/** 필드 3개로 직접 — subject({code,date,time}) 처럼 필드명이 다른 값에서 만들 때. */
 export const pointKeyOf = (stockCode: string, date: string, time: string): PointKey => domainPointKey({ stockCode, date, time });
 
 /** PointRef(또는 그와 구조가 같은 값) → 키. */
@@ -51,7 +51,7 @@ export interface ChartRef {
 /** ChartRef(또는 구조가 같은 값) → 차트 키. */
 export const chartKey = (c: ChartRef): string => domainChartKey(c);
 
-/** 필드 2개로 직접 — Focus/ActivePoint({code,date}) 처럼 필드명이 다른 값에서 만들 때. */
+/** 필드 2개로 직접 — Focus/subject({code,date}) 처럼 필드명이 다른 값에서 만들 때. */
 export const chartKeyOf = (stockCode: string, date: string): string => domainChartKey({ stockCode, date });
 
 // ── 행 키 — grain 이 행의 정체성을 가른 뒤(2026-08-25)의 공용 어휘.

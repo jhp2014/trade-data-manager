@@ -60,7 +60,7 @@ export interface SheetColumns {
     flashCol: string | null;
 }
 
-export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode = "point", pruneAxisIds, hideOutcome = false }: {
+export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode = "point", pruneAxisIds }: {
     axes: AxisRef[];
     axesLoading: boolean;
     /**
@@ -73,11 +73,8 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     containerW: number;
     /** 축 열의 최소 폭(셀 표시 모드가 정한다 — 눈금 모드는 그릴 폭이 필요하다). */
     axisMin: number;
-    /** 행 모드 — day 는 기본 열(시간·결과 대신 타점 수·코멘트)과 저장 주머니가 다르다. */
+    /** 행 모드 — day 는 기본 열(시간 대신 타점 수·코멘트)과 저장 주머니가 다르다. */
     rowMode?: "point" | "day";
-    /** 결과 열 숨김 — auto 출처의 point 행(자동 Point)은 outcome 이 없는데 입구(우클릭 메뉴)만 살면
-     *  "골랐는데 안 먹히는" 죽은 길이 된다. 열 자체를 안 세운다(저장은 손 타점 전용 — RankSheetPanel 주석). */
-    hideOutcome?: boolean;
 }): SheetColumns {
     const day = rowMode === "day";
     const [frozenCols, setFrozenCols] = usePersistedState<string[]>(day ? dayKey(FROZEN_KEY) : FROZEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), day ? ["date"] : ["date", "time"]);
@@ -123,13 +120,13 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     }, [revealAxis, setHiddenCols]);
 
     // 기본 순서 → 숨김 제외 → 고정 먼저(기본순 유지, 좌측 스택) → 비고정. 종목은 항상 표시·고정.
-    // day 모드: 시간·결과(타점 소유)는 아예 없고, 타점 수·코멘트(존재 지도)가 뒤에 선다.
+    // day 모드: 시간(타점 소유)은 아예 없고, 타점 수(자동 파생)·코멘트(존재 지도)가 뒤에 선다.
     const baseCols = useMemo<Col[]>(() => [
         { key: "name" }, { key: "date" },
         ...(day ? [] : [{ key: "time" } as Col]),
         ...axes.map((a): Col => ({ key: "axis", axisId: a.key, name: a.name, computed: isComputedAxis(a.key) })),
-        ...(day ? [{ key: "points" } as Col, { key: "comment" } as Col] : hideOutcome ? [] : [{ key: "outcome" } as Col]),
-    ], [axes, day, hideOutcome]);
+        ...(day ? [{ key: "points" } as Col, { key: "comment" } as Col] : []),
+    ], [axes, day]);
     // 미리보기 층이 영속 폭을 덮는다 — 드래그 중에도 열이 실시간으로 넓어져 보이되 저장은 안 된다.
     const effectiveWidths = useMemo(
         () => (Object.keys(previewWidths).length ? { ...colWidths, ...previewWidths } : colWidths),

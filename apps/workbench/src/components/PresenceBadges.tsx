@@ -32,18 +32,10 @@ const ICONS: Record<string, JSX.Element> = {
         </>
     ),
     // 분봉 = **잘게 꺾인 경로** — 장중 경로라는 뜻이 실루엣에 있다. 파선(옛)은 일봉과 구분이 약했다(사용자 확정).
-    point: <polygon points="2,2.8 10,2.8 6,10" fill="currentColor" stroke="none" />, // 차트의 타점 ▼ 와 같은 모양
-    // 그룹 둘 — **같은 색**이라(둘 다 그룹이다) 실루엣이 층위를 가른다.
     "group-day": ( // 담긴 것들(층) — 하루째 담는다
         <>
             <rect x="1.4" y="1.9" width="9.2" height="3.2" rx="0.9" />
             <rect x="1.4" y="6.9" width="9.2" height="3.2" rx="0.9" />
-        </>
-    ),
-    "group-point": ( // 통 하나 + 그 위의 ▼ — 담기는 게 타점이라는 뜻이 그림에 있다
-        <>
-            <polygon points="3.6,1.2 8.4,1.2 6,4.6" fill="currentColor" stroke="none" />
-            <rect x="1.4" y="6.5" width="9.2" height="3.6" rx="0.9" />
         </>
     ),
     comment: ( // 말풍선
@@ -89,9 +81,7 @@ export function PresenceBadges({ presence, mono = false, style }: {
     style?: CSSProperties;
 }): JSX.Element | null {
     if (!presence) return null;
-    // 타점은 배지에서 뺀다 — 작업셋은 자식 행으로, 차트는 ▼ 마커로 어차피 보인다(사용자 확정).
-    // 레지스트리에서 빼지 않는 이유: 필터의 타점/!타점과 "타점 찍을 날" 프리셋은 살아야 한다.
-    const active = PRESENCE_KINDS.filter((k) => k.key !== "point").map((k) => ({ kind: k, n: k.countOf(presence) })).filter((e) => e.n > 0);
+    const active = PRESENCE_KINDS.map((k) => ({ kind: k, n: k.countOf(presence) })).filter((e) => e.n > 0);
     if (active.length === 0) return null;
     return (
         <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexShrink: 0, fontSize: 10, lineHeight: 1, whiteSpace: "nowrap", ...style }}>

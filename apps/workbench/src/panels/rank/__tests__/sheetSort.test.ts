@@ -88,7 +88,7 @@ describe("정렬 체인", () => {
             row("A", { date: "2026-07-01", time: "09:00:00" }),
             row("C", { date: "2026-07-08", time: "09:00:00" }),
         ];
-        expect(codes(sortSheetRows(rows, [{ key: { kind: "outcome" }, dir: 1 }], ctx))).toEqual(["C", "A", "B"]);
+        expect(codes(sortSheetRows(rows, [{ key: { kind: "comment" }, dir: 1 }], ctx))).toEqual(["C", "A", "B"]);
     });
 });
 
@@ -153,11 +153,11 @@ describe("그룹 접기", () => {
         expect(byAxis[0].label).toBeNull(); // 헤더 없음
     });
 
-    it("이산 열의 값 없음도 한 그룹(바닥) — 결과/그룹.", () => {
-        const rows = [row("A", { outcome: "성공" }), row("B"), row("C", { outcome: "성공" })];
-        const chain: SortChain = [{ key: { kind: "outcome" }, dir: 1 }];
+    it("이산 열의 값 없음도 한 그룹(바닥) — 날짜.", () => {
+        const rows = [row("A", { date: "2026-07-01" }), row("B", { date: "2026-07-02" }), row("C", { date: "2026-07-01" })];
+        const chain: SortChain = [{ key: { kind: "date" }, dir: 1 }];
         const gs = buildSheetGroups(sortSheetRows(rows, chain, ctx), chain, ctx);
-        expect(gs.map((g) => g.label)).toEqual(["성공", "결과 없음"]);
-        expect(gs[1].rows.map((r) => r.stockCode)).toEqual(["B"]);
+        expect(gs.map((g) => g.label)).toEqual(["2026.07.01", "2026.07.02"]);
+        expect(gs[0].rows.map((r) => r.stockCode)).toEqual(["A", "C"]);
     });
 });

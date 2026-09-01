@@ -26,18 +26,18 @@ const renderThemed = (): HTMLElement => {
     localStorage.setItem("wb.normTheme.minute", JSON.stringify(true));
     useWorkbench.getState().goToPoint({ code: CODE, date: DATE, time: TIME }, "test");
     return renderWithProviders(<NormOverlayPanel grain="minute" />, {
-        charts: [{ code: CODE, date: DATE, data: fullBundle }], stockNames,
+        charts: [{ code: CODE, date: DATE, data: fullBundle }], points: [{ stockCode: CODE, date: DATE, time: TIME }], stockNames,
         daySnapshot: { date: DATE, data: themeSnapshot },
     }).container;
 };
 
 beforeEach(() => {
     localStorage.clear();
-    useWorkbench.setState({ activePoint: null, focus: { date: DATE, code: "", time: null } });
+    useWorkbench.setState({ focus: { date: DATE, code: "", time: null } });
 });
 afterEach(() => {
     localStorage.clear();
-    useWorkbench.setState({ activePoint: null, focus: { date: DATE, code: "", time: null } });
+    useWorkbench.setState({ focus: { date: DATE, code: "", time: null } });
 });
 
 describe("거터는 분봉 전용", () => {

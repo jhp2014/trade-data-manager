@@ -46,16 +46,26 @@ export function useRankAxesValue(): RankAxesView {
 
     const computedQ = useQuery(computedAxesQuery());
     // 격자 특징(클라 파생) — 서버 피드 뒤에 같은 모양으로 이어 붙인다(축 종류를 하류가 구분하지 않게).
-    // 키 접두 `grid-` 는 서버 레지스트리가 안 쓰는 예약 — gridFeatures.ts 머리 주석이 계약이다.
-    // **모수가 있을 때만 선다**: 출처가 손 타점이거나 자동 Point 0 이면 값이 전부 결손이라 "값 없음"
-    // 레일 3개가 상시 소음이 된다 — 축 자체를 안 만든다(새 축 기본 "보임" 규칙과 충돌하지 않게).
+    // 피드 4개 중 둘(`baseline-position`·`daily-change-un`)은 **옛 서버 축에서 승계한 키**다(서버는 그
+    // 키를 더 이상 서빙하지 않는다 — 되살리면 여기 concat 이 같은 키를 둘로 만들어 시트 열이 겹친다).
+    // **모수가 있을 때만 선다**: 자동 Point 가 0 이면 값이 전부 결손이라 "값 없음" 레일 넷이 상시 소음이
+    // 된다 — 축 자체를 안 만든다(새 축 기본 "보임" 규칙과 충돌하지 않게).
+    // ⚠ 그래서 **격자 로딩 중엔 이 축들이 잠깐 없다** — 서버가 공급하던 시절엔 없던 성질이고, 저장된
+    //   열 설정·필터는 그동안 유령 주소를 든다(로드되면 되살아난다 — 청소는 축 목록이 온 뒤에만 돈다).
     const autoView = useAutoPoints();
     const gridsView = usePointGrids();
-    const pointSource = useWorkbench((s) => s.pointSource);
     const computed = useMemo(() => {
-        const synth = pointSource === "auto" && autoView.points.length > 0 ? gridFeatureFeeds(autoView, gridsView.gridOf) : [];
-        return [...(computedQ.data ?? []), ...synth].map(computedAxisView);
-    }, [computedQ.data, autoView, gridsView, pointSource]);
+        const server = computedQ.data ?? [];
+        const synth = autoView.points.length > 0 ? gridFeatureFeeds(autoView, gridsView.gridOf) : [];
+        // 키 충돌 가드 — 서버가 승계 키를 다시 서빙하면 `axes` 엔 둘, `linesByAxis`(Map)엔 하나가 되어
+        // **시트 열이 겹치고 그중 하나는 값이 어긋난다**(조용한 사고). 타입은 못 잡으니 여기서 짖는다.
+        if (import.meta.env.DEV) {
+            const serverKeys = new Set(server.map((f) => f.key));
+            const dup = synth.filter((f) => serverKeys.has(f.key)).map((f) => f.key);
+            if (dup.length > 0) console.error(`[rank-axes] 축 키 충돌 — 서버와 클라 파생이 같은 키를 낸다: ${dup.join(", ")}`);
+        }
+        return [...server, ...synth].map(computedAxisView);
+    }, [computedQ.data, autoView, gridsView]);
 
     const axes = useMemo<AxisRef[]>(() => {
         const idx = new Map(orderPref.map((k, i) => [k, i]));

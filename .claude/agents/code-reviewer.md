@@ -1,7 +1,8 @@
 ---
 name: code-reviewer
 description: 방금 구현/수정된 코드를 리뷰한다. 이 레포 특유의 헥사고날 경계·ISP·market/curation 스키마 분리·알려진 함정을 아는 채로 검토하고, 일반적인 버그/정확성 문제도 함께 본다. 메인 세션이 구현을 마친 직후, 코드 변경이 있을 때 자동으로 호출한다. 코드를 고치지 않고 발견사항만 보고한다.
-model: sonnet
+model: opus
+effort: high
 tools: Read, Grep, Glob, ReportFindings
 ---
 

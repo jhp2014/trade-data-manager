@@ -1,10 +1,11 @@
 import { Controller, Get, Post, Inject, Body } from "@nestjs/common";
 import { BASELINE_PARAM, type ChartAnchor, type ChartAnchorReader, type NewChartAnchor } from "@trade-data-manager/market";
 import type { AddChartAnchorInput, RemoveChartAnchorInput } from "@trade-data-manager/wire";
-import { CHART_ANCHOR_REPO, CHART_ANCHORS, COMPUTED_AXES, POINT_GRIDS } from "../tokens.js";
+import { CHART_ANCHOR_REPO, CHART_ANCHORS, COMPUTED_AXES, POINT_GRIDS, RANK_SECTIONS } from "../tokens.js";
 import { ChartAnchors } from "./chartAnchors.js";
 import { ComputedAxes } from "../rank/computedAxes.js";
 import { PointGrids } from "../grid/pointGrids.js";
+import type { RankSections } from "../board/rankSections.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
 // 차트 앵커 HTTP 어댑터 — 읽기는 repo 그대로, **쓰기는 유스케이스(ChartAnchors)** 를 거친다.
@@ -17,6 +18,7 @@ export class ChartAnchorController {
         @Inject(CHART_ANCHORS) private readonly anchors: ChartAnchors,
         @Inject(COMPUTED_AXES) private readonly computed: ComputedAxes,
         @Inject(POINT_GRIDS) private readonly grids: PointGrids,
+        @Inject(RANK_SECTIONS) private readonly sections: RankSections,
     ) {}
 
     // 전 앵커(전 param) — 클라 큐레이션 복제본의 테이블 로드. 종목명은 클라 부팅 사전(stock-master)이 붙인다.
@@ -50,7 +52,11 @@ export class ChartAnchorController {
         this.computed.invalidate();
         // 격자는 **기준선 앵커만** 재료다 — 무시 캔들 등 다른 param 편집이 in-flight 웜업(콜드 43s)을
         // 통째로 버리고 전량 대사를 다시 물게 하지 않는다(계산 축은 전 param 이 입력이라 가리지 않는다).
-        if (param === BASELINE_PARAM) this.grids.invalidate();
+        // 순위 단면도 같이 — 그 모수가 곧 격자의 후보 캔들이라 기준선 편집이 기대집합을 바꾼다.
+        if (param === BASELINE_PARAM) {
+            this.grids.invalidate();
+            this.sections.invalidate();
+        }
     }
 
     /** HTTP 경계 검증(형식만) — 추가·삭제가 같은 자연키 튜플을 쓰므로 파싱도 한 곳이다. */

@@ -56,7 +56,7 @@ const renderMany = (gaze?: string): HTMLElement => {
 const renderMinute = (): HTMLElement => {
     seedPins("minute", [minutePin]);
     return renderWithProviders(<NormOverlayPanel grain="minute" />, {
-        charts: [{ code: CODE, date: DATE, data: minuteBundle }], stockNames,
+        charts: [{ code: CODE, date: DATE, data: minuteBundle }], points: [{ stockCode: CODE, date: DATE, time: TIME }], stockNames,
         // 시선이 서면 거래대금(굵기)이 그날 복기를 당긴다 — 안 심으면 setup 의 네트워크 그물에 걸린다.
         daySnapshot: { date: DATE, data: themeSnapshot },
     }).container;
@@ -64,11 +64,11 @@ const renderMinute = (): HTMLElement => {
 
 beforeEach(() => {
     localStorage.clear();
-    useWorkbench.setState({ activePoint: null, focus: { date: DATE, code: "", time: null } });
+    useWorkbench.setState({ focus: { date: DATE, code: "", time: null } });
 });
 afterEach(() => {
     localStorage.clear();
-    useWorkbench.setState({ activePoint: null, focus: { date: DATE, code: "", time: null } });
+    useWorkbench.setState({ focus: { date: DATE, code: "", time: null } });
 });
 
 describe("원점은 선 위의 점이다", () => {

@@ -77,7 +77,7 @@ export function ThemeRankPanel(): JSX.Element {
     const chartPoints = useChartPoints(subject?.code ?? "", subject?.date ?? "");
     const defaultMinute = useMemo(() => {
         if (!subject) return null;
-        return defaultMinuteOf(subject.time, chartPoints.map((p) => p.time), minuteRange?.hi ?? null);
+        return defaultMinuteOf(subject.time, chartPoints, minuteRange?.hi ?? null);
     }, [subject, chartPoints, minuteRange]);
     const minute = scrub ?? defaultMinute;
 
@@ -207,10 +207,10 @@ export function ThemeRankPanel(): JSX.Element {
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [track, minuteRange, zone === null, zone?.rateN, zone?.amountN],
     );
-    // 저장 타점의 분들 — ▼ 마커(클릭 = 점프, 옛 ↺ 의 후계).
+    // 타점의 분들 — ▼ 마커(클릭 = 점프, 옛 ↺ 의 후계).
     const pointMinutes = useMemo(
-        () => chartPoints.map((p) => {
-            const [h, m] = p.time.split(":");
+        () => chartPoints.map((t) => {
+            const [h, m] = t.split(":");
             return Number(h) * 60 + Number(m);
         }),
         [chartPoints],
@@ -357,7 +357,7 @@ export function ThemeRankPanel(): JSX.Element {
             )}
 
             {/* footer = 시각 타임라인만 — 조건 폼은 없다(조건은 보드 행·컷선이 전부다).
-                띠 = 시선 종목의 존 재적(연동 행 N/M 기준, 끊김 = 이탈/결손) · ▼ = 저장 타점(클릭 = 점프). */}
+                띠 = 시선 종목의 존 재적(연동 행 N/M 기준, 끊김 = 이탈/결손) · ▼ = 타점(클릭 = 점프). */}
             {subject && section && minuteRange && (
                 <div style={footer}>
                     <span style={{ ...cond, flexShrink: 0 }}>시각</span>

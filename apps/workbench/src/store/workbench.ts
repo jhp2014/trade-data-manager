@@ -22,7 +22,7 @@ import { createPointDefSlice, type PointDefSlice } from "./pointDefSlice.js";
 
 export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelUiSlice & SessionUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankViewSlice & FilterFunnelSlice & SavedSetsSlice & PointDefSlice;
 
-export type { Focus, Scope, Search, ActivePoint, FocusSlice } from "./focusSlice.js";
+export type { Focus, Scope, Search, FocusSlice } from "./focusSlice.js";
 export type { LiveFocus, LiveFocusSlice } from "./liveFocusSlice.js";
 export type { LiveLineAnchor, LiveChartSlice } from "./liveChartSlice.js";
 export type { ChartPriceMode, ChartView, ChartSettings, ChartSlice } from "./chartSlice.js";

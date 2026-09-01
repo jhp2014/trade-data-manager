@@ -8,17 +8,17 @@ import {
     DrizzleStockMasterRepository,
     DrizzleDailyMarketCapRepository,
     DrizzleDailyCommentRepository,
-    DrizzleReviewPointRepository,
 } from "@trade-data-manager/persistence";
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { DAY_BOARDS, DERIVED_CACHE, MASTER_CACHE, MEMBERSHIP_CACHE, RANK_SECTIONS, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, MARKET_POOL, DATA_DATE_READER } from "../tokens.js";
+import { DAY_BOARDS, DERIVED_CACHE, MASTER_CACHE, MEMBERSHIP_CACHE, POINT_GRIDS, RANK_SECTIONS, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, MARKET_POOL, DATA_DATE_READER } from "../tokens.js";
 import type { Pool } from "../pool.js";
 import { DerivedCache } from "./derivedCache.js";
 import { MasterCache } from "./masterCache.js";
 import { DayBoards } from "./dayBoards.js";
 import { CachedMembership } from "./cachedMembership.js";
+import type { PointGrids } from "../grid/pointGrids.js";
 import { DataDatesCache } from "./dataDatesCache.js";
 import { ThemeAssignment } from "./themeAssignment.js";
 import { RankSections } from "./rankSections.js";
@@ -83,15 +83,17 @@ export const boardProviders: Provider[] = [
         inject: [MARKET_POOL, MASTER_CACHE, MEMBERSHIP_CACHE, DERIVED_CACHE],
     },
     {
-        // 순위 단면 읽기모델 — 타점(큐레이션 읽기 미러) × day 스냅샷 → (날짜,분) 전 종목 서수 + 날짜별 파일 캐시.
+        // 순위 단면 읽기모델 — 격자 후보(기대집합) × day 스냅샷 → (날짜,분) 전 종목 서수 + 날짜별 파일 캐시.
+        // 테마 멤버십은 **서빙 접기에만** 쓴다(저장물은 테마 무지) — 같은 시트 캐시를 보드와 나눠 쓴다.
         provide: RANK_SECTIONS,
-        useFactory: (marketPool: Pool, derived: DerivedCache): RankSections =>
+        useFactory: (derived: DerivedCache, grids: PointGrids, membership: CachedMembership): RankSections =>
             new RankSections({
                 derived,
-                points: new DrizzleReviewPointRepository(createDb(marketPool)), // 읽기 — 로컬 미러
+                candidates: grids,
+                membership,
                 store: fileRankSectionStore,
             }),
-        inject: [MARKET_POOL, DERIVED_CACHE],
+        inject: [DERIVED_CACHE, POINT_GRIDS, MEMBERSHIP_CACHE],
     },
     {
         // 테마 배정 유스케이스 — 시트 쓰기 + 중복 skip + 캐시 무효화 순서를 소유(컨트롤러는 검증만).

@@ -1,37 +1,27 @@
-// point 행 원천 — 시트·깔때기·작업셋·레일이 보는 **한 곳**. 출처 토글(auto/hand)이 여기서만 갈린다.
+// point 행 원천 — 시트·깔때기·작업셋·레일이 보는 **한 곳**. 행 = 자동 타점(격자 파생) 하나뿐이다.
 //
-// auto = 격자 파생(useAutoPoints — 정의 반영, outcome/memo 없음), hand = 수동 review_points.
-// 합집합은 만들지 않는다(같은 분의 키 충돌 + 출처 불명 화면). 차트의 저장/삭제 판정(useChartPoints)은
-// 손 타점 고정이라 이 토글의 영향 밖 — space 토글이 자동 행을 지우려 드는 사고가 없다.
-//
-// ⚠ 존재 지도(usePresence)·후보 하루·시트 day 행의 타점 배지/카운트도 **손 타점 고정**이다(의도된 절충,
-// 2026-08-31 planner Q3) — auto 출처에서 "타점 없음" 존재 필터를 건 줄에 자동 Point 가 붙어 보일 수 있다.
-// 모수 정합(자동 Point 차트 ⊆ 앵커 차트 ⊆ 후보 하루)은 유지되므로 깔때기 층위 중첩은 안전하다.
+// 손 타점(review_points)·출처 토글은 2026-09-01 폐지 — 부분만 손으로 찍는 건 뜻이 없고(전량은 양이 불가)
+// 토글은 화면·모수·축을 두 벌로 만들었다. 이 훅이 남은 이유는 소비자가 "행이 어디서 오는지"를 안
+// 묻게 하기 위해서다 — 정렬·복제 방지는 Provider(useAutoPointsValue.rows)가 진다.
 import { useMemo } from "react";
-import type { ReviewPoint } from "../api/reviewPoints.js";
-import { useWorkbench } from "../store/workbench.js";
-import { useAllPoints } from "./useAllPoints.js";
+import type { ReviewPointKey } from "@trade-data-manager/market/domain";
 import { useAutoPoints } from "./PointGridsContext.js";
 
 export interface PointRowsView {
-    /** 날짜 내림차순, 같은 날 시각 오름차순(useAllPoints 피드 정렬과 동일 계약). */
-    points: ReviewPoint[];
+    /** 날짜 내림차순, 같은 날 시각 오름차순. **readonly** — 파생 한 벌의 원본이라, 소비자가 제자리
+     *  정렬하면 참조는 그대로인 채 내용만 바뀌어 하류 memo(useThemeStrengthStats 모듈 캐시)가 조용히 틀어진다. */
+    points: readonly ReviewPointKey[];
     isLoading: boolean;
+    /** 첫 로드 실패 — 빈 목록을 "타점 없음"으로 오독하지 않게 겉으로 낸다. */
     error: Error | null;
-    source: "auto" | "hand";
 }
 
-const EMPTY: ReviewPoint[] = [];
+const EMPTY: readonly ReviewPointKey[] = [];
 
 export function usePointRows(): PointRowsView {
-    const source = useWorkbench((s) => s.pointSource);
-    const hand = useAllPoints();
     const auto = useAutoPoints();
-    return useMemo<PointRowsView>(() => {
-        if (source === "hand") return { ...hand, source };
-        const points: ReviewPoint[] = auto.points
-            .map((a) => ({ stockCode: a.stockCode, date: a.date, time: a.time }))
-            .sort((x, y) => (x.date !== y.date ? (x.date < y.date ? 1 : -1) : x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
-        return { points: points.length > 0 ? points : EMPTY, isLoading: auto.isLoading, error: auto.error, source };
-    }, [source, hand, auto]);
+    return useMemo<PointRowsView>(
+        () => ({ points: auto.rows.length > 0 ? auto.rows : EMPTY, isLoading: auto.isLoading, error: auto.error }),
+        [auto],
+    );
 }

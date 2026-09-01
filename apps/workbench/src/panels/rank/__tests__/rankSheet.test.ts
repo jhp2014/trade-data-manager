@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { buildSheetRows } from "../rankSheet.js";
 import { buildAxisIndex, type AxisIndex } from "../../../lib/rankIndex.js";
 import type { PlacedPoint } from "@trade-data-manager/wire";
-import type { ReviewPoint } from "../../../api/reviewPoints.js";
+import type { ReviewPointKey } from "@trade-data-manager/market/domain";
 
 const pp = (code: string, orderKey: number, time = "10:00:00"): PlacedPoint => ({ stockCode: code, date: "2026-07-01", time, orderKey });
-const rpitem = (code: string, time = "10:00:00", extra: Partial<ReviewPoint> = {}): ReviewPoint => ({ stockCode: code, date: "2026-07-01", time, ...extra });
+const rpitem = (code: string, time = "10:00:00"): ReviewPointKey => ({ stockCode: code, date: "2026-07-01", time });
 
 describe("buildSheetRows", () => {
     it("축별 셀을 채우고, 그 축에 없는 타점은 null.", () => {

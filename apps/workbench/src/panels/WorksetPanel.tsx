@@ -15,6 +15,7 @@ import {
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { useGroups } from "../lib/GroupsContext.js";
+import { useSubject } from "../lib/subject.js";
 import { usePersistedState } from "../store/persist.js";
 import { pointKey, chartKeyOf } from "../lib/pointKey.js";
 import { matchesPresenceDnf, hasActiveDnf, dnfSummary } from "../lib/presence.js";
@@ -56,7 +57,6 @@ export function WorksetPanel(): JSX.Element {
     const focusCode = useWorkbench((s) => s.focus.code);
     const focusDate = useWorkbench((s) => s.focus.date);
     const focusTime = useWorkbench((s) => s.focus.time);
-    const activePoint = useWorkbench((s) => s.activePoint);
     const goToDay = useWorkbench((s) => s.goToDay);
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const savedSets = useWorkbench((s) => s.savedSets);
@@ -66,11 +66,12 @@ export function WorksetPanel(): JSX.Element {
     const setGazeMonths = useWorkbench((s) => s.setGazeMonths);
 
     const { nameOf } = useStockNames();
-    const { groupsOf, pathLabel } = useGroups();
+    const { chartGroupsOf, pathLabel } = useGroups();
+    const subject = useSubject();
     const funnel = useFunnel();
 
     const presence = usePresenceIndex();
-    const pts = usePointRows(); // point 행 원천(출처 토글 auto/hand)
+    const pts = usePointRows(); // point 행 원천(격자 파생 한 벌)
     const points = pts.points;
 
     // ── 존재 필터(DNF) — **전역 시선**(store.gazePresence, 슬라이스가 영속·옛 키 승계). 여기가 주인이고
@@ -147,7 +148,7 @@ export function WorksetPanel(): JSX.Element {
             if (narrowOn && !memberPointKeys.has(pointKey(p))) continue; // 좁히기 = 타점도 멤버만
             map.get(`${p.date}|${p.stockCode}`)?.points.push(p);
         }
-        for (const e of map.values()) e.points.sort((a, b) => (a.time < b.time ? -1 : 1));
+        // 타점 정렬은 여기서 다시 하지 않는다 — 원천(usePointRows)이 "날짜↓·시각↑"을 계약으로 준다.
         const entries = [...map.values()].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? 1 : -1) : a.code < b.code ? -1 : 1));
         const out: { date: string; stocks: WorksetEntry[] }[] = [];
         for (const e of entries) {
@@ -195,7 +196,8 @@ export function WorksetPanel(): JSX.Element {
     }, [groups]);
     const navRef = useRef<{ points: NavPoint[]; current: NavPoint | null; run: (dir: number) => void }>({ points: [], current: null, run: () => {} });
     navRef.current.points = flatPoints;
-    navRef.current.current = activePoint;
+    // 순회 커서 = 지금 고른 타점(subject) — 없으면(하루 선택) 목록 끝에서 시작한다.
+    navRef.current.current = subject && subject.time !== null ? { code: subject.code, date: subject.date, time: subject.time } : null;
     navRef.current.run = (dir): void => {
         const { points, current } = navRef.current;
         if (points.length === 0) return;
@@ -311,10 +313,10 @@ export function WorksetPanel(): JSX.Element {
                     focus={{ code: focusCode, date: focusDate, time: focusTime }}
                     lens={lens}
                     nameOf={nameOf}
-                    groupsOf={(p) => groupsOf({ stockCode: p.stockCode, date: p.date, time: p.time })}
+                    groupsOf={(p) => chartGroupsOf({ stockCode: p.stockCode, date: p.date })}
                     pathOf={(id) => pathLabel(id, "(지워짐)")}
-                    // goToDay(setFocus 아님) — setFocus 는 드리프트 보호로 이전 activePoint 를 살려 두어
-                    // "day 를 선택했다"가 완전히 성립하지 않았다(focusSlice.goToDay 주석의 바로 그 사고).
+                    // goToDay — 하루를 고르는 손짓이라 시각을 **명시적으로 푼다**(time: null).
+                    // 안 그러면 옛 시각이 남아 그 차트의 자동 타점을 우연히 가리키는 순간 하루 선택이 아니게 된다.
                     onPickDay={(e) => goToDay({ date: e.date, code: e.code })}
                     onPickPoint={(p) => goToPoint({ date: p.date, code: p.stockCode, time: p.time })}
                     jumpTo={jump.code ? jump : undefined}

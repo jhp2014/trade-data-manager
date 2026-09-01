@@ -43,6 +43,7 @@ function tagChips(container: HTMLElement): string[] {
 const render = (rawScale: number | undefined): HTMLElement =>
     renderWithProviders(<NormOverlayPanel grain="minute" />, {
         charts: [{ code: CODE, date: DATE, data: bundleOf(rawScale) }],
+        points: [{ stockCode: CODE, date: DATE, time: TIME }], // 짚은 타점 = 그 시각이 자동 타점일 때(subject 계약)
         anchors,
         stockNames,
         daySnapshot: { date: DATE, data: { date: DATE, stocks: [] } }, // 테마·거래대금은 이 테스트의 관심사가 아니다
@@ -55,7 +56,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-    useWorkbench.setState({ activePoint: null });
     localStorage.clear();
 });
 

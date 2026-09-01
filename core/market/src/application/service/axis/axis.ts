@@ -13,8 +13,8 @@
 //     "이 조건인 상황들의 결과 분포"가 순환논증이 된다.
 //  3. **결손은 결손으로**: 재료가 없으면(분봉 부재·기준가 부재·해당 시장 세션 없음) 값을 지어내지 않고
 //     결과에서 뺀다 = 그 축에 미배치. 소비자(3치 술어)가 이미 결손을 다룬다.
-import type { ChartAnchor, ChartRef, Grain, ReviewPointKey } from "#domain";
-import type { AdjustedDailyReader, ChartAnchorReader, MinuteReader, RawDailyReader, ReviewPointReader } from "#port/query";
+import type { ChartAnchor, ChartRef, Grain } from "#domain";
+import type { AdjustedDailyReader, ChartAnchorReader, MinuteReader, RawDailyReader } from "#port/query";
 
 /** 시장 구분 — 축은 하나의 시장을 고른다(둘 다 보고 싶으면 축을 둘로. 축 안 토글 금지). */
 export type AxisMarket = "krx" | "un";
@@ -29,12 +29,6 @@ export interface AxisDeps {
     adjDaily: AdjustedDailyReader;
     /** 차트 앵커(사람 입력 — 선·무시 캔들) — params 를 선언한 축만 읽는다. */
     chartAnchor: ChartAnchorReader;
-    /**
-     * 복기 타점 — **분봉 골격의 타점 종가 합성**("타점 종가 = 골격의 한 점")이 형제 타점을 알아야 해서 들어왔다.
-     * 규칙 1(타점별 독립)의 유일한 예외 지점: 그 값은 같은 차트의 다른 타점 존재에 의존한다. 캐시 정합은
-     * ComputedAxisDef.pointCoupled 지문이 지킨다(모집단 의존과는 다르다 — 결합이 차트 안으로 갇혀 있다).
-     */
-    reviewPoints: ReviewPointReader;
 }
 
 /**
@@ -63,9 +57,6 @@ interface AxisValueMark {
     value: number;
     saturated?: boolean;
 }
-
-/** point 축 한 타점의 계산값. 결손인 타점은 아예 배열에 없다(null 을 싣지 않는다). */
-export interface ComputedAxisValue extends ReviewPointKey, AxisValueMark {}
 
 /**
  * day 축 한 차트(종목,날짜)의 계산값 — **시각이 타입에 없다**: "타점 시각까지만"(규칙 2)의 day 판
@@ -109,26 +100,6 @@ interface ComputedAxisDefCommon {
 }
 
 /**
- * point 알갱이 축 — 행 = 타점(종목,날짜,시각). 값에 타점 시각이 들어간다(당일 % 류).
- */
-export interface PointComputedAxisDef extends ComputedAxisDefCommon {
-    /** 생략 = "point". 깔때기 해상도·필터 층위 칸이 이 어휘를 그대로 입는다. */
-    grain?: Extract<Grain, "point">;
-    /**
-     * 값이 **같은 차트의 형제 타점 집합**에 의존하는가(규칙 1의 예외). true 면 캐시 계층이 그 차트의
-     * 타점 시각 목록을 지문에 넣는다 — 타점을 추가/삭제하면 그 차트의 타점들이 자동 재계산된다.
-     * 이게 없으면 형제 결합 축에서 새 타점 하나가 이웃 캐시를 **조용히 스테일**로 남긴다.
-     * (첫 사용자였던 분봉 골격 축은 은퇴 — 지금 켜는 축은 없지만 계약·지문 경로·테스트는 살아 있다.)
-     */
-    pointCoupled?: boolean;
-    /**
-     * 배치 계산 — 타점 집합을 받아 값 있는 것만 돌려준다.
-     * 배치인 이유는 읽기를 모으기 위해서다(타점당 쿼리면 N+1). 값 자체는 규칙 1대로 타점별 독립이어야 한다.
-     */
-    compute(points: readonly ReviewPointKey[], deps: AxisDeps): Promise<ComputedAxisValue[]>;
-}
-
-/**
  * day 알갱이 축 — **행 = 차트(종목,날짜)**. 재료가 앵커·과거 일봉뿐이라 시각이 값에 안 들어간다.
  * 모수도 타점이 아니라 차트다: 분봉 타점을 아직 안 찍었어도 curation 입력(필수 param 앵커)이 있으면
  * 값이 나온다 — "계산 안 됨"이 "미배치"로 위장하던 옛 fanout 모델(타점 행)의 교정.
@@ -144,10 +115,11 @@ export interface DayComputedAxisDef extends ComputedAxisDefCommon {
 }
 
 /**
- * 계산 축 정의 — grain 이 행 정체성을 가른다. 소비자(캐시·피드)는 grain 으로 분기해
- * 행 키(pointKeyOf/chartKeyOf)와 모수(타점/차트)를 고른다.
+ * 계산 축 정의 — **day 하나뿐이다**(2026-09-01). point 축은 서버에서 사라졌다: 타점이 읽기 층
+ * 파생물이 되면서 그 값은 클라가 격자에서 낸다(workbench lib/gridFeatures). 유니온으로 남겨 두는 건
+ * 소비자(캐시·피드)의 grain 분기가 계약으로 살아 있게 하기 위해서다 — wire 는 여전히 두 grain 을 싣는다.
  */
-export type ComputedAxisDef = PointComputedAxisDef | DayComputedAxisDef;
+export type ComputedAxisDef = DayComputedAxisDef;
 
 /**
  * day 알갱이 축의 절단선 — **당일 앵커는 재료가 아니다**(전일까지, ComputedAxisDef.grain 주석).
@@ -157,22 +129,3 @@ export type ComputedAxisDef = PointComputedAxisDef | DayComputedAxisDef;
  */
 export const dropSameDayAnchors = (anchors: readonly ChartAnchor[], param: string): ChartAnchor[] =>
     anchors.filter((a) => a.param !== param || a.anchorDate < a.date);
-
-/** (종목, 거래일) 묶음 — 재료 읽기의 단위. 같은 날 여러 타점은 분봉·일봉을 한 번만 읽는다. */
-export interface AxisDay {
-    stockCode: string;
-    date: string;
-    points: ReviewPointKey[];
-}
-
-/** 타점들을 (종목, 거래일)로 묶는다. 축 구현이 재료를 하루 단위로 읽게 하는 공용 전처리. */
-export function groupByDay(points: readonly ReviewPointKey[]): AxisDay[] {
-    const byDay = new Map<string, AxisDay>();
-    for (const p of points) {
-        const key = `${p.stockCode}|${p.date}`;
-        const day = byDay.get(key);
-        if (day) day.points.push(p);
-        else byDay.set(key, { stockCode: p.stockCode, date: p.date, points: [p] });
-    }
-    return [...byDay.values()];
-}

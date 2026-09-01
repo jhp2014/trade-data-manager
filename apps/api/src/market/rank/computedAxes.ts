@@ -5,7 +5,7 @@
 // curation 입력(기준선)이 있으면 값이 나온다. 옛 fanout 모델(타점 행)에서는 "계산 안 됨"(타점 없음)이
 // "미배치"로 위장했다 — 그 교정이 이 재편의 발단이다.
 // **params 를 선언하지 않은 day 축**(전일 고가 % 류 — 재료가 시장 데이터로 완결)은 그 정의로 모수를 못 뽑는다.
-// 그때는 **후보 하루 전부**(앵커 ∪ 타점 ∪ 그룹 멤버십)가 모수다 = 클라 `candidateDaysOf` 와 같은 정의.
+// 그때는 **후보 하루 전부**(앵커 ∪ 그룹 멤버십)가 모수다 = 클라 `candidateDaysOf` 와 같은 정의.
 // 타점 차트로만 폴백하던 옛 규칙은 실측 54행(≪ 하루 층위 작업 모수 ~5,900)이라 축이 조용히 비었다.
 //
 // 캐시 단위를 **재료가 아니라 결과**로 잡는다. 재료(분봉·일봉·가격선·앵커)는 축마다 모양이 달라 공유 캐시를
@@ -23,10 +23,10 @@
 //
 // 결손(값 없음)은 캐시하지 않는다 — 분봉 미수집 타점이 나중에 채워질 수 있어 "없음"을 굳히면 영구 오염이다
 // (DerivedCache 가 오늘 날짜를 안 굳히는 것과 같은 이유). 대신 결손 비율이 높으면 트립와이어로 알린다.
-import type { ComputedAxisDef, AxisDeps, ChartAnchor, ChartRef, GroupMembership, GroupReader, ReviewPointKey, ReviewPointReader } from "@trade-data-manager/market";
-import { COMPUTED_AXES, anchorAppliesTo, chartKeyOf, pointKeyOf } from "@trade-data-manager/market";
+import type { ComputedAxisDef, AxisDeps, ChartAnchor, ChartRef, GroupMembership, GroupReader } from "@trade-data-manager/market";
+import { COMPUTED_AXES, chartKeyOf } from "@trade-data-manager/market";
 import type { ComputedAxisFeed } from "@trade-data-manager/wire";
-import { fingerprintParams, fingerprintOf } from "./axisFingerprint.js";
+import { fingerprintOf } from "./axisFingerprint.js";
 import { FILE_SCHEMA_VERSION, fileAxisValueStore, type AxisValueEntry, type AxisValueStore } from "./axisValueStore.js";
 
 export type { ComputedAxisFeed };
@@ -34,15 +34,10 @@ export type { ComputedAxisFeed };
 /** 결손 경고 임계 — 이 비율을 넘으면 재료 파이프라인 의심(분봉 미수집·시각 이상). */
 const MISSING_WARN_RATIO = 0.2;
 
-/** 행 참조 — day 축 행(ChartRef)엔 time 이 없다. */
-type RowRef = ChartRef & { time?: string };
-
 /** 앵커 무관 day 축인가 — 모수가 "필수 앵커 있는 차트"가 아니라 **후보 하루 전부**인 축(dayCharts 참조). */
 const isOpenDayAxis = (def: ComputedAxisDef): boolean => def.grain === "day" && (def.params ?? []).length === 0;
 
 export interface ComputedAxesDeps {
-    /** point 축의 모수 = 전 복기 타점. 축은 행별 독립이라 여기서 순서·집합에 의미를 두지 않는다. */
-    points: ReviewPointReader;
     /**
      * 그룹 멤버십 — **앵커 무관 day 축의 모수 재료**(그 축의 계산 재료가 아니다).
      * 그룹만 붙여 둔 하루도 후보 하루라(클라 candidateDaysOf) 여기 빠지면 그 행만 값이 비는데,
@@ -77,26 +72,22 @@ export class ComputedAxes {
     /** 전 계산 축의 피드. 축 단건 조회는 두지 않는다 — 소비자가 모두 전 축을 본다. */
     async feeds(): Promise<ComputedAxisFeed[]> {
         if (this.defs.length === 0) return [];
-        // 앵커 무관 day 축이 하나라도 있으면 그 모수(후보 하루)가 타점·그룹까지 재료로 쓴다.
+        // 앵커 무관 day 축이 하나라도 있으면 그 모수(후보 하루)가 그룹 멤버십까지 재료로 쓴다.
         const needUniverse = this.defs.some(isOpenDayAxis);
-        // point 축도 앵커 무관 day 축도 없으면 타점 조회를 건너뛴다(모수가 앵커라 타점이 필요 없다).
-        const needPoints = needUniverse || this.defs.some((d) => (d.grain ?? "point") === "point");
-        // 앵커는 지문 + day 축 모수용으로 한 번만 읽는다(축이 compute 안에서 또 읽는 건 축 자신의 몫 —
-        // 축끼리 재료 비공유 원칙). 어느 쪽도 필요 없으면 조회 자체를 건너뛴다.
-        const needAnchors = this.defs.some((d) => d.grain === "day" || fingerprintParams(d).length > 0);
-        const [points, anchors, memberships] = await Promise.all([
-            needPoints ? this.deps.points.listAllPoints() : Promise.resolve([]),
-            needAnchors ? this.deps.axisDeps.chartAnchor.listAll() : Promise.resolve([]),
+        // 앵커는 지문 + 모수용으로 한 번만 읽는다(축이 compute 안에서 또 읽는 건 축 자신의 몫 —
+        // 축끼리 재료 비공유 원칙). 축이 전부 day 그레인이라 앵커는 **언제나** 필요하다(모수가 앵커다).
+        const [anchors, memberships] = await Promise.all([
+            this.deps.axisDeps.chartAnchor.listAll(),
             needUniverse ? this.deps.groups.listAllMemberships() : Promise.resolve([]),
         ]);
-        return Promise.all(this.defs.map((def) => this.feed(def, points, anchors, memberships)));
+        return Promise.all(this.defs.map((def) => this.feed(def, anchors, memberships)));
     }
 
-    private feed(def: ComputedAxisDef, points: ReviewPointKey[], anchors: ChartAnchor[], memberships: GroupMembership[]): Promise<ComputedAxisFeed> {
+    private feed(def: ComputedAxisDef, anchors: ChartAnchor[], memberships: GroupMembership[]): Promise<ComputedAxisFeed> {
         const existing = this.inFlight.get(def.key);
         if (existing && existing.gen === this.generation) return existing.promise;
         const gen = this.generation;
-        const promise = this.build(def, points, anchors, memberships).finally(() => {
+        const promise = this.build(def, anchors, memberships).finally(() => {
             if (this.inFlight.get(def.key)?.promise === promise) this.inFlight.delete(def.key);
         });
         this.inFlight.set(def.key, { gen, promise });
@@ -107,18 +98,19 @@ export class ComputedAxes {
      * day 축의 모수 — **필수 param 앵커(차트 소유)가 전부 있는 차트**. 앵커가 곧 입력이라, 모수를 타점이
      * 아니라 앵커에서 뽑아야 "타점 0 + 기준선 있음"인 하루가 행이 된다(이 재편의 수용 기준).
      *
-     * 필수 param 이 없는 day 축은 **후보 하루 전부**(앵커 ∪ 타점 ∪ 그룹) — 재료가 시장 데이터로 완결돼
+     * 필수 param 이 없는 day 축은 **후보 하루 전부**(앵커 ∪ 그룹) — 재료가 시장 데이터로 완결돼
      * 어느 하루든 값이 나오므로, 모수를 좁힐 근거가 없고 좁히면 시트 day 행에 설명 없는 빈칸이 생긴다.
      * 클라 `candidateDaysOf`(lib/presence.ts)와 **같은 정의여야 한다** — 한쪽만 고치면 두 화면이 갈린다.
      * (코멘트만 있는 날은 양쪽 다 제외: 코멘트는 기록이지 판단이 아니다.)
      */
-    private dayCharts(def: ComputedAxisDef, points: ReviewPointKey[], anchors: ChartAnchor[], memberships: GroupMembership[]): ChartRef[] {
+    private dayCharts(def: ComputedAxisDef, anchors: ChartAnchor[], memberships: GroupMembership[]): ChartRef[] {
         const required = def.params ?? [];
         if (required.length === 0) {
             const seen = new Map<string, ChartRef>();
             // 앵커는 타점 소유(a.time != null)도 센다 — 여기서 앵커는 이 축의 **재료가 아니라 흔적**이라
             // "그 하루에 사람이 손댔나"만 묻는다(차트 소유만 세는 아래 규칙과 목적이 다르다).
-            for (const r of [...anchors, ...points, ...memberships]) {
+            // 타점은 항이 아니다 — 격자 파생물이라 사람 편집물이 아니고, 클라 candidateDaysOf 도 같다.
+            for (const r of [...anchors, ...memberships]) {
                 const k = chartKeyOf(r);
                 if (!seen.has(k)) seen.set(k, { stockCode: r.stockCode, date: r.date });
             }
@@ -138,18 +130,16 @@ export class ComputedAxes {
         return out;
     }
 
-    private async build(def: ComputedAxisDef, points: ReviewPointKey[], anchors: ChartAnchor[], memberships: GroupMembership[]): Promise<ComputedAxisFeed> {
-        const isDay = def.grain === "day";
-        const rowKey = isDay ? chartKeyOf : (r: RowRef) => pointKeyOf(r as ReviewPointKey);
-        const items: RowRef[] = isDay ? this.dayCharts(def, points, anchors, memberships) : points;
+    private async build(def: ComputedAxisDef, anchors: ChartAnchor[], memberships: GroupMembership[]): Promise<ComputedAxisFeed> {
+        const rowKey = chartKeyOf;
+        const items: ChartRef[] = this.dayCharts(def, anchors, memberships);
 
         const cached = await this.store.read(def.key);
         // 계산식이 바뀌었으면(version 상향) 옛 값은 다른 식의 산물이라 통째로 버린다.
         const known = cached && cached.version === def.version ? cached.values : {};
 
-        // 차트(종목,날짜) 단위로 모아두고 행마다 적용 앵커로 좁힌다.
-        //  · point 축: anchorAppliesTo(차트 소유 = 전 타점, 타점 소유 = 그 시각).
-        //  · day 축: 그 차트의 **차트 소유** 앵커 전부(타점 소유는 재료가 아니다 — dayCharts 와 같은 규칙).
+        // 차트(종목,날짜) 단위로 모아두고 행마다 적용 앵커로 좁힌다 — 그 차트의 **차트 소유** 앵커 전부
+        // (타점 소유는 재료가 아니다 — dayCharts 와 같은 규칙).
         const anchorsByChart = new Map<string, ChartAnchor[]>();
         for (const a of anchors) {
             const k = chartKeyOf(a);
@@ -157,26 +147,13 @@ export class ComputedAxes {
             if (list) list.push(a);
             else anchorsByChart.set(k, [a]);
         }
-        // pointCoupled 지문용 형제 시각 — point 축 전용(day 축은 타입에 그 개념이 없다).
-        const timesByChart = new Map<string, string[]>();
-        if (!isDay && def.pointCoupled) {
-            for (const p of points) {
-                const k = chartKeyOf(p);
-                const list = timesByChart.get(k);
-                if (list) list.push(p.time);
-                else timesByChart.set(k, [p.time]);
-            }
-        }
-        const applicableTo = (r: RowRef): ChartAnchor[] => {
-            const own = anchorsByChart.get(chartKeyOf(r)) ?? [];
-            return isDay ? own.filter((a) => a.time == null) : own.filter((a) => anchorAppliesTo(a, r as ReviewPointKey));
-        };
+        const applicableTo = (r: ChartRef): ChartAnchor[] => (anchorsByChart.get(chartKeyOf(r)) ?? []).filter((a) => a.time == null);
         const fpCache = new Map<string, string>();
-        const fpOf = (r: RowRef): string => {
+        const fpOf = (r: ChartRef): string => {
             const k = rowKey(r);
             let fp = fpCache.get(k);
             if (fp === undefined) {
-                fp = fingerprintOf(def, applicableTo(r), timesByChart.get(chartKeyOf(r)) ?? []);
+                fp = fingerprintOf(def, applicableTo(r));
                 fpCache.set(k, fp);
             }
             return fp;
@@ -189,11 +166,7 @@ export class ComputedAxes {
             const entry = known[rowKey(r)];
             return entry === undefined || entry.f !== fpOf(r);
         });
-        // grain 이 compute 의 입력 타입을 가른다 — day 는 ChartRef[](시각 없음이 타입로 강제).
-        const computed =
-            stale.length === 0 ? [] :
-            def.grain === "day" ? await def.compute(stale as ChartRef[], this.deps.axisDeps) :
-            await def.compute(stale as ReviewPointKey[], this.deps.axisDeps);
+        const computed = stale.length === 0 ? [] : await def.compute(stale, this.deps.axisDeps);
         const computedByKey = new Map(computed.map((c) => [rowKey(c), c]));
 
         // 조립 — 살아있는 행만(삭제 청소) + 다시 구운 행은 새 값·새 지문으로 교체.
@@ -223,32 +196,22 @@ export class ComputedAxes {
         // 결손 분모: **필수 파라미터가 다 찍힌 행**만 — 아직 안 찍은 행은 결손이 아니라 "입력 전"이다.
         // day 축은 모수 자체가 그 필터(dayCharts)라 items 전체가 분모다. 지문 유무로 대신 세면 안 된다:
         // 선택 파라미터만 찍힌 행(무시 캔들만 지정)도 지문이 생겨 입력 완료로 집계된다.
-        const required = def.params ?? [];
-        const hasRequired = (r: RowRef): boolean => {
-            const owned = applicableTo(r);
-            return required.every((req) => owned.some((a) => a.param === req));
-        };
-        const eligible = isDay || required.length === 0 ? items.length : items.filter(hasRequired).length;
+        const eligible = items.length;
         this.reportMissing(def, eligible, Object.keys(values).length);
 
         return {
             key: def.key,
             name: def.name,
             strongerWhen: def.strongerWhen,
-            grain: def.grain ?? "point",
+            grain: def.grain,
             display: def.display,
-            // 행 순서 그대로 — 정렬은 클라가 질의 시점 모집단 위에서 한다. day 행엔 time 이 없다.
+            // 행 순서 그대로 — 정렬은 클라가 질의 시점 모집단 위에서 한다. 행 = 차트라 time 이 없다
+            // (와이어의 `time?` 은 클라 파생 point 축 피드가 여전히 쓴다 — 계약은 두 grain 을 계속 싣는다).
             values: items
                 .filter((r) => values[rowKey(r)] !== undefined)
                 .map((r) => {
                     const e = values[rowKey(r)];
-                    return {
-                        stockCode: r.stockCode,
-                        date: r.date,
-                        ...(r.time !== undefined ? { time: r.time } : {}),
-                        value: e.v,
-                        ...(e.s ? { saturated: true } : {}),
-                    };
+                    return { stockCode: r.stockCode, date: r.date, value: e.v, ...(e.s ? { saturated: true } : {}) };
                 }),
         };
     }

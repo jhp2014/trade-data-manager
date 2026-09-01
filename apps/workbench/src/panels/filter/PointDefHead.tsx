@@ -57,8 +57,6 @@ export function PointDefHead(): JSX.Element {
     const def = useWorkbench((s) => s.pointDef);
     const setDef = useWorkbench((s) => s.setPointDef);
     const reset = useWorkbench((s) => s.resetPointDef);
-    const source = useWorkbench((s) => s.pointSource);
-    const setSource = useWorkbench((s) => s.setPointSource);
     type NumKey = Exclude<keyof PointDefinition, "bullOnly">;
     const patch = (k: NumKey) => (v: number) => setDef({ [k]: v });
     return (
@@ -79,21 +77,6 @@ export function PointDefHead(): JSX.Element {
             title="자동 Point 판정 정의 — 조건(필터)이 아니라 모수 선언: 바꾸면 자동 타점의 존재·위치가 바뀌어 아래 전 조건의 분포가 재계산됩니다"
         >
             <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>타점 정의</span>
-            <button
-                onClick={() => setSource(source === "auto" ? "hand" : "auto")}
-                title="point 행의 출처 — 자동(격자 파생) / 손(수동 review_points). 차트의 타점 저장·삭제는 항상 손 타점."
-                style={{
-                    fontSize: 11,
-                    padding: "0 6px",
-                    border: "1px solid var(--border-default)",
-                    borderRadius: 3,
-                    color: source === "auto" ? "var(--accent-primary)" : "var(--text-secondary)",
-                    background: source === "auto" ? "var(--accent-soft)" : "transparent",
-                    fontWeight: 600,
-                }}
-            >
-                {source === "auto" ? "자동" : "손"}
-            </button>
             <NumField label="돌파" suffix="억" value={def.baselineGateEok} onCommit={patch("baselineGateEok")} title="기준선 돌파 게이트(분봉 거래대금)" />
             <NumField label="재돌파" suffix="억" value={def.renewalGateEok} onCommit={patch("renewalGateEok")} title="마디 갱신 게이트" />
             <NumField label="제외~" suffix="분" value={def.excludeUptoMin} onCommit={patch("excludeUptoMin")} title="이 분(자정기준) 이하 캔들은 Point 자격 없음 — 0 = 프리마켓·시초 포함(기본)" />

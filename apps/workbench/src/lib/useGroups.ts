@@ -47,6 +47,8 @@ export interface GroupsView {
     pathLabel: (groupName: string, fallback: string) => string;
     /** 이 타점에 적용되는 그룹(이름순) — **직접 ∪ 하루 상속**. */
     groupsOf: (point: PointRef) => Group[];
+    /** 하루(차트) 층위 소속 그룹 — 그룹은 하루 전용이라 칩 표시는 전부 이걸 쓴다. */
+    chartGroupsOf: (chart: ChartGroupRef) => Group[];
     /** 표시용 적용 id — **직접 ∪ 하루 상속**(조상 제외 — 칩이 늘어지지 않게, 경로는 pathLabel 로). */
     groupNamesOf: (point: PointRef) => string[];
     /**
@@ -148,6 +150,7 @@ export function useGroupsValue(): GroupsView {
             toggle: (p, groupName, on) =>
                 toggleMut.mutate({ item: p, groupName, on: on ?? !directOf(p).includes(groupName) }),
             chartGroupNamesOf: chartOf,
+            chartGroupsOf: (c) => chartOf(c).map((id) => groupByName.get(id)).filter((g): g is Group => g != null),
             toggleChart: (c, groupName, on) =>
                 toggleMut.mutate({ item: { stockCode: c.stockCode, date: c.date }, groupName, on: on ?? !chartOf(c).includes(groupName) }),
             memberships,

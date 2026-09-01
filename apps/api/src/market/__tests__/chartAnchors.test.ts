@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { BadRequestException } from "@nestjs/common";
-import type { ChartAnchor, ChartAnchorReader, ChartAnchorStore, NewChartAnchor, ReviewPointStore } from "@trade-data-manager/market";
+import type { ChartAnchor, ChartAnchorReader, ChartAnchorStore, NewChartAnchor } from "@trade-data-manager/market";
 import { ChartAnchors } from "../curation/chartAnchors.js";
 
 const CHART = { stockCode: "005930", date: "2026-07-02" };
@@ -40,10 +40,6 @@ function memoryRepo(): ChartAnchorReader & ChartAnchorStore & { rows: ChartAncho
     };
 }
 
-const pointStore = (removed: string[]): ReviewPointStore => ({
-    upsert: () => Promise.resolve(),
-    remove: (c, d, t) => { removed.push(`${c}|${d}|${t}`); return Promise.resolve(); },
-});
 
 describe("ChartAnchors 유스케이스 — 행 단위 규칙", () => {
     let repo: ReturnType<typeof memoryRepo>;
@@ -51,7 +47,7 @@ describe("ChartAnchors 유스케이스 — 행 단위 규칙", () => {
 
     beforeEach(() => {
         repo = memoryRepo();
-        c = new ChartAnchors(repo, pointStore([]));
+        c = new ChartAnchors(repo);
     });
 
     it("레지스트리에 없는 param 은 거부 — 은퇴한 골격 param 포함", async () => {
@@ -88,26 +84,3 @@ describe("ChartAnchors 유스케이스 — 행 단위 규칙", () => {
     });
 });
 
-// 규칙 ④ — 타점 삭제 cascade 의 소유가 유스케이스로 온 이유: 컨트롤러에 살면 repo 직접 호출 경로가 우회한다.
-describe("ChartAnchors 유스케이스 — 타점 삭제 cascade", () => {
-    it("소유 앵커를 **먼저** 지운다 — 사이에서 죽어도 고아(주인 없는 앵커)가 안 남는 순서", async () => {
-        const repo = memoryRepo();
-        const calls: string[] = [];
-        const origRemoveByPoint = repo.removeByPoint.bind(repo);
-        repo.removeByPoint = (c, d, t) => { calls.push("anchors"); return origRemoveByPoint(c, d, t); };
-        const removed: string[] = [];
-        const points = pointStore(removed);
-        const orig = points.remove.bind(points);
-        points.remove = (c, d, t) => { calls.push("point"); return orig(c, d, t); };
-
-        const uc = new ChartAnchors(repo, points);
-        // 타점 소유 앵커는 현재 레지스트리에 없다 — cascade 기계 자체는 남아 있어야 하므로
-        // (미래의 point 소유 param·마이그레이션 전 잔재) repo 에 직접 심어 검증한다.
-        await repo.add([{ ...CHART, time: "10:00:00", param: "legacy-point-owned", anchorDate: CHART.date, anchorTime: "09:40:00", field: "high", market: "un" }]);
-        await uc.removePoint(CHART.stockCode, CHART.date, "10:00:00");
-
-        expect(calls).toEqual(["anchors", "point"]); // 앵커 먼저 — 최악의 잔재가 "앵커 없는 타점"이 되게
-        expect(repo.rows.filter((r) => r.time === "10:00:00")).toHaveLength(0);
-        expect(removed).toEqual([`${CHART.stockCode}|${CHART.date}|10:00:00`]);
-    });
-});

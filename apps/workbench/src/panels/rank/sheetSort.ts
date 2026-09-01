@@ -15,7 +15,7 @@ import { rowKeyToChartKey } from "../../lib/pointKey.js";
 import type { Col } from "./sheetColumns.js";
 
 export type SortKey =
-    | { kind: "name" | "date" | "time" | "outcome" | "points" | "comment" }
+    | { kind: "name" | "date" | "time" | "points" | "comment" }
     | { kind: "axis"; axisId: string };
 export type SortKind = SortKey["kind"];
 export interface SortStep { key: SortKey; dir: 1 | -1 }
@@ -55,7 +55,7 @@ export function dropSort(chain: SortChain, k: SortKey): SortChain {
 }
 
 // ── 영속 복원 ───────────────────────────────────────────────────────────────
-const SORT_KINDS: readonly string[] = ["name", "date", "time", "outcome", "axis", "points", "comment"];
+const SORT_KINDS: readonly string[] = ["name", "date", "time", "axis", "points", "comment"];
 function parseStep(o: unknown): SortStep | null {
     if (!o || typeof o !== "object") return null;
     const s = o as { key?: { kind?: unknown; axisId?: unknown }; dir?: unknown };
@@ -87,7 +87,6 @@ export function sortValueOf(k: SortKey, row: SheetRow, ctx: SortCtx): string | n
         case "name": return ctx.nameOf(row.stockCode);
         case "date": return row.date;
         case "time": return row.time ?? null; // day 행(시각 없음)은 언제나 바닥 — 그 열 자체가 day 모드엔 없다
-        case "outcome": return row.outcome || null;
         case "points": return row.pointCount ?? null;
         case "comment": return row.comment ? 1 : null;
         case "axis": return row.cells[k.axisId]?.rank ?? null;
@@ -164,14 +163,14 @@ export function sortSheetRows(rows: SheetRow[], chain: SortChain, ctx: SortCtx, 
 
 // ── 그룹 ────────────────────────────────────────────────────────────────────
 /** 값이 몇 가지뿐이라 정렬만 해도 덩어리가 생기는 열 — 여기만 그룹 헤더가 저절로 붙는다. */
-const DISCRETE: ReadonlySet<SortKind> = new Set<SortKind>(["date", "outcome"]);
+const DISCRETE: ReadonlySet<SortKind> = new Set<SortKind>(["date"]);
 export const isDiscreteKey = (k: SortKey): boolean => DISCRETE.has(k.kind);
 
 /** 그린 순서 그대로의 한 덩어리. label=null 이면 헤더 없는 통짜(그룹 안 걸린 정렬). */
 export interface SheetGroup { id: string; label: string | null; rows: SheetRow[] }
 
 function discreteLabel(k: SortKey, v: string | number | null): string {
-    if (v == null) return k.kind === "outcome" ? "결과 없음" : "값 없음";
+    if (v == null) return "값 없음";
     if (k.kind === "date") return String(v).replace(/-/g, ".");
     return String(v);
 }

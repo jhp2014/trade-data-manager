@@ -14,7 +14,7 @@ import { isComputedAxis } from "../../lib/computedAxis.js";
 import { rowKey } from "../../lib/pointKey.js";
 import type { SheetRow } from "./rankSheet.js";
 import type { RankCell } from "../../lib/rankIndex.js";
-import { PIN, heatOf, outcomeColor } from "../../styles/palette.js";
+import { PIN, heatOf } from "../../styles/palette.js";
 import { cellView, type CellMode, type ValuedCell } from "./sheetCell.js";
 
 // 행 피치 두 종류 — **가상화기의 estimateSize 가 이 상수를 그대로 쓴다**(측정 안 함).
@@ -37,8 +37,6 @@ export interface SheetRowHandlers {
     onNav: (row: SheetRow) => void;
     onTogglePin: (key: string) => void;
     onCellCtx: (p: CellCtxPayload) => void;
-    /** 결과 셀 우클릭 — 손으로 적는 값이라 입력 입구가 표 안에 있어야 한다. */
-    onOutcomeCtx: (p: { row: SheetRow; x: number; y: number }) => void;
 }
 
 export interface SheetRowViewProps {
@@ -134,19 +132,10 @@ function SheetRowViewImpl({
                 body: <Cell cell={cell} valued={valuedOf(axisId, row)} mode={mode} prominent={focus} barWidth={widthOf(c) - 18} />,
             };
         },
-        // 결과 = 손으로 적는 큐레이션 값(통계 아님). 우클릭으로 고친다 — 셀 하나에 입구가 있어야 표를 보다 바로 적는다.
-        outcome: () => ({
-            onContextMenu: (ev) => { ev.preventDefault(); h.onOutcomeCtx({ row, x: ev.clientX, y: ev.clientY }); },
-            title: "우클릭 = 결과 입력",
-            style: { cursor: "context-menu" },
-            body: row.outcome
-                ? <span style={{ fontSize: 11, color: outcomeColor(row.outcome) }}>{row.outcome}</span>
-                : <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>,
-        }),
         // day 행 전용 — 타점 수(분봉 작업 진도). 0 은 흐리게(아직 분봉 작업 전인 하루가 한눈에).
         points: () => ({
             onClick: () => h.onNav(row),
-            title: "이 날 찍은 복기 타점 수",
+            title: "이 날 자동 타점 수",
             style: { cursor: "pointer" },
             body: (row.pointCount ?? 0) > 0
                 ? <span className="tabular" style={{ fontWeight: 600 }}>{row.pointCount}</span>

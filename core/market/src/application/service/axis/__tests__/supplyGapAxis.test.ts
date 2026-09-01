@@ -37,7 +37,6 @@ function deps(v: { dailies?: DailyCandle[]; minutesByDay?: Record<string, Minute
         rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
         adjDaily: { getDailyCandles: (_c, range) => Promise.resolve((v.dailies ?? []).filter((d) => d.date >= range.from && d.date <= range.to)) },
         chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(v.anchors ?? []) },
-        reviewPoints: { listAllPoints: () => Promise.resolve([]) },
     };
 }
 

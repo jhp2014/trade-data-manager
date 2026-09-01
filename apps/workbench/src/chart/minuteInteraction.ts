@@ -7,7 +7,7 @@ import { linePct, type RenderLine } from "../lib/chartFrame.js";
 import { type MinutePoint } from "../lib/derive.js";
 
 /**
- * 타점 ▼ 마커 표식 — 마커 DOM 에 붙이고, 차트 우클릭 핸들러가 이걸 보고 비켜준다(가격선 대신 그룹 입력창).
+ * 타점 ▼ 마커 표식 — 마커 DOM 에 붙이고, 차트 우클릭 핸들러가 이걸 보고 비켜준다(가격선 대신 타점 마커).
  * 마커 렌더(MinuteChart)와 판정(공통 정책의 escapeSelector)이 서로 다른 파일이라 문자열을 양쪽에 적지 않게 상수로 둔다.
  */
 export const GROUP_MARKER_ATTR = "data-group-marker";

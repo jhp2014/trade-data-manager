@@ -2,6 +2,7 @@
 name: planner
 description: 확정된 설계를 실행 가능한 단계별 계획으로 만든다. 이 레포 특유의 헥사고날 경계·ISP·market/curation 스키마 분리·알려진 함정을 아는 채로, 건드릴 파일·순서·위험 지점을 미리 지도로 그린다. 다단계 리팩토링/기능 추가에서 설계 논의가 끝나고 착수 직전(첫 Edit 전)에 호출한다. 코드를 고치지 않고 계획만 반환한다.
 model: opus
+effort: high
 tools: Read, Grep, Glob, Bash
 ---
 

@@ -25,7 +25,7 @@ describe("타점 키 — 만들기", () => {
         expect(chartKey(REF)).toBe(domainChartKey(REF));
     });
 
-    it("필드명이 다른 값에서도 같은 키가 나온다 — ActivePoint 는 {code,date,time} 이다", () => {
+    it("필드명이 다른 값에서도 같은 키가 나온다 — subject 는 {code,date,time} 이다", () => {
         expect(pointKeyOf("005930", "2026-07-08", "09:30:00")).toBe(pointKey(REF));
     });
 

@@ -29,7 +29,7 @@ function seedPins(grain: "daily" | "minute"): void {
 beforeEach(() => {
     localStorage.clear();
     // 시선(focus) 없음 — 3항목이 전부 role=base 인 순수한 상태에서 recede 만 잰다.
-    useWorkbench.setState({ activePoint: null, focus: { date: DATE, code: "", time: null } });
+    useWorkbench.setState({ focus: { date: DATE, code: "", time: null } });
 });
 afterEach(() => localStorage.clear());
 

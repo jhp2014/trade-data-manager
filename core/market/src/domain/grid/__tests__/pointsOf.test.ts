@@ -15,7 +15,7 @@ const nh = (min: number, high: number, eok: number, bull = true): GridNewHigh =>
 const hi = (min: number, price: number, confirmedMin: number | null): GridPivot => ({ kind: "high", min, price, confirmedMin, legAmount: "0", renewalAmount: null });
 // 재정식화 격자의 저점: confirmedMin·renewalAmount 항상 null — 헬퍼가 규칙을 증언한다.
 const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: null, legAmount: "0", renewalAmount: null });
-const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touchMin: 550, pivots: [], newHighs: [], ...partial });
+const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touchMin: 550, pivots: [], newHighs: [], prevBase: null, ...partial });
 
 describe("pointsOf", () => {
     it("기준선 미터치(또는 기준선 없음) → Point 없음", () => {
@@ -34,14 +34,17 @@ describe("pointsOf", () => {
         expect(pts[1]).toMatchObject({ kind: "renewal", ordinal: 1, min: 600, levelPrice: 10300 });
     });
 
-    it("게이트 상향 시 Point 는 목록 안에서 **이동**한다(사라지지 않는다)", () => {
+    it("게이트 상향 시 그 레벨의 Point 는 같은 레벨의 뒤 캔들로 **이동**한다", () => {
         const g = grid({
             pivots: [hi(575, 10300, 585)],
             newHighs: [nh(560, 10050, 60), nh(600, 10350, 35), nh(620, 10400, 60)],
         });
-        expect(pointsOf(g).find((p) => p.kind === "renewal")?.min).toBe(600);
-        const raised = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, renewalGateEok: 50 });
-        expect(raised.find((p) => p.kind === "renewal")?.min).toBe(620);
+        const base = pointsOf(g).filter((p) => p.kind === "renewal");
+        expect(base).toHaveLength(1);
+        expect(base[0].min).toBe(600);
+        const raised = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, renewalGateEok: 50 }).filter((p) => p.kind === "renewal");
+        expect(raised).toHaveLength(1);
+        expect(raised[0].min).toBe(620);
     });
 
     it("제외 창 — 기본은 꺼짐(프리마켓도 Point 자격), 올리면 다음 자격 캔들로 이동", () => {
@@ -61,14 +64,66 @@ describe("pointsOf", () => {
         expect(pointsOf(g, { ...DEFAULT_POINT_DEFINITION, bullOnly: false })[0]).toMatchObject({ kind: "breakout", min: 560 });
     });
 
-    it("한 캔들이 기준선+마디를 한 번에 넘으면 Point 는 하나(낮은 레벨 몫)", () => {
+    it("한 캔들이 기준선+마디를 한 번에 넘으면 Point 는 하나 — **높은 레벨 몫**(갈리면 재돌파)", () => {
         const g = grid({
             pivots: [hi(575, 10300, 585)],
             newHighs: [nh(600, 10500, 60)],
         });
         const pts = pointsOf(g);
         expect(pts).toHaveLength(1);
-        expect(pts[0]).toMatchObject({ kind: "breakout", min: 600, levelPrice: 10000 });
+        expect(pts[0]).toMatchObject({ kind: "renewal", min: 600, levelPrice: 10300, levelIdx: 1, levelMin: 575 });
+    });
+
+    it("저대금 터치가 고가를 만들면 이후 크로싱은 재돌파다(재돌파 게이트 30억이 걸린다)", () => {
+        // 09:10 기준선 스침 25억(floor 위·게이트 아래) → 마디 10,050 확정 → 09:30 40억 캔들.
+        // 옛 규칙이면 기준선 몫(게이트 50억 미달 → Point 없음), 새 규칙은 전고점 재돌파(게이트 30억 통과).
+        const g = grid({
+            pivots: [hi(550, 10050, 560), lo(565, 9800)],
+            newHighs: [nh(550, 10050, 25), nh(570, 10100, 40)],
+        });
+        const pts = pointsOf(g);
+        expect(pts).toHaveLength(1);
+        expect(pts[0]).toMatchObject({ kind: "renewal", min: 570, levelPrice: 10050, levelIdx: 1 });
+    });
+
+    it("고가를 못 만든 채 그대로 오르면 여전히 돌파다(기준선 게이트 50억)", () => {
+        // 같은 저대금 터치지만 −2% 눌림이 없어 마디가 안 선다 → 레벨은 기준선 하나.
+        const g = grid({ newHighs: [nh(550, 10050, 25), nh(570, 10100, 40), nh(590, 10200, 60)] });
+        const pts = pointsOf(g);
+        expect(pts).toHaveLength(1);
+        expect(pts[0]).toMatchObject({ kind: "breakout", min: 590, levelPrice: 10000, levelIdx: 0 });
+    });
+
+    it("레벨을 선점당한 뒤 캔들은 Point 를 잃는다 — 게이트 비대칭이 만들던 옛 유령 돌파의 소멸", () => {
+        // 옛 규칙: 10,100(35억)은 레벨1 몫으로 renewal, 10,200(60억)은 레벨0(50억) 몫으로 breakout = 2건
+        //          (뒤 봉이 돌파, 앞 봉이 재돌파 — 시간 역전 라벨). 새 규칙: 둘 다 레벨1 귀속이라 뒤 봉은
+        //          이미 선점된 레벨이라 탈락 = 1건. 전 캐시 실측 소멸 284건이 전부 이 형태다.
+        const g = grid({
+            pivots: [hi(550, 10050, 560), lo(565, 9800)],
+            newHighs: [nh(550, 10050, 25), nh(570, 10100, 35), nh(600, 10200, 60)],
+        });
+        const pts = pointsOf(g);
+        expect(pts).toHaveLength(1);
+        expect(pts[0]).toMatchObject({ kind: "renewal", min: 570, levelIdx: 1 });
+    });
+
+    it("레벨당 Point 는 최대 하나 — 같은 레벨 구간의 뒤 캔들이 또 서지 않는다", () => {
+        const g = grid({ newHighs: [nh(560, 10050, 60), nh(570, 10100, 60), nh(580, 10150, 60)] });
+        const pts = pointsOf(g);
+        expect(pts).toHaveLength(1);
+        expect(pts.filter((p) => p.levelIdx === 0)).toHaveLength(1);
+    });
+
+    it("귀속 레벨의 게이트에 미달해도 낮은 레벨로 내려가지 않는다", () => {
+        // 10,350 캔들은 마디(10,300) 몫 — 재돌파 게이트를 50억으로 올리면 35억은 탈락이고,
+        // 기준선(50억)으로 강등되지도 않는다. 같은 레벨의 다음 자격 캔들(60억)이 대신 선다.
+        const g = grid({
+            pivots: [hi(575, 10300, 585)],
+            newHighs: [nh(600, 10350, 35), nh(620, 10400, 60)],
+        });
+        const raised = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, renewalGateEok: 50 });
+        expect(raised).toHaveLength(1);
+        expect(raised[0]).toMatchObject({ kind: "renewal", min: 620, levelIdx: 1 });
     });
 
     it("하락 중 낮은 고점은 레벨이 아니다(러닝 최고가였던 확정 고점만)", () => {

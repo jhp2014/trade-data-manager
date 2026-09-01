@@ -38,7 +38,6 @@ function deps(raw: DailyCandle[], adj: DailyCandle[] = raw): AxisDeps {
         rawDaily: { getRawDailyCandles: (_c, range) => Promise.resolve(within(raw, range)) },
         adjDaily: { getDailyCandles: (_c, range) => Promise.resolve(within(adj, range)) },
         chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve([]) },
-        reviewPoints: { listAllPoints: () => Promise.resolve([]) },
     };
 }
 

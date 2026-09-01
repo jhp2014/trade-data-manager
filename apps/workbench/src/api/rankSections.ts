@@ -3,7 +3,7 @@
 import type { RankSectionBundle } from "@trade-data-manager/wire";
 import { apiGet } from "./http.js";
 
-export type { RankSection, RankSectionDate, RankSectionBundle } from "@trade-data-manager/wire";
+export type { WireRankSection, RankSectionDate, RankSectionBundle } from "@trade-data-manager/wire";
 
 export const fetchRankSections = (signal?: AbortSignal): Promise<RankSectionBundle> =>
     apiGet<RankSectionBundle>("rank-sections", undefined, signal);

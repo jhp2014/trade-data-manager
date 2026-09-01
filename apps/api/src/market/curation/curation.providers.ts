@@ -3,10 +3,9 @@ import {
     createDb,
     DrizzleDailyCommentRepository,
     DrizzleChartAnchorRepository,
-    DrizzleReviewPointRepository,
     DrizzleGroupRepository,
 } from "@trade-data-manager/persistence";
-import { CHART_ANCHOR_REPO, CHART_ANCHORS, REVIEW_POINT_REPO, DAILY_COMMENTS, GROUP_REPO, CURATION_SYNC, COMPUTED_AXES, MARKET_POOL, CURATION_POOL } from "../tokens.js";
+import { CHART_ANCHOR_REPO, CHART_ANCHORS, DAILY_COMMENTS, GROUP_REPO, CURATION_SYNC, COMPUTED_AXES, MARKET_POOL, CURATION_POOL } from "../tokens.js";
 import type { Pool } from "../pool.js";
 import { curationRepo } from "./curationRepo.js";
 import { DailyComments } from "./dailyComments.js";
@@ -15,7 +14,6 @@ import { CurationSync } from "./curationSync.js";
 import { ComputedAxes } from "../rank/computedAxes.js";
 import { axisDepsOf } from "../rank/axisDeps.js";
 import { ChartAnchorController } from "./chartAnchor.controller.js";
-import { ReviewPointController } from "./reviewPoint.controller.js";
 import { CommentController } from "./comment.controller.js";
 import { RankController } from "./rank.controller.js";
 import { GroupController } from "./group.controller.js";
@@ -25,7 +23,6 @@ import { CurationSyncController } from "./sync.controller.js";
 export const curationControllers = [
     CurationSyncController,
     ChartAnchorController,
-    ReviewPointController,
     CommentController,
     RankController,
     GroupController,
@@ -43,16 +40,8 @@ export const curationProviders: Provider[] = [
         provide: CHART_ANCHORS,
         useFactory: (marketPool: Pool, curationPool: Pool): ChartAnchors =>
             new ChartAnchors(
-                curationRepo((db) => new DrizzleChartAnchorRepository(db), ["add", "remove", "removeByParam", "removeByPoint"], "chartAnchor", marketPool, curationPool),
-                curationRepo((db) => new DrizzleReviewPointRepository(db), ["upsert", "remove"], "reviewPoint", marketPool, curationPool),
+                curationRepo((db) => new DrizzleChartAnchorRepository(db), ["add", "remove", "removeByParam"], "chartAnchor", marketPool, curationPool),
             ),
-        inject: [MARKET_POOL, CURATION_POOL],
-    },
-    {
-        // 복기 타점 쓰기(사람 편집) — repo 를 그대로 노출(upsert/list/remove).
-        provide: REVIEW_POINT_REPO,
-        useFactory: (marketPool: Pool, curationPool: Pool) =>
-            curationRepo((db) => new DrizzleReviewPointRepository(db), ["upsert", "remove"], "reviewPoint", marketPool, curationPool),
         inject: [MARKET_POOL, CURATION_POOL],
     },
     {
@@ -66,12 +55,11 @@ export const curationProviders: Provider[] = [
         inject: [MARKET_POOL, CURATION_POOL],
     },
     {
-        // 계산 축 — 수식으로 나오는 축의 타점별 수치 + 축당 파일 캐시(증분·앵커 지문 자동 무효화).
-        // 모집단(타점)·앵커·시세 **전부 읽기라 로컬 한 DB**다.
+        // 계산 축 — day 축의 차트별 수치 + 축당 파일 캐시(증분·앵커 지문 자동 무효화).
+        // 모집단(앵커·그룹)·시세 **전부 읽기라 로컬 한 DB**다.
         provide: COMPUTED_AXES,
         useFactory: (marketPool: Pool): ComputedAxes =>
             new ComputedAxes({
-                points: new DrizzleReviewPointRepository(createDb(marketPool)), // 읽기 — 로컬 미러
                 groups: new DrizzleGroupRepository(createDb(marketPool)), // 읽기(모수 재료) — 로컬 미러
                 axisDeps: axisDepsOf(marketPool),
             }),

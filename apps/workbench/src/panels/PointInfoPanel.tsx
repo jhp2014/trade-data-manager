@@ -21,20 +21,21 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     const revealRankAxis = useWorkbench((s) => s.revealRankAxis);
     const [unplacedOpen, setUnplacedOpen] = usePanelUi(panelId, "unplacedOpen", false);
 
-    // 이 시각이 저장된 타점인가 — 차트의 현재 타점 판정과 같은 소스(useChartPoints 복제본 셀렉터).
+    // 이 시각이 타점인가 — 차트의 현재 타점 판정과 같은 소스(자동 타점 파생 한 벌).
     const points = useChartPoints(code, viewDate);
-    const point = useMemo(() => points.find((rp) => rp.time === time) ?? null, [points, time]);
+    const pointTime = useMemo(() => (time && points.includes(time) ? time : null), [points, time]);
 
     const placements = usePlacements();
-    const { groupsOf, pathLabel } = useGroups();
-    const groups = useMemo(() => (point ? groupsOf({ stockCode: code, date: viewDate, time: point.time }) : []), [point, code, viewDate, groupsOf]);
+    const { chartGroupsOf, pathLabel } = useGroups();
+    // 그룹은 하루 층위 하나뿐이다(타점 그룹 폐지) — 이 패널은 그 날의 그룹을 보여준다.
+    const groups = useMemo(() => chartGroupsOf({ stockCode: code, date: viewDate }), [code, viewDate, chartGroupsOf]);
     const detail = useMemo(
-        () => (point ? placements.detailOf({ stockCode: code, date: viewDate, time: point.time }) : null),
-        [point, code, viewDate, placements],
+        () => (pointTime ? placements.detailOf({ stockCode: code, date: viewDate, time: pointTime }) : null),
+        [pointTime, code, viewDate, placements],
     );
 
     if (!code) return <BoardCenter text="종목을 선택하세요" />;
-    if (!point || !detail) return <BoardCenter text={time ? `${time.slice(0, 5)} — 타점 아님` : "시각을 선택하세요"} />;
+    if (!pointTime || !detail) return <BoardCenter text={time ? `${time.slice(0, 5)} — 타점 아님` : "시각을 선택하세요"} />;
 
     return (
         <div
@@ -45,11 +46,11 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
                 title={`${name ?? code} · ${viewDate}`}
                 style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
                 <span style={{ minWidth: 0, fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name ?? code}</span>
-                <span className="tabular" style={{ flexShrink: 0, color: "var(--accent-primary)", fontWeight: 700 }}>{point.time.slice(0, 5)}</span>
+                <span className="tabular" style={{ flexShrink: 0, color: "var(--accent-primary)", fontWeight: 700 }}>{pointTime.slice(0, 5)}</span>
             </PanelHeader>
 
             {/* 그룹 줄 — 축 레인 위(명목 분류가 순서 차원보다 먼저 읽힌다). 한 줄 고정: 폭이 좁아도 wrap 하지 않고
-                hover 가로 스크롤로 훑는다(줄 수가 늘면 아래 축 목록이 밀린다). 편집은 차트 ▼ 우클릭에서만. */}
+                hover 가로 스크롤로 훑는다(줄 수가 늘면 아래 축 목록이 밀린다). 편집은 그룹 패널에서만. */}
             <div style={{ flexShrink: 0, padding: "4px 8px", borderBottom: "1px solid var(--border-subtle)" }}>
                 <GroupChips groups={groups} scroll empty="그룹 없음" pathOf={(id) => pathLabel(id, "(지워짐)")} />
             </div>
@@ -65,11 +66,6 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
                 />
             </div>
 
-            {point.memo && (
-                <div style={{ flexShrink: 0, borderTop: "1px solid var(--border-subtle)", padding: "4px 8px", color: "var(--text-tertiary)", fontSize: 11, maxHeight: 64, overflowY: "auto" }}>
-                    {point.memo}
-                </div>
-            )}
         </div>
     );
 }

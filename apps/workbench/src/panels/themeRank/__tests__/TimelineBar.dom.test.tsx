@@ -41,10 +41,10 @@ describe("스크럽 — 트랙 좌표 → 분", () => {
     });
 });
 
-describe("▼ 저장 타점 — 클릭 = 그 시각으로 점프", () => {
+describe("▼ 타점 — 클릭 = 그 시각으로 점프", () => {
     it("마커 클릭이 그 분을 그대로 넘긴다(트랙 좌표 아님)", () => {
         const { container, onScrub } = setup({ pointMinutes: [571] });
-        const marker = [...container.querySelectorAll("button")].find((b) => b.title.startsWith("저장 타점"));
+        const marker = [...container.querySelectorAll("button")].find((b) => b.title.startsWith("타점"));
         fireEvent.click(marker!);
         expect(onScrub).toHaveBeenCalledWith(571);
         expect(marker!.title).toContain("09:31");

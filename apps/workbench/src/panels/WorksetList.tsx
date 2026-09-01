@@ -11,7 +11,7 @@
 // 훑기가 성립한다(멤버 타점 하나 있는 날이 흐리면 "이 날에 멤버가 있다"가 안 보인다).
 import { useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from "react";
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
-import type { ReviewPoint } from "../api/reviewPoints.js";
+import type { ReviewPointKey } from "@trade-data-manager/market/domain";
 import type { Group } from "../api/groups.js";
 import type { DayPresence } from "../lib/presence.js";
 import { weekdayOf } from "../lib/date.js";
@@ -24,20 +24,20 @@ export interface WorksetEntry {
     date: string;
     code: string;
     presence: DayPresence;
-    points: ReviewPoint[];
+    points: ReviewPointKey[];
 }
 
 export interface WorksetLens {
     /** 이 (날짜,종목) 아래에 멤버가 있나 — 종목 행 레일의 기준. */
     dayMember: (e: WorksetEntry) => boolean;
     /** 이 타점이 멤버인가 — 타점 행 레일의 기준. */
-    pointMember: (p: ReviewPoint) => boolean;
+    pointMember: (p: ReviewPointKey) => boolean;
 }
 
 type Row =
     | { kind: "date"; key: string; date: string; count: number }
     | { kind: "stock"; key: string; entry: WorksetEntry }
-    | { kind: "point"; key: string; entry: WorksetEntry; point: ReviewPoint };
+    | { kind: "point"; key: string; entry: WorksetEntry; point: ReviewPointKey };
 
 /** 고정 높이(px) — 균일해야 가상화가 재지 않고 앉힌다. 행 안 내용은 한 줄로 자른다. */
 const DATE_H = 24;
@@ -51,10 +51,10 @@ export function WorksetList({ groups, focus, lens, nameOf, groupsOf, pathOf, onP
     /** null = 렌즈 없음(집합 미선택·전체). */
     lens: WorksetLens | null;
     nameOf: (code: string) => string | null;
-    groupsOf: (p: ReviewPoint) => Group[];
+    groupsOf: (p: { stockCode: string; date: string }) => Group[];
     pathOf: (groupName: string) => string;
     onPickDay: (e: WorksetEntry) => void;
-    onPickPoint: (p: ReviewPoint) => void;
+    onPickPoint: (p: ReviewPointKey) => void;
     /** 찾아가기 — nonce 가 바뀔 때만 그 (날짜,종목)으로(없으면 같은 종목의 아무 날짜로). ItemRows.jumpTo 선례. */
     jumpTo?: { date: string; code: string; nonce: number };
 }): JSX.Element {
@@ -176,18 +176,13 @@ export function WorksetList({ groups, focus, lens, nameOf, groupsOf, pathOf, onP
                             <span className="tabular" style={{ flexShrink: 0, width: 40, color: current ? "var(--accent-primary)" : "var(--text-secondary)", fontWeight: current ? 700 : 400, fontSize: 12 }}>
                                 {p.time.slice(0, 5)}
                             </span>
-                            {p.memo && (
-                                <span title={p.memo} style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-tertiary)", fontSize: 12 }}>
-                                    {p.memo}
-                                </span>
-                            )}
                             {/* 그룹은 아이콘만 + hover 색 카드(경로는 카드 안에서) — 작업 여부 화면이라 이름 칩은 소음.
                                 배치 배지(n/m)는 뺐다: "어느 축에 안 꽂았나"는 시트의 질문이다(사용자 확정). */}
                             {pGroups.length > 0 && (
                                 <span style={{ marginLeft: "auto", flexShrink: 0 }}>
                                     <HoverCard card={<GroupNamesCard names={pGroups.map((g) => pathOf(g.name))} />}>
-                                        <span data-presence-kind="group-point" aria-label="타점 그룹" style={{ display: "inline-flex", color: GROUP_PLAIN }}>
-                                            <PresenceIcon kindKey="group-point" name="타점 그룹" />
+                                        <span data-presence-kind="group-day" aria-label="그룹" style={{ display: "inline-flex", color: GROUP_PLAIN }}>
+                                            <PresenceIcon kindKey="group-day" name="그룹" />
                                         </span>
                                     </HoverCard>
                                 </span>

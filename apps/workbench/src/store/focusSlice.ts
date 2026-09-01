@@ -3,7 +3,7 @@
 //  - Scope(렌즈, 집합): theme. 리스트형 패널 필터(차트 안 건드림).
 // 무효화 규칙은 transitionFocus 단일 진실 — 액션은 next focus 조립 + chartZoom 의도(점프=해제/드리프트=유지)만 명시.
 import type { StateCreator } from "zustand";
-import { transitionFocus, type ActivePoint } from "./focusTransition.js";
+import { transitionFocus } from "./focusTransition.js";
 import { kstToday } from "../lib/date.js";
 import type { WorkbenchState } from "./workbench.js";
 
@@ -26,15 +26,10 @@ export interface Search {
     date: string; // YYYY-MM-DD
 }
 
-export type { ActivePoint };
-
 export interface FocusSlice {
     focus: Focus;
     scope: Scope;
     search: Search | null; // 검색 모드 컨텍스트(null = Focus 따라감)
-    // 선택된 복기 타점 — (A) "현재 타점에 연결된 가설" 판정 기준. focus.time(리플레이/차트 드리프트로 휘발)과 분리한다.
-    // goToPoint(타점 클릭)에서만 세팅 → 시간만 움직이면 유지, 다른 타점으로 이동해야 바뀜. 종목/날짜 바뀌면 해제.
-    activePoint: ActivePoint | null;
     // 마지막 Focus 변경의 출처(패널 id). 패널이 "내가 바꿨나(self) vs 남이 바꿨나(external)"를 구분해
     // 자기 자신은 제자리, 남에 의한 변경은 스크롤/동기화하는 데 쓴다. origin 미전달 = null(= 외부 취급).
     lastFocusOrigin: string | null;
@@ -43,12 +38,13 @@ export interface FocusSlice {
     setCode: (code: string, origin?: string) => void;
     setTime: (time: string | null, origin?: string) => void;
     setFocus: (next: { date: string; code: string; time: string | null }, origin?: string) => void; // review point 원자적 세팅
-    goToPoint: (point: { date: string; code: string; time: string }, origin?: string) => void; // 타점 이동 = focus + activePoint 원자 세팅
     /**
-     * 하루 이동 — 타점 없는 (종목,날짜) 선택. activePoint 를 **명시적으로 푼다**: transitionFocus 는
-     * 같은 종목·같은 날이면 옛 타점을 살려 두는데(드리프트 보호), "하루를 골랐다"는 그 타점 선택의
-     * 부정이지 유지가 아니다. activePoint 의 time 을 nullable 로 넓히지 않는 이유이기도 하다.
+     * 타점 이동 — 그 시각으로 간다. **이름이 남은 이유**: 호출부(시트·작업셋·정규화·순회)의 의도가
+     * "타점을 골랐다"라서다. 선택 자체는 이제 저장물이 아니라 판정이다(lib/subject) — 그래서 하는 일은
+     * setFocus 와 같고, 시각이 그 차트의 자동 타점이면 그 순간 subject 가 타점이 된다.
      */
+    goToPoint: (point: { date: string; code: string; time: string }, origin?: string) => void;
+    /** 하루 이동 — 시각 없는 (종목,날짜) 선택. time: null 이 곧 "하루를 골랐다"다. */
     goToDay: (day: { date: string; code: string }, origin?: string) => void;
     // Scope 액션 — 각 축 독립 토글(차트 안 건드림).
     setTheme: (theme: string | null) => void;
@@ -61,7 +57,6 @@ export const createFocusSlice: StateCreator<WorkbenchState, [], [], FocusSlice> 
     focus: { date: kstToday(), code: "", time: null },
     scope: { theme: null },
     search: null,
-    activePoint: null,
     lastFocusOrigin: null,
 
     // 모든 Focus 액션은 무효화규칙을 transitionFocus 단일 진실에 위임한다(각 액션이 규칙을 재현하지 않게).
@@ -84,16 +79,10 @@ export const createFocusSlice: StateCreator<WorkbenchState, [], [], FocusSlice> 
         set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time }, origin), chartZoom: null }));
         if (origin !== "history") get().recordVisit({ date, code, time });
     },
-    // 타점 이동 = focus 전이 + activePoint 명시 override(다른 타점 선택 시에만 A 바뀜).
-    goToPoint: ({ date, code, time }, origin) => {
-        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time }, origin), activePoint: { code, date, time }, chartZoom: null }));
-        if (origin !== "history") get().recordVisit({ date, code, time });
-    },
-    // 하루 이동 = focus 전이 + activePoint 명시 해제(같은 종목·날이라도 옛 타점을 안 살린다 — 위 주석).
-    goToDay: ({ date, code }, origin) => {
-        set((s) => ({ ...transitionFocus(s, { ...s.focus, date, code, time: null }, origin), activePoint: null, chartZoom: null }));
-        if (origin !== "history") get().recordVisit({ date, code, time: null });
-    },
+    // 둘 다 setFocus 에 **위임**한다 — 이름은 호출부의 의도(타점을 골랐다 / 하루를 골랐다)를 남기고,
+    // 몸통은 하나만 둔다(복제해 두면 셋이 조용히 갈린다).
+    goToPoint: (point, origin) => get().setFocus(point, origin),
+    goToDay: ({ date, code }, origin) => get().setFocus({ date, code, time: null }, origin),
 
     setTheme: (theme) => set((s) => ({ scope: { ...s.scope, theme } })),
     clearScope: () => set(() => ({ scope: { theme: null } })),

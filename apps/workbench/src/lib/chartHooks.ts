@@ -1,46 +1,23 @@
-// ChartPanel 의 복기 타점 훅 — 조회 데이터(세로선·배지)와 전역 차트 단축키.
-// 차트 앵커(선·무시 캔들·골격) 편집은 chartAnchorHooks.ts(param 하나 = 훅 하나) — 여기 두면 잡동사니가 된다.
+// ChartPanel 의 타점 훅 — 조회 데이터(세로선·배지)와 전역 차트 단축키.
+// 차트 앵커(선·무시 캔들) 편집은 chartAnchorHooks.ts(param 하나 = 훅 하나) — 여기 두면 잡동사니가 된다.
+//
+// 타점은 2026-09-01 부터 **자동 타점 하나**다(손 타점 폐지) — 읽기 시점 파생물이라 저장·삭제가 없고,
+// 그래서 이 파일에 뮤테이션·무효화가 없다. 남은 것은 이동(순회·봉 이동)과 줌뿐이다.
 import { useEffect, useMemo, useRef } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { upsertReviewPoint, removeReviewPoint, type ReviewPoint } from "../api/reviewPoints.js";
-import { allAnchorsQuery, allPointsQuery, chartQuery, computedAxesQuery, groupMembershipsQuery, rankSectionsQuery } from "../api/queries.js";
-import { kstToUnix, deriveMinuteView } from "./derive.js";
+import { useQuery } from "@tanstack/react-query";
+import { chartQuery } from "../api/queries.js";
+import { deriveMinuteView } from "./derive.js";
 import { indexAtOrBefore } from "./chartFrame.js";
 import { useChartPoints } from "./useChartPoints.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { useWorkbench } from "../store/workbench.js";
 import type { Command } from "../keymap/types.js";
 
-export interface SavedPoint {
-    time: number; // 저장 타점 시각(unix초) — 분봉 세로선/아이콘
-}
-
-export interface ChartReviewPoints {
-    savedPoints: SavedPoint[];
-    focusedPoint: ReviewPoint | undefined; // 현재 Focus.time 에 저장된 타점(헤더 배지)
-}
-
-/**
- * 복기 타점 조회 데이터(차트 렌더용) — 저장타점 세로선·hover 카드. 단축키 등록은 전역 useChartHotkeys 로 이관.
- */
-export function useReviewPointData(code: string, date: string, time: string | null): ChartReviewPoints {
-    const reviewPoints = useChartPoints(code, date); // 복제본 셀렉터 — 서버 왕복 없음
-
-    const savedPoints = useMemo<SavedPoint[]>(() => {
-        if (!date) return [];
-        return reviewPoints.map((rp) => ({ time: kstToUnix(date, rp.time) }));
-    }, [reviewPoints, date]);
-
-    const focusedPoint = useMemo(() => reviewPoints.find((rp) => rp.time === time), [reviewPoints, time]);
-    return { savedPoints, focusedPoint };
-}
-
 /**
  * 차트 단축키 — **전역 1회 등록**(App). 패널별 등록이 아니라 focus 를 따라간다 → 차트 여러 개여도 커맨드 충돌 없고,
  * 패널 마운트/포커스 상태에 안 흔들린다(옛 패널별 등록의 "가끔 안 먹음" 버그 해결). 입력창 포커스 중 mod-less 는 디스패처가 가드.
- *   space=타점 저장/삭제 · a/d=±1분봉 · shift+a/d=±jumpBars(setTime, activePoint 유지)
- *   ctrl+a/d=타점 순회 wrap(goToPoint) · f=일봉+분봉 확대/축소(store chartZoom, 두 차트 동시).
- * 그룹 부착은 골격 패널/분석 시트의 BulkGroupMenu 가 유일한 입구다(숫자키 프리셋은 태그 시절 잔재라 제거).
+ *   a/d=±1분봉 · shift+a/d=±jumpBars · ctrl+a/d=타점 순회 wrap · f=일봉+분봉 확대/축소(store chartZoom, 두 차트 동시).
+ * 그룹 부착은 골격 패널/분석 시트의 BulkGroupMenu 가 유일한 입구다.
  * 핸들러는 매 렌더 최신 클로저로 h.current 갱신(안정 ref), 등록 effect 는 1회.
  */
 export function useChartHotkeys(): void {
@@ -50,39 +27,13 @@ export function useChartHotkeys(): void {
     const time = useWorkbench((s) => s.focus.time);
     const mode = useWorkbench((s) => s.chartPriceMode);
     const jumpBars = useWorkbench((s) => s.chartSettings.jumpBars);
-    const qc = useQueryClient();
 
     const chartQ = useQuery(chartQuery(code, date)); // ChartPanel 과 같은 키 → RQ 캐시 공유(중복 페치 0)
     const minutePoints = useMemo(() => (chartQ.data ? deriveMinuteView(chartQ.data, mode).points : []), [chartQ.data, mode]);
-    const reviewPoints = useChartPoints(code, date); // 저장/삭제 판정도 이 소스(all-points 복제본)
-    const reviewTimes = useMemo(() => [...reviewPoints.map((rp) => rp.time)].sort(), [reviewPoints]);
-
-    const invalidate = (): void => {
-        void qc.invalidateQueries({ queryKey: allPointsQuery().queryKey });
-        // 계산 축은 타점 집합에서 나온다 — 타점이 늘거나 줄면 다시 굽는다(서버가 증분이라 새 타점만 계산).
-        void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey });
-        // 순위 단면도 같은 모수(타점 집합 = 단면 (날짜,분) 집합) — 서버 대사가 빠진 단면만 굽는다.
-        void qc.invalidateQueries({ queryKey: rankSectionsQuery().queryKey });
-    };
-    // 삭제는 서버가 타점에 딸린 것까지 지운다 — 그룹 멤버(group_members) FK cascade,
-    // 타점 소유 앵커(ChartAnchors.removePoint). 같이 안 비우면 유령이 남는다
-    // (존재 지도가 그날을 "그룹 있음"으로 유지해 작업셋 모수 오염).
-    const invalidateRemoved = (): void => {
-        invalidate();
-        void qc.invalidateQueries({ queryKey: groupMembershipsQuery().queryKey });
-        void qc.invalidateQueries({ queryKey: allAnchorsQuery().queryKey });
-    };
-    const upsertMut = useMutation({ mutationFn: upsertReviewPoint, onSuccess: invalidate });
-    const removeMut = useMutation({ mutationFn: (v: { code: string; date: string; time: string }) => removeReviewPoint(v.code, v.date, v.time), onSuccess: invalidateRemoved });
+    const pointTimes = useChartPoints(code, date); // 순회 대상 = 그 차트의 자동 타점(정의 노브를 그대로 따른다)
 
     // 매 렌더 최신 클로저로 핸들러 갱신(안정 ref 유지) → 등록된 run 은 항상 최신 상태를 본다.
-    const h = useRef({ toggle: () => {}, moveBar: (_: number) => {}, jump: (_: number) => {}, navPoint: (_: number) => {} });
-    h.current.toggle = () => {
-        if (!code || !date || !time) return;
-        const existing = reviewPoints.find((rp) => rp.time === time);
-        if (existing) removeMut.mutate({ code, date, time });
-        else upsertMut.mutate({ stockCode: code, date, time });
-    };
+    const h = useRef({ moveBar: (_: number) => {}, jump: (_: number) => {}, navPoint: (_: number) => {} });
     h.current.moveBar = (delta) => {
         if (minutePoints.length === 0) return;
         let idx = minutePoints.findIndex((p) => p.tradeTime === time);
@@ -94,12 +45,12 @@ export function useChartHotkeys(): void {
     };
     h.current.jump = (dir) => h.current.moveBar(dir * jumpBars);
     h.current.navPoint = (dir) => {
-        if (reviewTimes.length === 0) return;
+        if (pointTimes.length === 0) return;
         let target: string;
-        if (dir > 0) target = reviewTimes.find((x) => (time ? x > time : true)) ?? reviewTimes[0];
+        if (dir > 0) target = pointTimes.find((x) => (time ? x > time : true)) ?? pointTimes[0];
         else {
-            const prevs = reviewTimes.filter((x) => (time ? x < time : true));
-            target = prevs.length ? prevs[prevs.length - 1] : reviewTimes[reviewTimes.length - 1];
+            const prevs = pointTimes.filter((x) => (time ? x < time : true));
+            target = prevs.length ? prevs[prevs.length - 1] : pointTimes[pointTimes.length - 1];
         }
         useWorkbench.getState().goToPoint({ date, code, time: target });
     };
@@ -109,7 +60,6 @@ export function useChartHotkeys(): void {
         const { register, unregister } = useKeymapDynamic.getState();
         const ids: string[] = [];
         const put = (cmd: Command): void => { register(cmd); ids.push(cmd.id); };
-        put({ id: "chart.review.toggle", title: "타점 저장/삭제(현재 시각)", category: "차트", keys: "space", run: () => h.current.toggle() });
         put({ id: "chart.nav.prevBar", title: "1봉 이전", category: "차트", keys: "a", run: () => h.current.moveBar(-1) });
         put({ id: "chart.nav.nextBar", title: "1봉 다음", category: "차트", keys: "d", run: () => h.current.moveBar(1) });
         put({ id: "chart.nav.jumpPrev", title: "이동봉 이전", category: "차트", keys: "shift+a", run: () => h.current.jump(-1) });

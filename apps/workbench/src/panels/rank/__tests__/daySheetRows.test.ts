@@ -12,8 +12,8 @@ const POINT_AXIS = "c:daily-change-un";
 const chartRow = (stockCode: string, date: string, orderKey: number): PlacedPoint => ({ stockCode, date, orderKey });
 const pointRow = (stockCode: string, date: string, time: string, orderKey: number): PlacedPoint => ({ stockCode, date, time, orderKey });
 
-const presence = (points: number, comment = false): DayPresence =>
-    ({ stockCode: "", date: "", marks: new Map(), points, dayGroups: [], pointGroups: [], comment });
+const presence = (comment = false): DayPresence =>
+    ({ stockCode: "", date: "", marks: new Map(), dayGroups: [], comment });
 
 describe("buildDaySheetRows", () => {
     const indexByAxis = new Map([
@@ -26,7 +26,8 @@ describe("buildDaySheetRows", () => {
             [{ stockCode: "002", date: "2026-07-03" }],
             [DAY_AXIS],
             indexByAxis,
-            () => presence(0),
+            () => presence(),
+            () => 0,
         );
         expect(rows).toHaveLength(1);
         expect(rows[0].time).toBeUndefined(); // 행 = 차트(하루)
@@ -39,7 +40,8 @@ describe("buildDaySheetRows", () => {
             [{ stockCode: "003", date: "2026-07-04" }],
             [DAY_AXIS],
             indexByAxis,
-            () => presence(2, true),
+            () => presence(true),
+            () => 2,
         );
         expect(rows[0].cells[DAY_AXIS]).toBeNull();
         expect(rows[0].pointCount).toBe(2);

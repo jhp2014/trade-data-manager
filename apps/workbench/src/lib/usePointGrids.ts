@@ -5,7 +5,7 @@
 // 1만 객체가 화면 수만큼 복제되므로, 소비자(시트·깔때기·차트 마커)는 전부 이 훅의 산출물을 본다.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { chartKeyOf, minuteToHms, pointsOf, type DerivedPoint, type PointGrid } from "@trade-data-manager/market/domain";
+import { chartKeyOf, minuteToHms, pointsOf, type DerivedPoint, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
 import { pointGridsQuery } from "../api/queries.js";
 import { useWorkbench } from "../store/workbench.js";
 
@@ -32,7 +32,7 @@ export function usePointGridsValue(): PointGridsView {
     }, [q.data, q.isLoading, q.error]);
 }
 
-/** 자동 Point 한 줄 — 타점 자연키(stockCode·date·time) 구조 호환(useAllPoints 소비자가 훅 교체로 끝나게). */
+/** 자동 Point 한 줄 — 타점 자연키(stockCode·date·time) + 판정 산출물. */
 export interface AutoPoint {
     stockCode: string;
     date: string;
@@ -46,6 +46,12 @@ export interface AutoPointsView {
     error: Error | null;
     /** 전 자동 Point(시간순은 차트 안에서만 보장). 정의·번들이 바뀔 때만 재계산. */
     points: AutoPoint[];
+    /**
+     * 행 원천용 키 목록 — 날짜 내림차순, 같은 날 시각 오름차순. **여기서 한 번만** 만든다:
+     * 소비자(시트·깔때기·작업셋·레일·통계)가 각자 정렬하면 1만 개짜리 배열이 화면 수만큼 복제되고,
+     * 참조가 갈려 파생 memo(useThemeStrengthStats 모듈 캐시)가 통째로 헛돈다.
+     */
+    rows: readonly ReviewPointKey[];
     /** 차트키(chartKeyOf) → 그 차트의 파생 Point 목록 — 차트 마커·per-chart 소비자용. */
     byChart: ReadonlyMap<string, DerivedPoint[]>;
 }
@@ -70,7 +76,10 @@ export function useAutoPointsValue(): AutoPointsView {
                 }
             }
         }
-        return { isLoading: q.isLoading, error: (q.error as Error | null) ?? null, points, byChart };
+        const rows: ReviewPointKey[] = points
+            .map((a) => ({ stockCode: a.stockCode, date: a.date, time: a.time }))
+            .sort((x, y) => (x.date !== y.date ? (x.date < y.date ? 1 : -1) : x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
+        return { isLoading: q.isLoading, error: (q.error as Error | null) ?? null, points, byChart, rows };
     }, [q.data, q.isLoading, q.error, def]);
 }
 

@@ -26,11 +26,14 @@ const armTheme = (): void => localStorage.setItem("wb.normTheme.minute", "true")
  * 테마는 **짚은 선 하나**에만 펼친다. 로컬 선택이 비면 활성 타점이 그 하나가 되므로(effSelected 폴백)
  * 스토어에 타점을 앉히는 것으로 "짚은 상태"를 만든다 — 화면에서 라벨을 클릭한 것과 같은 경로다.
  */
+// 타점 선택 = 그 시각으로 focus 를 옮기는 것 + **그 시각이 자동 타점일 것**(subject 계약, 2026-09-01).
+// 그래서 시드에 그 (종목,날짜,시각)을 넣어 격자가 그 타점을 내게 한다(renderPanel 의 gridsFromPoints).
 const focusPoint = (): void => useWorkbench.getState().goToPoint({ code: CODE, date: DATE, time: TIME }, "test");
 
 const renderThemed = (snapshot = themeSnapshot): HTMLElement =>
     renderWithProviders(<NormOverlayPanel grain="minute" />, {
         charts: [{ code: CODE, date: DATE, data: minuteBundle }],
+        points: [{ stockCode: CODE, date: DATE, time: TIME }],
         stockNames,
         daySnapshot: { date: DATE, data: snapshot },
     }).container;
@@ -43,7 +46,6 @@ beforeEach(() => {
 // 스토어는 모듈 싱글톤이라 다음 파일로 샌다 — 활성 타점이 남으면 다른 테스트의 "짚은 게 없는 화면"이
 // 조용히 "짚은 화면"이 된다(effSelected 폴백). 저장소도 같이 비운다.
 afterEach(() => {
-    useWorkbench.setState({ activePoint: null });
     localStorage.clear();
 });
 

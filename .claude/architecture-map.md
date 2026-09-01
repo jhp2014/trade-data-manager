@@ -4,10 +4,10 @@
 
 ## core/market/src — 순수 도메인 (포트 정의 위치)
 
-- **domain/** — 값객체·순수계산: `grain`/`dateRange`/`kst`/`stockCode`, `candle`(model/price/pruning/minuteBackfill), `equity`(stockMaster/marketCap/ipoPrice), `news`, `classification`, `review`(chartAnchor/reviewPoint/group/funnel), `grid`(자동 타점 격자: detectGrid 검출 + pointsOf 읽기 층 Point 판정), `rank`, `board`(로스터·유니버스), `replay`(dayReplay)
+- **domain/** — 값객체·순수계산: `grain`/`dateRange`/`kst`/`stockCode`, `candle`(model/price/pruning/minuteBackfill), `equity`(stockMaster/marketCap/ipoPrice), `news`, `classification`, `review`(chartAnchor/reviewPoint[키 어휘만]/group/funnel), `grid`(자동 타점 격자: detectGrid 검출 + pointsOf 읽기 층 Point 판정), `rank`, `board`(로스터·유니버스), `replay`(dayReplay)
 - **application/port/collect** — 수집 유스케이스 포트. inbound: `MarketDataCollector`, `DailyMarketCapRecorder`, `IpoPriceEnricher`, `MarketCapBackfiller`, `NewsBackfiller`. outbound: `DailyCandleStore`, `MinuteCandleStore`, `DailyCandleProvider`, `MinuteCandleProvider`, `RawDailyCandleProvider`, `RawDailyStore`, `StockMasterProvider`, `StockMasterStore`, `CurrentSharesProvider`, `ListInfoProvider`, `MarketSnapshotProvider`, `MarketCapStore`, `NewsSource`, `StockNewsStore`, `DailyScanRepository`
 - **application/port/query** — 읽기 포트. `CandleReader`류, `StockMasterReader`, `DailyMarketCapReader`, `RawDailyReader`, `DailyCommentReader/Store`, `ChartAnchorReader/Store`, `ReviewPointReader/Store`, `GroupReader/Store`, `NewsSearcher`, `NewsChannelSearch`, `ThemeMembershipProvider/Store`, `DailyUniverseProvider`, `DataDateReader`, `MinuteDateReader`
-- **application/service** — 유스케이스 구현체. collect(`DailyCollector`, `MinuteCollector`, `DailyIngestService`, `RawDailyIngestService`, `MarketDataCollectService`, `DailySweepService`, `MinuteSweepService`, `StockMasterIngestService`), marketcap(`DailyMarketCapRecordService`, `IpoPriceBackfillService/EnrichService`, `MarketCapBackfillService`, `StockMarketCapBackfillService`), news(`NewsBackfillService`, `NewsSearchService`), axis(등락률/기준선거리 등 랭킹 축 레지스트리)
+- **application/service** — 유스케이스 구현체. collect(`DailyCollector`, `MinuteCollector`, `DailyIngestService`, `RawDailyIngestService`, `MarketDataCollectService`, `DailySweepService`, `MinuteSweepService`, `StockMasterIngestService`), marketcap(`DailyMarketCapRecordService`, `IpoPriceBackfillService/EnrichService`, `MarketCapBackfillService`, `StockMarketCapBackfillService`), news(`NewsBackfillService`, `NewsSearchService`), axis(기준선거리/매물공백/전일고가 등 랭킹 축 레지스트리)
 
 ## infra — core 포트의 어댑터
 
@@ -19,13 +19,13 @@
 
 ## contracts/wire/src — 서버↔클라 계약
 
-- 도메인별 파일(엔드포인트별 아님): `chart`, `daySummary`, `dayReplay`, `theme`, `comment`, `chartAnchor`, `reviewPoint`, `group`, `rank`, `rankComputed`, `rankPaths`, `rankSection`, `news`, `telegramNews`, `stockMeta`, `dataDate`, `live`, `liveTape`, `alerts`, `curationSync`
+- 도메인별 파일(엔드포인트별 아님): `chart`, `daySummary`, `dayReplay`, `theme`, `comment`, `chartAnchor`, `group`, `rank`, `rankComputed`, `rankPaths`, `rankSection`, `news`, `telegramNews`, `stockMeta`, `dataDate`, `live`, `liveTape`, `alerts`, `curationSync`
 - 런타임 코드 0, 전부 `export type`. 원칙: core를 그대로 타는 값타입은 core 재노출, 화면 전용 read model만 여기서 정의
 
 ## apps/api/src — NestJS
 
-- `market.module.ts` 산하 서브도메인별 컨트롤러: **board**(dates/dayReplay/daySummary/theme/rankSection) / **chart**(chart) / **curation**(chartAnchor/comment/group/rank/reviewPoint/sync) / **news**(news/telegramNews) / **stocks**(stocks)
-- 각 그룹 옆에 캐시/read-model 파일 동거: `masterCache`, `derivedCache`(DERIVED_CACHE 단일 인스턴스 — DayBoards·RankSections 공유), `daySnapshotCache`, `rankSections`+`rankSectionStore`(타점 (날짜,분) 순위 단면 대사), `grid/`(`pointGrids`+`gridStore`+`pointGrid.controller` — 자동 타점 격자 파일 캐시 대사, `/point-grids` 튜플 서빙), `chartReadModel`, `computedAxes`
+- `market.module.ts` 산하 서브도메인별 컨트롤러: **board**(dates/dayReplay/daySummary/theme/rankSection) / **chart**(chart) / **curation**(chartAnchor/comment/group/rank/sync) / **news**(news/telegramNews) / **stocks**(stocks)
+- 각 그룹 옆에 캐시/read-model 파일 동거: `masterCache`, `derivedCache`(DERIVED_CACHE 단일 인스턴스 — DayBoards·RankSections 공유), `daySnapshotCache`, `rankSections`+`rankSectionStore`((날짜,분) 순위 단면 대사), `grid/`(`pointGrids`+`gridStore`+`pointGrid.controller` — 자동 타점 격자 파일 캐시 대사, `/point-grids` 튜플 서빙), `chartReadModel`, `computedAxes`
 
 ## apps/workbench/src
 

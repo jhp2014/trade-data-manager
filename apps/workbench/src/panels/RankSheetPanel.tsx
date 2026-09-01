@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePointRows } from "../lib/usePointRows.js";
-import { useAllPoints } from "../lib/useAllPoints.js";
+import { useAutoPoints } from "../lib/PointGridsContext.js";
 import { useCandidateDays } from "../lib/useCandidateDays.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { buildDaySheetRows, buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
@@ -15,7 +15,6 @@ import { GROUP_H, ROW_H, SheetRowView, type SheetRowHandlers } from "./rank/Shee
 import { flatIndexOfRow, flattenSheetGroups } from "./rank/sheetFlatRows.js";
 import { SheetHeaderRow } from "./rank/SheetHeaderRow.js";
 import { SheetMenusHost, useSheetMenus } from "./rank/SheetMenusHost.js";
-import { useOutcome } from "./rank/useOutcome.js";
 import { useSessionScroll } from "./rank/useSessionScroll.js";
 import { useRankAxes } from "../lib/RankAxesContext.js";
 import { valueDomain, valueToFrac } from "../lib/computedAxis.js";
@@ -31,14 +30,14 @@ import { useStockNames } from "../lib/useStockNames.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
 import { usePersistedState } from "../store/persist.js";
 import { useWorkbench } from "../store/workbench.js";
-import type { ReviewPoint } from "@trade-data-manager/wire";
+import type { ReviewPointKey } from "@trade-data-manager/market/domain";
 
-// 타점 분석 시트 — 행=타점 · 열=축별 순위 + 결과. (축은 전부 계산 축 — 판단축은 2026-08-25 폐지.)
+// 타점 분석 시트 — 행=타점(격자 파생) · 열=축별 순위. (축은 전부 계산 축 — 판단축은 2026-08-25 폐지.)
 //  · 셀 = 숫자 / 순위 눈금 / 값 눈금(토글). 숫자엔 값이 먼저 오고(`+12.3% (3/12)`), 값 눈금은
 //    **필터 보드 레일과 같은 좌표**라 쏠림이 보인다. 값 없음(결손·입력 전) = 빈칸.
 //  · 헤더 클릭 = 그 열로 정렬(축은 강 먼저) · **Shift+클릭 = 정렬 단 추가**(n차). 정렬 축에서 행범위
 //    체인·그룹 규칙은 sheetSort(순수·테스트)에. 필터(밴드·값구간)는 필터 패널로 이사 — 시트는 결과를 구독만.
-//  · **행 묶기**: 1차 키에서만 접는다. 날짜·결과처럼 값이 몇 가지뿐인 열은 저절로, 축처럼 값이 거의
+//  · **행 묶기**: 1차 키에서만 접는다. 날짜처럼 값이 몇 가지뿐인 열은 저절로, 축처럼 값이 거의
 //    유일한 열은 셀 우클릭 **그룹 나누기(컷)** 를 그었을 때만. 컷은 "한 구간만 남기는" 밴드와 달리 아무것도
 //    안 버리고 N개로 나눈다 → 구간끼리 한 화면에서 비교된다(밴드는 분석 모수까지 좁힌다는 게 다른 점).
 //  · 필터 활성 시 행=보는 집합(좁히기) 또는 전체+흐리게. **깔때기를 직접 구독**한다(어댑터 없음).
@@ -47,11 +46,10 @@ import type { ReviewPoint } from "@trade-data-manager/wire";
 //    고정한 열은 시트 전용 자리 — 고정 그룹 안에서만 순서를 바꾼다(순서 소스가 둘이라 규칙을 갈랐다).
 //  · 열 폭은 손으로 조절 가능(헤더 오른쪽 가장자리 드래그). **수동 폭과 계산 축이 고정폭**이고, 나머지 축 열이
 //    남는 폭을 나눠 갖는다 → "폭 원위치"(수동 폭 삭제)면 기본 동작으로 정확히 복귀한다.
-//  · **결과(outcome)** = 손으로 적는 큐레이션 값(통계 아님) — 그 셀 우클릭이 입력 입구다.
 //  · **그룹(태그)은 시트에 없다** — 좁은 셀에 넣으면 이름이 잘려 색만 남고, 그 색을 읽으려면 결국 다른 패널을
 //    봐야 한다. 그룹은 조상 경로까지 보여야 뜻이 서므로 폭이 있는 자리(필터 보드·팔레트·타점 정보)의 일이다.
 //
-// 구성(분해): 열 구성=useSheetColumns · 헤더 줄=SheetHeaderRow · 결과=useOutcome ·
+// 구성(분해): 열 구성=useSheetColumns · 헤더 줄=SheetHeaderRow ·
 // 팝업 세 벌=SheetMenusHost · 세션 스크롤=useSessionScroll. 본체는 **데이터 파생과 조립**만 한다.
 
 const POS_MODE_KEY = "wb.rankSheetPosMode";
@@ -116,16 +114,16 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     // ── 열 구성(고정·숨김·폭·컷 + 되짚기) — 넷 다 축 키를 들어 청소 규칙이 같으므로 한 훅이 소유한다.
     // 유령 키 청소 기준은 전체 축 — day 모드의 좁힌 목록으로 프룬하면 공유 컷의 point 축 키가 지워진다.
     const pruneAxisIds = useMemo(() => allAxes.map((a) => a.key), [allAxes]);
-    const autoRows = useWorkbench((s) => s.pointSource) === "auto"; // usePointRows.source 와 같은 값 — 열 구성이 행 원천보다 먼저 선다
-    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode, pruneAxisIds, hideOutcome: autoRows });
+    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode, pruneAxisIds });
     const { displayCols, leftOf, tableW, lastFrozenKey, widthOf } = cols;
 
     // ── 전체 타점(행 원천) + 기간. day 모드는 후보 하루(존재 지도 파생)가 행 원천이다.
-    const { points: allPoints, isLoading: pointsLoading, source: pointSource } = usePointRows(); // point 행 원천(출처 토글 auto/hand)
+    const { points: allPoints, isLoading: pointsLoading } = usePointRows(); // point 행 원천(자동 타점 파생)
     const { candidates, isLoading: candLoading } = useCandidateDays();
+    const autoPoints = useAutoPoints(); // day 행의 "타점 수" — 존재 지도가 아니라 파생 한 벌에서 센다
     const { index: presenceIdx } = usePresenceIndex();
     const allByKey = useMemo(() => {
-        const m = new Map<string, ReviewPoint>();
+        const m = new Map<string, ReviewPointKey>();
         for (const p of allPoints) m.set(pointKey(p), p);
         return m;
     }, [allPoints]);
@@ -156,10 +154,10 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     const [filterMode, setFilterMode] = usePersistedState<"narrow" | "dim">(FILTERMODE_KEY, (o) => (o === "dim" ? "dim" : o === "narrow" ? "narrow" : null), "narrow");
 
     // 행 집합: narrow + 필터 활성 → 매칭 집합만. dim 또는 무필터 → 전체(밴드 밖은 렌더에서 흐리게).
-    const rowPoints = useMemo<ReviewPoint[]>(() => {
+    const rowPoints = useMemo<readonly ReviewPointKey[]>(() => {
         if (dayMode) return [];
         if (bandsActive && filterMode === "narrow") {
-            const out: ReviewPoint[] = [];
+            const out: ReviewPointKey[] = [];
             for (const k of interKeys) { const it = allByKey.get(k); if (it) out.push(it); }
             return out;
         }
@@ -170,8 +168,8 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
         if (!dayMode) return buildSheetRows(rowPoints, axisIds, indexByAxis);
         // day 행 = 후보 하루 전부(빈 셀 = 진도 정보). narrow 필터는 차트 키로 좁힌다.
         const base = bandsActive && filterMode === "narrow" ? candidates.filter((c) => interKeys.has(chartKey(c))) : candidates;
-        return buildDaySheetRows(base, axisIds, indexByAxis, (c) => presenceIdx.get(chartKey(c)));
-    }, [dayMode, rowPoints, axisIds, indexByAxis, bandsActive, filterMode, candidates, interKeys, presenceIdx]);
+        return buildDaySheetRows(base, axisIds, indexByAxis, (c) => presenceIdx.get(chartKey(c)), (c) => autoPoints.byChart.get(chartKey(c))?.length ?? 0);
+    }, [dayMode, rowPoints, axisIds, indexByAxis, bandsActive, filterMode, candidates, interKeys, presenceIdx, autoPoints]);
 
     // ── 정렬 체인(n차). 평클릭=리셋 · Shift+클릭=단 추가. 규칙 전부는 sheetSort(순수·테스트) 에.
     //    축 정렬 = 강(rank↑) 먼저, 값 없음(미배치·미산정)은 방향 무관 바닥. localStorage 영속(옛 단일 정렬도 읽는다).
@@ -197,7 +195,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     // 억지로 상단에 세우는 대신, 행이 있으면 스크롤로 따라가고 없으면 머리글 배지가 이유를 말한다.
     const pinnedRows = useMemo(() => {
         if (dayMode) return []; // 핀(작업 대상)은 타점의 개념 — day 행엔 핀 손잡이도 없다
-        const items = pinned.map((k) => allByKey.get(k)).filter((x): x is ReviewPoint => !!x);
+        const items = pinned.map((k) => allByKey.get(k)).filter((x): x is ReviewPointKey => !!x);
         return buildSheetRows(items, axisIds, indexByAxis);
     }, [dayMode, pinned, allByKey, axisIds, indexByAxis]);
     const mainRows = sorted; // 핀 행도 기존 위치에 그대로(상단 고정 블록에 중복 표시, 삼각형으로 구분)
@@ -258,16 +256,6 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
         if (i >= 0) virt.scrollToIndex(i, { align: "center" });
     }, [subjectRowKey, virt]);
 
-    // ── 결과 저장(뮤테이션 배선) — useOutcome. **손 타점 전용**: outcome 은 review_points 의 속성이라
-    // 자동 행에서 저장하면 캘리브레이션 셋(동결)에 자동 판정 산물이 새 손 타점으로 태어나고, 화면 칸은
-    // 여전히 빈칸이라(자동 행엔 outcome 이 없다) "안 먹혔다"로 보인다. 후보 목록도 손 타점에서 모은다.
-    const handPoints = useAllPoints();
-    const outcomeBase = useOutcome(handPoints.points);
-    const outcome = useMemo(
-        () => (pointSource === "auto" ? { ...outcomeBase, saveOutcome: () => {} } : outcomeBase),
-        [pointSource, outcomeBase],
-    );
-
     const clickHeader = (key: SortKey, shift: boolean): void => setSort((s) => (shift ? pushSort(s, key) : resetSort(s, key)));
     const unplacedOnSort = sortAxisId ? mainRows.filter((row) => !row.cells[sortAxisId]).length : 0;
 
@@ -301,7 +289,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     const dataReady = !axesLoading && !pointsLoading && !(dayMode && candLoading) && axes.length > 0 && flat.length > 0;
     const scroll = useSessionScroll(scrollRef, dataReady, (top) => virt.scrollToOffset(top));
 
-    // ── 팝업 네 벌(셀/열 우클릭 · 축 만들기 · 결과 입력)의 상태 — opener 만 행·헤더·컨트롤에 나눠 꽂는다.
+    // ── 팝업 상태(셀 우클릭 · 열 이름 우클릭) — opener 만 행·헤더·컨트롤에 나눠 꽂는다.
     const menus = useSheetMenus();
 
     const navRow = (row: SheetRow): void => {
@@ -315,7 +303,6 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     rowHandlersRef.current.onNav = navRow;
     rowHandlersRef.current.onTogglePin = togglePin;
     rowHandlersRef.current.onCellCtx = menus.openCellCtx;
-    rowHandlersRef.current.onOutcomeCtx = menus.openOutcomeCtx;
     const rowH = rowHandlersRef.current;
 
     // 한 행 렌더 — 상태 파생(포커스·핀·흐림)만 여기서 계산하고 렌더는 SheetRowView(memo). 호버는 CSS.
@@ -435,7 +422,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
             </div>
 
           <SheetMenusHost m={menus} axes={axes} cols={cols} sortAxisId={sortAxisId} sortLen={sort.length}
-              dropSortKey={(k) => setSort((s) => dropSort(s, k))} outcome={outcome} />
+              dropSortKey={(k) => setSort((s) => dropSort(s, k))} />
         </Wrap>
     );
 }

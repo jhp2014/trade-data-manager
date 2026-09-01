@@ -14,8 +14,8 @@ const BUNDLE: RankSectionBundle = {
         sealed: true,
         codes: ["A", "B", "C"],
         sections: [
-            { time: "09:30", n: 3, rate: [2, 1, 3], amount: [1, 2, 3] },
-            { time: "10:00", n: 2, rate: [1, 2, null], amount: [2, 1, null] },
+            { time: "09:30", n: 3, rows: [0, 2, 1, 1, 1, 2, 2, 3, 3] },
+            { time: "10:00", n: 2, rows: [0, 1, 2, 1, 2, 1, 2, -1, -1] },
         ],
     }],
     pending: ["2026-08-28"],

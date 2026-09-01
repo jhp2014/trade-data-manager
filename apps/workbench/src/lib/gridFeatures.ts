@@ -2,8 +2,10 @@
 // 그 뒤는 전부 기존 경로다: computedAxisView 가 줄·값·fmt 를 만들고 레일·시트 열·axisValue 술어·밴드가
 // 축 종류를 구분하지 않는다(decisions.md "클라 파생 특징은 축 문법에 앉힌다 — 새 술어 종류를 만들지 않는다").
 //
-// 키는 `grid-` 접두로 예약한다 — 서버 축 레지스트리(core axis/registry)가 이 접두를 쓰지 않는 것이 계약
-// (겹치면 저장된 열 설정·필터가 엉뚱한 축을 가리킨다). 값은 **병합(축약) 후 구조에서 계산**된다 —
+// 키 둘(`baseline-position`·`daily-change-un`)은 **옛 서버 축에서 승계한 것**이다 — 키는 캐시 파일명이
+// 아니라 사용자 설정이 저장되는 주소라(시트 열 폭·고정·숨김, 필터 술어, 레일 순서) 공급자가 서버에서
+// 클라로 옮겨도 주소는 옮기지 않는다(decisions.md "축 키는 뜻의 주소다"). 신설 축만 `grid-` 접두를 쓴다.
+// 값은 **병합(축약) 후 구조에서 계산**된다 —
 // 입력이 pointsOf 의 산출물(levelIdx·levelMin이 병합 반영)이라 원칙이 구조적으로 지켜진다.
 //
 // ⚠ 축 규칙 2(타점 시각까지만)는 클라 파생에도 그대로다 — 여기 특징은 전부 Point 시각 이전 정보만 본다.
@@ -30,29 +32,41 @@ function pullbackDepthPct(grid: PointGrid, levelMin: number | null, levelPrice: 
 }
 
 /**
- * 자동 Point 전체 → 특징 피드 3개. 자리는 useRankAxesValue 가 서버 피드 뒤에 이어 붙인다.
+ * 자동 Point 전체 → 특징 피드 4개. 자리는 useRankAxesValue 가 서버 피드 뒤에 이어 붙인다.
  * 값 없는 Point 는 values 에 없다 = 그 축에 미배치(계산 축 계약 그대로).
  */
 export function gridFeatureFeeds(view: AutoPointsView, gridOf: (code: string, date: string) => PointGrid | undefined): ComputedAxisFeed[] {
     const baselinePct: ComputedAxisPoint[] = [];
+    const dailyPct: ComputedAxisPoint[] = [];
     const priorLevels: ComputedAxisPoint[] = [];
     const pullback: ComputedAxisPoint[] = [];
     for (const a of view.points) {
         const key = { stockCode: a.stockCode, date: a.date, time: a.time };
         const grid = gridOf(a.stockCode, a.date);
         if (!grid) continue;
-        if (grid.base !== null && grid.base > 0) baselinePct.push({ ...key, value: r2(((a.point.high - grid.base) / grid.base) * 100) });
+        // 분자는 **Point 봉 종가** — 옛 서버 축("타점 시각 이하 마지막 UN 종가")과 같은 값이다(그 봉이
+        // 곧 타점 봉이므로). 고가로 재면 이름만 같고 값이 다른 축이 된다.
+        if (grid.base !== null && grid.base > 0) baselinePct.push({ ...key, value: r2(((a.point.close - grid.base) / grid.base) * 100) });
+        // 당일 % — 분모는 격자에 구운 그날 기준가(basePricesOf = 차트 D 가격선과 같은 것). 없으면 결손.
+        if (grid.prevBase !== null && grid.prevBase > 0) dailyPct.push({ ...key, value: r2(((a.point.close - grid.prevBase) / grid.prevBase) * 100) });
         priorLevels.push({ ...key, value: a.point.levelIdx });
         const depth = pullbackDepthPct(grid, a.point.levelMin, a.point.levelPrice, a.point.min);
         if (depth !== null) pullback.push({ ...key, value: depth });
     }
     return [
         {
-            key: "grid-baseline-pct",
-            name: "기준선 대비",
+            key: "baseline-position", // 옛 서버 축에서 승계 — 저장된 열 설정·필터가 이 주소를 든다
+            name: "기준선 대비 %",
             strongerWhen: "higher",
             display: { suffix: "%", decimals: 1, signed: true },
             values: baselinePct,
+        },
+        {
+            key: "daily-change-un", // 승계(위와 같은 이유)
+            name: "당일 % (UN)",
+            strongerWhen: "higher",
+            display: { suffix: "%", decimals: 1, signed: true },
+            values: dailyPct,
         },
         {
             key: "grid-prior-levels",

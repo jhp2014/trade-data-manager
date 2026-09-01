@@ -12,6 +12,7 @@ const grid: PointGrid = {
         { kind: "low", min: 590, price: 10100, confirmedMin: null, legAmount: "0", renewalAmount: null },
     ],
     newHighs: [],
+    prevBase: 8000, // 그날 기준가(전일 종가) — "당일 %" 의 분모. **base 와 다른 값**으로 둔다(분모를 바꿔치면 걸리게)
 };
 
 const view = {
@@ -19,10 +20,10 @@ const view = {
     error: null,
     byChart: new Map(),
     points: [
-        // 돌파 Point — 기준선 대비 +0.5%, 직전 마디 0, 눌림 없음(levelMin null → 결손)
-        { stockCode: "A", date: "2026-07-01", time: "09:20:00", point: { kind: "breakout", ordinal: 0, min: 560, high: 10050, tv: "0", levelPrice: 10000, levelIdx: 0, levelMin: null } },
-        // 재돌파 Point — 마디(10300, min 575) 갱신. 눌림 = (10300−10100)/10300 ≈ 1.94%
-        { stockCode: "A", date: "2026-07-01", time: "10:00:00", point: { kind: "renewal", ordinal: 1, min: 600, high: 10350, tv: "0", levelPrice: 10300, levelIdx: 1, levelMin: 575 } },
+        // 돌파 Point — 종가 10,020 → 기준선 대비 +0.2%(고가로 재면 +0.5% 라 분자 바꿔치기가 걸린다)
+        { stockCode: "A", date: "2026-07-01", time: "09:20:00", point: { kind: "breakout", ordinal: 0, min: 560, high: 10050, close: 10020, tv: "0", levelPrice: 10000, levelIdx: 0, levelMin: null } },
+        // 재돌파 Point — 마디(10300, min 575) 갱신. 종가 10,300 → 기준선 대비 +3%. 눌림 = (10300−10100)/10300 ≈ 1.94%
+        { stockCode: "A", date: "2026-07-01", time: "10:00:00", point: { kind: "renewal", ordinal: 1, min: 600, high: 10350, close: 10300, tv: "0", levelPrice: 10300, levelIdx: 1, levelMin: 575 } },
     ],
 } as unknown as AutoPointsView;
 
@@ -30,11 +31,23 @@ describe("gridFeatureFeeds", () => {
     const feeds = gridFeatureFeeds(view, () => grid);
     const feed = (key: string) => feeds.find((f) => f.key === key)!;
 
-    it("기준선 대비 % — 전 Point 에 값이 선다", () => {
-        expect(feed("grid-baseline-pct").values).toEqual([
-            { stockCode: "A", date: "2026-07-01", time: "09:20:00", value: 0.5 },
-            { stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 3.5 },
+    // 키 둘은 옛 서버 축에서 **승계**했다(사용자 열 설정·필터가 이 주소를 든다) — 이름이 아니라 키를 못 박는다.
+    it("기준선 대비 % — 전 Point 에 값이 선다(분자 = Point 봉 종가)", () => {
+        expect(feed("baseline-position").values).toEqual([
+            { stockCode: "A", date: "2026-07-01", time: "09:20:00", value: 0.2 },
+            { stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 3 },
         ]);
+    });
+
+    it("당일 %(UN) — 분모는 격자에 구운 그날 기준가(기준선이 아니다)", () => {
+        // 8,000 기준: 10,020 → +25.25% · 10,300 → +28.75%. base(10,000)로 재면 +0.2/+3 이라 분모 바꿔치기가 걸린다.
+        expect(feed("daily-change-un").values.map((v) => v.value)).toEqual([25.25, 28.75]);
+    });
+
+    it("그날 기준가가 없으면 당일 % 만 결손 — 나머지 특징은 산다", () => {
+        const feeds2 = gridFeatureFeeds(view, () => ({ ...grid, prevBase: null }));
+        expect(feeds2.find((f) => f.key === "daily-change-un")!.values).toHaveLength(0);
+        expect(feeds2.find((f) => f.key === "baseline-position")!.values).toHaveLength(2);
     });
 
     it("직전 마디 수 — levelIdx 그대로(0 = 기준선 돌파)", () => {
@@ -54,7 +67,7 @@ describe("gridFeatureFeeds", () => {
     it("base 가 없거나 0 이하인 격자 — 기준선 대비만 결손, 나머지 특징은 산다", () => {
         const noBase: PointGrid = { ...grid, base: null };
         const feeds2 = gridFeatureFeeds(view, () => noBase);
-        expect(feeds2.find((f) => f.key === "grid-baseline-pct")!.values).toHaveLength(0);
+        expect(feeds2.find((f) => f.key === "baseline-position")!.values).toHaveLength(0);
         expect(feeds2.find((f) => f.key === "grid-prior-levels")!.values).toHaveLength(2);
     });
 

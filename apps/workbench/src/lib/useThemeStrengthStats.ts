@@ -16,7 +16,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { buildThemeIndex } from "@trade-data-manager/market/domain";
 import { allThemeMembersQuery } from "../api/queries.js";
-import { useAllPoints } from "./useAllPoints.js";
+import { usePointRows } from "./usePointRows.js";
 import { useRankSections } from "./useRankSections.js";
 import {
     countPassing, themeProjectionOf,
@@ -49,7 +49,7 @@ const cachedCount = (points: Points, bundle: unknown, proj: ThemeProjection, par
 };
 
 export function useThemeStrengthStats(params: ThemeStrengthParams): ThemeStrengthStats {
-    const points = useAllPoints();
+    const points = usePointRows();
     const sections = useRankSections();
     const membersQ = useQuery(allThemeMembersQuery());
 

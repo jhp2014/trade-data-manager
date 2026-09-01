@@ -9,8 +9,9 @@ import path from "node:path";
 import type { PointGrid } from "@trade-data-manager/market";
 
 /** 파일 스키마 버전(파일 모양). 검출 규칙 변경은 POINT_GRID_CALC_VERSION(pointGrids.ts) 쪽. */
-export const POINT_GRID_FILE_VERSION = 4; // 4: 2026-08-31 zigzag 재정식화 — 피벗에 renewalAmount 추가,
-// 저점 confirmedMin null 고정(기준은 봉투 모양이 아니라 파일 내용의 의미 — decisions.md 버전 규칙).
+export const POINT_GRID_FILE_VERSION = 5; // 5: 2026-09-01 그날 기준가(prevBase) 수록
+// 4: 2026-08-31 zigzag 재정식화 — 피벗에 renewalAmount 추가, 저점 confirmedMin null 고정
+// (기준은 봉투 모양이 아니라 파일 내용의 의미 — decisions.md 버전 규칙).
 
 /** 차트 하나의 캐시 항목 — f = 기준선 앵커 지문(불일치 시 그 차트만 재굽기). */
 export interface PointGridEntry {

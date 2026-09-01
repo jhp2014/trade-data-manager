@@ -171,7 +171,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
                                     lines={minuteLines}
                                     base={minuteView.base}
                                     pctBase={pctBase}
-                                    // f 줌 — 두 차트 동시(chartHooks 의 약속). 라이브는 저장 타점이 없으니 최신 봉 앵커(null).
+                                    // f 줌 — 두 차트 동시(chartHooks 의 약속). 라이브는 타점이 없으니 최신 봉 앵커(null).
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: null } : null}
                                     lockTimeScale={lockScale}
                                     onMovePoint={noop}

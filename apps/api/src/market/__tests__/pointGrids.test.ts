@@ -27,6 +27,17 @@ const fm = (code: string, date: string, time: string, p: number, vol = 200000): 
 });
 const twoBars = (code: string, date: string): MinuteCandle[] => [fm(code, date, "09:10:00", 10000), fm(code, date, "09:20:00", 10100)];
 
+/** 그 종목의 픽스처 봉 전부에서 [from, to] 안만 — 실서비스 리더와 같은 계약(키 매칭이 아니다). */
+const rowsIn = (
+    src: Record<string, DailyCandle[]> | undefined,
+    code: string,
+    range: { from: string; to: string },
+): DailyCandle[] =>
+    Object.entries(src ?? {})
+        .filter(([k]) => k.startsWith(`${code}|`))
+        .flatMap(([, rows]) => rows)
+        .filter((c) => c.date >= range.from && c.date <= range.to);
+
 function harness(init: {
     anchors: ChartAnchor[];
     minutes?: Record<string, MinuteCandle[]>;
@@ -57,8 +68,11 @@ function harness(init: {
                 return init.minutes?.[`${code}|${date}`] ?? [];
             },
         },
-        rawDaily: { getRawDailyCandles: async (code: string, r: { from: string }) => init.rawDaily?.[`${code}|${r.from}`] ?? [] },
-        adjDaily: { getDailyCandles: async (code: string, r: { from: string }) => init.adjDaily?.[`${code}|${r.from}`] ?? [] },
+        // 일봉 리더는 **범위를 실제로 본다**(키 매칭이 아니라 from..to 필터) — 굽기의 창은 그날 하나가
+        // 아니라 [date−1개월, date] 이고(그날 기준가 basePricesOf 가 직전 거래일을 찾아야 한다),
+        // 키로만 집으면 그 창을 다시 좁히는 회귀를 테스트가 하나도 못 잡는다.
+        rawDaily: { getRawDailyCandles: async (code: string, r: { from: string; to: string }) => rowsIn(init.rawDaily, code, r) },
+        adjDaily: { getDailyCandles: async (code: string, r: { from: string; to: string }) => rowsIn(init.adjDaily, code, r) },
         chartAnchor: { listAll: async () => anchors },
     } as unknown as PointGridsDeps["deps"];
     const make = (detect?: PointGridsDeps["detect"]): PointGrids =>
@@ -88,6 +102,29 @@ describe("PointGrids 대사", () => {
         expect(file?.version).toBe(POINT_GRID_CALC_VERSION);
         expect(file?.charts["A"].grid.base).toBe(9000);
         expect(file?.charts["A"].grid.touchMin).toBe(9 * 60 + 10);
+    });
+
+    it("그날 기준가(prevBase) — 직전 거래일 종가를 격자에 싣는다(당일 % 의 분모)", async () => {
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D) },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 9000)], [`A|prev`]: [dc("A", "2026-06-30", 8000)] },
+            rawDaily: { [`A|prev`]: [dc("A", "2026-06-30", 8000)] },
+        });
+        await h.grids.reconcile();
+        expect(h.files.get(D)?.charts["A"].grid.prevBase).toBe(8000);
+    });
+
+    it("직전 거래일이 조회 창(1개월) 밖이면 prevBase 는 결손 — 폴백을 지어내지 않는다", async () => {
+        // ⚠ 이 케이스가 "창을 그날 하루로 다시 좁히는" 회귀의 그물이다 — 좁히면 위 케이스도 여기처럼 null 이 된다.
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D) },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 9000)], [`A|old`]: [dc("A", "2026-03-02", 8000)] },
+            rawDaily: { [`A|old`]: [dc("A", "2026-03-02", 8000)] },
+        });
+        await h.grids.reconcile();
+        expect(h.files.get(D)?.charts["A"].grid.prevBase).toBeNull();
     });
 
     it("이벤트(감자·액분) 낀 차트 — 수정주가 승자를 그 날 원주가 스케일로 되돌려 굽는다", async () => {

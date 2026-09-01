@@ -4,7 +4,6 @@ import {
     DrizzleRawDailyCandleRepository,
     DrizzleMinuteCandleRepository,
     DrizzleChartAnchorRepository,
-    DrizzleReviewPointRepository,
 } from "@trade-data-manager/persistence";
 import type { AxisDeps } from "@trade-data-manager/market";
 import type { Pool } from "../pool.js";
@@ -19,6 +18,5 @@ export const axisDepsOf = (marketPool: Pool): AxisDeps => {
         rawDaily: new DrizzleRawDailyCandleRepository(db),
         adjDaily: new DrizzleDailyCandleRepository(db), // 수정주가 창(AdjustedDailyReader)
         chartAnchor: new DrizzleChartAnchorRepository(curationDb),
-        reviewPoints: new DrizzleReviewPointRepository(curationDb), // 분봉 골격의 타점 종가 합성(형제 결합)
     };
 };

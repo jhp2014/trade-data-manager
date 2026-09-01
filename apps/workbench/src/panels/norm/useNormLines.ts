@@ -19,6 +19,7 @@ import { allAnchorsQuery, chartQuery } from "../../api/queries.js";
 import type { ChartBundle } from "../../api/chart.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { useChartPoints } from "../../lib/useChartPoints.js";
+import { useSubject } from "../../lib/subject.js";
 import { useStockNames } from "../../lib/useStockNames.js";
 import { usePersistedState } from "../../store/persist.js";
 import { minutesOfDay } from "../../lib/date.js";
@@ -72,22 +73,22 @@ export function useNormLines(grain: "daily" | "minute", dailyMarket: "krx" | "un
     const isDaily = grain === "daily";
     const focusCode = useWorkbench((s) => s.focus.code);
     const focusDate = useWorkbench((s) => s.focus.date);
-    const activePoint = useWorkbench((s) => s.activePoint);
     const { nameOf: rawNameOf } = useStockNames();
     const nameOf = useCallback((code: string): string => rawNameOf(code) ?? code, [rawNameOf]);
 
     const [pins, setPins] = usePersistedState<NormPin[]>(`wb.normPins.${grain}`, parsePins, []);
 
-    // 시선 — 일봉은 focus 차트, 분봉은 고른 타점(없으면 focus 차트의 전 타점: 복제본 셀렉터라 왕복 0).
+    // 시선 — 일봉은 focus 차트, 분봉은 **subject 계약** 그대로: 타점을 골랐으면 그 타점,
+    // 하루만 골랐으면 그 차트의 전 타점(판정을 여기서 재현하면 "무엇이 선택인가"의 답이 둘이 된다).
     const chartPoints = useChartPoints(isDaily ? "" : focusCode, focusDate);
+    const subject = useSubject();
     const gaze = useMemo<NormPin[]>(() => {
         if (!focusCode || !focusDate) return [];
         if (isDaily) return [{ code: focusCode, date: focusDate }];
-        if (activePoint && activePoint.code === focusCode && activePoint.date === focusDate) {
-            return [{ code: activePoint.code, date: activePoint.date, time: activePoint.time }];
-        }
-        return chartPoints.map((p) => ({ code: p.stockCode, date: p.date, time: p.time }));
-    }, [isDaily, focusCode, focusDate, activePoint, chartPoints]);
+        // subject 는 focus 에서 조립되므로 종목·날짜는 정의상 같다 — 시각만 보면 된다.
+        if (subject?.time != null) return [{ code: subject.code, date: subject.date, time: subject.time }];
+        return chartPoints.map((t) => ({ code: focusCode, date: focusDate, time: t }));
+    }, [isDaily, focusCode, focusDate, subject, chartPoints]);
 
     // 항목 = 고정 + (고정에 없는) 시선. 시선이 고정과 겹치면 그 고정이 시선 강조를 겸한다(중복 그리기 없음).
     const items = useMemo<ItemSpec[]>(() => {

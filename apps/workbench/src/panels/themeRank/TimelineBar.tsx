@@ -1,6 +1,6 @@
 // 세션 타임라인 바 — 시각 스크럽의 손. 옛 range 슬라이더를 대체한다(2026-08-28 재편):
 //   · teal 띠 = 시선 종목의 존 재적 구간(연동 행 N/M 기준) — 끊김이 곧 이탈/결손(테이프 어휘)
-//   · ▼ = 저장 타점(클릭 = 그 시각으로 점프 — 옛 ↺ 버튼의 후계)
+//   · ▼ = 타점(클릭 = 그 시각으로 점프 — 옛 ↺ 버튼의 후계)
 //   · 트랙 클릭/드래그 = 스크럽(분 단위)
 // 좌표는 전부 %(프랙션) — 픽셀 측정(ResizeObserver)이 필요 없다. 포인터 → 분 변환만 이벤트 시점의
 // getBoundingClientRect 로 한다.
@@ -18,7 +18,7 @@ export function TimelineBar({ lo, hi, minute, pointMinutes, segments, onScrub }:
     hi: number;
     /** 현재 분(스크럽 또는 기본 사다리) — null 이면 플레이헤드 없음. */
     minute: number | null;
-    /** 저장 타점의 분들(그 종목·그날). */
+    /** 타점의 분들(그 종목·그날). */
     pointMinutes: readonly number[];
     /** 존 재적 구간 — null 은 연동 행 없음(띠 없이 트랙만). */
     segments: readonly BandSegment[] | null;
@@ -54,7 +54,7 @@ export function TimelineBar({ lo, hi, minute, pointMinutes, segments, onScrub }:
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
-            title="누르거나 끌어서 시각 이동 · ▼ = 저장 타점(클릭 = 그 시각으로)"
+            title="누르거나 끌어서 시각 이동 · ▼ = 타점(클릭 = 그 시각으로)"
             style={barWrap}>
             {/* 기준 트랙 */}
             <div style={{ position: "absolute", left: PAD_X, right: PAD_X, top: TRACK_TOP, height: 4, borderRadius: 2, background: "var(--bg-tertiary)", pointerEvents: "none" }} />
@@ -65,10 +65,10 @@ export function TimelineBar({ lo, hi, minute, pointMinutes, segments, onScrub }:
                     left: at(s.from), width: `calc(${Math.max(fracOf(s.to) - fracOf(s.from), 0.002)} * (100% - ${2 * PAD_X}px))`,
                 }} />
             ))}
-            {/* 저장 타점 ▼ — 클릭 = 점프. 트랙의 스크럽 드래그와 안 섞이게 pointerdown 을 막는다. */}
+            {/* 타점 ▼ — 클릭 = 점프. 트랙의 스크럽 드래그와 안 섞이게 pointerdown 을 막는다. */}
             {pointMinutes.map((m, i) => (
                 <button key={i} onPointerDown={(e) => e.stopPropagation()} onClick={() => onScrub(m)}
-                    title={`저장 타점 ${fmtMin(m)} — 클릭하면 그 시각으로`}
+                    title={`타점 ${fmtMin(m)} — 클릭하면 그 시각으로`}
                     style={{ ...markerBtn, left: at(m) }}>▼</button>
             ))}
             {/* 플레이헤드 + 시각 라벨 */}

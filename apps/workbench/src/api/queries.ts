@@ -1,5 +1,5 @@
 // React Query 옵션 중앙화 — 쿼리 키·queryFn·staleTime 을 한 곳에서 만든다.
-// 호출부마다 옵션을 직접 적으면 같은 키에 staleTime 이 어긋나거나(예전 all-points 60s vs ∞) invalidate 키 오타가 난다.
+// 호출부마다 옵션을 직접 적으면 같은 키에 staleTime 이 어긋나거나 invalidate 키 오타가 난다.
 // 역사·주석 데이터는 사실상 불변 → staleTime ∞. 편집은 mutation 이 invalidate 로 갱신하므로 자동 refetch 불필요.
 // queryFn 은 react-query 의 signal 을 fetch 로 넘겨 키 변경/언마운트 시 요청을 취소한다.
 import { queryOptions } from "@tanstack/react-query";
@@ -11,7 +11,6 @@ import { fetchLiveConditions } from "./liveConditions.js";
 import { fetchTapeThemes } from "./liveTape.js";
 import { fetchMirrorStatus } from "./curation.js";
 import { fetchAllChartAnchors } from "./chartAnchors.js";
-import { fetchAllPoints } from "./reviewPoints.js";
 import { fetchComputedAxes } from "./rank.js";
 import { fetchRankSections } from "./rankSections.js";
 import { fetchPointGrids } from "./pointGrids.js";
@@ -84,15 +83,12 @@ export const daySummaryQuery = (date: string) =>
 // per-chart 파생(이 차트의 앵커/타점, 이 날의 코멘트)도 서버 왕복이 아니라 이 테이블들의 셀렉터다
 // (lib/useChartPoints·useDailyComment·chartAnchorHooks) — 메모리에 있는 값은 DB 왕복 금지.
 // 키가 곧 테이블이라 "쓴 테이블 = 재요청할 키" 1:1 대응 — 투영 키(옛 anchored-charts)가 늘며 자라던
-// 무효화 거미줄을 원리적으로 없앤다. 타점(all-points)·그룹(groups·group-members)도 같은 결의 테이블 키.
+// 무효화 거미줄을 원리적으로 없앤다. 그룹(groups·group-members)도 같은 결의 테이블 키.
 export const allAnchorsQuery = () =>
     queryOptions({ queryKey: ["all-anchors"], queryFn: ({ signal }) => fetchAllChartAnchors(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 export const allCommentsQuery = () =>
     queryOptions({ queryKey: ["all-comments"], queryFn: ({ signal }) => fetchAllDailyComments(signal), staleTime: IMMUTABLE , meta: CURATION });
-
-export const allPointsQuery = () =>
-    queryOptions({ queryKey: ["all-points"], queryFn: ({ signal }) => fetchAllPoints(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 순위 배치 — 축 목록 + 전 축 줄(placements). 편집형(place/unplace mutation 이 invalidate)이라 staleTime ∞.
 // 계산 축(수식 축)의 타점별 수치 — **키 하나**(모든 소비자가 전축을 본다). 타점·앵커 mutation 이 무효화한다.
@@ -101,7 +97,8 @@ export const computedAxesQuery = () =>
     queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 // 순위 단면 번들(타점 있는 날짜·분의 전 종목 서수) — **키 하나**(전 소비자가 통째를 본다). 모수가 타점이라
-// 타점 mutation(chartHooks.invalidate)과 미러 동기화(CURATION)가 무효화한다. 서수 자체는 불변 원료.
+// 기준선 앵커 편집(chartAnchorHooks — 그게 곧 후보 집합의 변경)·테마 배정·미러 동기화(CURATION)가
+// 무효화한다. 서수 자체는 불변 원료다.
 export const rankSectionsQuery = () =>
     queryOptions({ queryKey: ["rank-sections"], queryFn: ({ signal }) => fetchRankSections(signal), staleTime: IMMUTABLE , meta: CURATION });
 
@@ -112,7 +109,7 @@ export const pointGridsQuery = () =>
 
 
 // 그룹 — 사전 + 전 항목 멤버십. 줄 피드와 같은 이유로 **키 하나**(소비자가 모두 전체를 본다).
-// 타점 캐시(review-points·all-points)와 분리 = 그룹 토글이 타점 목록 refetch 를 유발하지 않는다.
+// 다른 테이블 캐시와 분리 = 그룹 토글이 남의 목록 refetch 를 유발하지 않는다.
 export const groupsQuery = () =>
     queryOptions({ queryKey: ["groups"], queryFn: ({ signal }) => fetchGroups(signal), staleTime: IMMUTABLE , meta: CURATION });
 
@@ -136,6 +133,8 @@ export const themeContextQuery = (code: string) =>
 
 // 시트 멤버십 전량(테마↔종목 인덱스 원자재) — 시트는 사람이 편집하므로 ∞는 위험, 마스터 메타와 같은 30분.
 // 배정 mutation·/theme/refresh 가 ["theme-members-all"] invalidate 로 즉시 갱신한다(AssignThemeModal).
+// ⚠ 그때 **["rank-sections"] 도 같이** 비운다 — 단면은 서빙 시점에 테마로 접혀 오므로 두 캐시의
+//   멤버십이 갈리면 새 동료가 행 없이 분모에서 빠진다(결손이 아니라 틀린 값).
 export const allThemeMembersQuery = () =>
     queryOptions({ queryKey: ["theme-members-all"], queryFn: ({ signal }) => fetchAllThemeMembers(signal), staleTime: META_STALE });
 

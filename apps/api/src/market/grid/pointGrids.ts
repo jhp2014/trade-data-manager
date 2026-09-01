@@ -19,6 +19,7 @@
 //   재료 내용은 못 본다. 처방은 계산 축과 동일: POINT_GRID_CALC_VERSION 상향 또는 캐시 삭제.
 import {
     BASELINE_PARAM,
+    basePricesOf,
     candlePrice,
     chartKeyOf,
     DEFAULT_GRID_OPTIONS,
@@ -26,8 +27,10 @@ import {
     dropSameDayAnchors,
     kstToday,
     mapWithConcurrency,
+    minuteToHms,
     rawScaleOf,
     resolveBaselines,
+    subtractMonths,
     type AxisDeps,
     type BaselineAnchor,
     type ChartAnchor,
@@ -41,8 +44,15 @@ import type { GridStore, PointGridEntry } from "./gridStore.js";
 import { POINT_GRID_FILE_VERSION } from "./gridStore.js";
 
 /** 검출 규칙 버전 — 격자 **스키마·알고리즘**이 바뀌면 올린다(전량 재굽기). 검출 파라미터(zigzag·floor·세션 창)
- *  변경은 여기가 아니라 차트 지문(optsKey)이 자동으로 잡는다 — 버전은 코드 변경, 지문은 설정 변경. */
-export const POINT_GRID_CALC_VERSION = 4; // 4: 2026-08-31 zigzag 재정식화(상태기계 폐기·정의 직접 계산·renewalAmount)
+ *  변경은 여기가 아니라 차트 지문(optsKey)이 자동으로 잡는다 — 버전은 코드 변경, 지문은 설정 변경.
+ *  5: 2026-09-01 그날 기준가(prevBase) 수록 — 당일 % 를 클라가 격자만으로 파생
+ *  4: 2026-08-31 zigzag 재정식화(상태기계 폐기·정의 직접 계산·renewalAmount) */
+export const POINT_GRID_CALC_VERSION = 5;
+
+/** 그날 기준가 조회 창 — `basePricesOf` 는 **date 보다 이른 최대 날짜**(직전 거래일) 하나만 있으면 되고,
+ *  창은 연휴·거래정지를 덮는 여유일 뿐이다(넓혀도 값이 안 바뀐다 — 더 이른 봉은 안 쓰인다).
+ *  ⚠ 하루로 좁히면 언제나 null 이 나온다 — 그 회귀는 pointGrids.test 의 "창 밖" 케이스가 잡는다. */
+const BASE_LOOKBACK_MONTHS = 1;
 
 /** (종목,날) 동시 읽기 상한 — 축·리졸버와 같은 이유(커넥션 풀 포화 방지). */
 const BAKE_CONCURRENCY = 8;
@@ -136,6 +146,38 @@ export class PointGrids {
             dates.push(m.wire);
         }
         return { version: POINT_GRID_CALC_VERSION, dates };
+    }
+
+    /**
+     * 후보 (날짜 → 분 → 종목들) — 격자의 **신고가 캔들 전부**. 순위 단면의 기대집합이 이걸 본다.
+     *
+     * **판정 정의(게이트·제외 창·병합·양봉)와 무관**한 게 요점이다: Point 는 언제나 이 목록에서 골리므로
+     * (`pointsOf`), 후보 전체를 기대집합으로 삼으면 클라가 정의 노브를 굴려도 서버가 다시 구울 게 없다.
+     * 대사는 bundle() 과 같은 게으른 규칙을 탄다(콜드면 굽고, 그 뒤엔 메모).
+     */
+    async candidateMinutes(): Promise<Map<string, Map<string, Set<string>>>> {
+        // bundle() 과 **같은 재시도**가 필요하다: 비행 중 gen 이 밀리면(앵커 편집) 그 비행은 산출물을
+        // 하나도 반영하지 못해 memo 가 빈 채 남고, 그대로 돌려주면 순위 단면이 "후보 0" 을 정상으로
+        // 받아 **빈 번들을 200 으로** 서빙한다(클라 IMMUTABLE 이라 세션 내내 굳는다).
+        for (let i = 0; i < 3; i++) {
+            const g = this.gen;
+            await this.reconcile();
+            if (g === this.gen) break;
+        }
+        const out = new Map<string, Map<string, Set<string>>>();
+        for (const [date, m] of this.memo) {
+            const byMinute = new Map<string, Set<string>>();
+            for (const [code, entry] of Object.entries(m.charts)) {
+                for (const e of entry.grid.newHighs) {
+                    const hhmm = minuteToHms(e.min).slice(0, 5);
+                    const set = byMinute.get(hhmm);
+                    if (set) set.add(code);
+                    else byMinute.set(hhmm, new Set([code]));
+                }
+            }
+            out.set(date, byMinute);
+        }
+        return out;
     }
 
     private async doReconcile(): Promise<GridReconcileReport> {
@@ -320,7 +362,10 @@ export class PointGrids {
      */
     private async bake(code: string, date: string, anchor: BaselineAnchor, f: string): Promise<PointGridEntry | null> {
         const { minute, rawDaily, adjDaily } = this.cfg.deps;
-        const dayRange = { from: date, to: date };
+        // ⚠ 창을 하루로 좁히면 안 된다 — `basePricesOf` 는 **date 보다 이른** 최대 날짜(직전 거래일)를
+        //   찾으므로 하루짜리 범위에선 언제나 null 이 나온다(그날 기준가가 통째로 결손). 계산 축이
+        //   쓰던 것과 같은 창(1개월)을 써야 값이 갈리지 않는다. `rawScaleOf` 는 `.find(date)` 라 무관.
+        const dayRange = { from: subtractMonths(date, BASE_LOOKBACK_MONTHS), to: date };
         const [minutes, rawDay, adjDay] = await Promise.all([
             minute.getMinuteCandles(code, date),
             rawDaily.getRawDailyCandles(code, dayRange),
@@ -348,7 +393,10 @@ export class PointGrids {
         if (adjusted === null) return null;
 
         const base = Math.round(adjusted * rawScaleOf(rawDay, adjDay, date) * 1e6) / 1e6;
-        const grid = detectGrid(minutes, base, this.cfg.detect);
+        // 그날 기준가 = 차트 D 가격선과 **같은 것**(basePricesOf = 원주가 직전종가 × 이벤트 보정계수).
+        // 검출엔 안 쓰이고 격자에 실려 클라가 "당일 %" 를 파생한다 — 없으면 그 값이 결손이다(폴백 없음).
+        const prevBase = basePricesOf(rawDay, adjDay, date).base.un;
+        const grid = detectGrid(minutes, { base, prevBase }, this.cfg.detect);
         return grid === null ? null : { f, grid };
     }
 }

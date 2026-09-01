@@ -23,7 +23,7 @@ const bundle: RankSectionBundle = {
         date: DATE,
         sealed: true,
         codes: ["000001", "000002", "000003"],
-        sections: [{ time: TIME, n: 3, rate: [1, 2, 3], amount: [2, 1, 3] }],
+        sections: [{ time: TIME, n: 3, rows: [0, 1, 2, 1, 2, 1, 2, 3, 3] }],
     }],
     pending: [],
 };
@@ -39,16 +39,18 @@ const P = (over: Partial<ThemeStrengthParams> = {}): ThemeStrengthParams => ({ .
 describe("useThemeStrengthStats — 모듈 캐시", () => {
     beforeEach(() => { vi.mocked(countPassing).mockClear(); });
 
+    // ⚠ 두 소비자를 **한 트리 안에** 둔다(renderHook 두 번이 아니라). 행 원천이 격자 파생 한 벌
+    // (PointGridsProvider)이 된 뒤로는 트리가 둘이면 파생도 둘이라 참조가 갈리고, 그건 앱에 없는
+    // 상태다(Provider 는 셸에 하나) — 그 인공 상태를 재면 캐시가 아니라 테스트 배선을 재게 된다.
     it("두 소비자가 같은 params 로 불러도 무거운 패스는 한 번", () => {
         const client = seededClient(SEED);
         const wrapper = ({ children }: { children: ReactNode }): JSX.Element => <Providers client={client}>{children}</Providers>;
         const params = P({ countOn: true, countMin: 2 });
-        const a = renderHook(() => useThemeStrengthStats(params), { wrapper });
-        const calls = vi.mocked(countPassing).mock.calls.length;
-        const b = renderHook(() => useThemeStrengthStats(params), { wrapper });
-        expect(vi.mocked(countPassing).mock.calls.length).toBe(calls); // 두 번째 소비자 = 캐시 적중
-        expect(b.result.current.passed).toBe(a.result.current.passed);
-        expect(a.result.current.evaluable).toBe(1);
+        const both = renderHook(() => [useThemeStrengthStats(params), useThemeStrengthStats(params)] as const, { wrapper });
+        const [a, b] = both.result.current;
+        expect(vi.mocked(countPassing).mock.calls.length).toBe(1); // 둘째 소비자 = 캐시 적중
+        expect(b.passed).toBe(a.passed);
+        expect(a.evaluable).toBe(1);
     });
 
     it("임계값이 바뀌면 낡은 캐시를 돌려주지 않는다 — 값까지 달라져야 한다", () => {

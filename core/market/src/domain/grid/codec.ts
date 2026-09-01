@@ -13,8 +13,9 @@ import type { GridNewHigh, GridPivot, PointGrid } from "./grid.js";
 export type WirePivot = [number, number, number, number, string, string];
 /** [min, open, high, low, close, tv] */
 export type WireNewHigh = [number, number, number, number, number, string];
-/** [stockCode, base(null=기준선 값 없음), touchMin(−1=미터치), pivots, newHighs] */
-export type WireChartGrid = [string, number | null, number, WirePivot[], WireNewHigh[]];
+/** [stockCode, base(null=기준선 값 없음), touchMin(−1=미터치), pivots, newHighs, prevBase(null=결손)]
+ *  ⚠ 새 자리는 **끝에만** 붙인다 — 위치가 계약이라 중간 삽입은 옛 파일·옛 클라를 조용히 뒤튼다. */
+export type WireChartGrid = [string, number | null, number, WirePivot[], WireNewHigh[], number | null];
 
 export function encodeChartGrid(stockCode: string, g: PointGrid): WireChartGrid {
     return [
@@ -23,6 +24,7 @@ export function encodeChartGrid(stockCode: string, g: PointGrid): WireChartGrid 
         g.touchMin ?? -1,
         g.pivots.map((p): WirePivot => [p.kind === "high" ? 0 : 1, p.min, p.price, p.confirmedMin ?? -1, p.legAmount, p.renewalAmount ?? "-1"]),
         g.newHighs.map((e): WireNewHigh => [e.min, e.open, e.high, e.low, e.close, e.tv]),
+        g.prevBase,
     ];
 }
 
@@ -43,6 +45,7 @@ export function decodeChartGrid(w: WireChartGrid): { stockCode: string; grid: Po
                 }),
             ),
             newHighs: w[4].map((e): GridNewHigh => ({ min: e[0], open: e[1], high: e[2], low: e[3], close: e[4], tv: e[5] })),
+            prevBase: w[5] ?? null,
         },
     };
 }

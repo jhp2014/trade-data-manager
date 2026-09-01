@@ -30,7 +30,7 @@ const renderPanel = (): HTMLElement =>
 
 beforeEach(() => {
     localStorage.clear();
-    useWorkbench.setState({ activePoint: null, focus: { date: DATE, code: "", time: null } });
+    useWorkbench.setState({ focus: { date: DATE, code: "", time: null } });
 });
 afterEach(() => localStorage.clear());
 

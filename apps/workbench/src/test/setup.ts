@@ -107,10 +107,7 @@ if (typeof window !== "undefined") {
 // ── 전역 시선 리셋 — 월 시선(gazeMonths)의 제품 기본값은 "오늘의 달"인데, 테스트 픽스처의 날짜는
 // 대부분 다른 달이라 그대로 두면 화면이 조용히 비고 단언이 헛돈다(달이 두 벌이던 시절과 같은 오독).
 // 월 시선을 검사하는 테스트는 각자 명시로 건다(setBinding.dom.test 선례).
-// point 행 출처도 같은 이유로 리셋한다 — 제품 기본은 "auto"(격자 파생)인데 픽스처는 대부분 손 타점만
-// 심어서(seed.points, 격자 빈 번들) 그대로 두면 행이 조용히 0이 된다. 자동 출처를 검사하는 테스트는
-// 각자 setState({ pointSource: "auto" }) + seed.pointGrids 로 명시한다.
 beforeEach(async () => {
     const { useWorkbench } = await import("../store/workbench.js");
-    useWorkbench.setState({ gazeMonths: null, gazePresence: [], pointSource: "hand" });
+    useWorkbench.setState({ gazeMonths: null, gazePresence: [] });
 });

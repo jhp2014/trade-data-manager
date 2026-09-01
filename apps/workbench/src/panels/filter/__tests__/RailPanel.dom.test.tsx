@@ -136,8 +136,10 @@ describe("층위 칸 — 무엇이 어디에 사나", () => {
         expect(container.textContent).toContain("시간");
     });
 
+    // ⚠ 타점까지 비운다 — 자동 Point 가 있으면 격자 파생 축(기준선 대비 등)이 타점 칸에 서므로
+    //   "축이 없다"가 성립하지 않는다(축 합성은 모수가 있을 때만 — useRankAxes).
     it("그 층위에 축이 없으면 그렇게 적는다 — 빈 자리로 두면 왜 없는지 모른다", () => {
-        const { container } = renderRails({ ...SEED, computedAxes: [feeds[0]] });
+        const { container } = renderRails({ ...SEED, points: [], computedAxes: [feeds[0]] });
         expect(container.textContent).toContain("이 층위에 축이 없습니다");
     });
 
@@ -149,9 +151,11 @@ describe("층위 칸 — 무엇이 어디에 사나", () => {
     });
 
     it("값이 있으면 그을 수 있다 — 위 검사가 '늘 값 없음'을 상대로 헛돌지 않게", () => {
+        // 격자 파생 축(눌림 깊이 등)은 결손이 정상이라 화면 어딘가엔 "값 없음"이 남는다 —
+        // 그래서 전역 문자열이 아니라 **그 레일들**로 잰다.
         const { container } = renderRails();
-        expect(container.textContent).not.toContain("값 없음");
         expect(trackOf(container, "하루축")).toBeTruthy();
+        expect(trackOf(container, "타점축")).toBeTruthy();
     });
 });
 
@@ -269,7 +273,8 @@ describe("선택 집합 오버레이 — 멤버는 강조색, 나머지 회색�
             filterStages: [{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }],
         });
         const { container } = renderRails(OVL_SEED);
-        expect(memberSpans(container)).toHaveLength(1); // 자리 둘 중 A@D0 하나만
+        // 격자 파생 축들도 레일을 세우므로 **그 레일 안에서** 센다(자리 둘 중 A@D0 하나만).
+        expect(memberSpans(trackOf(container, "타점축"))).toHaveLength(1);
         expect(baseTicks(container).some((t) => t.style.opacity === "0.12")).toBe(true);
     });
 
@@ -280,40 +285,51 @@ describe("선택 집합 오버레이 — 멤버는 강조색, 나머지 회색�
     });
 });
 
-// ⚠ 마커는 **subject 계약**을 따른다(useSubject) — 타점을 골랐으면 타점, 하루만 골랐으면 그 하루.
-// 옛날엔 activePoint 만 봐서 하루 선택이면 마커가 통째로 사라졌다: goToDay 가 activePoint 를 명시적으로
-// 푸는 게 계약이라, 날짜도 일봉 축 값도 멀쩡히 있는데 "지금 어디쯤인가"가 안 보였다.
+// ⚠ 마커는 **subject 계약**을 따른다(useSubject) — focus.time 이 그 차트의 자동 타점이면 타점,
+// 아니면 하루. 옛날엔 별도 상태(activePoint)만 봐서 하루 선택이면 마커가 통째로 사라졌다:
+// 날짜도 일봉 축 값도 멀쩡히 있는데 "지금 어디쯤인가"가 안 보였다.
 const markerOf = (c: HTMLElement, label: string): string | null =>
     nameOf(c, label).parentElement!.parentElement!.querySelector("[data-marker]")?.getAttribute("data-marker") ?? null;
 
 describe("현재 자리 마커 — 하루만 골라도 하루 층위엔 선다", () => {
     const DAY = { date: DATES[0], code: A, time: null };
-    afterEach(() => { useWorkbench.setState({ activePoint: null, focus: { date: DATES[0], code: "", time: null } }); });
+    afterEach(() => { useWorkbench.setState({ focus: { date: DATES[0], code: "", time: null } }); });
 
     it("하루 선택(타점 없음)이면 하루 축과 날짜에 마커가 선다 — 차트 키로 값 맵에 닿는다", () => {
-        useWorkbench.setState({ activePoint: null, focus: DAY });
+        useWorkbench.setState({ focus: DAY });
         const { container } = renderRails();
         expect(markerOf(container, "하루축")).toBe("+1.0%"); // A@D0 = 첫 행
         expect(markerOf(container, "날짜")).toBe("26.07.06");
     });
 
     it("하루 선택은 타점 축엔 안 선다 — 분기가 아니라 키 공간이 갈려서다(차트 키가 그 맵엔 없다)", () => {
-        useWorkbench.setState({ activePoint: null, focus: DAY });
+        useWorkbench.setState({ focus: DAY });
         const { container } = renderRails();
         expect(markerOf(container, "타점축")).toBeNull();
         expect(markerOf(container, "시간")).toBeNull();
     });
 
     it("타점 선택이면 두 층위 다 선다 — 타점 키는 시각을 벗겨 하루 축에도 닿는다(회귀 방지)", () => {
-        useWorkbench.setState({ activePoint: { code: A, date: DATES[0], time: "09:30:00" }, focus: { ...DAY, time: "09:30:00" } });
+        // 09:30 은 시드 타점 = 격자 파생 자동 타점이라, 시각을 그리로 옮기는 것이 곧 타점 선택이다.
+        useWorkbench.setState({ focus: { ...DAY, time: "09:30:00" } });
         const { container } = renderRails();
         expect(markerOf(container, "하루축")).toBe("+1.0%");
         expect(markerOf(container, "타점축")).toBe("+1.0%");
         expect(markerOf(container, "시간")).toBe("09:30");
     });
 
+    // ⚠ 이 케이스가 판정의 그물이다 — "time 이 있으면 타점"으로 잘못 구현해도 위 검사들은 전부
+    //   통과한다(거기 쓰는 시각이 전부 실제 타점이라서). 비타점 시각은 하루로 내려가야 한다.
+    it("타점이 아닌 시각이면 하루 선택이다 — 시각이 있다고 타점인 게 아니다", () => {
+        useWorkbench.setState({ focus: { ...DAY, time: "09:31:00" } }); // 시드 타점(09:30)이 아닌 분
+        const { container } = renderRails();
+        expect(markerOf(container, "하루축")).toBe("+1.0%"); // 하루 층위엔 선다
+        expect(markerOf(container, "타점축")).toBeNull(); // 타점 층위엔 안 선다
+        expect(markerOf(container, "시간")).toBeNull();
+    });
+
     it("종목이 없으면(초기 상태) 아무 데도 안 선다 — 날짜만으로는 고른 자리가 아니다", () => {
-        useWorkbench.setState({ activePoint: null, focus: { date: DATES[0], code: "", time: null } });
+        useWorkbench.setState({ focus: { date: DATES[0], code: "", time: null } });
         const { container } = renderRails();
         expect(markerOf(container, "하루축")).toBeNull();
         expect(markerOf(container, "날짜")).toBeNull();
@@ -362,7 +378,11 @@ describe("레일 순서 — 이름 열을 끌어 바꾸고, 로컬에 남는다"
     it("바꾼 순서가 로컬에 남는다 — 다시 열어도 그대로", () => {
         const { container, unmount } = renderRails(ORDER_SEED);
         dragAxisOnto(container, "하루축A", "하루축B");
-        expect(JSON.parse(localStorage.getItem(ORDER_KEY)!)).toEqual(["c:day-b", "c:day-a", "c:pt-ax"]);
+        // 격자 파생 축들도 목록에 실린다(기준선 대비 %·당일 %·직전 마디 수·눌림 깊이) — 심은 셋의
+        // **상대 순서**만 본다. 승계 키(c:baseline-position 등)라 접두로는 못 거른다.
+        const seeded = new Set(["c:day-a", "c:day-b", "c:pt-ax"]);
+        const order = (JSON.parse(localStorage.getItem(ORDER_KEY)!) as string[]).filter((k) => seeded.has(k));
+        expect(order).toEqual(["c:day-b", "c:day-a", "c:pt-ax"]);
         unmount();
 
         const again = renderRails(ORDER_SEED);

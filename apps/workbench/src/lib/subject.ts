@@ -1,10 +1,14 @@
 // 선택 대상(subject) 단일 계약 — "패널들이 지금 무엇을 보여줘야 하나"의 답 한 곳.
 //
-// subject = activePoint(타점을 골랐다) ?? focus 의 (종목,날짜)(하루만 골랐다). 이 폴백을 패널마다
-// 재현하면 "타점이 없을 때 무엇이 선택인가"의 답이 패널 수만큼 생긴다 — 그래서 훅 하나가 조립한다.
+// subject.time = focus.time 이 **그 차트의 자동 타점**일 때 그 시각, 아니면 null(하루 선택).
+// 이 판정을 패널마다 재현하면 "무엇이 선택인가"의 답이 패널 수만큼 생긴다 — 그래서 훅 하나가 진다.
 //
-// time 이 null 인 subject 는 **하루 선택**이다. ActivePoint 의 time 을 nullable 로 넓히지 않은 것과
-// 같은 이유로, 여기서도 하루는 타점의 일종이 아니라 별도 상태다(소비자는 time 으로 갈라 읽는다).
+// 옛 `activePoint`(선택을 따로 저장하던 상태)는 2026-09-01 폐지됐다. 타점이 격자 파생물이 되면서
+// 저장할 것이 없어졌기 때문이다 — 정의 노브를 돌려 그 타점이 사라지면 선택도 조용히 하루로 내려간다
+// (정직한 동작). a/d 로 봉을 옮기다 자동 타점 위에 서면 그 순간 타점 선택이 된다.
+//
+// time 이 null 인 subject 는 **하루 선택**이다 — 하루는 타점의 일종이 아니라 별도 상태다
+// (소비자는 time 으로 갈라 읽는다).
 //
 // 상태(status)는 3치다 — 패널마다 정의역(그릴 수 있는 집합)이 달라서, subject 가 정의역 밖일 때
 // "왜 안 보이나"를 구분해 말해야 한다:
@@ -13,7 +17,9 @@
 //   · absent   — 재료 자체가 없다(타점 없음·골격 미작성·결손 — 패널이 말을 고른다)
 // 판정 재료(전체·표시 집합)는 패널이 이미 들고 있으므로 여기는 **불리언 둘 → 3치** 접기만 소유한다.
 import { useMemo } from "react";
+import { minuteToHms } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
+import { autoPointsOfChart, useAutoPoints } from "./PointGridsContext.js";
 import { chartKeyOf, pointKeyOf } from "./pointKey.js";
 
 export interface Subject {
@@ -23,15 +29,23 @@ export interface Subject {
     time: string | null;
 }
 
-/** activePoint 우선, 없으면 focus 의 하루. 종목이 비어 있으면 null(초기 상태). */
+/**
+ * focus 의 (종목,날짜) + 시각 판정. 종목이 비어 있으면 null(초기 상태).
+ * ⚠ 격자(PointGridsProvider)에 의존한다 — 로딩 중엔 하루로 보였다가 타점으로 바뀐다(무해).
+ */
 export function useSubject(): Subject | null {
-    const activePoint = useWorkbench((s) => s.activePoint);
     const code = useWorkbench((s) => s.focus.code);
     const date = useWorkbench((s) => s.focus.date);
+    const time = useWorkbench((s) => s.focus.time);
+    const auto = useAutoPoints();
+    const derived = autoPointsOfChart(auto, code, date);
     return useMemo(() => {
-        if (activePoint) return { code: activePoint.code, date: activePoint.date, time: activePoint.time };
-        return code ? { code, date, time: null } : null;
-    }, [activePoint, code, date]);
+        if (!code) return null;
+        // **분 절단으로 비교**한다 — 단면 조회(useRankSections)와 같은 자를 써야 초가 붙은 setTime
+        // 호출자(뉴스 점프 등)의 시각이 조용히 "타점 아님"으로 떨어지지 않는다.
+        const isPoint = time !== null && derived.some((p) => minuteToHms(p.min).slice(0, 5) === time.slice(0, 5));
+        return { code, date, time: isPoint ? time : null };
+    }, [code, date, time, derived]);
 }
 
 export type SubjectStatus = "shown" | "filtered" | "absent";

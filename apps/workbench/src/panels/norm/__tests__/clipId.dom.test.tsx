@@ -10,7 +10,7 @@ import { useWorkbench } from "../../../store/workbench.js";
 import { CODE, DATE, dailyPin, fullBundle, minutePin, seedPins, stockNames } from "./overlayFixture.js";
 
 const resetStore = (): void => {
-    useWorkbench.setState({ activePoint: null, focus: { date: DATE, code: "", time: null } });
+    useWorkbench.setState({ focus: { date: DATE, code: "", time: null } });
 };
 beforeEach(resetStore);
 afterEach(() => { resetStore(); localStorage.clear(); });

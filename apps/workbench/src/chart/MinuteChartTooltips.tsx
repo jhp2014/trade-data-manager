@@ -4,23 +4,14 @@ import { kstHHmm } from "./chartUtils.js";
 import { rateColor } from "./tooltip.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
 import type { MinutePoint } from "../lib/derive.js";
-import { GroupChips } from "../components/GroupChips.js";
-import type { Group } from "../api/groups.js";
 import { CHART_LABEL, CHART_VALUE } from "../styles/palette.js";
 
 /**
- * 타점 정보 카드 — 세로선 우측에 뜨는 밝은 카드. 현재 타점 마커·저장 타점 hover 공용.
- * 담백 readout 한 줄("09:58 | +8.7% | 57억"), 그룹이 있으면 아랫줄에 칩.
- * 그룹 줄은 **wrap 하지 않고 잘린다** — 차트 위 오버레이라 스크롤할 수 없고, 높이가 데이터에 따라
- * 들쭉날쭉하면 캔들을 가린다. 전부 보려면 "타점 정보" 도킹 패널이 그 자리다(축별 상세도 거기).
+ * 타점 정보 카드 — 세로선 우측에 뜨는 밝은 카드. 현재 시간선·타점 ◇ hover 공용.
+ * 담백 readout 한 줄("09:58 | +8.7% | 57억")뿐이다 — 그룹은 하루 층위가 됐고(2026-09-01 타점 그룹
+ * 폐지) 그건 차트 헤더 칩이 이미 말한다. 축별 상세는 "타점 정보" 도킹 패널이 그 자리다.
  */
-export function MarkerCard({
-    point,
-    groups = [],
-}: {
-    point: MinutePoint;
-    groups?: Group[]; // 이 타점에 붙은 그룹(없으면 줄 자체가 없음)
-}): JSX.Element {
+export function MarkerCard({ point }: { point: MinutePoint }): JSX.Element {
     const sep = <span style={{ color: "rgba(0,0,0,0.2)" }}>|</span>;
     return (
         <div
@@ -44,12 +35,6 @@ export function MarkerCard({
                 {sep}
                 <span style={{ color: "var(--text-secondary)" }}>{fmtEok(point.amount)}</span>
             </div>
-            {groups.length > 0 && (
-                // 위 readout 과 줄이 갈리게 구분선 — 붙여 두면 시각·%·그룹이 한 덩어리로 읽힌다.
-                <div style={{ padding: "2px 7px", borderTop: "1px solid var(--border-subtle)" }}>
-                    <GroupChips groups={groups} short />
-                </div>
-            )}
         </div>
     );
 }

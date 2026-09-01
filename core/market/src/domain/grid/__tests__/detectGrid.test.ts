@@ -5,7 +5,7 @@
 // legAmount + renewalAmount(전고점 돌파 후 추격 대금).
 import { describe, expect, it } from "vitest";
 import type { MinuteCandle } from "../../candle/model.js";
-import { detectGrid } from "../grid.js";
+import { detectGrid, type GridDayPrices } from "../grid.js";
 
 const D = "2026-07-01";
 const mc = (time: string, o: number, h: number, l: number, c: number, vol = 0): MinuteCandle => ({
@@ -18,17 +18,20 @@ const mc = (time: string, o: number, h: number, l: number, c: number, vol = 0): 
 /** 단일가 봉(O=H=L=C). vol 200_000 × 가격 10_000 = 거래대금 20억(floor 경계). */
 const flat = (time: string, p: number, vol = 0): MinuteCandle => mc(time, p, p, p, p, vol);
 
+/** 가격 둘(기준선·그날 기준가) — 검출 테스트는 기준선만 신경 쓴다(prevBase 는 통과 사실). */
+const px = (base: number | null = null, prevBase: number | null = null): GridDayPrices => ({ base, prevBase });
+
 describe("detectGrid — 입력 경계", () => {
     it("분봉 0건 → null(재료 없음)", () => {
-        expect(detectGrid([], null)).toBeNull();
+        expect(detectGrid([], px())).toBeNull();
     });
 
     it("세션 창에 한 봉도 없으면 null", () => {
-        expect(detectGrid([flat("20:10:00", 10000, 1)], null)).toBeNull();
+        expect(detectGrid([flat("20:10:00", 10000, 1)], px())).toBeNull();
     });
 
     it("전 봉 flat(거래정지류) — 피벗 0·신고가 0·예외 없음(무사건 격자)", () => {
-        const g = detectGrid([flat("09:00:00", 10000, 1), flat("09:01:00", 10000, 1), flat("09:02:00", 10000, 1)], null);
+        const g = detectGrid([flat("09:00:00", 10000, 1), flat("09:01:00", 10000, 1), flat("09:02:00", 10000, 1)], px());
         expect(g).not.toBeNull();
         expect(g?.pivots).toEqual([]);
         expect(g?.newHighs).toEqual([]);
@@ -38,34 +41,33 @@ describe("detectGrid — 입력 경계", () => {
 
 describe("detectGrid — 신고가 목록", () => {
     it("갭 시작 — 첫 봉이 러닝 최고가, OHLC 절대가가 그대로 실린다(양봉 여부는 읽기 층 파생)", () => {
-        const g = detectGrid([mc("09:00:00", 13000, 13000, 12900, 13000, 200000), flat("09:01:00", 12950, 1), flat("09:02:00", 12900, 1)], null);
+        const g = detectGrid([mc("09:00:00", 13000, 13000, 12900, 13000, 200000), flat("09:01:00", 12950, 1), flat("09:02:00", 12900, 1)], px());
         expect(g?.newHighs).toHaveLength(1);
         expect(g?.newHighs[0]).toEqual({ min: 540, open: 13000, high: 13000, low: 12900, close: 13000, tv: "2595000000" });
     });
 
     it("직전 봉 대금 구제는 없다 — 수록 기준은 자기 봉 대금뿐(tvMax2 폐기, 2026-08-31)", () => {
         const g = detectGrid(
-            [flat("09:00:00", 10000, 200000), flat("09:01:00", 10050, 1000), flat("09:02:00", 10100, 1000)],
-            null,
+            [flat("09:00:00", 10000, 200000), flat("09:01:00", 10050, 1000), flat("09:02:00", 10100, 1000)], px(),
         );
         // 09:00(20억)만 수록 — 09:01 은 러닝 최고가 갱신이지만 자기 대금(0.1억) 미달(직전 봉 20억은 무관).
         expect(g?.newHighs.map((h) => h.min)).toEqual([540]);
     });
 
     it("dense 채움봉(거래량 0 평탄)은 신고가·피벗 어디에도 영향이 없다(densify 불변성)", () => {
-        const gapped = detectGrid([flat("09:00:00", 10000, 200000), flat("09:04:00", 10300, 200000)], null);
+        const gapped = detectGrid([flat("09:00:00", 10000, 200000), flat("09:04:00", 10300, 200000)], px());
         const explicit = detectGrid(
             [flat("09:00:00", 10000, 200000), ...["09:01:00", "09:02:00", "09:03:00"].map((t) => flat(t, 10000, 0)), flat("09:04:00", 10300, 200000)],
-            null,
+            px(),
         );
         expect(gapped).toEqual(explicit);
         expect(gapped?.newHighs.map((h) => h.min)).toEqual([540, 544]);
     });
 
     it("floor 는 20억 이상(경계 포함)", () => {
-        const yes = detectGrid([flat("09:00:00", 10000, 200000)], null);
+        const yes = detectGrid([flat("09:00:00", 10000, 200000)], px());
         expect(yes?.newHighs).toHaveLength(1);
-        const no = detectGrid([flat("09:00:00", 10000, 199999)], null);
+        const no = detectGrid([flat("09:00:00", 10000, 199999)], px());
         expect(no?.newHighs).toHaveLength(0);
     });
 });
@@ -73,8 +75,7 @@ describe("detectGrid — 신고가 목록", () => {
 describe("detectGrid — 세션 창", () => {
     it("기본 창은 [08:00, 20:00] — 프리·애프터마켓 포함, 20:00 이후 제외", () => {
         const g = detectGrid(
-            [flat("08:20:00", 11000, 200000), flat("09:01:00", 10500, 200000), flat("16:30:00", 12000, 200000), flat("20:10:00", 13000, 200000)],
-            null,
+            [flat("08:20:00", 11000, 200000), flat("09:01:00", 10500, 200000), flat("16:30:00", 12000, 200000), flat("20:10:00", 13000, 200000)], px(),
         );
         // 16:30(애프터마켓)이 신고가로 수록되고, 20:10 은 창 밖이라 12,000 이 그날 최고가로 남는다.
         expect(g?.newHighs.map((h) => h.min)).toEqual([8 * 60 + 20, 16 * 60 + 30]);
@@ -82,8 +83,7 @@ describe("detectGrid — 세션 창", () => {
 
     it("창 축소 시 창 밖 고가가 채움봉으로 새어들지 않는다(필터가 densify 앞)", () => {
         const g = detectGrid(
-            [flat("08:20:00", 11000, 200000), flat("09:01:00", 10500, 200000)],
-            null,
+            [flat("08:20:00", 11000, 200000), flat("09:01:00", 10500, 200000)], px(),
             { sessionStartMin: 9 * 60 },
         );
         // 08:20 의 11,000 이 09:00 채움봉으로 남으면 09:01(10,500)이 신고가가 못 된다 — 그 함정의 회귀선.
@@ -93,31 +93,31 @@ describe("detectGrid — 세션 창", () => {
 
 describe("detectGrid — 기준선 첫 터치", () => {
     it("미터치 — touchMin null 이면서 격자는 정상 성립", () => {
-        const g = detectGrid([flat("09:00:00", 10000, 200000), flat("09:01:00", 10100, 1)], 20000);
+        const g = detectGrid([flat("09:00:00", 10000, 200000), flat("09:01:00", 10100, 1)], px(20000));
         expect(g?.touchMin).toBeNull();
         expect(g?.base).toBe(20000);
         expect(g?.newHighs.length).toBeGreaterThan(0);
     });
 
     it("기준선이 첫 봉 아래 — 첫 봉이 터치, 볼륨 무관", () => {
-        const g = detectGrid([flat("09:00:00", 10000, 1), flat("09:01:00", 10100, 1)], 9000);
+        const g = detectGrid([flat("09:00:00", 10000, 1), flat("09:01:00", 10100, 1)], px(9000));
         expect(g?.touchMin).toBe(540);
     });
 
     it("장중 터치 — 고가 스침(≥)으로 판정", () => {
-        const g = detectGrid([flat("09:00:00", 10000, 1), mc("09:01:00", 10000, 10500, 10000, 10200, 1)], 10500);
+        const g = detectGrid([flat("09:00:00", 10000, 1), mc("09:01:00", 10000, 10500, 10000, 10200, 1)], px(10500));
         expect(g?.touchMin).toBe(541);
     });
 });
 
 describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
     it("2% 경계 — 정확히 임계면 확정(≤), 1원 모자라면 미확정", () => {
-        const confirmed = detectGrid([flat("09:00:00", 10000, 1), flat("09:01:00", 9800, 1)], null);
+        const confirmed = detectGrid([flat("09:00:00", 10000, 1), flat("09:01:00", 9800, 1)], px());
         expect(confirmed?.pivots.map((p) => [p.kind, p.min, p.price, p.confirmedMin])).toEqual([
             ["high", 540, 10000, 541],
             ["low", 541, 9800, null],
         ]);
-        const not = detectGrid([flat("09:00:00", 10000, 1), flat("09:01:00", 9801, 1)], null);
+        const not = detectGrid([flat("09:00:00", 10000, 1), flat("09:01:00", 9801, 1)], px());
         expect(not?.pivots).toEqual([]);
     });
 
@@ -125,16 +125,14 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
         // 09:02(3% 양봉)가 고점 10,450 을 갱신 — 자기 저가 10,241(=10450×0.98)은 검사하지 않는다.
         // 뒤 봉이 없어 터치가 영영 없으므로 확정 고점 0 → 피벗 0.
         const g = detectGrid(
-            [flat("09:00:00", 10000, 1), flat("09:01:00", 10210, 1), mc("09:02:00", 10210, 10450, 10241, 10300, 1)],
-            null,
+            [flat("09:00:00", 10000, 1), flat("09:01:00", 10210, 1), mc("09:02:00", 10210, 10450, 10241, 10300, 1)], px(),
         );
         expect(g?.pivots).toEqual([]);
     });
 
     it("종일 단조 상승 — 확정 고점 0 → 피벗 0(무사건 취급)", () => {
         const g = detectGrid(
-            [flat("09:00:00", 10000, 1), flat("09:01:00", 10100, 1), flat("09:02:00", 10210, 1), flat("09:03:00", 10400, 1)],
-            null,
+            [flat("09:00:00", 10000, 1), flat("09:01:00", 10100, 1), flat("09:02:00", 10210, 1), flat("09:03:00", 10400, 1)], px(),
         );
         expect(g?.pivots).toEqual([]);
     });
@@ -143,8 +141,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
         // 09:01 봉이 저가 9,790(≤ 10000×0.98 터치)과 고가 10,210(> 10000 갱신)을 동시에 들고 온다 —
         // 봉 내부 순서 증명 불가라 갱신 승리: 09:00 고점(10,000)은 확정 없이 소멸, 09:02 터치가 10,210 을 확정.
         const g = detectGrid(
-            [flat("09:00:00", 10000, 1), mc("09:01:00", 9900, 10210, 9790, 10200, 1), flat("09:02:00", 10005, 1)],
-            null,
+            [flat("09:00:00", 10000, 1), mc("09:01:00", 9900, 10210, 9790, 10200, 1), flat("09:02:00", 10005, 1)], px(),
         );
         expect(g?.pivots.map((p) => [p.kind, p.min, p.price])).toEqual([
             ["high", 541, 10210],
@@ -153,7 +150,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
     });
 
     it("터치 봉(확정 봉)이 그 구간의 저점이 될 수 있다", () => {
-        const g = detectGrid([flat("09:00:00", 10000, 1), mc("09:01:00", 10000, 10000, 9790, 9800, 1)], null);
+        const g = detectGrid([flat("09:00:00", 10000, 1), mc("09:01:00", 10000, 10000, 9790, 9800, 1)], px());
         expect(g?.pivots.map((p) => [p.kind, p.min, p.price, p.confirmedMin])).toEqual([
             ["high", 540, 10000, 541],
             ["low", 541, 9790, null],
@@ -163,7 +160,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
     it("넓은 첫 봉 — 자기 저가로 자기 고가를 확정 못 하고, 그 저가는 저점 후보에서도 빠진다", () => {
         // 09:00 봉(고 10000·저 9600): 자기 봉이라 확정도 저점도 못 만든다. 09:01(9795 ≤ 9800)이 확정하고
         // 자기 저가 9,795 가 꼬리 저점 — 9,600 은 어디에도 안 실린다(봉 내부 순서 증명 불가).
-        const g = detectGrid([mc("09:00:00", 9800, 10000, 9600, 9700, 1), flat("09:01:00", 9795, 1)], null);
+        const g = detectGrid([mc("09:00:00", 9800, 10000, 9600, 9700, 1), flat("09:01:00", 9795, 1)], px());
         expect(g?.pivots.map((p) => [p.kind, p.min, p.price, p.confirmedMin])).toEqual([
             ["high", 540, 10000, 541],
             ["low", 541, 9795, null],
@@ -179,8 +176,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
                 flat("09:01:00", 10210, 1),
                 mc("09:02:00", 10210, 10600, 10380, 10590, 1),
                 flat("09:03:00", 10380, 1),
-            ],
-            null,
+            ], px(),
         );
         const high = g?.pivots.find((p) => p.kind === "high");
         expect(high).toMatchObject({ min: 542, price: 10600, confirmedMin: 543 });
@@ -194,8 +190,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
                 flat("09:01:00", 9800, 1),
                 mc("09:02:00", 9790, 9990, 9600, 9620, 1),
                 flat("09:03:00", 9795, 1),
-            ],
-            null,
+            ], px(),
         );
         const low = g?.pivots.find((p) => p.kind === "low");
         expect(low).toMatchObject({ min: 542, price: 9600, confirmedMin: null });
@@ -209,8 +204,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
                 flat("09:02:00", 10005, 1),
                 flat("09:03:00", 10450, 1),
                 flat("09:04:00", 10240, 1),
-            ],
-            null,
+            ], px(),
         );
         expect(g?.pivots.map((p) => [p.kind, p.min])).toEqual([
             ["high", 541],
@@ -233,8 +227,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
                 flat("09:02:00", 10930, 1),
                 flat("09:03:00", 11250, 1),
                 flat("09:04:00", 11020, 1),
-            ],
-            null,
+            ], px(),
         );
         expect(g?.pivots.map((p) => [p.kind, p.min, p.price])).toEqual([
             ["high", 540, 11200],
@@ -246,8 +239,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
 
     it("legAmount — 첫 피벗은 세션 첫 봉부터, 저점은 자기 구간 몫(포함 경계)", () => {
         const g = detectGrid(
-            [flat("09:00:00", 10000, 100000), flat("09:01:00", 10210, 100000), mc("09:02:00", 10210, 10210, 10005, 10005, 100000)],
-            null,
+            [flat("09:00:00", 10000, 100000), flat("09:01:00", 10210, 100000), mc("09:02:00", 10210, 10210, 10005, 10005, 100000)], px(),
         );
         // 고점(09:01) leg = 09:00+09:01 대금, 꼬리 저점(09:02) leg = 자기 봉 대금.
         expect(g?.pivots).toHaveLength(2);
@@ -258,8 +250,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
     it("renewalAmount — 갱신 봉이 곧 고점 봉이면 그 한 봉 몫(= legAmount, 등호 경계)", () => {
         // H1(10000) 확정 후 09:02 한 봉이 크로싱이자 새 고점(10,210) — renewal = 그 봉 대금 = leg.
         const g = detectGrid(
-            [flat("09:00:00", 10000, 100000), flat("09:01:00", 9800, 100000), flat("09:02:00", 10210, 100000), flat("09:03:00", 10005, 100000)],
-            null,
+            [flat("09:00:00", 10000, 100000), flat("09:01:00", 9800, 100000), flat("09:02:00", 10210, 100000), flat("09:03:00", 10005, 100000)], px(),
         );
         const h2 = g?.pivots[2];
         expect(h2).toMatchObject({ kind: "high", min: 542, price: 10210, legAmount: "1021000000", renewalAmount: "1021000000" });
@@ -274,8 +265,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
                 flat("09:02:00", 9900, 100000),
                 flat("09:03:00", 10150, 100000),
                 flat("09:04:00", 9947, 100000),
-            ],
-            null,
+            ], px(),
         );
         expect(g?.pivots.map((p) => [p.kind, p.min, p.renewalAmount])).toEqual([
             ["high", 540, null], // 첫 확정 고점 — 전고점 없음
@@ -291,7 +281,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
     it("결측 분의 채움봉(저가=직전 종가)이 터치를 확정하고 구간 저점이 될 수 있다 — 거래 없음 ≠ 가격 없음", () => {
         // 09:00 봉(고 10000·종가 9790 ≤ 9800): 자기 봉이라 확정 불가. 09:01 결측 → 채움봉(9790 평탄)의
         // 저가가 확정(confirmedMin=541). densify 를 검출기 밖으로 옮기면 이 확정이 통째로 사라진다 — 회귀선.
-        const g = detectGrid([mc("09:00:00", 9900, 10000, 9790, 9790, 1), flat("09:02:00", 10100, 1)], null);
+        const g = detectGrid([mc("09:00:00", 9900, 10000, 9790, 9790, 1), flat("09:02:00", 10100, 1)], px());
         expect(g?.pivots.map((p) => [p.kind, p.min, p.price, p.confirmedMin])).toEqual([
             ["high", 540, 10000, 541],
             ["low", 541, 9790, null], // 채움봉이 구간 (고점 봉, 크로싱 봉) 의 유일한 봉 — 구간 저점도 겸한다
@@ -311,8 +301,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
                 flat("09:03:00", 10150, 100000),
                 mc("09:04:00", 10150, 10400, 9500, 10300, 100000),
                 flat("09:05:00", 10192, 100000),
-            ],
-            null,
+            ], px(),
         );
         expect(g?.pivots.map((p) => [p.kind, p.min, p.price])).toEqual([
             ["high", 540, 10000],
@@ -336,8 +325,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
                 mc("09:02:00", 9850, 10150, 9700, 10100, 1),
                 flat("09:03:00", 10400, 1),
                 flat("09:04:00", 10192, 1),
-            ],
-            null,
+            ], px(),
         );
         expect(g?.pivots.map((p) => [p.kind, p.min, p.price])).toEqual([
             ["high", 540, 10000],
@@ -355,8 +343,7 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
                 flat("09:01:00", 9800, 1),
                 mc("09:02:00", 9900, 10100, 9750, 10050, 1),
                 flat("09:03:00", 9990, 1),
-            ],
-            null,
+            ], px(),
         );
         expect(g?.pivots.map((p) => [p.kind, p.min, p.price])).toEqual([
             ["high", 540, 10000],

@@ -11,8 +11,9 @@
 //    창을 바꾸면 격자 version 상향.
 //  · 신고가 = 세션 창 안 **당일 러닝 최고가** 갱신. 마디 기준 재단은 읽기 층이 피벗으로 할 수 있지만 역은 불가.
 //
-// 기준선(base)은 호출자가 확정·환산해 넘긴다(resolveBaselines 승자를 rawScaleOf 로 **그 날 원주가 스케일**로
-// 되돌린 값) — 기준선은 수정주가 자, 분봉은 원주가 자다. 여기서 섞으면 감자·액분 종목의 터치가 통째로 틀어진다.
+// 가격 둘(기준선 base·그날 기준가 prevBase)은 호출자가 확정·환산해 넘긴다(기준선은 resolveBaselines
+// 승자를 rawScaleOf 로 **그 날 원주가 스케일**로 되돌린 값) — 기준선은 수정주가 자, 분봉은 원주가 자다.
+// 여기서 섞으면 감자·액분 종목의 터치가 통째로 틀어진다. prevBase 는 검출에 안 쓰이는 통과 사실이다.
 import type { MinuteCandle } from "../candle/model.js";
 import { densifyMinutes } from "../candle/minuteBackfill.js";
 import { computeMinuteTradingAmount } from "../candle/price.js";
@@ -55,6 +56,17 @@ export interface GridNewHigh {
     tv: string;
 }
 
+/**
+ * 그 하루의 가격 사실 둘 — 검출기가 계산할 수 없어 호출자가 넘긴다(둘 다 그 날 원주가 스케일).
+ * **이름을 헷갈리지 말 것**: `base` 는 사람이 그은 기준선(앵커 파생), `prevBase` 는 전일 종가다.
+ */
+export interface GridDayPrices {
+    /** 확정 기준선 가격. 못 구하면 null(터치·기준선 파생 불가). */
+    base: number | null;
+    /** 그날 기준가 = 이벤트 보정 전일 종가(UN, `basePricesOf`). 못 구하면 null — 폴백은 없다. */
+    prevBase: number | null;
+}
+
 /** 자동 타점 격자 — 앵커 차트(종목,날짜) 하나의 압축물. 직렬화 그대로 파일 캐시에 실린다. */
 export interface PointGrid {
     /** 확정 기준선 가격(그 날 원주가 스케일, 원). 호출자가 못 넘기면 null(터치·기준선 파생 불가). */
@@ -66,6 +78,12 @@ export interface PointGrid {
     pivots: GridPivot[];
     /** 신고가 캔들 목록(시간 오름차순). */
     newHighs: GridNewHigh[];
+    /**
+     * 그날 기준가(이벤트 보정 전일 종가, UN — 그 날 원주가 스케일). 없으면 null = **결손**이고
+     * 폴백(당일 첫 시가)은 두지 않는다: 격자엔 세션 첫 봉이 없고, 지어내지 않는 게 원칙이다.
+     * 검출에는 안 쓰인다 — "당일 %" 를 클라가 격자만으로 파생하게 하는 재료다(축 공급자 재배치).
+     */
+    prevBase: number | null;
 }
 
 /** 검출기 파라미터 — 전부 격자에 구워진다(바꾸면 version 상향 + 재계산). */
@@ -115,9 +133,10 @@ const toMin = hmsToMinute;
  */
 export function detectGrid(
     rawMinutes: MinuteCandle[],
-    base: number | null,
+    prices: GridDayPrices,
     options: GridDetectOptions = {},
 ): PointGrid | null {
+    const { base, prevBase } = prices;
     const o = { ...DEFAULT_GRID_OPTIONS, ...options };
     // 창 필터를 densify **앞**에 둔다 — 뒤에 두면 창 밖 가격이 채움봉(직전 종가 평탄)으로 창 안에 새어들어
     // 러닝 최고가를 선점한다(프리마켓 배제 설정이 조용히 무력화되는 함정).
@@ -239,5 +258,5 @@ export function detectGrid(
         });
     }
 
-    return { base, touchMin, pivots, newHighs };
+    return { base, touchMin, pivots, newHighs, prevBase };
 }

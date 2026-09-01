@@ -2,6 +2,7 @@
 name: browser-verifier
 description: 브라우저에서 관찰 가능한 UI/기능 변경을 실제로 켜서 검증한다. workbench나 live의 프론트엔드 동작이 바뀌었을 때, 백엔드/타입 전용 변경이 아니라 화면에 렌더링·서빙·로그되는 변경일 때 호출한다. 코드를 고치지 않고 pass/fail과 증거만 보고한다.
 model: sonnet
+effort: high
 tools: Read, Grep, Glob, mcp__Claude_Browser__preview_start, mcp__Claude_Browser__preview_stop, mcp__Claude_Browser__preview_list, mcp__Claude_Browser__preview_logs, mcp__Claude_Browser__navigate, mcp__Claude_Browser__computer, mcp__Claude_Browser__read_page, mcp__Claude_Browser__find, mcp__Claude_Browser__form_input, mcp__Claude_Browser__get_page_text, mcp__Claude_Browser__read_console_messages, mcp__Claude_Browser__read_network_requests, mcp__Claude_Browser__resize_window, mcp__Claude_Browser__tabs_context, mcp__Claude_Browser__tabs_create, mcp__Claude_Browser__tabs_select, mcp__Claude_Browser__tabs_close, mcp__Claude_Browser__javascript_tool
 ---
 

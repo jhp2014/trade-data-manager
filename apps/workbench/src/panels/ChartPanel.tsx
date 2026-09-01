@@ -5,7 +5,6 @@ import { usePlaneBus } from "../store/usePlaneBus.js";
 import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
-import { useReviewPointData } from "../lib/chartHooks.js";
 import { autoPointsOfChart, useAutoPoints } from "../lib/PointGridsContext.js";
 import { minuteToHms } from "@trade-data-manager/market/domain";
 import type { AutoPointInput } from "../chart/minuteOverlays.js";
@@ -38,7 +37,7 @@ import type { ControlSpec } from "../components/HeaderControls.js";
 // 소스는 chartQuery(DB) — useChartHotkeys·RankFilterPanel 과 **같은 RQ 키**라 캐시를 공유한다(중복 페치 0).
 // 차트 앵커 편집은 chartAnchorHooks(param 하나 = 훅 하나), 타점 조회는 useReviewPointData — 여긴 뷰 파생+렌더.
 // 선 = 기준선 후보(차트 소유) — 타점 선택 없이 긋고 지운다. 확정 기준선(가격 최저)은 하늘색으로 표시.
-// 분봉 ctrl+클릭·더블클릭=타점 이동, 스페이스바=타점 저장(토글) — 전역 useChartHotkeys.
+// 분봉 ctrl+클릭·더블클릭=시각 이동, ctrl+a/d=자동 타점 순회 — 전역 useChartHotkeys.
 // 그룹 편집 입구는 골격 패널뿐(BulkGroupMenu) — 차트는 결과 칩(GroupChips)만 보여준다.
 export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const { code, anchorDate, viewDate: searchDate, time, setTime, setSearchDate } = usePlaneBus("replay");
@@ -63,7 +62,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
-    const { groupsOf, pathLabel } = useGroups();
+    const { chartGroupsOf, pathLabel } = useGroups();
     // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이.
     const viewDate = pinMinute ? anchorDate : searchDate;
     // 이 차트(검색날짜)의 큐레이션 존재 요약 — "이 날 내가 뭘 남겼더라"를 헤더에서 답한다.
@@ -78,7 +77,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 차트 앵커 편집 — param 하나 = 훅 하나(chartAnchorHooks). 같은 쿼리 키라 왕복은 하나(RQ dedup).
     const lines = useBaselineLines(code, viewDate, dailyQ.data, minuteQ.data);
     const ignore = useIgnoreCandles(code, viewDate);
-    const { savedPoints, focusedPoint } = useReviewPointData(code, viewDate, time);
 
     // 자동 Point(격자 파생) — 정의(pointDef) 반영 즉석 파생. ◇ 마커가 품질 육안 검증 입구다(재현율 대신).
     const autoView = useAutoPoints();
@@ -164,13 +162,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 storageKey="wb.headerPins.chart.replay"
                 badges={
                     <>
-                        {/* 존재 배지(day 줄) — 이 날의 큐레이션 요약. 타점이 잡히면 그 타점의 그룹 칩이 뒤에 붙는다(문맥 반응형). */}
+                        {/* 존재 배지(day 줄) — 이 날의 큐레이션 요약. 뒤에 이 날의 그룹 칩(그룹은 하루 층위 하나뿐). */}
                         <PresenceBadges presence={presence} />
-                        {focusedPoint ? (
-                            // 현재 타점의 그룹(옛 단일 type 배지 자리) — 헤더 한 줄이라 wrap 없이 잘린다.
-                            // 옛 앵커 칩은 제거 — 앵커가 차트 소유가 되면서 선이 상시 그려지므로 별도 단서가 필요 없다.
-                            <GroupChips groups={groupsOf({ stockCode: code, date: viewDate, time: focusedPoint.time })} pathOf={(id) => pathLabel(id, "(지워짐)")} style={{ maxWidth: 180, flexShrink: 1 }} />
-                        ) : null}
+                        <GroupChips groups={chartGroupsOf({ stockCode: code, date: viewDate })} pathOf={(id) => pathLabel(id, "(지워짐)")} style={{ maxWidth: 180, flexShrink: 1 }} />
                     </>
                 }
             />
@@ -184,7 +178,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                         expanded={expanded}
                         viewDate={viewDate}
                         dailyTitle="봉 ctrl+클릭 / 더블클릭: 그 날짜로 검색 · 봉 우클릭: 메뉴(선 긋기·무시 캔들)"
-                        minuteTitle="ctrl+클릭 / 더블클릭: 타점 이동 · 스페이스바: 타점 저장 · 봉 우클릭: 메뉴(선 긋기)"
+                        minuteTitle="ctrl+클릭 / 더블클릭: 시각 이동 · ctrl+a/d: 타점 순회 · 봉 우클릭: 메뉴(선 긋기)"
                         daily={
                             dailyView.length > 0 ? (
                                 <DailyChart
@@ -216,7 +210,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     base={minuteView.base}
                                     pctBase={pctBase}
                                     markerTime={markerTime}
-                                    savedPoints={savedPoints}
                                     autoPoints={autoPoints}
                                     showPointInfo={showPointInfo}
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
@@ -225,7 +218,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     onRightClick={(a, at) => openMenu(at, { candle: { date: a.date, time: a.time } })}
                                     onRemoveLine={(l) => lines.removeLineById(l.id)}
                                     onLineContext={(l, at) => openMenu(at, { nearLine: l })}
-                                    groupsOfTime={(t) => groupsOf({ stockCode: code, date: viewDate, time: t })}
                                     anchorMarks={minuteMarks}
                                 />
                             ) : null

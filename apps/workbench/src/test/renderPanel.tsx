@@ -9,10 +9,11 @@
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankSectionBundle, ReviewPoint, StockMeta, ThemeMember } from "@trade-data-manager/wire";
+import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankSectionBundle, StockMeta, ThemeMember } from "@trade-data-manager/wire";
+import { hmsToMinute, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
 import type { Group, GroupMembership } from "../api/groups.js";
 import {
-    allAnchorsQuery, allCommentsQuery, allPointsQuery, allThemeMembersQuery, chartQuery, computedAxesQuery,
+    allAnchorsQuery, allCommentsQuery, allThemeMembersQuery, chartQuery, computedAxesQuery,
     groupMembershipsQuery, groupsQuery, pointGridsQuery, rankSectionsQuery, stockMasterQuery,
 } from "../api/queries.js";
 import type { DecodedPointGrids } from "../api/pointGrids.js";
@@ -24,10 +25,44 @@ import { PointGridsProvider } from "../lib/PointGridsContext.js";
 import { StockNamesProvider } from "../lib/StockNamesContext.js";
 
 /**
- * 시드용 타점 행 — 피드 타입(ReviewPoint)엔 name 이 없지만(종목명 단일 출처 = 부팅 사전),
- * 시드에선 name 을 함께 적으면 아래 namesFromFeeds 가 사전을 자동 조립해 준다(테스트 편의 전용).
+ * 시드용 타점 행 — 타점은 이제 격자 파생물이라 **심는 것은 격자**다(gridsFromPoints 가 이 목록을
+ * 최소 격자로 번역한다 — 픽스처가 (종목,날짜,시각)만 말하면 되게). name 을 함께 적으면 아래
+ * namesFromFeeds 가 사전을 자동 조립해 준다(테스트 편의 전용).
  */
-export type SeedPoint = ReviewPoint & { name?: string | null };
+export type SeedPoint = ReviewPointKey & { name?: string | null };
+
+/**
+ * 타점 시드 → 최소 격자. 각 (종목,날짜)의 시각들이 그대로 자동 Point 가 되도록 레벨을 만든다:
+ * 기준선 100 · i번째 시각의 신고가 캔들 high = 101+i · i≥1 은 직전 캔들 고가를 확정 마디로 실어
+ * 그 캔들이 **한 레벨씩** 올라타게 한다(레벨당 Point 하나 규칙을 정직하게 통과).
+ * 거래대금은 기본 게이트(기준선 50억·재돌파 30억) 위, 캔들은 양봉(bullOnly 기본 통과).
+ *
+ * ⚠ **detectGrid 의 구조 불변식을 지켜서 만든다**(고점·저점 교대 · 자기 봉 확정 금지 · 0 < renewal ≤ leg).
+ * 검출기가 낼 수 없는 격자를 심으면 그 위에서 도는 파생(예 `gridFeatures.pullbackDepthPct` 는 저점
+ * 피벗을 훑는다)이 **모든 시드에서 결손**이 되어, 그 축을 만지는 테스트가 코드와 무관하게 초록이 된다.
+ */
+function gridsFromPoints(points: readonly SeedPoint[]): DecodedPointGrids {
+    const byDate = new Map<string, Map<string, PointGrid>>();
+    const byChart = new Map<string, SeedPoint[]>();
+    for (const p of points) {
+        const k = `${p.date}|${p.stockCode}`;
+        (byChart.get(k) ?? byChart.set(k, []).get(k)!).push(p);
+    }
+    for (const [k, list] of byChart) {
+        const [date, stockCode] = k.split("|");
+        const mins = [...list].map((p) => hmsToMinute(p.time)).sort((a, b) => a - b);
+        // 피벗 = (확정 고점, 구간 저점) 쌍의 교대. 고점 i 는 캔들 i 자신이고 확정은 **뒤 봉**(m+1),
+        // 저점은 그 사이(m+2)에 한 칸 낮게 둔다 — 눌림 깊이가 실제로 계산되는 최소 구조.
+        const pivots = mins.slice(0, -1).flatMap((m, i) => [
+            { kind: "high" as const, min: m, price: 101 + i, confirmedMin: m + 1, legAmount: "2000000000", renewalAmount: i === 0 ? null : "1000000000" },
+            { kind: "low" as const, min: m + 2, price: 99 + i, confirmedMin: null, legAmount: "1000000000", renewalAmount: null },
+        ]);
+        const grid: PointGrid = { base: 100, touchMin: mins[0], pivots, newHighs: mins.map((m, i) => ({ min: m, open: 100 + i, high: 101 + i, low: 100 + i, close: 101 + i, tv: "6000000000" })), prevBase: 100 };
+        if (!byDate.has(date)) byDate.set(date, new Map());
+        byDate.get(date)!.set(stockCode, grid);
+    }
+    return { version: 1, byDate };
+}
 
 /** 심을 수 있는 피드들 — 안 준 것은 **빈 값**으로 심는다(로딩 상태가 남지 않게). */
 export interface Seed {
@@ -86,7 +121,6 @@ export function seededClient(seed: Seed = {}): QueryClient {
     const qc = new QueryClient({
         defaultOptions: { queries: { retry: false, refetchOnMount: false, refetchOnWindowFocus: false, gcTime: Infinity } },
     });
-    qc.setQueryData(allPointsQuery().queryKey, seed.points ?? []);
     // candidateDays 는 최소 앵커 행으로 변환해 테이블에 합류 — 후보 파생(candidateDaysOf)이 실경로로 돈다.
     const seededAnchors = [
         ...(seed.anchors ?? []),
@@ -98,7 +132,8 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
     qc.setQueryData(rankSectionsQuery().queryKey, seed.rankSections ?? { version: 1, dates: [], pending: [] });
-    qc.setQueryData(pointGridsQuery().queryKey, seed.pointGrids ?? { version: 1, byDate: new Map() });
+    // 격자 = 타점의 원천. 명시 격자가 있으면 그대로, 없으면 seed.points 를 최소 격자로 번역한다.
+    qc.setQueryData(pointGridsQuery().queryKey, seed.pointGrids ?? gridsFromPoints(seed.points ?? []));
     qc.setQueryData(allThemeMembersQuery().queryKey, seed.themeMembers ?? []);
     qc.setQueryData(stockMasterQuery().queryKey, seed.stockNames ?? namesFromFeeds(seed));
     if (seed.daySnapshot) qc.setQueryData(["day-replay-lru", seed.daySnapshot.date], seed.daySnapshot.data);
