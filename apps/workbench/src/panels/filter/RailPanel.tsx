@@ -306,6 +306,7 @@ function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, dragHandle, 
             axis={axis}
             values={ax.computedValues.get(axis.key) ?? EMPTY_VALUES}
             strongerWhen={meta?.strongerWhen ?? "higher"}
+            scale={meta?.scale}
             fmtValue={meta?.fmt ?? ((n) => n.toFixed(1))}
             ranges={predicateOfKind(stages, key, "axisValue")?.ranges ?? []}
             markerKey={markerKey}

@@ -39,11 +39,13 @@ const properSubset = (member: number[], total: number): number[] | undefined =>
 // ── 계산 축 ────────────────────────────────────────────────────────────────
 
 export function ComputedAxisRail({
-    axis, values, strongerWhen, fmtValue, ranges, markerKey, memberKeys, dragHandle, stow, onType, onChange,
+    axis, values, strongerWhen, scale, fmtValue, ranges, markerKey, memberKeys, dragHandle, stow, onType, onChange,
 }: CommonProps & {
     /** 타점키 → 수치. */
     values: Map<string, number>;
     strongerWhen: "higher" | "lower";
+    /** 레일 좌표 척도(축 정의 선언) — "log" 면 틱·경계·스냅이 전부 로그 좌표로 접힌다(시총). */
+    scale?: "log";
     /** 값 → 라벨(단위가 축마다 다르다: %·일…). 축 정의에서 내려온 것. */
     fmtValue: (v: number) => string;
     ranges: readonly AxisValueRange[];
@@ -55,11 +57,11 @@ export function ComputedAxisRail({
     const domain = useMemo(() => valueDomain(values), [values]);
     // 스냅 색인 — 드래그(pointermove마다 최근접 스냅)가 매번 전 타점을 선형 스캔하지 않게 렌더당 한 번 정렬.
     const fracIndex = useMemo(
-        () => (domain ? buildFracIndex(values, domain, strongerWhen) : null),
-        [values, domain, strongerWhen],
+        () => (domain ? buildFracIndex(values, domain, strongerWhen, scale) : null),
+        [values, domain, strongerWhen, scale],
     );
 
-    const frac = (v: number): number => (domain ? valueToFrac(v, domain, strongerWhen) : 0.5);
+    const frac = (v: number): number => (domain ? valueToFrac(v, domain, strongerWhen, scale) : 0.5);
     const boundFrac = (b: AxisBound): number => {
         const v = resolveBound(b, values);
         return v === undefined ? 0.5 : frac(v); // 앵커 소실 = 가운데(라벨은 ?)
@@ -74,17 +76,17 @@ export function ComputedAxisRail({
     const strongEnd: AxisBound = { kind: "value", value: strongerWhen === "higher" ? (domain?.max ?? 0) : (domain?.min ?? 0) };
 
     const ticks = useMemo(
-        () => (domain ? [...values.values()].map((v) => valueToFrac(v, domain, strongerWhen)) : []),
-        [values, domain, strongerWhen],
+        () => (domain ? [...values.values()].map((v) => valueToFrac(v, domain, strongerWhen, scale)) : []),
+        [values, domain, strongerWhen, scale],
     );
 
     // 멤버 자리 = 같은 값 지도의 부분집합 — 새 기하 없이 기존 틱에 색만 갈린다.
     const memberTicks = useMemo(() => {
         if (!memberKeys || !domain) return undefined;
         const out: number[] = [];
-        for (const [k, val] of values) if (memberKeys.has(k)) out.push(valueToFrac(val, domain, strongerWhen));
+        for (const [k, val] of values) if (memberKeys.has(k)) out.push(valueToFrac(val, domain, strongerWhen, scale));
         return properSubset(out, values.size);
-    }, [memberKeys, values, domain, strongerWhen]);
+    }, [memberKeys, values, domain, strongerWhen, scale]);
 
     const railRanges = toRailRanges(ranges, weakEnd, strongEnd, strongerWhen);
     // 제 행 키로 먼저 묻고, 없으면 시각을 벗겨 차트 키로(rowLookup 과 같은 폴백) — 타점 선택도 day 축에 선다.

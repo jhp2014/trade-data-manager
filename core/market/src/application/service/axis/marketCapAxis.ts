@@ -30,7 +30,9 @@ export function marketCapAxis(): DayComputedAxisDef {
         version: 1,
         strongerWhen: "higher", // 큰 값이 우측(2026-09-02 사용자 확정 — 레일 좌→우 = 작은→큰 통일)
         grain: "day",
-        display: { suffix: "억", decimals: 0, signed: false },
+        // 값이 1억~수천만억으로 수만 배 갈린다 — 선형 레일이면 소형주 전 구간이 왼쪽 픽셀 몇 개에 뭉개진다.
+        // 이 축은 0 이하를 결손 처리하므로 로그의 정의역(양수)이 계산에서 보장된다.
+        display: { suffix: "억", decimals: 0, signed: false, scale: "log" },
         inputs: ["marketCap"],
         compute: computeMarketCap,
     };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildFracIndex, computedAxisView, formatAxisValue, nearestPointAt, nearestPointInIndex, valueDomain } from "../computedAxis.js";
+import { buildFracIndex, computedAxisView, formatAxisValue, nearestPointAt, nearestPointInIndex, valueDomain, valueToFrac } from "../computedAxis.js";
 import type { ComputedAxisFeed, ComputedAxisPoint } from "@trade-data-manager/wire";
 
 const feed = (over: Partial<ComputedAxisFeed> = {}): ComputedAxisFeed => ({
@@ -112,5 +112,33 @@ describe("정렬 스냅 색인 — nearestPointAt 의 이분 탐색판(레일 �
         const idx = buildFracIndex(one, valueDomain(one)!, "higher");
         expect(nearestPointInIndex(0, idx)).toBe("only");
         expect(nearestPointInIndex(1, idx)).toBe("only");
+    });
+});
+
+describe("valueToFrac — log 척도(시총류: 수만 배 값 갈림)", () => {
+    const domain = { min: 1, max: 10_000 };
+
+    it("십진 로그 좌표 — 기하 가운데(100)가 0.5 에 선다(선형이면 0.01 로 뭉개진다)", () => {
+        expect(valueToFrac(100, domain, "higher", "log")).toBeCloseTo(0.5, 10);
+        expect(valueToFrac(1, domain, "higher", "log")).toBe(0);
+        expect(valueToFrac(10_000, domain, "higher", "log")).toBe(1);
+        expect(valueToFrac(100, domain, "lower", "log")).toBeCloseTo(0.5, 10); // 방향 뒤집기는 그대로 동작
+    });
+
+    it("스냅 색인·선형판이 같은 로그 좌표를 쓴다 — 한쪽만 선형이면 드래그가 엉뚱한 타점에 붙는다", () => {
+        const values = new Map([["a", 1], ["b", 100], ["c", 10_000]]);
+        const idx = buildFracIndex(values, domain, "higher", "log");
+        expect(nearestPointInIndex(0.45, idx)).toBe("b"); // 선형 좌표라면 b(0.01)가 아니라 c 쪽이 잡힌다
+        expect(nearestPointAt(0.45, values, domain, "higher", "log")).toBe("b");
+    });
+
+    it("도메인에 0 이하가 섞이면 선형 폴백 — 로그 정의역 밖에서 NaN 을 만들지 않는다", () => {
+        expect(valueToFrac(50, { min: 0, max: 100 }, "higher", "log")).toBe(0.5);
+    });
+
+    it("축 정의의 display.scale 이 뷰로 노출된다", () => {
+        const v = computedAxisView(feed({ display: { suffix: "억", decimals: 0, signed: false, scale: "log" } }));
+        expect(v.scale).toBe("log");
+        expect(computedAxisView(feed()).scale).toBeUndefined();
     });
 });

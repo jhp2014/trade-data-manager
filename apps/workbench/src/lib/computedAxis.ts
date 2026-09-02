@@ -64,6 +64,8 @@ export interface ComputedAxisView {
      */
     values: Map<string, number>;
     strongerWhen: "higher" | "lower";
+    /** 레일 좌표 척도(축 정의가 선언) — "log" 면 valueToFrac 이 십진 로그로 접는다. 값 자체는 원시 그대로. */
+    scale?: "log";
     /** 이 축의 값 표시 함수(단위·자릿수 포함, 포화는 ∞). */
     fmt: (v: number) => string;
 }
@@ -109,6 +111,7 @@ export function computedAxisView(feed: ComputedAxisFeed): ComputedAxisView {
         line,
         values,
         strongerWhen: feed.strongerWhen,
+        scale: feed.display?.scale,
         fmt: (v) => (anySaturated && v === saturatedValue ? SATURATED_LABEL : formatAxisValue(v, feed.display)),
     };
 }
@@ -124,10 +127,19 @@ export function valueDomain(values: Map<string, number>): { min: number; max: nu
 /**
  * 수치 → 레일 프랙션(0=약/왼쪽, 1=강/오른쪽). 강한 쪽이 작은 값인 축이면 뒤집는다 —
  * 레인·시트의 "오른쪽이 강함" 관례를 레일도 따라야 눈이 헷갈리지 않는다.
+ * scale="log"(축 정의 선언)면 십진 로그 좌표로 접는다 — 시총처럼 수만 배로 갈리는 값의 처방.
+ * 로그는 도메인이 전부 양수일 때만 선다(선언 축이 0 이하를 결손 처리해 보장) — 아니면 선형 폴백.
  */
-export function valueToFrac(v: number, domain: { min: number; max: number }, strongerWhen: "higher" | "lower"): number {
-    const span = domain.max - domain.min;
-    const f = span <= 0 ? 0.5 : (v - domain.min) / span;
+export function valueToFrac(v: number, domain: { min: number; max: number }, strongerWhen: "higher" | "lower", scale?: "log"): number {
+    let f: number;
+    if (scale === "log" && domain.min > 0) {
+        const lo = Math.log10(domain.min);
+        const span = Math.log10(domain.max) - lo;
+        f = span <= 0 ? 0.5 : (Math.log10(Math.max(v, domain.min)) - lo) / span;
+    } else {
+        const span = domain.max - domain.min;
+        f = span <= 0 ? 0.5 : (v - domain.min) / span;
+    }
     return Math.max(0, Math.min(1, strongerWhen === "higher" ? f : 1 - f));
 }
 
@@ -137,11 +149,12 @@ export function nearestPointAt(
     values: Map<string, number>,
     domain: { min: number; max: number },
     strongerWhen: "higher" | "lower",
+    scale?: "log",
 ): string | null {
     let best: string | null = null;
     let bestGap = Infinity;
     for (const [key, v] of values) {
-        const gap = Math.abs(valueToFrac(v, domain, strongerWhen) - frac);
+        const gap = Math.abs(valueToFrac(v, domain, strongerWhen, scale) - frac);
         if (gap < bestGap) { bestGap = gap; best = key; }
     }
     return best;
@@ -161,8 +174,9 @@ export function buildFracIndex(
     values: Map<string, number>,
     domain: { min: number; max: number },
     strongerWhen: "higher" | "lower",
+    scale?: "log",
 ): FracIndex {
-    const entries = [...values].map(([key, v]) => [valueToFrac(v, domain, strongerWhen), key] as const);
+    const entries = [...values].map(([key, v]) => [valueToFrac(v, domain, strongerWhen, scale), key] as const);
     entries.sort((a, b) => a[0] - b[0]);
     return { fracs: entries.map((e) => e[0]), keys: entries.map((e) => e[1]) };
 }

@@ -13,6 +13,8 @@ import { useWorkbench } from "../store/workbench.js";
 /** 계산 축의 화면용 메타 — 값 자체가 아니라 값을 어떻게 놓고 어떻게 읽는지. */
 export interface ComputedAxisMeta {
     strongerWhen: "higher" | "lower";
+    /** 레일 좌표 척도(축 정의 선언) — "log" 면 valueToFrac 이 십진 로그로 접는다(시총). */
+    scale?: "log";
     /** 값 → 라벨. 단위가 축마다 다르다(%·일…) — 축 정의가 규격을 주고 여기선 함수로만 다닌다. */
     fmt: (v: number) => string;
 }
@@ -91,7 +93,7 @@ export function useRankAxesValue(): RankAxesView {
     }, [axes, setRankAxisOrder]);
 
     const computedValues = useMemo(() => new Map(computed.map((c) => [c.axis.key, c.values])), [computed]);
-    const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.key, { strongerWhen: c.strongerWhen, fmt: c.fmt }])), [computed]);
+    const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.key, { strongerWhen: c.strongerWhen, scale: c.scale, fmt: c.fmt }])), [computed]);
 
     const isLoading = computedQ.isLoading;
     // 반환 객체도 참조를 고정한다(useGroups 와 같은 이유) — Provider 가 이걸 context value 로 그대로 넘기므로,

@@ -263,11 +263,11 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
      * 축이 이 타점에 대해 아는 값 — 값의 자리(레일과 같은 좌표)와 표기.
      */
     const valueViews = useMemo(() => {
-        const m = new Map<string, { values: Map<string, number>; domain: { min: number; max: number }; strongerWhen: "higher" | "lower"; fmt: (v: number) => string }>();
+        const m = new Map<string, { values: Map<string, number>; domain: { min: number; max: number }; strongerWhen: "higher" | "lower"; scale?: "log"; fmt: (v: number) => string }>();
         for (const [axisId, values] of computedValues) {
             const domain = valueDomain(values);
             const meta = computedMeta.get(axisId);
-            if (domain && meta) m.set(axisId, { values, domain, strongerWhen: meta.strongerWhen, fmt: meta.fmt });
+            if (domain && meta) m.set(axisId, { values, domain, strongerWhen: meta.strongerWhen, scale: meta.scale, fmt: meta.fmt });
         }
         return m;
     }, [computedValues, computedMeta]);
@@ -275,7 +275,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     const valuedOf = useMemo(() => (axisId: string, row: SheetRow): ValuedCell | undefined => {
         const view = valueViews.get(axisId);
         const v = view ? rowLookup(view.values, row) : undefined; // day 축 값은 차트 행 — 폴백
-        return view && v !== undefined ? { frac: valueToFrac(v, view.domain, view.strongerWhen), text: view.fmt(v) } : undefined;
+        return view && v !== undefined ? { frac: valueToFrac(v, view.domain, view.strongerWhen, view.scale), text: view.fmt(v) } : undefined;
     }, [valueViews]);
 
     // 스크롤 위치 세션 복원 — 줄이 실제로 그려진 뒤 1회. onScroll 로 저장(useSessionScroll).
