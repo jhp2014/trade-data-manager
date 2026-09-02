@@ -3,7 +3,8 @@
   Windows 작업 스케줄러가 매일 20:30 에 이 스크립트 하나만 실행한다(체이닝).
 
     collect : pnpm --filter @trade-data-manager/ingest start backfill
-              (일상 한방 — 어제까지 N일 캔들·뉴스 + 당일 시총 + 공모가, 오늘 제외, skip-if-present)
+              (일상 한방 — 어제까지 N일 캔들·뉴스·일별속성(KRX 시총/상장주식수/소속부) + 공모가,
+               오늘 제외, skip-if-present. KRX 는 T-1 제공이라 20:30 시점에 어제치가 확실히 올라와 있다)
     backup  : pnpm --filter @trade-data-manager/db-ops backup
               (curation 미러 Supabase→로컬 내장 + 로컬 전체 덤프 + 복원검증 + Drive 업로드)
 

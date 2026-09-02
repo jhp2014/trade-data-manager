@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { extractIpoPrice } from "../ipoPrice.js";
-import type { ListInfoEvent } from "../marketCap.js";
+import type { ListInfoEvent } from "../ipoPrice.js";
 
 const ev = (listDate: string, issueType: string, issuePrice: string): ListInfoEvent => ({
     listDate,

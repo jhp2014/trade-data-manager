@@ -76,7 +76,7 @@ class FakeDailyCandle implements DailyCandleSnapshotReader {
     }
 }
 class FakeMarketCap implements DailyMarketCapReader {
-    async getByDateAndCodes(): Promise<[]> {
+    async getPreviousByDateAndCodes(): Promise<[]> {
         return [];
     }
 }

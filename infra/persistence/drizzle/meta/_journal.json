@@ -92,6 +92,20 @@
       "when": 1783485425091,
       "tag": "0012_concerned_penance",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1788324621075,
+      "tag": "0013_add_daily_stock_stat_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788327133073,
+      "tag": "0014_daily_stat_list_shares_not_null",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,10 @@
 // infra/db/schema — 새 헥사고날 시장데이터 스키마. 전용 Postgres 스키마 `market`(레거시 public 과 격리).
-// 설계 원칙(잠금): 본질(OHLCV)만 저장, 파생값(분봉거래대금·누적·등락률·전일종가·시총)은 저장 안 함 →
+// 설계 원칙(잠금): 본질만 저장, 파생값(분봉거래대금·누적·등락률·전일종가)은 저장 안 함 →
 //   읽을 때 도메인 순수함수(core/market price.ts)로 계산. FK 없음(무결성은 ingest 가 (종목,날) 단위로 관리).
-//   자연키 composite PK. 시총은 별 테이블(자가치유 일봉 overwrite 가 안 닿게).
+//   자연키 composite PK.
+//   ※ 시총(daily_market_cap.market_cap)은 형식상 파생이지만 **외부 소스(KRX)가 그 값으로 주는 것**이라
+//     받아 적는다 — 우리가 계산해 저장하는 게 아니다(계산하면 정의가 갈린다). 별 테이블인 이유는
+//     자가치유 일봉 overwrite 가 안 닿게 하기 위함.
 //
 // 수치 표현(잠금): 한국 주가/수량/금액은 전부 정수(원·주). 가격류는 integer(원 단가는 int 범위 안전),
 //   수량·금액류는 bigint 로 저장한다(과거 numeric → 행/인덱스 축소 + 비교/집계 가속). 도메인은 여전히
@@ -104,13 +107,24 @@ export const stockMaster = market.table("stock_master", {
     ipoPrice: integer("ipo_price"),
 });
 
-// 4. 당일 시총 — 별 테이블(자가치유 일봉 overwrite 가 안 닿게). 시총 = 원주가 KRX_close(D-1) × shares(D).
+// 4. 일별 종목 속성 — 별 테이블(자가치유 일봉 overwrite 가 안 닿게). 이름은 `daily_market_cap` 이지만
+//    내용은 (종목, 날)의 일별 속성 3종이고, **KRX 일별매매정보를 가공 없이 받아 적는다**(우리 계산 0):
+//      · marketCap  = MKTCAP    — 그 날 종가 × 그 날 상장주식수(**당일** 기준)
+//      · listShares = LIST_SHRS — 그 날 상장주식수
+//      · sectTpNm   = SECT_TP_NM— 그 날 소속부. **원문 그대로**("관리종목(소속부없음)" 등, 파싱 금지).
+//        KOSPI 는 전부 빈값이라 코스닥 전용 정보 → NULL.
+//    ⚠ 시총 축은 이 테이블의 **D-1 행**을 읽는다 — marketCap 이 당일 종가를 품어 D 칸에 그대로 쓰면
+//      "하루 시작 전 재료만" 규칙을 깬다(D-1 행 = 전일 종가 × 전일 상장주식수 = 아침에 보는 시총).
+//    listShares 는 NOT NULL(마이그 0014 — KRX 재백필로 전량을 덮은 뒤 조였다).
+//    sectTpNm 만 NULL 허용 — KOSPI 는 소속부가 빈값이라 결손이 정상이다.
 export const dailyMarketCap = market.table(
     "daily_market_cap",
     {
         stockCode: varchar("stock_code", { length: 10 }).notNull(),
         tradeDate: date("trade_date").notNull(),
         marketCap: bigint("market_cap", { mode: "bigint" }).notNull(),
+        listShares: bigint("list_shares", { mode: "bigint" }).notNull(),
+        sectTpNm: varchar("sect_tp_nm", { length: 40 }),
     },
     (t) => [primaryKey({ columns: [t.stockCode, t.tradeDate] })],
 );

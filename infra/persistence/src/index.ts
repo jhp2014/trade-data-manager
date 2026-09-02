@@ -33,8 +33,9 @@ export {
     rowToStockMaster,
 } from "./mappers/stockMaster.js";
 export {
-    marketCapToRow,
     rowToMarketCap,
+    dailyStatToRow,
+    rowToDailyStat,
 } from "./mappers/marketCap.js";
 export {
     newsHeadlineToRows,

@@ -33,7 +33,7 @@ function deps(v: { raw?: DailyCandle[]; adj?: DailyCandle[]; minutesByDay?: Reco
         rawDaily: { getRawDailyCandles: (_c, range) => Promise.resolve(within(v.raw ?? v.adj, range)) },
         adjDaily: { getDailyCandles: (_c, range) => Promise.resolve(within(v.adj, range)) },
         chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(v.anchors ?? []) },
-        marketCap: { getByDateAndCodes: () => Promise.resolve([]) },
+        marketCap: { getPreviousByDateAndCodes: () => Promise.resolve([]) },
     };
 }
 

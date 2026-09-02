@@ -20,7 +20,7 @@ const CACHE_ROOT = process.env.DAY_SNAPSHOT_CACHE_DIR ?? path.resolve(process.cw
 
 /** 파일 스키마 버전 — v4: MinuteDerived.minuteLow 추가(분당 OHLC 완성 — 골격 세분점 저점·캔들 오버레이).
  *  v3: rawPrevClose → basePrice(감자·액분 이벤트 보정 기준가)+baseFactor. 구파일=miss(지연 재빌드). */
-export const SNAPSHOT_SCHEMA_VERSION = 4;
+export const SNAPSHOT_SCHEMA_VERSION = 5; // 4→5: marketCap 이 당일 행 → 직전 거래일 행(뜻이 바뀌어 구파일 무효)
 
 /** 한 종목의 그날 불변 파생. universe = 분봉 있는 종목이라 minutes 는 항상 present. */
 export interface DaySnapshot {

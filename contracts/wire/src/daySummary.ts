@@ -22,7 +22,7 @@ export interface DailySnapshot {
     name: string | null;
     market: string | null;
     stats: ByMarket<DayStats | null>; // amount(거래대금, 원)는 각 시장 바의 값 — 표시엔 UN(통합) 사용
-    marketCap: string | null; // 그 거래일 시총(원, 무손실 string)
+    marketCap: string | null; // 그 거래일 시총(원, 무손실 string) = **직전 거래일** 종가 × 상장주식수(아침 기준)
     themes: ThemeTag[];
     comment: string | null; // 당일 종목 코멘트(사람 편집, 없으면 null)
 }

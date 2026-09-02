@@ -106,7 +106,9 @@ export class DerivedCache {
         const [candles, prevCloses, caps] = await Promise.all([
             this.deps.dailyCandle.getByDateAndCodes(date, codes),
             this.deps.dailyCandle.getPreviousCloses(date, codes),
-            this.deps.marketCap.getByDateAndCodes(date, codes),
+            // 시총은 **직전 거래일** 행 — 저장값이 KRX 정의(당일 종가×당일 주식수)라 그대로 쓰면
+            // 그날 등락이 섞인다. 보드도 축과 같은 뜻이어야 한다(아침에 정해져 있는 그릇 크기).
+            this.deps.marketCap.getPreviousByDateAndCodes(date, codes),
         ]);
         const candleByCode = new Map(candles.map((c) => [c.stockCode, c]));
         const prevByCode = new Map(prevCloses.map((p) => [p.stockCode, p])); // 시장별(krx·un) 전일종가 둘 다 사용

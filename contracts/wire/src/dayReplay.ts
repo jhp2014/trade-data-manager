@@ -20,7 +20,7 @@ export type MinuteDerived = Pick<
 export interface ReplayStock extends MinuteDerived {
     name: string | null;
     market: string | null;
-    marketCap: string | null; // 원, 무손실 string
+    marketCap: string | null; // 원, 무손실 string. **직전 거래일** 종가 × 상장주식수(아침 기준)
     themes: string[]; // 테마명
 }
 

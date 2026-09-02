@@ -29,7 +29,10 @@ export interface AxisDeps {
     adjDaily: AdjustedDailyReader;
     /** 차트 앵커(사람 입력 — 선·무시 캔들) — params 를 선언한 축만 읽는다. */
     chartAnchor: ChartAnchorReader;
-    /** 날짜별 시총(daily_market_cap = 원주가 KRX 종가(D-1) × 주식수(D)) — 시총 축의 재료. */
+    /**
+     * 날짜별 시총(daily_market_cap = KRX 가 준 그 날 종가 × 그 날 상장주식수) — 시총 축의 재료.
+     * 축은 **D-1 행**을 읽는다(getPreviousByDateAndCodes) — 당일 행은 그날 등락을 품어 규칙 2를 깬다.
+     */
     marketCap: DailyMarketCapReader;
 }
 

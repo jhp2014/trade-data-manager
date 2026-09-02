@@ -22,14 +22,7 @@ export {
     type KiwoomStockListSource,
 } from "./stockMaster/kiwoomStockListAdapter.js";
 export { KisListInfoAdapter, type KisListInfoSource } from "./marketCap/kisListInfoAdapter.js";
-export {
-    KiwoomCurrentSharesAdapter,
-    type KiwoomBasicInfoSource,
-} from "./marketCap/kiwoomCurrentSharesAdapter.js";
-export {
-    KiwoomMarketSnapshotAdapter,
-    type KiwoomMarketListSource,
-} from "./marketCap/kiwoomMarketSnapshotAdapter.js";
+export { KrxDailyStatsAdapter, type KrxByddTrdSource } from "./marketCap/krxDailyStatsAdapter.js";
 export { KisNewsAdapter, type KisNewsSource, type KisNewsFilter } from "./news/kisNewsAdapter.js";
 export {
     TelegramNewsSearchAdapter,

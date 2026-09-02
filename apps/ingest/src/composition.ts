@@ -2,15 +2,15 @@
 // 공개 표면은 두 inbound 유스케이스: collector(쓰기) · query(읽기). 내부 협력 서비스는 여기서 조립한다.
 import { createKiwoom } from "@trade-data-manager/kiwoom";
 import { createKis } from "@trade-data-manager/kis";
+import { createKrx } from "@trade-data-manager/krx";
 import { createTelegram, NEWS_CHANNELS, type Telegram } from "@trade-data-manager/telegram";
 import {
     KiwoomDailyAdapter,
     KiwoomMinuteAdapter,
     KiwoomStockListAdapter,
-    KiwoomMarketSnapshotAdapter,
     KisListInfoAdapter,
+    KrxDailyStatsAdapter,
     KiwoomRawDailyCandleAdapter,
-    KiwoomCurrentSharesAdapter,
     KisNewsAdapter,
     TelegramNewsSearchAdapter,
 } from "@trade-data-manager/broker";
@@ -26,14 +26,12 @@ import {
 } from "@trade-data-manager/persistence";
 import {
     MarketDataCollectService,
-    DailyMarketCapRecordService,
-    MarketCapBackfillService,
+    DailyStatCollectService,
     IpoPriceEnrichService,
     NewsBackfillService,
     NewsSearchService,
     type MarketDataCollector,
-    type DailyMarketCapRecorder,
-    type MarketCapBackfiller,
+    type DailyStatCollector,
     type IpoPriceEnricher,
     type NewsBackfiller,
     type NewsSearcher,
@@ -46,17 +44,14 @@ import {
     MinuteSweepService,
     DailyCollector,
     MinuteCollector,
-    StockMarketCapBackfillService,
     IpoPriceBackfillService,
 } from "@trade-data-manager/market/internal";
 
 export interface IngestRuntime {
     /** 복기 데이터 수집(Command). 당일/과거/범위/월 전부 collect(range). */
     collector: MarketDataCollector;
-    /** 당일 시총 입력(Command). 전일종가 × 현재주식수를 그날 칸에 1행씩. */
-    marketCapRecorder: DailyMarketCapRecorder;
-    /** 전종목 날짜별 시총 백필(Command). 과거 임의 구간을 KIS 역산+원주가로 재구성. */
-    marketCapBackfiller: MarketCapBackfiller;
+    /** 일별 종목 속성 수집(Command). 시총·상장주식수·소속부를 KRX 에서 날짜당 2콜로. 백필=당일 동일 진입점. */
+    dailyStatCollector: DailyStatCollector;
     /** 유니버스 공모가 enrichment(Command). 최근 1년 상장 & ipoPrice 빈 종목만 채움. */
     ipoPriceEnricher: IpoPriceEnricher;
     /** 시황 뉴스 헤드라인 백필(Command). KIS 시황 피드를 연속 역방향 워크로 과거 채움. */
@@ -72,7 +67,8 @@ export interface IngestRuntime {
 
 export function createIngestRuntime(): IngestRuntime {
     const kiwoom = createKiwoom();
-    const kis = createKis(); // 시총 백필의 getListInfo 역산용(당일/수집 경로엔 미사용)
+    const kis = createKis(); // 공모가(getListInfo) 전용 — 시총 역산 소비는 폐기됐다(KRX 로 대체)
+    const krx = createKrx(); // 일별 종목 속성(시총·상장주식수·소속부) 소스
     const pool = createPoolFromEnv();
     const db = createDb(pool);
 
@@ -101,21 +97,11 @@ export function createIngestRuntime(): IngestRuntime {
 
     const dailyCollector = new DailyCollector({ universe, dailySweep, scanRepo: dailyRepo });
     const minuteCollector = new MinuteCollector({ scanRepo: dailyRepo, minuteSweep, minuteRepo });
-    // 당일 시총 = ka10099 한 스윕(전일종가×현재주식수). KIS·역산 불필요 → 키움 단독.
-    const marketCapRecorder = new DailyMarketCapRecordService({
-        snapshot: new KiwoomMarketSnapshotAdapter(kiwoom.rest),
-        repo: marketCapRepo,
-    });
-    // 전종목 날짜별 시총 백필 = 단일종목 백필(KIS 역산 + 원주가 테이블 KRX종가 + 현재주식수 폴백)을 거래종목에 fan-out.
-    const stockMarketCapBackfill = new StockMarketCapBackfillService({
-        listInfo: new KisListInfoAdapter(kis.rest),
-        rawDailyRepo, // 원주가 일봉 테이블(collect/backfill 이 상시 수집) — API 재조회 없음
-        currentShares: new KiwoomCurrentSharesAdapter(kiwoom.rest),
-        repo: marketCapRepo,
-    });
-    const marketCapBackfiller = new MarketCapBackfillService({
-        stockBackfill: stockMarketCapBackfill,
+    // 일별 종목 속성 = KRX 일별매매정보 날짜 fan-out(날짜당 유가증권·코스닥 2콜). 역산 없음 — 받아 적는다.
+    const dailyStatCollector = new DailyStatCollectService({
+        source: new KrxDailyStatsAdapter(krx.rest),
         scanRepo: dailyRepo,
+        repo: marketCapRepo,
     });
     // 공모가 enrichment — 최근 1년 상장 & ipoPrice 빈 종목을 KIS list-info 로 채운다(단일종목 추출을 fan-out).
     const ipoPriceEnricher = new IpoPriceEnrichService({
@@ -151,8 +137,7 @@ export function createIngestRuntime(): IngestRuntime {
 
     return {
         collector,
-        marketCapRecorder,
-        marketCapBackfiller,
+        dailyStatCollector,
         ipoPriceEnricher,
         newsBackfiller,
         newsSearcher,

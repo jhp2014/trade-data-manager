@@ -1,5 +1,6 @@
 // core/market/domain/stockMaster — 종목 마스터(준정적). 유니버스(ka10099) 1행 = 1종목.
-// 순수 모델(외부 import 0). 시총·상장주식수는 여기 두지 않는다 — 시총은 별 테이블(원주가×역산shares)로 분리.
+// 순수 모델(외부 import 0). 시총·상장주식수는 여기 두지 않는다 — 날짜마다 달라지는 값이라
+// (종목,날) 낟알의 별 테이블(daily_market_cap, KRX 소스)로 분리했다 → domain/equity/dailyStockStat.
 export interface StockMaster {
     stockCode: string;
     name: string;

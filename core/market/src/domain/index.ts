@@ -12,7 +12,7 @@ export * from "./candle/minuteBackfill.js";
 
 // equity — 종목 자체 속성(이름·상장일·공모가·시총·발행)
 export * from "./equity/stockMaster.js";
-export * from "./equity/marketCap.js";
+export * from "./equity/dailyStockStat.js";
 export * from "./equity/ipoPrice.js";
 
 // news — 외부 텍스트 이벤트(저장 헤드라인 / 라이브 검색)

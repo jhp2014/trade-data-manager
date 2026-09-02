@@ -1,12 +1,11 @@
 // ingest CLI — 얇은 명령들. core 유스케이스는 영역별로 단일 목적이고, "무엇을 같이 돌릴지"는 여기서 조립한다.
 //
-//   backfill [일수=5] [--overwrite]              일상 한방: 어제까지 N일 캔들·뉴스 + 당일 시총 + 공모가 (오늘 제외·영역별 격리)
+//   backfill [일수=5] [--overwrite]              일상 한방: 어제까지 N일 캔들·뉴스·일별속성 + 공모가 (오늘 제외·영역별 격리)
 //   backfill-candles <from> [to] [--overwrite]   일봉+분봉 (과거 시딩은 --overwrite)
 //   backfill-daily <from> [to] [--overwrite]     일봉만(차트용 딥 히스토리)
-//   backfill-marketcap <from> [to]               전종목 과거 시총(역산)
+//   daily-stats <from> [to]                      일별 종목 속성(KRX): 시총·상장주식수·소속부
 //   backfill-news <from> [to]                    시황 뉴스 헤드라인
 //   backfill-ipo                                 최근 1년 상장 공모가 enrichment
-//   marketcap                                    당일 시총만(ka10099)
 // (overwrite = 일봉 강제 재수집 + 그 날짜 분봉 비우고 새로 — 없으면 skip-if-present)
 import {
     seoulToday,
@@ -125,15 +124,18 @@ async function runBackfillDaily(rt: IngestRuntime, range: DateRange, overwrite: 
     console.log(`  ✓ 유니버스 ${r.universeCount} · 일봉 ${r.dailyRefreshed ? "수집" : "생략"}`);
 }
 
-/** 전종목 과거 시총 백필(역산). */
-async function runBackfillMarketCap(rt: IngestRuntime, range: DateRange): Promise<void> {
-    console.log(`▶ 시총 백필: ${range.from} ~ ${range.to} (전종목 역산)`);
-    const r = await rt.marketCapBackfiller.backfill(range, {
+/** 일별 종목 속성 수집(KRX) — 시총·상장주식수·소속부. 백필과 당일이 같은 진입점(범위 길이만 다름). */
+async function runDailyStats(rt: IngestRuntime, range: DateRange): Promise<void> {
+    console.log(`▶ 일별 종목 속성(KRX): ${range.from} ~ ${range.to}`);
+    const r = await rt.dailyStatCollector.collect(range, {
         onProgress: (p) => {
-            if (p.done % 200 === 0 || p.done === p.total) console.log(`  [${p.done}/${p.total}]`);
+            if (p.done % 20 === 0 || p.done === p.total) console.log(`  [${p.done}/${p.total}] ${p.date}`);
         },
     });
-    console.log(`  ✓ 종목 ${r.universe} · 저장 ${r.stored}행 · 실패 ${r.failed.length}`);
+    console.log(`  ✓ 거래일 ${r.dates} · 저장 ${r.stored}행 · 실패 ${r.failed.length}`);
+    // 누락은 정상 경로가 아니다 — 소스가 그날 거래한 종목을 빠뜨렸다는 뜻이라 0 이 아니면 드러나야 한다.
+    if (r.gaps.inherited > 0) console.log(`  ⚠ 소스 누락 ${r.gaps.inherited}행 승계 (상장 마지막 날 — 직전 상장주식수 × 그날 종가)`);
+    if (r.gaps.unresolved > 0) console.log(`  ⚠ 못 채운 구멍 ${r.gaps.unresolved}행 — 주식수가 바뀌었을 수 있어 안 채웠다(손으로 확인)`);
     if (r.failed.length) console.log(`    실패: ${r.failed.slice(0, 20).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
 }
 
@@ -146,13 +148,6 @@ async function runBackfillNews(rt: IngestRuntime, range: DateRange): Promise<voi
         },
     });
     console.log(`  ✓ 페이지 ${r.pages} · 헤드라인 ${r.headlines}건 저장`);
-}
-
-/** 당일 시총 입력(ka10099 라이브) — 그날 칸에 전일종가×현재주식수. */
-async function runMarketCapRecord(rt: IngestRuntime, date: string): Promise<void> {
-    console.log(`▶ 당일 시총: ${date} (전일종가×현재주식수)`);
-    const r = await rt.marketCapRecorder.record(date);
-    console.log(`  ✓ 유니버스 ${r.universe} · 저장 ${r.stored}종목`);
 }
 
 /** 공모가 enrichment — 최근 1년 상장 & ipoPrice 빈 종목만 채운다(steady-state 는 신규상장 소수). */
@@ -174,10 +169,10 @@ async function runArea(label: string, fn: () => Promise<void>, failures: string[
 }
 
 /**
- * 일상 백필(한 방) — 어제까지 최근 N일의 완성된 날만 캔들·뉴스 + 당일 시총 + 공모가.
+ * 일상 백필(한 방) — 어제까지 최근 N일의 완성된 날만 캔들·뉴스·일별속성 + 공모가.
  * **오늘은 제외**한다: 장중이면 오늘 분봉이 미완성인데 skip-if-present 라 한 번 저장되면 박제돼버림.
  * 그래서 오늘 데이터는 내일 실행 때 완성본으로 딱 한 번 들어간다(언제 돌리든 타이밍 무관, robust).
- * skip-if-present + 넉넉한 창이라 놓친 날도 따라잡음. 시총은 전일종가 기반이라 오늘 칸에 바로 완성값.
+ * skip-if-present + 넉넉한 창이라 놓친 날도 따라잡음. 일별속성(KRX)도 같은 범위 — 거래일은 일봉이 정한다.
  */
 async function runDaily(rt: IngestRuntime, daysBack: number, overwrite: boolean): Promise<void> {
     const today = seoulToday();
@@ -187,20 +182,19 @@ async function runDaily(rt: IngestRuntime, daysBack: number, overwrite: boolean)
     const failures: string[] = [];
     await runArea("캔들", () => runBackfillCandles(rt, range, overwrite), failures);
     await runArea("공모가", () => runBackfillIpo(rt), failures); // candles 가 stockMaster 갱신한 뒤 신규상장 null 채움
-    await runArea("시총", () => runMarketCapRecord(rt, today), failures); // record(today)=전일종가×현재주식수(완성값)
+    await runArea("일별속성", () => runDailyStats(rt, range), failures); // KRX 날짜 fan-out — 거래일은 일봉이 정한다
     await runArea("뉴스", () => runBackfillNews(rt, range), failures); // 어제까지 — 하루치 온전하게
     if (failures.length) throw new Error(`일부 영역 실패: ${failures.join(", ")}`);
 }
 
 const USAGE =
     "사용법:\n" +
-    "  backfill [일수=5] [--overwrite]              일상 한방: 어제까지 N일 캔들·뉴스 + 당일 시총 + 공모가 (오늘 제외, skip-if-present)\n" +
+    "  backfill [일수=5] [--overwrite]              일상 한방: 어제까지 N일 캔들·뉴스·일별속성 + 공모가 (오늘 제외, skip-if-present)\n" +
     "  backfill-candles <from> [to] [--overwrite]   일봉+분봉 (to 생략=하루, 과거 시딩은 --overwrite)\n" +
     "  backfill-daily <from> [to] [--overwrite]     일봉만(분봉 없이) — 차트용 딥 히스토리\n" +
-    "  backfill-marketcap <from> [to]               전종목 과거 시총 백필(역산)\n" +
+    "  daily-stats <from> [to]                      일별 종목 속성(KRX) — 시총·상장주식수·소속부(to 생략=하루)\n" +
     "  backfill-news <from> [to]                     시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
     "  backfill-ipo                                  최근 1년 상장 종목 공모가 enrichment(null만)\n" +
-    "  marketcap                                    당일 시총만(오늘 칸, 전일종가×현재주식수)\n" +
     "  news-search <검색어...> [--from <시각>] [--to <시각>] [--limit N]\n" +
     "                                               텔레그램 등록 방 전체 검색(최신순). 검색어 여러 개=AND(종목+키워드).\n" +
     "                                               시각=YYYY-MM-DD 또는 YYYY-MM-DDTHH:MM (예: --from 2026-06-25T09:00).";
@@ -239,12 +233,12 @@ async function main(): Promise<void> {
                 await runBackfillDaily(rt, { from: a1, to }, overwrite);
                 break;
             }
-            case "backfill-marketcap": {
-                if (!a1) throw new Error("사용법: backfill-marketcap <from> [to]");
+            case "daily-stats": {
+                if (!a1) throw new Error("사용법: daily-stats <from> [to]");
                 assertDate(a1, "from");
                 const to = a2 ?? a1;
                 assertDate(to, "to");
-                await runBackfillMarketCap(rt, { from: a1, to });
+                await runDailyStats(rt, { from: a1, to });
                 break;
             }
             case "backfill-news": {
@@ -257,11 +251,6 @@ async function main(): Promise<void> {
             }
             case "backfill-ipo": {
                 await runBackfillIpo(rt);
-                break;
-            }
-            case "marketcap": {
-                // 당일 전용 — ka10099 라이브(전일종가×현재주식수). 과거/빠뜨린 날은 backfill-marketcap(역산).
-                await runMarketCapRecord(rt, seoulToday());
                 break;
             }
             case "news-search": {
