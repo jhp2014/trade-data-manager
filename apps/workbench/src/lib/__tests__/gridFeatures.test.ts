@@ -13,6 +13,7 @@ const grid: PointGrid = {
     ],
     newHighs: [],
     prevBase: 8000, // 그날 기준가(전일 종가) — "당일 %" 의 분모. **base 와 다른 값**으로 둔다(분모를 바꿔치면 걸리게)
+    prevBaseKrx: 7900, // KRX 짝 — UN 과도 다른 값으로(두 판의 분모 바꿔치기가 걸리게)
 };
 
 const view = {
@@ -44,10 +45,31 @@ describe("gridFeatureFeeds", () => {
         expect(feed("daily-change-un").values.map((v) => v.value)).toEqual([25.25, 28.75]);
     });
 
-    it("그날 기준가가 없으면 당일 % 만 결손 — 나머지 특징은 산다", () => {
+    it("당일 %(KRX) — 분모만 KRX 짝(분자는 같은 UN 종가)", () => {
+        // 7,900 기준: 10,020 → +26.84% · 10,300 → +30.38%. UN 판(8,000)과 다른 값이라 분모 바꿔치기가 걸린다.
+        expect(feed("grid-daily-change-krx").values.map((v) => v.value)).toEqual([26.84, 30.38]);
+    });
+
+    it("그날 기준가가 없으면 당일 % 만 결손 — 나머지 특징은 산다(UN·KRX 각각 독립)", () => {
         const feeds2 = gridFeatureFeeds(view, () => ({ ...grid, prevBase: null }));
         expect(feeds2.find((f) => f.key === "daily-change-un")!.values).toHaveLength(0);
+        expect(feeds2.find((f) => f.key === "grid-daily-change-krx")!.values).toHaveLength(2); // KRX 는 산다
         expect(feeds2.find((f) => f.key === "baseline-position")!.values).toHaveLength(2);
+        const feeds3 = gridFeatureFeeds(view, () => ({ ...grid, prevBaseKrx: null }));
+        expect(feeds3.find((f) => f.key === "grid-daily-change-krx")!.values).toHaveLength(0);
+        expect(feeds3.find((f) => f.key === "daily-change-un")!.values).toHaveLength(2); // UN 은 산다
+    });
+
+    it("재돌파 경과(분) — 마디 발생 → Point 봉, breakout 은 결손", () => {
+        expect(feed("grid-renewal-elapsed").values).toEqual([
+            { stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 25 }, // 600 − 575
+        ]);
+    });
+
+    it("눌림 저점 위치 — 마디=0 · Point=1 구간에서 저점 피벗의 자리(소수 둘째)", () => {
+        expect(feed("grid-pullback-pos").values).toEqual([
+            { stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 0.6 }, // (590−575)/25
+        ]);
     });
 
     it("직전 마디 수 — levelIdx 그대로(0 = 기준선 돌파)", () => {
@@ -80,9 +102,13 @@ describe("gridFeatureFeeds", () => {
                 { kind: "low", min: 595, price: 10050, confirmedMin: null, legAmount: "0", renewalAmount: null },
             ],
         };
-        const v = gridFeatureFeeds(view, () => deep).find((f) => f.key === "grid-pullback-pct")!.values;
+        const deepFeeds = gridFeatureFeeds(view, () => deep);
         // (10300 − 10050) / 10300 ≈ 2.43%
-        expect(v).toEqual([{ stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 2.43 }]);
+        expect(deepFeeds.find((f) => f.key === "grid-pullback-pct")!.values).toEqual([
+            { stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 2.43 },
+        ]);
+        // 저점 위치도 **같은 저점**(최저)을 본다 — (595−575)/25 = 0.8. 선정 규칙이 두 벌로 갈리면 여기서 걸린다.
+        expect(deepFeeds.find((f) => f.key === "grid-pullback-pos")!.values.map((v) => v.value)).toEqual([0.8]);
     });
 
     it("구간 최저 저점이 Point 시각 이후면 눌림 깊이는 결손(축약의 수용된 귀결)", () => {
@@ -96,6 +122,9 @@ describe("gridFeatureFeeds", () => {
                 { kind: "low", min: 605, price: 10020, confirmedMin: null, legAmount: "0", renewalAmount: null },
             ],
         };
-        expect(gridFeatureFeeds(view, () => lateLow).find((f) => f.key === "grid-pullback-pct")!.values).toHaveLength(0);
+        const lateFeeds = gridFeatureFeeds(view, () => lateLow);
+        expect(lateFeeds.find((f) => f.key === "grid-pullback-pct")!.values).toHaveLength(0);
+        expect(lateFeeds.find((f) => f.key === "grid-pullback-pos")!.values).toHaveLength(0); // 같은 저점 = 같은 결손
+        expect(lateFeeds.find((f) => f.key === "grid-renewal-elapsed")!.values).toHaveLength(1); // 경과는 저점 무관
     });
 });

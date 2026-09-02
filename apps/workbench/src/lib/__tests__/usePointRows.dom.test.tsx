@@ -13,6 +13,7 @@ const grid: PointGrid = {
     pivots: [],
     newHighs: [{ min: 560, open: 9950, high: 10050, low: 9900, close: 10050, tv: "6000000000" }],
     prevBase: 9900,
+    prevBaseKrx: null,
 };
 
 function Probe(): JSX.Element {

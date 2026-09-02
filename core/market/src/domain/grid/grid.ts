@@ -65,6 +65,8 @@ export interface GridDayPrices {
     base: number | null;
     /** 그날 기준가 = 이벤트 보정 전일 종가(UN, `basePricesOf`). 못 구하면 null — 폴백은 없다. */
     prevBase: number | null;
+    /** 그날 기준가의 KRX 짝(`basePricesOf(...).base.krx`) — "당일 %(KRX)" 특징의 분모. 못 구하면 null. */
+    prevBaseKrx: number | null;
 }
 
 /** 자동 타점 격자 — 앵커 차트(종목,날짜) 하나의 압축물. 직렬화 그대로 파일 캐시에 실린다. */
@@ -84,6 +86,8 @@ export interface PointGrid {
      * 검출에는 안 쓰인다 — "당일 %" 를 클라가 격자만으로 파생하게 하는 재료다(축 공급자 재배치).
      */
     prevBase: number | null;
+    /** prevBase 의 KRX 짝 — "당일 %(KRX)" 의 분모(2026-09-02, 같은 원칙: 사실만 굽고 폴백 없음). */
+    prevBaseKrx: number | null;
 }
 
 /** 검출기 파라미터 — 전부 격자에 구워진다(바꾸면 version 상향 + 재계산). */
@@ -136,7 +140,7 @@ export function detectGrid(
     prices: GridDayPrices,
     options: GridDetectOptions = {},
 ): PointGrid | null {
-    const { base, prevBase } = prices;
+    const { base, prevBase, prevBaseKrx } = prices;
     const o = { ...DEFAULT_GRID_OPTIONS, ...options };
     // 창 필터를 densify **앞**에 둔다 — 뒤에 두면 창 밖 가격이 채움봉(직전 종가 평탄)으로 창 안에 새어들어
     // 러닝 최고가를 선점한다(프리마켓 배제 설정이 조용히 무력화되는 함정).
@@ -258,5 +262,5 @@ export function detectGrid(
         });
     }
 
-    return { base, touchMin, pivots, newHighs, prevBase };
+    return { base, touchMin, pivots, newHighs, prevBase, prevBaseKrx };
 }

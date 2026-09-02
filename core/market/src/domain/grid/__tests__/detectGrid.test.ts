@@ -18,8 +18,8 @@ const mc = (time: string, o: number, h: number, l: number, c: number, vol = 0): 
 /** 단일가 봉(O=H=L=C). vol 200_000 × 가격 10_000 = 거래대금 20억(floor 경계). */
 const flat = (time: string, p: number, vol = 0): MinuteCandle => mc(time, p, p, p, p, vol);
 
-/** 가격 둘(기준선·그날 기준가) — 검출 테스트는 기준선만 신경 쓴다(prevBase 는 통과 사실). */
-const px = (base: number | null = null, prevBase: number | null = null): GridDayPrices => ({ base, prevBase });
+/** 가격 셋(기준선·그날 기준가 UN/KRX) — 검출 테스트는 기준선만 신경 쓴다(prevBase* 는 통과 사실). */
+const px = (base: number | null = null, prevBase: number | null = null, prevBaseKrx: number | null = null): GridDayPrices => ({ base, prevBase, prevBaseKrx });
 
 describe("detectGrid — 입력 경계", () => {
     it("분봉 0건 → null(재료 없음)", () => {

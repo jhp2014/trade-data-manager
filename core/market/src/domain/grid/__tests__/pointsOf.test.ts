@@ -15,7 +15,7 @@ const nh = (min: number, high: number, eok: number, bull = true): GridNewHigh =>
 const hi = (min: number, price: number, confirmedMin: number | null): GridPivot => ({ kind: "high", min, price, confirmedMin, legAmount: "0", renewalAmount: null });
 // 재정식화 격자의 저점: confirmedMin·renewalAmount 항상 null — 헬퍼가 규칙을 증언한다.
 const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: null, legAmount: "0", renewalAmount: null });
-const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touchMin: 550, pivots: [], newHighs: [], prevBase: null, ...partial });
+const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touchMin: 550, pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, ...partial });
 
 describe("pointsOf", () => {
     it("기준선 미터치(또는 기준선 없음) → Point 없음", () => {

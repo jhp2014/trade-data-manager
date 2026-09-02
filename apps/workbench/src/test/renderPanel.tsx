@@ -57,7 +57,7 @@ function gridsFromPoints(points: readonly SeedPoint[]): DecodedPointGrids {
             { kind: "high" as const, min: m, price: 101 + i, confirmedMin: m + 1, legAmount: "2000000000", renewalAmount: i === 0 ? null : "1000000000" },
             { kind: "low" as const, min: m + 2, price: 99 + i, confirmedMin: null, legAmount: "1000000000", renewalAmount: null },
         ]);
-        const grid: PointGrid = { base: 100, touchMin: mins[0], pivots, newHighs: mins.map((m, i) => ({ min: m, open: 100 + i, high: 101 + i, low: 100 + i, close: 101 + i, tv: "6000000000" })), prevBase: 100 };
+        const grid: PointGrid = { base: 100, touchMin: mins[0], pivots, newHighs: mins.map((m, i) => ({ min: m, open: 100 + i, high: 101 + i, low: 100 + i, close: 101 + i, tv: "6000000000" })), prevBase: 100, prevBaseKrx: null };
         if (!byDate.has(date)) byDate.set(date, new Map());
         byDate.get(date)!.set(stockCode, grid);
     }

@@ -115,6 +115,25 @@ describe("PointGrids 대사", () => {
         expect(h.files.get(D)?.charts["A"].grid.prevBase).toBe(8000);
     });
 
+    it("KRX 짝(prevBaseKrx) — 같은 전일에서 KRX 종가를 싣고, KRX 만 없으면(세션 없음=0) KRX 만 결손", async () => {
+        const split = (code: string, date: string, unClose: number, krxClose: number): DailyCandle => ({
+            stockCode: code,
+            date,
+            krx: db(krxClose, krxClose),
+            un: db(unClose, unClose),
+        });
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D) },
+            adjDaily: { "A|2026-06-20": [split("A", "2026-06-20", 9000, 9000)], [`A|prev`]: [split("A", "2026-06-30", 8000, 0)] },
+            rawDaily: { [`A|prev`]: [split("A", "2026-06-30", 8000, 0)] },
+        });
+        await h.grids.reconcile();
+        const grid = h.files.get(D)?.charts["A"].grid;
+        expect(grid?.prevBase).toBe(8000); // UN 은 산다 — 두 분모는 독립 결손
+        expect(grid?.prevBaseKrx).toBeNull();
+    });
+
     it("직전 거래일이 조회 창(1개월) 밖이면 prevBase 는 결손 — 폴백을 지어내지 않는다", async () => {
         // ⚠ 이 케이스가 "창을 그날 하루로 다시 좁히는" 회귀의 그물이다 — 좁히면 위 케이스도 여기처럼 null 이 된다.
         const h = harness({

@@ -17,29 +17,33 @@ import type { AutoPointsView } from "./usePointGrids.js";
 const r2 = (x: number): number => Math.round(x * 100) / 100;
 
 /** Point 가 넘은 레벨(마디)에서 Point 캔들까지의 최저 저점 피벗 — 없으면 null(breakout 등, 결손은 결손).
+ *  눌림 깊이·저점 위치 두 특징이 **같은 저점**을 봐야 해서 선정 규칙은 이 한 곳이다(두 벌이면 두 축이
+ *  다른 저점을 말한다). 동가 tie 는 이른 봉(격자가 시간 오름차순이라 strict < 비교가 그 규칙).
  *  저점의 confirmedMin 은 안 본다(재정식화 격자에선 항상 null) — 가격 자체는 Point 시각 이전에 일어난
  *  사실이라 미래 누출이 아니고, 묻는 것이 "그 구간을 지나며 실제로 어디까지 빠졌나"이기 때문.
  *  저점 = 구간 **봉 최저**(피벗 최저가 아님)라 옛 격자보다 값이 조금 깊어질 수 있다(더 정확한 쪽). */
-function pullbackDepthPct(grid: PointGrid, levelMin: number | null, levelPrice: number, pointMin: number): number | null {
+function pullbackLowPivot(grid: PointGrid, levelMin: number | null, pointMin: number): { min: number; price: number } | null {
     if (levelMin === null) return null;
-    let low = Infinity;
+    let low: { min: number; price: number } | null = null;
     for (const p of grid.pivots) {
         if (p.kind !== "low" || p.min <= levelMin || p.min > pointMin) continue;
-        if (p.price < low) low = p.price;
+        if (low === null || p.price < low.price) low = p;
     }
-    if (!Number.isFinite(low) || levelPrice <= 0) return null;
-    return r2(((levelPrice - low) / levelPrice) * 100);
+    return low;
 }
 
 /**
- * 자동 Point 전체 → 특징 피드 4개. 자리는 useRankAxesValue 가 서버 피드 뒤에 이어 붙인다.
+ * 자동 Point 전체 → 특징 피드 7개. 자리는 useRankAxesValue 가 서버 피드 뒤에 이어 붙인다.
  * 값 없는 Point 는 values 에 없다 = 그 축에 미배치(계산 축 계약 그대로).
  */
 export function gridFeatureFeeds(view: AutoPointsView, gridOf: (code: string, date: string) => PointGrid | undefined): ComputedAxisFeed[] {
     const baselinePct: ComputedAxisPoint[] = [];
     const dailyPct: ComputedAxisPoint[] = [];
+    const dailyPctKrx: ComputedAxisPoint[] = [];
     const priorLevels: ComputedAxisPoint[] = [];
     const pullback: ComputedAxisPoint[] = [];
+    const renewalElapsed: ComputedAxisPoint[] = [];
+    const pullbackPos: ComputedAxisPoint[] = [];
     for (const a of view.points) {
         const key = { stockCode: a.stockCode, date: a.date, time: a.time };
         const grid = gridOf(a.stockCode, a.date);
@@ -48,10 +52,22 @@ export function gridFeatureFeeds(view: AutoPointsView, gridOf: (code: string, da
         // 곧 타점 봉이므로). 고가로 재면 이름만 같고 값이 다른 축이 된다.
         if (grid.base !== null && grid.base > 0) baselinePct.push({ ...key, value: r2(((a.point.close - grid.base) / grid.base) * 100) });
         // 당일 % — 분모는 격자에 구운 그날 기준가(basePricesOf = 차트 D 가격선과 같은 것). 없으면 결손.
+        // KRX 판은 분모만 KRX 짝 — 분자는 둘 다 UN 종가다(격자 신고가는 UN 만 굽는다: 장중 가격은 통합가 하나,
+        // 두 판을 가르는 정보는 전일 종가 쪽이라는 판단. 2026-09-02 사용자 확정).
         if (grid.prevBase !== null && grid.prevBase > 0) dailyPct.push({ ...key, value: r2(((a.point.close - grid.prevBase) / grid.prevBase) * 100) });
+        if (grid.prevBaseKrx !== null && grid.prevBaseKrx > 0) dailyPctKrx.push({ ...key, value: r2(((a.point.close - grid.prevBaseKrx) / grid.prevBaseKrx) * 100) });
         priorLevels.push({ ...key, value: a.point.levelIdx });
-        const depth = pullbackDepthPct(grid, a.point.levelMin, a.point.levelPrice, a.point.min);
-        if (depth !== null) pullback.push({ ...key, value: depth });
+        const low = pullbackLowPivot(grid, a.point.levelMin, a.point.min);
+        if (low !== null && a.point.levelPrice > 0) pullback.push({ ...key, value: r2(((a.point.levelPrice - low.price) / a.point.levelPrice) * 100) });
+        // 재돌파 전용 둘 — breakout 은 levelMin === null 이라 자연 결손("기준선 돌파는 해당 없음").
+        if (a.point.levelMin !== null) {
+            const span = a.point.min - a.point.levelMin; // 마디(직전 고가) 발생 → 갱신(Point 봉)까지 경과 분
+            if (span > 0) {
+                renewalElapsed.push({ ...key, value: span });
+                // 저점 위치 — 마디 시각을 0, Point 시각을 1 로 놓은 구간에서 눌림 저점이 어디쯤인가.
+                if (low !== null) pullbackPos.push({ ...key, value: r2(Math.max(0, Math.min(1, (low.min - a.point.levelMin) / span))) });
+            }
+        }
     }
     return [
         {
@@ -76,11 +92,32 @@ export function gridFeatureFeeds(view: AutoPointsView, gridOf: (code: string, da
             values: priorLevels,
         },
         {
+            key: "grid-daily-change-krx",
+            name: "당일 % (KRX)",
+            strongerWhen: "higher",
+            display: { suffix: "%", decimals: 1, signed: true },
+            values: dailyPctKrx,
+        },
+        {
             key: "grid-pullback-pct",
             name: "눌림 깊이",
             strongerWhen: "lower",
             display: { suffix: "%", decimals: 1, signed: false },
             values: pullback,
+        },
+        {
+            key: "grid-renewal-elapsed",
+            name: "재돌파 경과(분)",
+            strongerWhen: "lower", // 빨리 되돌아올수록 = 눌림을 소화한 힘이 큰 자리(잠정 — 화면 보고 뒤집기 쉬움)
+            display: { suffix: "분", decimals: 0, signed: false },
+            values: renewalElapsed,
+        },
+        {
+            key: "grid-pullback-pos",
+            name: "눌림 저점 위치",
+            strongerWhen: "higher", // 1 에 가까울수록 = 늦게까지 눌리다 곧장 갱신(V자, 잠정)
+            display: { suffix: "", decimals: 2, signed: false },
+            values: pullbackPos,
         },
     ];
 }

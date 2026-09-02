@@ -19,8 +19,8 @@
 //   재료 내용은 못 본다. 처방은 계산 축과 동일: POINT_GRID_CALC_VERSION 상향 또는 캐시 삭제.
 import {
     BASELINE_PARAM,
+    baselineAnchorAdjustedPrice,
     basePricesOf,
-    candlePrice,
     chartKeyOf,
     DEFAULT_GRID_OPTIONS,
     detectGrid,
@@ -45,9 +45,10 @@ import { POINT_GRID_FILE_VERSION } from "./gridStore.js";
 
 /** 검출 규칙 버전 — 격자 **스키마·알고리즘**이 바뀌면 올린다(전량 재굽기). 검출 파라미터(zigzag·floor·세션 창)
  *  변경은 여기가 아니라 차트 지문(optsKey)이 자동으로 잡는다 — 버전은 코드 변경, 지문은 설정 변경.
+ *  6: 2026-09-02 KRX 기준가(prevBaseKrx) 수록 — 당일 %(KRX) 특징의 분모
  *  5: 2026-09-01 그날 기준가(prevBase) 수록 — 당일 % 를 클라가 격자만으로 파생
  *  4: 2026-08-31 zigzag 재정식화(상태기계 폐기·정의 직접 계산·renewalAmount) */
-export const POINT_GRID_CALC_VERSION = 5;
+export const POINT_GRID_CALC_VERSION = 6;
 
 /** 그날 기준가 조회 창 — `basePricesOf` 는 **date 보다 이른 최대 날짜**(직전 거래일) 하나만 있으면 되고,
  *  창은 연휴·거래정지를 덮는 여유일 뿐이다(넓혀도 값이 안 바뀐다 — 더 이른 봉은 안 쓰인다).
@@ -373,30 +374,17 @@ export class PointGrids {
         ]);
         if (minutes.length === 0) return null;
 
-        // 승자 앵커 값 — 수정주가 스케일로. 일봉 앵커는 그 하루 수정주가, 분봉 앵커(원주가)는 그 날 환산비로 나눈다.
-        let adjusted: number | null;
-        if (!anchor.anchorTime) {
-            const rows = await adjDaily.getDailyCandles(code, { from: anchor.anchorDate, to: anchor.anchorDate });
-            adjusted = candlePrice(rows.find((c) => c.date === anchor.anchorDate)?.[anchor.market]?.[anchor.field]);
-        } else {
-            const anchorRange = { from: anchor.anchorDate, to: anchor.anchorDate };
-            const [anchorMinutes, anchorRaw, anchorAdj] = await Promise.all([
-                minute.getMinuteCandles(code, anchor.anchorDate),
-                rawDaily.getRawDailyCandles(code, anchorRange),
-                adjDaily.getDailyCandles(code, anchorRange),
-            ]);
-            const bar = anchorMinutes.find((c) => c.time === anchor.anchorTime);
-            const price = candlePrice((anchor.market === "krx" ? bar?.krx : bar?.un)?.[anchor.field]);
-            const scale = rawScaleOf(anchorRaw, anchorAdj, anchor.anchorDate);
-            adjusted = price !== null && scale > 0 ? price / scale : null;
-        }
+        // 승자 앵커 값 — 수정주가 스케일로. 읽기 규칙은 기준선 % 축과 공용(baselineAnchorAdjustedPrice) —
+        // 두 벌이면 같은 선이 굽기와 축에서 다른 값으로 풀린다.
+        const adjusted = await baselineAnchorAdjustedPrice(anchor, this.cfg.deps);
         if (adjusted === null) return null;
 
         const base = Math.round(adjusted * rawScaleOf(rawDay, adjDay, date) * 1e6) / 1e6;
         // 그날 기준가 = 차트 D 가격선과 **같은 것**(basePricesOf = 원주가 직전종가 × 이벤트 보정계수).
         // 검출엔 안 쓰이고 격자에 실려 클라가 "당일 %" 를 파생한다 — 없으면 그 값이 결손이다(폴백 없음).
-        const prevBase = basePricesOf(rawDay, adjDay, date).base.un;
-        const grid = detectGrid(minutes, { base, prevBase }, this.cfg.detect);
+        // KRX 짝도 같은 원칙으로 싣는다(2026-09-02) — "당일 %(KRX)" 특징의 분모.
+        const dayBase = basePricesOf(rawDay, adjDay, date).base;
+        const grid = detectGrid(minutes, { base, prevBase: dayBase.un, prevBaseKrx: dayBase.krx }, this.cfg.detect);
         return grid === null ? null : { f, grid };
     }
 }
