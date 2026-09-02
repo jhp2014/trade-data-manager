@@ -16,12 +16,13 @@
 //
 // 레일 순서는 **이름 열을 끌어** 바꾼다(트랙은 조건 긋기라 잡이가 못 된다). 그 순서·서랍은 이 패널의
 // 로컬 저장물이다 — 시트 축 서열과 갈라져 있고, 셈은 axisOrder·axisDrawer(순수)에 있다.
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { usePointRows } from "../../lib/usePointRows.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
-import { type AxisRef } from "../../lib/computedAxis.js";
+import { computedAxisId, type AxisRef } from "../../lib/computedAxis.js";
+import { HIGH_LENS_AXIS_KEYS } from "../../lib/gridFeatures.js";
 import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
 import { useSubject } from "../../lib/subject.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
@@ -58,6 +59,13 @@ const DRAWER_OPEN_KEY = "wb.filterDrawerOpen";
  * **일부러 다르다**. 순서 저장물이 갈린 마당에 같은 타입이면 남의 목록을 떨어뜨렸을 때 엉뚱한 순서가 바뀐다.
  */
 const AXIS_DND = "application/x-filter-axis";
+/**
+ * 고점 렌즈에서만 서는 축 id — 렌즈를 갱신으로 되돌리면 축 목록에서 **사라진다**(죽은 게 아니라 숨은 것).
+ * 서랍 청소가 이걸 유령으로 오인해 지우면 렌즈를 한 번 되돌릴 때마다 서랍 멤버십이 영구 삭제된다 — 보호 목록.
+ * 타점 칸 안에서 이 축들 앞에 "고점" 소제목 한 줄을 둔다(축 그룹핑 — 행 분할·새 칸·순서 강제 아님).
+ */
+const HIGH_LENS_IDS = HIGH_LENS_AXIS_KEYS.map(computedAxisId);
+const HIGH_LENS_ID_SET = new Set(HIGH_LENS_IDS);
 
 export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
     const v = useFunnel();
@@ -116,7 +124,7 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
     useEffect(() => {
         if (ax.isLoading || ax.axes.length === 0) return;
         const live = ax.axes.map((a) => a.key);
-        setDrawerIds((ids) => pruneDrawer(ids, live));
+        setDrawerIds((ids) => pruneDrawer(ids, live, HIGH_LENS_IDS));
     }, [ax.isLoading, ax.axes, setDrawerIds]);
 
     /** 이 축 위에 놓을 수 있나 — **같은 층위 · 같은 편(서랍 안/밖)**. 편이 다르면 안 보이는 자리로 순서가 옮겨진다. */
@@ -270,7 +278,18 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
 
                                 {/* "축이 없다"는 **서랍 포함**으로 판단한다 — 전부 치운 칸에서 이 말은 거짓말이다. */}
                                 {axes.length === 0 && <Note>이 층위에 축이 없습니다</Note>}
-                                {outside.map((axis) => axisRow(axis, false))}
+                                {outside.map((axis, i) => (
+                                    <Fragment key={axis.key}>
+                                        {/* 고점 소제목 — 고점 렌즈 축의 연속 구간이 시작하는 자리마다(사용자가 순서를 섞으면 여러 번 설 수 있다 — 순서 pref 는 안 건드린다). */}
+                                        {HIGH_LENS_ID_SET.has(axis.key) && (i === 0 || !HIGH_LENS_ID_SET.has(outside[i - 1].key)) && (
+                                            <div title="고점 렌즈 전용 축 — 결정 봉이 그 다리의 확정 고점 봉이라 시그널 이후 정보까지 조건으로 씁니다(고점 −2% 이상 지정가 전제)"
+                                                style={{ padding: "5px 10px 1px", fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", letterSpacing: "0.04em" }}>
+                                                고점
+                                            </div>
+                                        )}
+                                        {axisRow(axis, false)}
+                                    </Fragment>
+                                ))}
                             </GrainSection>
                         </div>
                     );

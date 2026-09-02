@@ -27,6 +27,12 @@ describe("pruneDrawer", () => {
         const ids = ["c:a"];
         expect(pruneDrawer(ids, ["c:a", "c:b"])).toBe(ids);
     });
+
+    it("보호 키(렌즈로 잠깐 숨은 축)는 목록에 없어도 지우지 않는다 — 렌즈를 되돌릴 때마다 서랍이 비는 사고 방지", () => {
+        const ids = ["c:a", "c:grid-high-min"];
+        expect(pruneDrawer(ids, ["c:a"], ["c:grid-high-min"])).toBe(ids);
+        expect(pruneDrawer(["c:a", "c:grid-high-min", "c:dead"], ["c:a"], ["c:grid-high-min"])).toEqual(["c:a", "c:grid-high-min"]);
+    });
 });
 
 describe("splitByDrawer", () => {

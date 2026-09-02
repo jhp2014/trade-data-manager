@@ -25,4 +25,11 @@ describe("parsePointDef", () => {
         expect(parsePointDef({ bullOnly: 1 })!.bullOnly).toBe(true);
         expect(parsePointDef({ bullOnly: false })!.bullOnly).toBe(false);
     });
+
+    it("lens — 옛 저장물(필드 없음)·오염은 갱신(renewal), high 는 보존", () => {
+        expect(parsePointDef({})!.lens).toBe("renewal");
+        expect(parsePointDef({ lens: "pullback" })!.lens).toBe("renewal");
+        expect(parsePointDef({ lens: "high" })!.lens).toBe("high");
+        expect(isDefaultPointDef(parsePointDef({ lens: "high" })!)).toBe(false);
+    });
 });

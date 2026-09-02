@@ -39,7 +39,18 @@ export interface PointDefinition {
     mergeRisePct: number;
     /** 양봉(종가 > 시가) 캔들만 Point 자격. 기본 true. 양봉 여부는 격자 OHLC 의 읽기 파생이라 끄는 데 재굽기 불필요. */
     bullOnly: boolean;
+    /**
+     * 시그널 렌즈 = 결정 봉(decisions.md "시그널 렌즈"). `renewal` = 갱신 즉시(결정 봉 = Point 봉),
+     * `high` = 고점 눌림(결정 봉 = 그 다리의 확정 고점 봉 — 고점 −x%(x ≥ zigzag 2%) 지정가라 체결이 확정
+     * 터치 전엔 불가능해 "고점까지 특징"이 누출이 아니다). ⚠ **`pointsOf` 는 이 필드를 보지 않는다** —
+     * 행·행 시각은 두 렌즈에서 같다. 렌즈가 바꾸는 건 허용 축(다리·고점 축은 high 에서만)·차트 표식·시뮬
+     * 진입 앵커뿐이고, 한 타입에 두는 이유는 영속(wb.pointDef)·SavedSet payload·parsePointDef 가 전부
+     * 이 타입 하나를 지나기 때문(모수 선언의 일부).
+     */
+    lens: "renewal" | "high";
 }
+
+export type SignalLens = PointDefinition["lens"];
 
 export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     baselineGateEok: 50,
@@ -47,6 +58,7 @@ export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     excludeUptoMin: 0,
     mergeRisePct: 0,
     bullOnly: true,
+    lens: "renewal",
 };
 
 /** 판정된 Point. 파생 특징(기준선 대비 %·저점 깊이 등)은 특징 층이 격자+이 목록에서 계산한다. */

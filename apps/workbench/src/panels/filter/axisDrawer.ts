@@ -26,9 +26,11 @@ export const parseDrawerOpen = (o: unknown): Partial<Record<Grain, boolean>> | n
  * 죽은 축 id 청소 — 축이 지워지면 서랍에 유령 키가 남는다. 바뀔 게 없으면 **같은 배열을 그대로** 돌려준다
  * (setState 가 새 참조를 받으면 영속 쓰기가 무의미하게 돈다).
  * ⚠ 호출부는 축 목록이 **다 온 뒤에만** 부른다 — 로딩 중에 부르면 아직 안 온 축을 유령으로 오인해 지운다.
+ * `protectedKeys` = 지금 목록엔 없지만 **죽은 게 아니라 잠깐 숨은** 축(렌즈로 빠진 고점·다리 축) —
+ * 이걸 안 넘기면 렌즈를 한 번 되돌릴 때마다 서랍 멤버십이 영구 삭제된다.
  */
-export function pruneDrawer(ids: string[], liveAxisIds: readonly string[]): string[] {
-    const live = new Set(liveAxisIds);
+export function pruneDrawer(ids: string[], liveAxisIds: readonly string[], protectedKeys: readonly string[] = []): string[] {
+    const live = new Set([...liveAxisIds, ...protectedKeys]);
     return ids.every((k) => live.has(k)) ? ids : ids.filter((k) => live.has(k));
 }
 

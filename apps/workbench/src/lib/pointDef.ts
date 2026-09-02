@@ -14,6 +14,7 @@ export function parsePointDef(raw: unknown): PointDefinition | null {
         excludeUptoMin: num(r.excludeUptoMin, DEFAULT_POINT_DEFINITION.excludeUptoMin),
         mergeRisePct: num(r.mergeRisePct, DEFAULT_POINT_DEFINITION.mergeRisePct),
         bullOnly: bool(r.bullOnly, DEFAULT_POINT_DEFINITION.bullOnly), // 2026-08-31 추가 — 옛 저장물엔 없어 기본 true 로 채워진다
+        lens: r.lens === "high" ? "high" : DEFAULT_POINT_DEFINITION.lens, // 2026-09-02 추가 — 옛 저장물·오염은 갱신 렌즈
     };
 }
 

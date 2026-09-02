@@ -5,8 +5,8 @@ import { usePlaneBus } from "../store/usePlaneBus.js";
 import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
-import { autoPointsOfChart, useAutoPoints } from "../lib/PointGridsContext.js";
-import { minuteToHms } from "@trade-data-manager/market/domain";
+import { autoPointsOfChart, useAutoPoints, usePointGrids } from "../lib/PointGridsContext.js";
+import { legHighOf, minuteToHms } from "@trade-data-manager/market/domain";
 import type { AutoPointInput } from "../chart/minuteOverlays.js";
 import { ownBundle, useAnchorMarks, useBaselineLines, useIgnoreCandles } from "../lib/chartAnchorHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
@@ -79,15 +79,27 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const ignore = useIgnoreCandles(code, viewDate);
 
     // 자동 Point(격자 파생) — 정의(pointDef) 반영 즉석 파생. ◇ 마커가 품질 육안 검증 입구다(재현율 대신).
+    // 고점 렌즈면 ◇ 라벨에 다리 고점(시그널 이후 첫 확정 고점)을 덧붙이고, 그 봉엔 호박색 세로선을 따로 긋는다.
     const autoView = useAutoPoints();
-    const autoPoints = useMemo<AutoPointInput[]>(
-        () =>
-            autoPointsOfChart(autoView, code, viewDate).map((p) => ({
-                time: kstToUnix(viewDate, minuteToHms(p.min)),
-                label: `자동 ${p.kind === "breakout" ? "돌파" : "재돌파"} ${p.ordinal + 1}번째 · 레벨 ${p.levelPrice.toLocaleString()} · 대금 ${(Number(p.tv) / 1e8).toFixed(0)}억`,
-            })),
-        [autoView, code, viewDate],
-    );
+    const grids = usePointGrids();
+    const lens = useWorkbench((s) => s.pointDef.lens);
+    const { autoPoints, legHighTimes } = useMemo<{ autoPoints: AutoPointInput[]; legHighTimes: number[] }>(() => {
+        const grid = lens === "high" ? grids.gridOf(code, viewDate) : undefined;
+        const legTimes = new Set<number>();
+        const list = autoPointsOfChart(autoView, code, viewDate).map((p) => {
+            let label = `자동 ${p.kind === "breakout" ? "돌파" : "재돌파"} ${p.ordinal + 1}번째 · 레벨 ${p.levelPrice.toLocaleString()} · 대금 ${(Number(p.tv) / 1e8).toFixed(0)}억`;
+            if (lens === "high") {
+                const high = grid ? legHighOf(grid, p.min) : null;
+                if (high === null) label += " · 고점 없음(꼬리)";
+                else {
+                    label += ` · 고점 ${minuteToHms(high.pivot.min).slice(0, 5)} (+${(((high.pivot.price - p.levelPrice) / p.levelPrice) * 100).toFixed(1)}%)`;
+                    legTimes.add(kstToUnix(viewDate, minuteToHms(high.pivot.min)));
+                }
+            }
+            return { time: kstToUnix(viewDate, minuteToHms(p.min)), label };
+        });
+        return { autoPoints: list, legHighTimes: [...legTimes] };
+    }, [autoView, grids, lens, code, viewDate]);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
@@ -211,6 +223,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     pctBase={pctBase}
                                     markerTime={markerTime}
                                     autoPoints={autoPoints}
+                                    legHighTimes={legHighTimes}
                                     showPointInfo={showPointInfo}
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                     lockTimeScale={lockScale}

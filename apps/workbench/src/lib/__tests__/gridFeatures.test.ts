@@ -4,6 +4,8 @@ import type { PointGrid } from "@trade-data-manager/market/domain";
 import { gridFeatureFeeds } from "../gridFeatures.js";
 import type { AutoPointsView } from "../usePointGrids.js";
 
+const r1 = (x: number): number => Math.round(x * 10) / 10;
+
 const grid: PointGrid = {
     base: 10000,
     touch: { min: 550, tv: "0", cum: "0" },
@@ -109,6 +111,68 @@ describe("gridFeatureFeeds", () => {
         ]);
         // 저점 위치도 **같은 저점**(최저)을 본다 — (595−575)/25 = 0.8. 선정 규칙이 두 벌로 갈리면 여기서 걸린다.
         expect(deepFeeds.find((f) => f.key === "grid-pullback-pos")!.values.map((v) => v.value)).toEqual([0.8]);
+    });
+
+    it("갱신 렌즈(기본)엔 고점·다리 축이 **없다** — 시그널 이후 정보라 결손이 아니라 피드에서 빠진다(누출 게이트)", () => {
+        expect(feeds).toHaveLength(7);
+        expect(feeds.some((f) => f.key.startsWith("grid-high-") || f.key.startsWith("grid-leg-"))).toBe(false);
+        expect(gridFeatureFeeds(view, () => grid, "renewal")).toHaveLength(7);
+    });
+
+    describe("고점 렌즈 — 상속 7 + 고점 판 4 + 다리 축 3", () => {
+        // 다리 고점을 세우려면 격자에 크로싱·터치 누적이 필요하다. 세션: 터치 550(tv 1억, cum 1억) → 돌파 Point 560
+        // → H1 575(cum 6억, 첫 고점) → 저점 590(cum 8억) → 크로싱 598(tv 0.5억, cum 8.5억) → 재돌파 Point 600
+        // → H2 620(price 10600, cum 12.5억) → 저점 630(cum 13억).
+        const eok = (n: number): string => String(Math.round(n * 100_000_000));
+        const highGrid: PointGrid = {
+            ...grid,
+            touch: { min: 550, tv: eok(1), cum: eok(1) },
+            pivots: [
+                { kind: "high", min: 575, price: 10300, confirmedMin: 585, cum: eok(6), cross: null },
+                { kind: "low", min: 590, price: 10100, confirmedMin: null, cum: eok(8), cross: null },
+                { kind: "high", min: 620, price: 10600, confirmedMin: 625, cum: eok(12.5), cross: { min: 598, tv: eok(0.5), cum: eok(8.5) } },
+                { kind: "low", min: 630, price: 10400, confirmedMin: null, cum: eok(13), cross: null },
+            ],
+        };
+        const hf = gridFeatureFeeds(view, () => highGrid, "high");
+        const hfeed = (key: string) => hf.find((f) => f.key === key)!;
+
+        it("피드 14개 — 상속 7개는 갱신 렌즈와 **같은 값**(고점 시점 재계산 없음)", () => {
+            expect(hf).toHaveLength(14);
+            expect(hf.slice(0, 7).map((f) => f.key)).toEqual(feeds.map((f) => f.key));
+            expect(hfeed("baseline-position").values.map((v) => v.value)).toEqual([0.2, 3]);
+        });
+
+        it("고점 판 — 분자는 **고점가**(Point 종가가 아니다): 돌파 → H1 10,300, 재돌파 → H2 10,600", () => {
+            expect(hfeed("grid-high-baseline-pct").values.map((v) => v.value)).toEqual([3, 6]); // (10300−10000)/10000 · (10600−10000)/10000
+            expect(hfeed("grid-high-daily-change-un").values.map((v) => v.value)).toEqual([28.75, 32.5]); // /8000
+            expect(hfeed("grid-high-daily-change-krx").values.map((v) => v.value)).toEqual([30.38, 34.18]); // /7900
+            expect(hfeed("grid-high-min").values.map((v) => v.value)).toEqual([575, 620]);
+        });
+
+        it("다리 축 — 창 = 레벨 크로싱 봉 → 고점 봉: 돌파는 터치 봉부터, 재돌파는 전고점 크로싱 봉부터", () => {
+            // 돌파: 터치 550 → H1 575 = 25분, 대금 6−1+1 = 6억 / 26봉. 재돌파: 크로싱 598 → H2 620 = 22분, 대금 12.5−8.5+0.5 = 4.5억 / 23봉.
+            expect(hfeed("grid-leg-minutes").values.map((v) => v.value)).toEqual([25, 22]);
+            expect(hfeed("grid-leg-amount-per-min").values.map((v) => v.value)).toEqual([r1(6 / 26), r1(4.5 / 23)]);
+            // 레벨가 대비 상승: 돌파 (10300−10000)/10000 = 3%(= 고점 기준선 대비 %, 정의상 동일) · 재돌파 (10600−10300)/10300 ≈ 2.91%
+            expect(hfeed("grid-leg-rise-pct").values.map((v) => v.value)).toEqual([3, 2.91]);
+        });
+
+        it("꼬리 시그널(이후 확정 고점 없음)은 고점·다리 축 전부 결손 — 행은 남는다", () => {
+            const tail: PointGrid = { ...highGrid, pivots: highGrid.pivots.slice(0, 2) }; // H2 없음 → 재돌파 Point(600)는 꼬리
+            const tf = gridFeatureFeeds(view, () => tail, "high");
+            for (const k of ["grid-high-baseline-pct", "grid-high-min", "grid-leg-minutes", "grid-leg-amount-per-min", "grid-leg-rise-pct"]) {
+                expect(tf.find((f) => f.key === k)!.values.map((v) => v.time)).toEqual(["09:20:00"]);
+            }
+            expect(tf.find((f) => f.key === "baseline-position")!.values).toHaveLength(2); // 상속 축은 그대로
+        });
+
+        it("미터치 격자(touch null)에서 돌파 다리 축만 결손 — 고점 판은 산다", () => {
+            const noTouch: PointGrid = { ...highGrid, touch: null };
+            const nf = gridFeatureFeeds(view, () => noTouch, "high");
+            expect(nf.find((f) => f.key === "grid-leg-minutes")!.values.map((v) => v.time)).toEqual(["10:00:00"]);
+            expect(nf.find((f) => f.key === "grid-high-min")!.values).toHaveLength(2);
+        });
     });
 
     it("구간 최저 저점이 Point 시각 이후면 눌림 깊이는 결손(축약의 수용된 귀결)", () => {

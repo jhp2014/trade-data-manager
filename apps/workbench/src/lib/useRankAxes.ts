@@ -56,9 +56,12 @@ export function useRankAxesValue(): RankAxesView {
     //   열 설정·필터는 그동안 유령 주소를 든다(로드되면 되살아난다 — 청소는 축 목록이 온 뒤에만 돈다).
     const autoView = useAutoPoints();
     const gridsView = usePointGrids();
+    // 렌즈(정의 노브)에 따라 축 **목록**이 는다/준다 — 고점 렌즈에서만 고점·다리 축이 선다(누출 게이트).
+    // 갱신으로 되돌리면 그 축들이 목록에서 사라지므로 서랍 청소가 보호 목록(HIGH_LENS_AXIS_KEYS)을 봐야 한다.
+    const lens = useWorkbench((s) => s.pointDef.lens);
     const computed = useMemo(() => {
         const server = computedQ.data ?? [];
-        const synth = autoView.points.length > 0 ? gridFeatureFeeds(autoView, gridsView.gridOf) : [];
+        const synth = autoView.points.length > 0 ? gridFeatureFeeds(autoView, gridsView.gridOf, lens) : [];
         // 키 충돌 가드 — 서버가 승계 키를 다시 서빙하면 `axes` 엔 둘, `linesByAxis`(Map)엔 하나가 되어
         // **시트 열이 겹치고 그중 하나는 값이 어긋난다**(조용한 사고). 타입은 못 잡으니 여기서 짖는다.
         if (import.meta.env.DEV) {
@@ -67,7 +70,7 @@ export function useRankAxesValue(): RankAxesView {
             if (dup.length > 0) console.error(`[rank-axes] 축 키 충돌 — 서버와 클라 파생이 같은 키를 낸다: ${dup.join(", ")}`);
         }
         return [...server, ...synth].map(computedAxisView);
-    }, [computedQ.data, autoView, gridsView]);
+    }, [computedQ.data, autoView, gridsView, lens]);
 
     const axes = useMemo<AxisRef[]>(() => {
         const idx = new Map(orderPref.map((k, i) => [k, i]));

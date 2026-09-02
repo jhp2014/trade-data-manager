@@ -8,13 +8,33 @@
 // 값은 **병합(축약) 후 구조에서 계산**된다 —
 // 입력이 pointsOf 의 산출물(levelIdx·levelMin이 병합 반영)이라 원칙이 구조적으로 지켜진다.
 //
-// ⚠ 축 규칙 2(타점 시각까지만)는 클라 파생에도 그대로다 — 여기 특징은 전부 Point 시각 이전 정보만 본다.
-//   "상승폭(P→마디)" 류(P 이후)는 조건 축이 아니라 outcome 트랙(2026-08-31 사용자 확정).
+// ⚠ 축 규칙 2 = **그 렌즈의 결정 봉까지만**(decisions.md "시그널 렌즈"): 갱신 렌즈의 결정 봉은 Point 봉이라
+//   앞 7개 특징만 서고, 고점 렌즈(결정 봉 = 그 다리의 확정 고점 봉)에서만 고점 판·다리 축 7개가 **추가로**
+//   선다. 갱신 렌즈에서 그 값들은 시그널 이후 정보(outcome)라 결손이 아니라 **피드에서 빠진다**(누출 게이트는
+//   필터 행이 아니라 모수 선언 층이 진다). 상속 축은 고점 렌즈에서도 갱신 시점 값 그대로다(재계산 없음).
 import type { ComputedAxisFeed, ComputedAxisPoint } from "@trade-data-manager/wire";
-import type { PointGrid } from "@trade-data-manager/market/domain";
+import { legHighOf, legWindowOf, type PointGrid, type SignalLens } from "@trade-data-manager/market/domain";
 import type { AutoPointsView } from "./usePointGrids.js";
 
 const r2 = (x: number): number => Math.round(x * 100) / 100;
+const r1 = (x: number): number => Math.round(x * 10) / 10;
+const KRW_PER_EOK = 100_000_000;
+
+/**
+ * 고점 렌즈에서만 서는 축 키 — 렌즈를 갱신으로 되돌리면 축 목록에서 **사라지는** 키들이다.
+ * 서랍 청소(`pruneDrawer`)가 이 키들을 유령으로 오인해 사용자 설정을 지우지 않게 보호 목록으로 넘긴다.
+ */
+export const HIGH_LENS_AXIS_KEYS: readonly string[] = [
+    "grid-high-baseline-pct",
+    "grid-high-daily-change-un",
+    "grid-high-daily-change-krx",
+    "grid-high-min",
+    "grid-leg-minutes",
+    "grid-leg-amount-per-min",
+    "grid-leg-rise-pct",
+];
+const HIGH_LENS_KEY_SET = new Set(HIGH_LENS_AXIS_KEYS);
+export const isHighLensAxis = (key: string): boolean => HIGH_LENS_KEY_SET.has(key);
 
 /** Point 가 넘은 레벨(마디)에서 Point 캔들까지의 최저 저점 피벗 — 없으면 null(breakout 등, 결손은 결손).
  *  눌림 깊이·저점 위치 두 특징이 **같은 저점**을 봐야 해서 선정 규칙은 이 한 곳이다(두 벌이면 두 축이
@@ -33,10 +53,14 @@ function pullbackLowPivot(grid: PointGrid, levelMin: number | null, pointMin: nu
 }
 
 /**
- * 자동 Point 전체 → 특징 피드 7개. 자리는 useRankAxesValue 가 서버 피드 뒤에 이어 붙인다.
+ * 자동 Point 전체 → 특징 피드(갱신 렌즈 7개, 고점 렌즈 +7개). 자리는 useRankAxesValue 가 서버 피드 뒤에 이어 붙인다.
  * 값 없는 Point 는 values 에 없다 = 그 축에 미배치(계산 축 계약 그대로).
  */
-export function gridFeatureFeeds(view: AutoPointsView, gridOf: (code: string, date: string) => PointGrid | undefined): ComputedAxisFeed[] {
+export function gridFeatureFeeds(
+    view: AutoPointsView,
+    gridOf: (code: string, date: string) => PointGrid | undefined,
+    lens: SignalLens = "renewal",
+): ComputedAxisFeed[] {
     const baselinePct: ComputedAxisPoint[] = [];
     const dailyPct: ComputedAxisPoint[] = [];
     const dailyPctKrx: ComputedAxisPoint[] = [];
@@ -44,6 +68,14 @@ export function gridFeatureFeeds(view: AutoPointsView, gridOf: (code: string, da
     const pullback: ComputedAxisPoint[] = [];
     const renewalElapsed: ComputedAxisPoint[] = [];
     const pullbackPos: ComputedAxisPoint[] = [];
+    // 고점 판(분자 = 고점가) + 다리 축(창 = 레벨 크로싱 봉 → 고점 봉) — 고점 렌즈 전용.
+    const highBaselinePct: ComputedAxisPoint[] = [];
+    const highDailyPct: ComputedAxisPoint[] = [];
+    const highDailyPctKrx: ComputedAxisPoint[] = [];
+    const highMin: ComputedAxisPoint[] = [];
+    const legMinutes: ComputedAxisPoint[] = [];
+    const legAmountPerMin: ComputedAxisPoint[] = [];
+    const legRisePct: ComputedAxisPoint[] = [];
     for (const a of view.points) {
         const key = { stockCode: a.stockCode, date: a.date, time: a.time };
         const grid = gridOf(a.stockCode, a.date);
@@ -68,8 +100,27 @@ export function gridFeatureFeeds(view: AutoPointsView, gridOf: (code: string, da
                 if (low !== null) pullbackPos.push({ ...key, value: r2(Math.max(0, Math.min(1, (low.min - a.point.levelMin) / span))) });
             }
         }
+
+        if (lens !== "high") continue;
+        // 다리 고점 = 시그널 이후 첫 확정 고점(≤1:1). 꼬리(세션 끝까지 −2% 안 빠짐)는 전부 결손 — 눌림 시뮬에선 미체결.
+        const high = legHighOf(grid, a.point.min);
+        if (high === null) continue;
+        const hp = high.pivot.price;
+        if (grid.base !== null && grid.base > 0) highBaselinePct.push({ ...key, value: r2(((hp - grid.base) / grid.base) * 100) });
+        if (grid.prevBase !== null && grid.prevBase > 0) highDailyPct.push({ ...key, value: r2(((hp - grid.prevBase) / grid.prevBase) * 100) });
+        if (grid.prevBaseKrx !== null && grid.prevBaseKrx > 0) highDailyPctKrx.push({ ...key, value: r2(((hp - grid.prevBaseKrx) / grid.prevBaseKrx) * 100) });
+        highMin.push({ ...key, value: high.pivot.min });
+        // 다리 창 — 시작은 시그널이 넘은 레벨의 크로싱(돌파 = 터치 봉, 재돌파 = 전고점 크로싱 봉). 저대금 크로싱~Point
+        // 사이 대금이 창에 섞이는 건 의도(2026-09-02 사용자 확정). 세 축이 **같은 창**을 봐야 해서 한 번만 푼다.
+        const leg = legWindowOf(grid, a.point);
+        if (leg === null) continue;
+        legMinutes.push({ ...key, value: leg.minutes });
+        // 억원/분, 분모 = 창 봉 수(minutes + 1 — 포함 창이라 봉 수와 같은 자, 0 나눗셈 없음). 값 계약(decisions).
+        legAmountPerMin.push({ ...key, value: r1(Number(BigInt(leg.amount)) / KRW_PER_EOK / (leg.minutes + 1)) });
+        // 돌파 행에선 레벨가 = 기준선이라 "고점 기준선 대비 %"와 정의상 같은 값 — 재돌파 행에서만 갈린다.
+        if (a.point.levelPrice > 0) legRisePct.push({ ...key, value: r2(((hp - a.point.levelPrice) / a.point.levelPrice) * 100) });
     }
-    return [
+    const base: ComputedAxisFeed[] = [
         {
             key: "baseline-position", // 옛 서버 축에서 승계 — 저장된 열 설정·필터가 이 주소를 든다
             name: "기준선 대비 %",
@@ -120,4 +171,57 @@ export function gridFeatureFeeds(view: AutoPointsView, gridOf: (code: string, da
             values: pullbackPos,
         },
     ];
+    if (lens !== "high") return base;
+    const high: ComputedAxisFeed[] = [
+        {
+            key: "grid-high-baseline-pct",
+            name: "고점 기준선 대비 %",
+            strongerWhen: "higher",
+            display: { suffix: "%", decimals: 1, signed: true },
+            values: highBaselinePct,
+        },
+        {
+            key: "grid-high-daily-change-un",
+            name: "고점 당일 % (UN)",
+            strongerWhen: "higher",
+            display: { suffix: "%", decimals: 1, signed: true },
+            values: highDailyPct,
+        },
+        {
+            key: "grid-high-daily-change-krx",
+            name: "고점 당일 % (KRX)",
+            strongerWhen: "higher",
+            display: { suffix: "%", decimals: 1, signed: true },
+            values: highDailyPctKrx,
+        },
+        {
+            key: "grid-high-min",
+            name: "고점 시각(분)",
+            strongerWhen: "higher", // 자정기준 분 — 이름·표시가 시각으로 바뀌어도 값 계약은 분 정수(필터 경계의 뜻)
+            display: { suffix: "분", decimals: 0, signed: false },
+            values: highMin,
+        },
+        {
+            key: "grid-leg-minutes",
+            name: "다리 시간(분)",
+            strongerWhen: "higher", // 큰 값 우측(짧음→긺)
+            display: { suffix: "분", decimals: 0, signed: false },
+            values: legMinutes,
+        },
+        {
+            key: "grid-leg-amount-per-min",
+            name: "다리 대금/분",
+            strongerWhen: "higher",
+            display: { suffix: "억/분", decimals: 1, signed: false },
+            values: legAmountPerMin,
+        },
+        {
+            key: "grid-leg-rise-pct",
+            name: "다리 상승 %",
+            strongerWhen: "higher",
+            display: { suffix: "%", decimals: 1, signed: true },
+            values: legRisePct,
+        },
+    ];
+    return [...base, ...high];
 }
