@@ -102,6 +102,36 @@ export async function resolveBaselines(
 }
 
 /**
+ * 확정(승자) 기준선 앵커 하나의 가격을 **수정주가 스케일로** 직접 읽는다 — resolveBaselines 의 후속 반쪽.
+ * 격자 굽기(apps/api pointGrids.bake)와 기준선 % 축이 **같은 자**를 쓰기 위한 공용 함수 — 두 벌로 갈리면
+ * 같은 선이 굽기와 축에서 다른 값으로 풀리는 날이 조용히 온다. 원주가가 필요한 소비자는 반환값에
+ * 그 날 환산비(rawScaleOf)를 **곱해** 되돌린다. null = 앵커 캔들 미수집/값 없음(결손).
+ *
+ * 아래 anchorPrice(다중 후보 겨루기용 — 읽기를 배치로 미리 모아 둠)와 규칙이 같다: 일봉 앵커는
+ * 그 하루 수정주가 그대로, 분봉 앵커(원주가)는 앵커 날 환산비로 나눈다.
+ */
+export async function baselineAnchorAdjustedPrice(
+    anchor: BaselineAnchor,
+    deps: Pick<AxisDeps, "adjDaily" | "minute" | "rawDaily">,
+): Promise<number | null> {
+    if (!anchor.anchorTime) {
+        const rows = await deps.adjDaily.getDailyCandles(anchor.stockCode, { from: anchor.anchorDate, to: anchor.anchorDate });
+        return candlePrice(rows.find((c) => c.date === anchor.anchorDate)?.[anchor.market]?.[anchor.field]);
+    }
+    const range = { from: anchor.anchorDate, to: anchor.anchorDate };
+    const [minutes, raw, adj] = await Promise.all([
+        deps.minute.getMinuteCandles(anchor.stockCode, anchor.anchorDate),
+        deps.rawDaily.getRawDailyCandles(anchor.stockCode, range),
+        deps.adjDaily.getDailyCandles(anchor.stockCode, range),
+    ]);
+    const bar = minutes.find((c) => c.time === anchor.anchorTime);
+    const price = candlePrice(bar?.[anchor.market]?.[anchor.field]);
+    if (price === null) return null;
+    const scale = rawScaleOf(raw, adj, anchor.anchorDate);
+    return scale > 0 ? price / scale : null;
+}
+
+/**
  * 후보 하나의 가격 — 앵커가 지목한 캔들의 그 시장·그 값을 **수정주가 스케일로** 낸다.
  * 값 해석(미수집/0/비수치=null)은 도메인 candlePrice. 분봉 앵커(원주가)만 그 날 환산비로 나눠 자를 맞춘다.
  */

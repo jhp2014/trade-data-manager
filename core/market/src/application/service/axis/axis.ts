@@ -14,13 +14,13 @@
 //  3. **결손은 결손으로**: 재료가 없으면(분봉 부재·기준가 부재·해당 시장 세션 없음) 값을 지어내지 않고
 //     결과에서 뺀다 = 그 축에 미배치. 소비자(3치 술어)가 이미 결손을 다룬다.
 import type { ChartAnchor, ChartRef, Grain } from "#domain";
-import type { AdjustedDailyReader, ChartAnchorReader, MinuteReader, RawDailyReader } from "#port/query";
+import type { AdjustedDailyReader, ChartAnchorReader, DailyMarketCapReader, MinuteReader, RawDailyReader } from "#port/query";
 
 /** 시장 구분 — 축은 하나의 시장을 고른다(둘 다 보고 싶으면 축을 둘로. 축 안 토글 금지). */
 export type AxisMarket = "krx" | "un";
 
 /** 축이 읽는 재료의 선언. 지금은 문서·검수용이고, 앵커/가격선 의존 축이 들어오면 캐시 지문의 입력이 된다. */
-export type AxisInput = "minute" | "rawDaily" | "adjDaily";
+export type AxisInput = "minute" | "rawDaily" | "adjDaily" | "marketCap";
 
 /** 계산 축이 읽는 포트 묶음. 축마다 쓰는 게 다르지만 주입은 한 벌로 — 축 추가가 배선을 안 건드리게. */
 export interface AxisDeps {
@@ -29,6 +29,8 @@ export interface AxisDeps {
     adjDaily: AdjustedDailyReader;
     /** 차트 앵커(사람 입력 — 선·무시 캔들) — params 를 선언한 축만 읽는다. */
     chartAnchor: ChartAnchorReader;
+    /** 날짜별 시총(daily_market_cap = 원주가 KRX 종가(D-1) × 주식수(D)) — 시총 축의 재료. */
+    marketCap: DailyMarketCapReader;
 }
 
 /**

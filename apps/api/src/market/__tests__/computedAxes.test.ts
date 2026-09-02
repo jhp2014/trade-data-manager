@@ -47,6 +47,7 @@ const makeAxisDeps = (anchors: ChartAnchor[] = []): AxisDeps => ({
     rawDaily: { getRawDailyCandles: () => Promise.resolve([]) },
     adjDaily: { getDailyCandles: () => Promise.resolve([]) },
     chartAnchor: { listByChart: () => Promise.resolve([]), listAll: () => Promise.resolve(anchors) },
+    marketCap: { getByDateAndCodes: () => Promise.resolve([]) },
 });
 
 function makeAxes(

@@ -23,6 +23,15 @@ describe("formatAxisValue", () => {
         expect(formatAxisValue(3, days)).toBe("3일"); // 거래일 수에 "+3.0%" 가 붙으면 거짓말이 된다
         expect(formatAxisValue(0, days)).toBe("0일");
     });
+
+    it("네 자리부터 천단위 구분자 — 시총(억) 가독. 소수부·음수엔 안 새어든다", () => {
+        const eok = { suffix: "억", decimals: 0, signed: false };
+        expect(formatAxisValue(3000, eok)).toBe("3,000억");
+        expect(formatAxisValue(19848000, eok)).toBe("19,848,000억");
+        expect(formatAxisValue(500, eok)).toBe("500억"); // 세 자리는 그대로
+        expect(formatAxisValue(-1234.5678, { suffix: "", decimals: 2, signed: true })).toBe("-1,234.57");
+        expect(formatAxisValue(12.34)).toBe("+12.3%"); // 기존 % 축 표기 불변
+    });
 });
 
 describe("computedAxisView", () => {

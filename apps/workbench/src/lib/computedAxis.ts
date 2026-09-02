@@ -43,7 +43,10 @@ export interface AxisRef extends RankAxis {
  */
 export function formatAxisValue(v: number, display?: AxisDisplay): string {
     const { suffix = "%", decimals = 1, signed = true } = display ?? {};
-    return `${signed && v > 0 ? "+" : ""}${v.toFixed(decimals)}${suffix}`;
+    // 천단위 구분자 — 시총(억) 같은 큰 정수 축의 가독용. 기존 축(%·일·개)은 세 자리를 잘 안 넘어 표기 불변.
+    const [int, frac] = v.toFixed(decimals).split(".");
+    const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return `${signed && v > 0 ? "+" : ""}${grouped}${frac !== undefined ? `.${frac}` : ""}${suffix}`;
 }
 
 export interface ComputedAxisView {

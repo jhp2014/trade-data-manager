@@ -13,16 +13,20 @@
 import type { ComputedAxisDef } from "./axis.js";
 import { supplyGapAxis } from "./supplyGapAxis.js";
 import { baselineDistanceAxis } from "./baselineDistanceAxis.js";
+import { baselinePrevUnAxis } from "./baselinePrevUnAxis.js";
 import { prevDayHighAxis } from "./prevDayHighAxis.js";
+import { marketCapAxis } from "./marketCapAxis.js";
 
 export const COMPUTED_AXES: readonly ComputedAxisDef[] = [
     supplyGapAxis(), // baseline 을 문턱으로 왼쪽 스캔 — 같은 앵커를 다른 뜻으로 읽는 두 번째 축
     baselineDistanceAxis(), // 같은 앵커의 **좌표만**(후보 다중일 때만 가격 개입) — 공백과 반대쪽(오른쪽)을 잰다
+    baselinePrevUnAxis(), // 같은 앵커의 **높이** — 그날 기준가(전일 UN 종가)에서 그 선까지 몇 %
     // 전일 고가 %는 **KRX 판도 만든다** — 재는 것이 분봉 한 점이 아니라 **종일 바**라 세션 결손이 없고,
     // UN ⊇ KRX 라 NXT 단독 시간대(프리마켓·시간외)에 더 간 날은 두 고가가 실제로 갈린다
     // — "정규장에서만 얼마나 갔나"와 "하루 전체로 얼마나 갔나"는 다른 질문이고, 그 차이 자체가 정보다.
     prevDayHighAxis("un"),
     prevDayHighAxis("krx"),
+    marketCapAxis(), // 앵커 무관 — 그 하루의 그릇 크기(억원). prevDayHigh 처럼 지문이 "" 라 캐시 영구 히트.
     // 앵커 소비 축 둘(supplyGap·baselineDistance)은 같은 기준선을 본다 — 선택 규칙은
     // shared/baselineResolver 한 곳(후보 다중이면 가격 최저).
     // (옛 골격 축 6개 — skeletonAxes — 는 2026-08-23 골격 은퇴와 함께 삭제. 필요해지면 그때 새로 정의한다.)
