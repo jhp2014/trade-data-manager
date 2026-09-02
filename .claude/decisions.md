@@ -23,6 +23,10 @@
 
 - **`AxisDeps` 확장은 축이 그 재료를 계산에 직접 쓸 때만 한다 — 시가총액 리더(`DailyMarketCapReader`)가 5번째 포트로 들어간다**(2026-09-02 확정, 착수 전). 시총 day 축의 재료는 `daily_market_cap`(원주가 KRX 종가(D-1)×상장주식수(D), 날짜별 저장)이라 규칙 2(하루 시작 전 재료만)에 정의상 부합. 테마 강도 때 "6번째 포트" 기각과 모순 아님 — 그건 축 시스템을 경유하지 않는 소비자였다. params 없는 축이라 캐시 영구 히트 — **시총 테이블을 백필로 소급 수정하면 `version` 상향이 운영 규약**(앵커 무관 축 공통). core `axis.ts`·api `axisDepsOf` 두 레이어에 걸친다. 근거: [[computed-axis-additions]].
 
+- **축 값의 단위는 계약이다 — `AxisDisplay` 에 배율이 없으므로 축이 표시 단위 그대로의 숫자를 낸다**(시총 = 억원). 단위를 나중에 바꾸면 값으로 굳은 필터 경계(`{kind:"value"}`)의 뜻이 조용히 달라진다 — 키 승계와 같은 성질.
+
+- **기준선 가격과 `basePricesOf` 를 한 식에 넣는 코드는 스케일을 맞춰야 한다**: 리졸버 승자(`baselineAnchorAdjustedPrice`, 공용) = **수정주가 자**, `basePricesOf().base` = **그 날 원주가 자**. 방향은 `pointGrids.bake`·`baselinePrevUnAxis` 쪽(승자 값 × `rawScaleOf` 로 원주가에 올린다)이고, `supplyGapAxis` 는 반대 방향(스캔 자체가 수정주가)이라 그쪽을 베끼면 감자·액분 종목에서 배율만큼 틀어진다.
+
 - **축 순서는 화면마다 별개 저장물이다.** 시트 열 = store `rankAxisOrder`(`wb.rankAxisOrder`), 집합 편성 보드 레일 = 패널 로컬 `wb.filterAxisOrder`(`panels/filter/axisOrder.ts`). 시트는 읽는 순서, 보드는 조건 거는 순서라 같은 축이 두 화면에서 다른 자리에 서는 편이 낫다는 판단(2026-08-25, 그전의 "한 벌 공유"를 뒤집음 — 공유 시절 주석은 전부 갱신됨). 보드 pref 가 비면 시트 서열을 따르므로 안 만진 사람에겐 예전과 같다. **드래그 미디어타입도 갈라 둘 것**(`x-rank-axis` vs `x-filter-axis`) — 같으면 시트 열을 보드에 떨어뜨렸을 때 엉뚱한 순서가 바뀐다.
   - 커밋: bd022e75. 근거: [[filter-funnel-design]].
 
