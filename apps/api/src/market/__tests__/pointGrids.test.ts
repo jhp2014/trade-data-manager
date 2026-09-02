@@ -101,7 +101,7 @@ describe("PointGrids 대사", () => {
         expect(file?.v).toBe(POINT_GRID_FILE_VERSION);
         expect(file?.version).toBe(POINT_GRID_CALC_VERSION);
         expect(file?.charts["A"].grid.base).toBe(9000);
-        expect(file?.charts["A"].grid.touchMin).toBe(9 * 60 + 10);
+        expect(file?.charts["A"].grid.touch?.min).toBe(9 * 60 + 10);
     });
 
     it("그날 기준가(prevBase) — 직전 거래일 종가를 격자에 싣는다(당일 % 의 분모)", async () => {

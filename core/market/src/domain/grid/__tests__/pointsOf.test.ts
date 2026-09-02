@@ -11,15 +11,18 @@ const nh = (min: number, high: number, eok: number, bull = true): GridNewHigh =>
     low: high - 150,
     close: bull ? high : high - 100,
     tv: String(eok * 100_000_000),
+    cum: "0",
 });
-const hi = (min: number, price: number, confirmedMin: number | null): GridPivot => ({ kind: "high", min, price, confirmedMin, legAmount: "0", renewalAmount: null });
-// 재정식화 격자의 저점: confirmedMin·renewalAmount 항상 null — 헬퍼가 규칙을 증언한다.
-const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: null, legAmount: "0", renewalAmount: null });
-const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touchMin: 550, pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, ...partial });
+// 판정은 대금 창을 안 보므로 cum·cross 는 자리만 채운다(창 파생은 windows.test 몫).
+const hi = (min: number, price: number, confirmedMin: number | null): GridPivot => ({ kind: "high", min, price, confirmedMin, cum: "0", cross: null });
+// 재정식화 격자의 저점: confirmedMin·cross 항상 null — 헬퍼가 규칙을 증언한다.
+const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: null, cum: "0", cross: null });
+const touch = (min: number) => ({ min, tv: "0", cum: "0" });
+const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touch: touch(550), pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, ...partial });
 
 describe("pointsOf", () => {
     it("기준선 미터치(또는 기준선 없음) → Point 없음", () => {
-        expect(pointsOf(grid({ touchMin: null, newHighs: [nh(560, 10050, 60)] }))).toEqual([]);
+        expect(pointsOf(grid({ touch: null, newHighs: [nh(560, 10050, 60)] }))).toEqual([]);
         expect(pointsOf(grid({ base: null, newHighs: [nh(560, 10050, 60)] }))).toEqual([]);
     });
 
@@ -48,7 +51,7 @@ describe("pointsOf", () => {
     });
 
     it("제외 창 — 기본은 꺼짐(프리마켓도 Point 자격), 올리면 다음 자격 캔들로 이동", () => {
-        const g = grid({ touchMin: 500, newHighs: [nh(505, 10100, 60), nh(560, 10150, 60)] });
+        const g = grid({ touch: touch(500), newHighs: [nh(505, 10100, 60), nh(560, 10150, 60)] });
         expect(pointsOf(g)[0]).toMatchObject({ kind: "breakout", min: 505 }); // 08:25 프리마켓 캔들이 그대로 Point
         const excluded = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, excludeUptoMin: 9 * 60 + 5 });
         expect(excluded[0]).toMatchObject({ kind: "breakout", min: 560 });

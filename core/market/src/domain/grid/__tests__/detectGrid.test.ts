@@ -2,10 +2,11 @@
 // 특히 "의도된 의미론"들: 수록·게이트가 자기 봉 대금뿐인 것(구제 폐기), 창 필터가 densify 앞인 것,
 // 재정식화 피벗(2026-08-31): 확정 고점 = 러닝 최고가 갱신(>) 후 더 높은 고가 전 −2% 터치(≤),
 // 동봉 터치+갱신은 갱신 승리, 저점 = 구간 봉 최저(양끝·크로싱 봉 제외, confirmedMin null),
-// legAmount + renewalAmount(전고점 돌파 후 추격 대금).
+// 대금은 기록 봉의 누적 스냅샷(cum)뿐 — leg/renewal 창은 windows.ts 파생으로 옛 기대값이 그대로 재현돼야 한다.
 import { describe, expect, it } from "vitest";
 import type { MinuteCandle } from "../../candle/model.js";
 import { detectGrid, type GridDayPrices } from "../grid.js";
+import { legAmountOf, renewalAmountOf } from "../windows.js";
 
 const D = "2026-07-01";
 const mc = (time: string, o: number, h: number, l: number, c: number, vol = 0): MinuteCandle => ({
@@ -35,7 +36,7 @@ describe("detectGrid — 입력 경계", () => {
         expect(g).not.toBeNull();
         expect(g?.pivots).toEqual([]);
         expect(g?.newHighs).toEqual([]);
-        expect(g?.touchMin).toBeNull();
+        expect(g?.touch).toBeNull();
     });
 });
 
@@ -43,7 +44,7 @@ describe("detectGrid — 신고가 목록", () => {
     it("갭 시작 — 첫 봉이 러닝 최고가, OHLC 절대가가 그대로 실린다(양봉 여부는 읽기 층 파생)", () => {
         const g = detectGrid([mc("09:00:00", 13000, 13000, 12900, 13000, 200000), flat("09:01:00", 12950, 1), flat("09:02:00", 12900, 1)], px());
         expect(g?.newHighs).toHaveLength(1);
-        expect(g?.newHighs[0]).toEqual({ min: 540, open: 13000, high: 13000, low: 12900, close: 13000, tv: "2595000000" });
+        expect(g?.newHighs[0]).toEqual({ min: 540, open: 13000, high: 13000, low: 12900, close: 13000, tv: "2595000000", cum: "2595000000" });
     });
 
     it("직전 봉 대금 구제는 없다 — 수록 기준은 자기 봉 대금뿐(tvMax2 폐기, 2026-08-31)", () => {
@@ -62,6 +63,8 @@ describe("detectGrid — 신고가 목록", () => {
         );
         expect(gapped).toEqual(explicit);
         expect(gapped?.newHighs.map((h) => h.min)).toEqual([540, 544]);
+        // 누적은 채움봉(대금 0)을 지나도 그대로 — 09:04 의 cum = 09:00 + 09:04.
+        expect(gapped?.newHighs.map((h) => h.cum)).toEqual(["2000000000", "4060000000"]);
     });
 
     it("floor 는 20억 이상(경계 포함)", () => {
@@ -92,21 +95,21 @@ describe("detectGrid — 세션 창", () => {
 });
 
 describe("detectGrid — 기준선 첫 터치", () => {
-    it("미터치 — touchMin null 이면서 격자는 정상 성립", () => {
+    it("미터치 — touch null 이면서 격자는 정상 성립", () => {
         const g = detectGrid([flat("09:00:00", 10000, 200000), flat("09:01:00", 10100, 1)], px(20000));
-        expect(g?.touchMin).toBeNull();
+        expect(g?.touch).toBeNull();
         expect(g?.base).toBe(20000);
         expect(g?.newHighs.length).toBeGreaterThan(0);
     });
 
-    it("기준선이 첫 봉 아래 — 첫 봉이 터치, 볼륨 무관", () => {
+    it("기준선이 첫 봉 아래 — 첫 봉이 터치, 볼륨 무관. 터치 봉은 자기 대금·누적을 든다(돌파 창의 시작)", () => {
         const g = detectGrid([flat("09:00:00", 10000, 1), flat("09:01:00", 10100, 1)], px(9000));
-        expect(g?.touchMin).toBe(540);
+        expect(g?.touch).toEqual({ min: 540, tv: "10000", cum: "10000" });
     });
 
-    it("장중 터치 — 고가 스침(≥)으로 판정", () => {
+    it("장중 터치 — 고가 스침(≥)으로 판정, 누적은 터치 봉 포함", () => {
         const g = detectGrid([flat("09:00:00", 10000, 1), mc("09:01:00", 10000, 10500, 10000, 10200, 1)], px(10500));
-        expect(g?.touchMin).toBe(541);
+        expect(g?.touch).toEqual({ min: 541, tv: "10175", cum: "20175" }); // ⌊(10000+10500+10000+10200)/4⌋×1
     });
 });
 
@@ -237,26 +240,31 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
         ]);
     });
 
-    it("legAmount — 첫 피벗은 세션 첫 봉부터, 저점은 자기 구간 몫(포함 경계)", () => {
+    it("cum — 피벗은 세션 첫 봉부터 자기 봉까지 포함 누적, 옛 legAmount 는 인접 피벗의 차로 재현된다", () => {
         const g = detectGrid(
             [flat("09:00:00", 10000, 100000), flat("09:01:00", 10210, 100000), mc("09:02:00", 10210, 10210, 10005, 10005, 100000)], px(),
         );
-        // 고점(09:01) leg = 09:00+09:01 대금, 꼬리 저점(09:02) leg = 자기 봉 대금.
+        // 고점(09:01) cum = 09:00+09:01, 꼬리 저점(09:02) cum = 세 봉 합. 첫 고점은 전고점이 없어 cross null.
         expect(g?.pivots).toHaveLength(2);
-        expect(g?.pivots[0]).toMatchObject({ kind: "high", min: 541, legAmount: "2021000000", renewalAmount: null });
-        expect(g?.pivots[1]).toMatchObject({ kind: "low", min: 542, confirmedMin: null, legAmount: "1010700000", renewalAmount: null });
+        expect(g?.pivots[0]).toMatchObject({ kind: "high", min: 541, cum: "2021000000", cross: null });
+        expect(g?.pivots[1]).toMatchObject({ kind: "low", min: 542, confirmedMin: null, cum: "3031700000", cross: null });
+        expect(legAmountOf(g!, 0)).toBe("2021000000"); // 첫 피벗 = 세션 첫 봉부터
+        expect(legAmountOf(g!, 1)).toBe("1010700000"); // 저점 = 자기 봉 몫(고점 다음 봉부터)
+        expect(renewalAmountOf(g!, 0)).toBeNull();
     });
 
-    it("renewalAmount — 갱신 봉이 곧 고점 봉이면 그 한 봉 몫(= legAmount, 등호 경계)", () => {
+    it("cross — 갱신 봉이 곧 고점 봉이면 크로싱 = 고점 봉, renewal 창은 그 한 봉 몫(= leg, 등호 경계)", () => {
         // H1(10000) 확정 후 09:02 한 봉이 크로싱이자 새 고점(10,210) — renewal = 그 봉 대금 = leg.
         const g = detectGrid(
             [flat("09:00:00", 10000, 100000), flat("09:01:00", 9800, 100000), flat("09:02:00", 10210, 100000), flat("09:03:00", 10005, 100000)], px(),
         );
         const h2 = g?.pivots[2];
-        expect(h2).toMatchObject({ kind: "high", min: 542, price: 10210, legAmount: "1021000000", renewalAmount: "1021000000" });
+        expect(h2).toMatchObject({ kind: "high", min: 542, price: 10210, cum: "3001000000", cross: { min: 542, tv: "1021000000", cum: "3001000000" } });
+        expect(legAmountOf(g!, 2)).toBe("1021000000");
+        expect(renewalAmountOf(g!, 2)).toBe("1021000000");
     });
 
-    it("renewalAmount — 크로싱 봉부터 고점 봉까지 구간 합(< legAmount), 첫 고점·저점은 null", () => {
+    it("cross — 직전 고점 가격을 처음 넘은 봉(저대금이어도), renewal 창 = 크로싱~고점(< leg), 첫 고점·저점은 null", () => {
         // H1(10000) 확정 → 09:02(9900, 크로싱 전 눌림) → 09:03(10150, 크로싱=고점) → 09:04 터치 확정.
         const g = detectGrid(
             [
@@ -267,15 +275,15 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
                 flat("09:04:00", 9947, 100000),
             ], px(),
         );
-        expect(g?.pivots.map((p) => [p.kind, p.min, p.renewalAmount])).toEqual([
+        expect(g?.pivots.map((p) => [p.kind, p.min, p.cross?.min ?? null])).toEqual([
             ["high", 540, null], // 첫 확정 고점 — 전고점 없음
             ["low", 541, null],
-            ["high", 543, "1015000000"], // 크로싱 봉(09:03) 한 봉 몫 — 눌림 조각(09:02)은 leg−renewal 파생
+            ["high", 543, 543], // 크로싱 봉 = 09:03(고점 봉 자신)
             ["low", 544, null],
         ]);
-        const h2 = g?.pivots[2];
-        expect(BigInt(h2!.renewalAmount!) < BigInt(h2!.legAmount)).toBe(true);
-        expect(h2?.legAmount).toBe("2005000000"); // 09:02 + 09:03
+        expect(renewalAmountOf(g!, 2)).toBe("1015000000"); // 크로싱 봉 한 봉 몫 — 눌림 조각(09:02)은 leg−renewal 파생
+        expect(legAmountOf(g!, 2)).toBe("2005000000"); // 09:02 + 09:03
+        expect(BigInt(renewalAmountOf(g!, 2)!) < BigInt(legAmountOf(g!, 2))).toBe(true);
     });
 
     it("결측 분의 채움봉(저가=직전 종가)이 터치를 확정하고 구간 저점이 될 수 있다 — 거래 없음 ≠ 가격 없음", () => {
@@ -309,11 +317,13 @@ describe("detectGrid — 피벗(확정 고점·구간 저점)", () => {
             ["high", 544, 10400],
             ["low", 545, 10192],
         ]);
-        const h2 = g?.pivots[2];
         // 크로싱 봉(09:03) **포함** ~ 고점 봉(09:04)까지가 renewal — 경계가 한 봉만 밀려도 값이 달라진다.
-        expect(h2?.renewalAmount).toBe("2023700000"); // 10150×1e5 + ⌊(10150+10400+9500+10300)/4⌋×1e5
-        expect(h2?.legAmount).toBe("3013700000"); // 09:02(9900)+09:03+09:04
-        expect(BigInt(h2!.renewalAmount!) <= BigInt(h2!.legAmount)).toBe(true);
+        // 크로싱 봉은 저대금(floor 미만)이라 신고가 목록엔 없다 — 피벗의 cross 승격이 유일한 기록.
+        expect(g?.pivots[2].cross?.min).toBe(543);
+        expect(g?.newHighs.map((e) => e.min)).not.toContain(543);
+        expect(renewalAmountOf(g!, 2)).toBe("2023700000"); // 10150×1e5 + ⌊(10150+10400+9500+10300)/4⌋×1e5
+        expect(legAmountOf(g!, 2)).toBe("3013700000"); // 09:02(9900)+09:03+09:04
+        expect(BigInt(renewalAmountOf(g!, 2)!) <= BigInt(legAmountOf(g!, 2))).toBe(true);
     });
 
     it("크로싱 봉의 저가는 구간 저점 후보에서 빠진다 — 봉 내부(크로싱 전후) 순서 증명 불가", () => {

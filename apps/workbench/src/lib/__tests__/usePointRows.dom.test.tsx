@@ -9,9 +9,9 @@ import { usePointRows } from "../usePointRows.js";
 
 const grid: PointGrid = {
     base: 10000,
-    touchMin: 550,
+    touch: { min: 550, tv: "0", cum: "0" },
     pivots: [],
-    newHighs: [{ min: 560, open: 9950, high: 10050, low: 9900, close: 10050, tv: "6000000000" }],
+    newHighs: [{ min: 560, open: 9950, high: 10050, low: 9900, close: 10050, tv: "6000000000", cum: "6000000000" }],
     prevBase: 9900,
     prevBaseKrx: null,
 };

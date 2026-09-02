@@ -6,10 +6,10 @@ import type { AutoPointsView } from "../usePointGrids.js";
 
 const grid: PointGrid = {
     base: 10000,
-    touchMin: 550,
+    touch: { min: 550, tv: "0", cum: "0" },
     pivots: [
-        { kind: "high", min: 575, price: 10300, confirmedMin: 585, legAmount: "0", renewalAmount: null },
-        { kind: "low", min: 590, price: 10100, confirmedMin: null, legAmount: "0", renewalAmount: null },
+        { kind: "high", min: 575, price: 10300, confirmedMin: 585, cum: "0", cross: null },
+        { kind: "low", min: 590, price: 10100, confirmedMin: null, cum: "0", cross: null },
     ],
     newHighs: [],
     prevBase: 8000, // 그날 기준가(전일 종가) — "당일 %" 의 분모. **base 와 다른 값**으로 둔다(분모를 바꿔치면 걸리게)
@@ -99,7 +99,7 @@ describe("gridFeatureFeeds", () => {
             ...grid,
             pivots: [
                 ...grid.pivots,
-                { kind: "low", min: 595, price: 10050, confirmedMin: null, legAmount: "0", renewalAmount: null },
+                { kind: "low", min: 595, price: 10050, confirmedMin: null, cum: "0", cross: null },
             ],
         };
         const deepFeeds = gridFeatureFeeds(view, () => deep);
@@ -118,8 +118,8 @@ describe("gridFeatureFeeds", () => {
         const lateLow: PointGrid = {
             ...grid,
             pivots: [
-                { kind: "high", min: 575, price: 10300, confirmedMin: 585, legAmount: "0", renewalAmount: null },
-                { kind: "low", min: 605, price: 10020, confirmedMin: null, legAmount: "0", renewalAmount: null },
+                { kind: "high", min: 575, price: 10300, confirmedMin: 585, cum: "0", cross: null },
+                { kind: "low", min: 605, price: 10020, confirmedMin: null, cum: "0", cross: null },
             ],
         };
         const lateFeeds = gridFeatureFeeds(view, () => lateLow);

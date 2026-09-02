@@ -119,12 +119,12 @@ export function levelsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_D
  * 구버전 파일을 읽히면(파일 버전 가드가 유일한 방어선) 여기서 조용히 틀어진다.
  */
 export function pointsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_DEFINITION): DerivedPoint[] {
-    if (grid.base === null || grid.touchMin === null) return [];
+    if (grid.base === null || grid.touch === null) return [];
     const levels = levelsOf(grid, def);
 
     // 캔들 중심 판정 — 자격 캔들마다 **최고 레벨**에 귀속시키고 그 레벨의 게이트로 거른다.
     // 게이트 비대칭(기준선 50 > 재돌파 30) 탓에 breakout Point 없이 renewal 만 서는 날이 있을 수 있다 —
-    // 의도된 동작: 돌파 사건 자체는 touchMin 이 증언하고, "유효 breakout 있는 날만 보기"는 읽기 층 필터의
+    // 의도된 동작: 돌파 사건 자체는 touch 가 증언하고, "유효 breakout 있는 날만 보기"는 읽기 층 필터의
     // 몫이다(격자·판정이 미리 좁히지 않는다).
     const gateBase = BigInt(def.baselineGateEok) * KRW_PER_EOK;
     const gateRenewal = BigInt(def.renewalGateEok) * KRW_PER_EOK;

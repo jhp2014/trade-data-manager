@@ -67,7 +67,7 @@ async function main(): Promise<void> {
             pointCounts.push(pts.length);
             afterHoursNewHighs += entry.grid.newHighs.filter((e) => e.min > 930).length;
             afterHoursPoints += pts.filter((p) => p.min > 930).length;
-            if (entry.grid.touchMin === null) touchless++;
+            if (entry.grid.touch === null) touchless++;
         }
     }
 

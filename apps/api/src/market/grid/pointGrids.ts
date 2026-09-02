@@ -45,10 +45,12 @@ import { POINT_GRID_FILE_VERSION } from "./gridStore.js";
 
 /** 검출 규칙 버전 — 격자 **스키마·알고리즘**이 바뀌면 올린다(전량 재굽기). 검출 파라미터(zigzag·floor·세션 창)
  *  변경은 여기가 아니라 차트 지문(optsKey)이 자동으로 잡는다 — 버전은 코드 변경, 지문은 설정 변경.
+ *  7: 2026-09-02 대금 창 폐기 → 기록 봉 누적 스냅샷(cum)·크로싱 봉 승격(cross)·터치 봉(touch) — 창은 읽기 파생(windows.ts).
+ *     bake() 로직은 무변경(detectGrid 반환을 그대로 싣는다) — 버전만 올린다.
  *  6: 2026-09-02 KRX 기준가(prevBaseKrx) 수록 — 당일 %(KRX) 특징의 분모
  *  5: 2026-09-01 그날 기준가(prevBase) 수록 — 당일 % 를 클라가 격자만으로 파생
  *  4: 2026-08-31 zigzag 재정식화(상태기계 폐기·정의 직접 계산·renewalAmount) */
-export const POINT_GRID_CALC_VERSION = 6;
+export const POINT_GRID_CALC_VERSION = 7;
 
 /** 그날 기준가 조회 창 — `basePricesOf` 는 **date 보다 이른 최대 날짜**(직전 거래일) 하나만 있으면 되고,
  *  창은 연휴·거래정지를 덮는 여유일 뿐이다(넓혀도 값이 안 바뀐다 — 더 이른 봉은 안 쓰인다).

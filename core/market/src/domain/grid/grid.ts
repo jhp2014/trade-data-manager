@@ -1,8 +1,12 @@
 // core/market/domain/grid — 자동 타점 격자 검출(순수, I/O 0). 규칙 전문: .claude/decisions.md "자동 타점 격자" 절.
 //
 // 격자 = 앵커 차트(종목,날짜) 하나의 분봉을 "읽기 층이 Point 의미론을 자유 조절할 수 있는 최소 압축물"로
-// 구운 것: ① 피벗(확정 고점 + 구간 저점, leg·갱신 누적 대금) ② floor 이상 대금의 신고가 캔들 목록
-// ③ 기준선 첫 터치. Point 판정·게이트(50억/30억)·제외 창·축약 병합은 여기 없다 — points.ts(읽기 층)가
+// 구운 것: **사건 봉의 목록 + 각 봉의 세션 누적 거래대금** — ① 피벗(확정 고점 + 구간 저점, 고점엔 직전
+// 고점의 크로싱 봉) ② floor 이상 대금의 신고가 캔들 목록 ③ 기준선 첫 터치 봉. 대금 **창**(leg·갱신·돌파·
+// Point→고점)은 굽지 않는다 — 두 기록 봉의 누적 차로 읽기 층(windows.ts)이 낸다(2026-09-02, 옛
+// legAmount/renewalAmount 굽기를 뒤집음: 창을 굽으면 창 하나마다 재굽기가 따라오고 병합 편차가 굳는다).
+// 누적 관례 = **그 봉 포함**. 자기 봉 tv 는 창의 시작이 될 수 있는 봉(크로싱·터치·신고가)만 든다.
+// Point 판정·게이트(50억/30억)·제외 창·축약 병합은 여기 없다 — points.ts(읽기 층)가
 // 격자만 보고 계산한다. 굽는 값은 전부 "하한(격자)"이고 읽기 층은 위로만 조인다.
 //
 // 반면 **세션 창·신고가 기준은 읽기 층이 못 되돌리는 상태값**이라 검출기가 진다(2026-08-30 사용자 확정):
@@ -18,6 +22,17 @@ import type { MinuteCandle } from "../candle/model.js";
 import { densifyMinutes } from "../candle/minuteBackfill.js";
 import { computeMinuteTradingAmount } from "../candle/price.js";
 
+/** 창의 **시작**이 될 수 있는 기록 봉 — 크로싱 봉·기준선 터치 봉. 시각 + 자기 봉 대금 + 세션 누적(그 봉 포함).
+ *  포함 창 [이 봉 .. 끝 봉] = 끝.cum − cum + tv (windows.ts `amountFrom`). */
+export interface GridBarMark {
+    /** 시각(자정기준 분). */
+    min: number;
+    /** 자기 봉 거래대금(원, 무손실 string). */
+    tv: string;
+    /** 세션 첫 봉부터 이 봉까지(포함) 누적 거래대금(원, 무손실 string). */
+    cum: string;
+}
+
 /** 피벗 — 확정 고점 또는 구간 저점(2026-08-31 재정식화, 정의는 detectGrid 본문 주석). 시각은 KST 자정기준 분(int). */
 export interface GridPivot {
     kind: "high" | "low";
@@ -28,14 +43,14 @@ export interface GridPivot {
     /** 고점: −zigzagPct 터치로 소급 확정된 봉 시각 — 항상 존재(미확정 고점은 안 싣는다, outcome 시뮬
      *  진입선의 장래 소비처). 저점: null 고정(확정 개념 없음 — 저점 확정은 소비처 0 실측). */
     confirmedMin: number | null;
-    /** 직전 피벗 다음 봉부터 이 피벗 봉까지(포함) 누적 거래대금(원, 무손실 string). 첫 피벗은 세션 첫 봉부터,
-     *  마지막 저점 이후 잔여는 어디에도 안 실린다(소비자 0). */
-    legAmount: string;
-    /** 고점 전용 — 직전 확정 고점 가격을 처음 넘은 봉(strict >, 포함)부터 이 고점 봉까지 누적 대금
-     *  ("전고점 돌파 후 실린 추격 대금"). 갱신 경계는 순수 가격 사건(볼륨 무관). 첫 확정 고점(전고점 없음)과
-     *  저점은 null — 기준선 크로싱으로 대체하지 않는다(결손은 결손). 불변식: 0 < renewalAmount ≤ legAmount.
-     *  저점→갱신 전 눌림 조각은 legAmount − renewalAmount 파생(별도 저장 없음). */
-    renewalAmount: string | null;
+    /** 세션 첫 봉부터 이 피벗 봉까지(포함) 누적 거래대금(원, 무손실 string). 옛 legAmount 는
+     *  `cum − 직전피벗.cum` 파생(windows.ts). 마지막 저점 이후 잔여는 어디에도 안 실린다(소비자 0). */
+    cum: string;
+    /** 고점 전용 — **직전 확정 고점 가격을 처음 넘은 봉**(strict >, 순수 가격 사건·볼륨 무관)의 기록.
+     *  신고가 목록은 floor 로 걸러져 저대금 크로싱 봉이 빠지므로 여기 승격 수록한다 — 이게 있어야
+     *  재돌파 창(크로싱→고점, 옛 renewalAmount)과 병합된 레벨의 크로싱 창이 읽기 층에서 선다.
+     *  첫 확정 고점(전고점 없음)과 저점은 null — 기준선 터치로 대체하지 않는다(돌파 창은 `touch` 가 따로). */
+    cross: GridBarMark | null;
 }
 
 /** 신고가 캔들 — 세션 창 안 당일 러닝 최고가를 갱신했고 tv ≥ floor 인 봉. Point 후보의 전체 모집합.
@@ -54,6 +69,8 @@ export interface GridNewHigh {
     close: number;
     /** 그 봉 거래대금(원, string) — 수록·게이트 기준 모두 자기 봉 대금(직전 봉 max 구제는 2026-08-31 폐기). */
     tv: string;
+    /** 세션 첫 봉부터 이 봉까지(포함) 누적 거래대금(원, string) — Point 봉→고점 창의 시작 재료. */
+    cum: string;
 }
 
 /**
@@ -73,8 +90,9 @@ export interface GridDayPrices {
 export interface PointGrid {
     /** 확정 기준선 가격(그 날 원주가 스케일, 원). 호출자가 못 넘기면 null(터치·기준선 파생 불가). */
     base: number | null;
-    /** 기준선 첫 터치(고가 ≥ base) 시각(분). 볼륨 무관 — floor 에 걸러질 수 있어 명시 저장. 미터치면 null. */
-    touchMin: number | null;
+    /** 기준선 첫 터치(고가 ≥ base) 봉. 볼륨 무관 — floor 에 걸러질 수 있어 명시 저장. 미터치면 null.
+     *  돌파 창(터치→고점)의 시작 봉이라 시각만이 아니라 대금·누적도 든다. */
+    touch: GridBarMark | null;
     /** 피벗(시간 오름차순). 구조 불변식: 항상 high 로 시작해 low 로 끝나는 교대·짝수 길이
      *  (확정 고점 뒤엔 터치 봉이 반드시 있어 구간 저점이 절대 결손 안 남). 확정 고점 0개인 날은 빈 배열(무사건 — 정상). */
     pivots: GridPivot[];
@@ -131,7 +149,7 @@ const toMin = hmsToMinute;
 /**
  * 격자 검출. 입력은 그 종목·그 날의 raw 분봉(존재하는 봉만, 시간 오름차순) — dense 화는 여기서 하고,
  * 봉 우주는 **dense 분봉**이다(호출측마다 갈리지 않게 한 곳에 고정). 채움봉(거래량 0·직전 종가 평탄)은
- * 신고가·legAmount 에 영향 없지만 **피벗에는 참여한다** — 저가(=직전 종가)가 "그 분의 서 있던 가격"으로서
+ * 신고가·누적 대금에 영향 없지만 **피벗에는 참여한다** — 저가(=직전 종가)가 "그 분의 서 있던 가격"으로서
  * 터치 확정·구간 최저가 될 수 있다(거래 없음 ≠ 가격 없음. 넓은 봉 다음 빈 분이 그 종가로 확정하는 케이스).
  * 분봉이 없거나 세션 창에 한 봉도 없으면 null(재료 없음 — 캐시 층이 "무사건 격자"와 구분해 안 굽는다).
  */
@@ -157,7 +175,7 @@ export function detectGrid(
     const highs = new Array<number>(n);
     const lows = new Array<number>(n);
     const tvs = new Array<bigint>(n);
-    // prefix[i] = tvs[0..i] 누적(BigInt 무손실) — 피벗 확정이 소급이라 legAmount 는 구간차로 계산한다.
+    // prefix[i] = tvs[0..i] 누적(BigInt 무손실) — 기록 봉마다 이 값을 그대로 싣는다(포함 관례).
     const prefix = new Array<bigint>(n);
     let acc = 0n;
     for (let i = 0; i < n; i++) {
@@ -169,8 +187,7 @@ export function detectGrid(
         acc += tvs[i];
         prefix[i] = acc;
     }
-    const legAmount = (fromIdxExclusive: number, toIdx: number): string =>
-        (prefix[toIdx] - (fromIdxExclusive >= 0 ? prefix[fromIdxExclusive] : 0n)).toString();
+    const markOf = (i: number): GridBarMark => ({ min: mins[i], tv: tvs[i].toString(), cum: prefix[i].toString() });
 
     // ── 피벗: 확정 고점 + 구간 저점 ──────────────────────────────────────────
     // 상태기계 없음 — 정의를 그대로 계산한다(2026-08-31 재정식화, decisions.md "자동 타점 격자" 절):
@@ -186,7 +203,7 @@ export function detectGrid(
     //    갱신 승리로 터치 생략)이 최저를 차지하면 저점이 크로싱 뒤로 가 renewal ≤ leg 가 깨진다(실측 1건).
     //  구조 불변식(정의에서 따라 나옴): 확정 고점의 터치 봉은 크로싱 봉보다 앞이므로(터치 저가 ≤
     //  0.98×고점인데 크로싱 이후는 확정 아니면 갱신뿐) 구간 저점 후보가 절대 비지 않는다 → 피벗은 항상
-    //  high 시작·low 끝·교대·짝수 길이, 구간 저점 봉 < 크로싱 봉 → 0 < renewalAmount ≤ legAmount.
+    //  high 시작·low 끝·교대·짝수 길이, 구간 저점 봉 < 크로싱 봉 → 파생 창 0 < renewal ≤ leg(windows.ts).
     const down = 1 - o.zigzagPct / 100;
     const confirmedHighs: { idx: number; confirmIdx: number; crossIdx: number }[] = [];
     let sessMax = -Infinity;
@@ -208,7 +225,6 @@ export function detectGrid(
     const tailCrossIdx = crossIdx; // 마지막 확정 고점 뒤의 크로싱 봉(소멸 후보의 것) — 꼬리 저점 후보 제외용
 
     const pivots: GridPivot[] = [];
-    let prevKeptIdx = -1;
     for (let k = 0; k < confirmedHighs.length; k++) {
         const h = confirmedHighs[k];
         pivots.push({
@@ -216,11 +232,10 @@ export function detectGrid(
             min: mins[h.idx],
             price: highs[h.idx],
             confirmedMin: mins[h.confirmIdx],
-            legAmount: legAmount(prevKeptIdx, h.idx),
+            cum: prefix[h.idx].toString(),
             // 첫 확정 고점은 전고점이 없어 null(crossIdx 는 세션 첫 봉일 뿐 크로싱 사건이 아니다).
-            renewalAmount: k === 0 ? null : legAmount(h.crossIdx - 1, h.idx),
+            cross: k === 0 ? null : markOf(h.crossIdx),
         });
-        prevKeptIdx = h.idx;
 
         // 저점 구간 = (이 고점 봉, 이 고점 가격의 크로싱 봉) — 다음 확정 고점의 crossIdx 가 곧 그 크로싱.
         // 꼬리에서 크로싱이 있었다면(소멸 후보) 거기서 끝, 없었으면 세션 끝까지.
@@ -231,24 +246,16 @@ export function detectGrid(
         }
         // 불변식 위반은 침묵 오염 대신 즉사 — 터치 봉이 항상 후보라 도달 불가(위 구조 불변식 주석).
         if (lowIdx < 0) throw new Error(`detectGrid: 구간 저점 결손(고점 min=${mins[h.idx]}) — 정의 불변식 위반`);
-        pivots.push({
-            kind: "low",
-            min: mins[lowIdx],
-            price: lows[lowIdx],
-            confirmedMin: null,
-            legAmount: legAmount(prevKeptIdx, lowIdx),
-            renewalAmount: null,
-        });
-        prevKeptIdx = lowIdx;
+        pivots.push({ kind: "low", min: mins[lowIdx], price: lows[lowIdx], confirmedMin: null, cum: prefix[lowIdx].toString(), cross: null });
     }
 
     // ── 신고가 캔들 목록 + 기준선 첫 터치 ────────────────────────────────────
     const floorWon = BigInt(o.floorEok) * KRW_PER_EOK;
     const newHighs: GridNewHigh[] = [];
-    let touchMin: number | null = null;
+    let touch: GridBarMark | null = null;
     let runningMax = -Infinity;
     for (let i = 0; i < n; i++) {
-        if (base !== null && touchMin === null && highs[i] >= base) touchMin = mins[i];
+        if (base !== null && touch === null && highs[i] >= base) touch = markOf(i);
         if (highs[i] <= runningMax) continue;
         runningMax = highs[i];
         if (tvs[i] < floorWon) continue;
@@ -259,8 +266,9 @@ export function detectGrid(
             low: lows[i],
             close: Number(bars[i].un.close),
             tv: tvs[i].toString(),
+            cum: prefix[i].toString(),
         });
     }
 
-    return { base, touchMin, pivots, newHighs, prevBase, prevBaseKrx };
+    return { base, touch, pivots, newHighs, prevBase, prevBaseKrx };
 }

@@ -53,11 +53,19 @@ function gridsFromPoints(points: readonly SeedPoint[]): DecodedPointGrids {
         const mins = [...list].map((p) => hmsToMinute(p.time)).sort((a, b) => a - b);
         // 피벗 = (확정 고점, 구간 저점) 쌍의 교대. 고점 i 는 캔들 i 자신이고 확정은 **뒤 봉**(m+1),
         // 저점은 그 사이(m+2)에 한 칸 낮게 둔다 — 눌림 깊이가 실제로 계산되는 최소 구조.
+        // 누적 대금은 봉마다 10억씩 단조 증가하는 가짜 값 — 창 파생이 0 이 아니게만 둔다(값 자체는 시험 대상 아님).
         const pivots = mins.slice(0, -1).flatMap((m, i) => [
-            { kind: "high" as const, min: m, price: 101 + i, confirmedMin: m + 1, legAmount: "2000000000", renewalAmount: i === 0 ? null : "1000000000" },
-            { kind: "low" as const, min: m + 2, price: 99 + i, confirmedMin: null, legAmount: "1000000000", renewalAmount: null },
+            { kind: "high" as const, min: m, price: 101 + i, confirmedMin: m + 1, cum: String((2 * i + 2) * 1_000_000_000), cross: i === 0 ? null : { min: m - 1, tv: "1000000000", cum: String((2 * i + 1) * 1_000_000_000) } },
+            { kind: "low" as const, min: m + 2, price: 99 + i, confirmedMin: null, cum: String((2 * i + 3) * 1_000_000_000), cross: null },
         ]);
-        const grid: PointGrid = { base: 100, touchMin: mins[0], pivots, newHighs: mins.map((m, i) => ({ min: m, open: 100 + i, high: 101 + i, low: 100 + i, close: 101 + i, tv: "6000000000" })), prevBase: 100, prevBaseKrx: null };
+        const grid: PointGrid = {
+            base: 100,
+            touch: { min: mins[0], tv: "1000000000", cum: "1000000000" },
+            pivots,
+            newHighs: mins.map((m, i) => ({ min: m, open: 100 + i, high: 101 + i, low: 100 + i, close: 101 + i, tv: "6000000000", cum: String((2 * i + 2) * 1_000_000_000) })),
+            prevBase: 100,
+            prevBaseKrx: null,
+        };
         if (!byDate.has(date)) byDate.set(date, new Map());
         byDate.get(date)!.set(stockCode, grid);
     }

@@ -32,7 +32,7 @@ const KRW_PER_EOK = 100_000_000n;
  * 갈아 끼운다(이력 보관소가 아니라 **직전과의 대조기**).
  */
 function pointsOfLegacy(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
-    if (grid.base === null || grid.touchMin === null) return [];
+    if (grid.base === null || grid.touch === null) return [];
     const levels = levelsOf(grid, def);
     const gateBase = BigInt(def.baselineGateEok) * KRW_PER_EOK;
     const gateRenewal = BigInt(def.renewalGateEok) * KRW_PER_EOK;
@@ -71,7 +71,7 @@ function pointsOfLegacy(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
  * 정렬성 중 하나가 깨진 것이다(= 정지 신호).
  */
 function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
-    if (grid.base === null || grid.touchMin === null) return [];
+    if (grid.base === null || grid.touch === null) return [];
     const base = grid.base;
     const highs = grid.pivots.filter((p) => p.kind === "high" && p.confirmedMin !== null);
     const lowBefore = (min: number): number | null => {
