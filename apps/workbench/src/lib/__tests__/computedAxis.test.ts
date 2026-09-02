@@ -25,12 +25,16 @@ describe("formatAxisValue", () => {
     });
 
     it("네 자리부터 천단위 구분자 — 시총(억) 가독. 소수부·음수엔 안 새어든다", () => {
-        const eok = { suffix: "억", decimals: 0, signed: false };
-        expect(formatAxisValue(3000, eok)).toBe("3,000억");
-        expect(formatAxisValue(19848000, eok)).toBe("19,848,000억");
-        expect(formatAxisValue(500, eok)).toBe("500억"); // 세 자리는 그대로
         expect(formatAxisValue(-1234.5678, { suffix: "", decimals: 2, signed: true })).toBe("-1,234.57");
         expect(formatAxisValue(12.34)).toBe("+12.3%"); // 기존 % 축 표기 불변
+    });
+
+    it("억 단위 축은 1조부터 조로 접는다(소수 한 자리) — 값의 계약(억원)은 그대로", () => {
+        const eok = { suffix: "억", decimals: 0, signed: false };
+        expect(formatAxisValue(500, eok)).toBe("500억");
+        expect(formatAxisValue(3000, eok)).toBe("3,000억"); // 1조 미만은 억 + 구분자
+        expect(formatAxisValue(43000, eok)).toBe("4.3조");
+        expect(formatAxisValue(19848000, eok)).toBe("1,984.8조"); // 조 표기에도 구분자
     });
 });
 

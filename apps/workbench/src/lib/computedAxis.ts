@@ -43,10 +43,16 @@ export interface AxisRef extends RankAxis {
  */
 export function formatAxisValue(v: number, display?: AxisDisplay): string {
     const { suffix = "%", decimals = 1, signed = true } = display ?? {};
-    // 천단위 구분자 — 시총(억) 같은 큰 정수 축의 가독용. 기존 축(%·일·개)은 세 자리를 잘 안 넘어 표기 불변.
-    const [int, frac] = v.toFixed(decimals).split(".");
-    const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    return `${signed && v > 0 ? "+" : ""}${grouped}${frac !== undefined ? `.${frac}` : ""}${suffix}`;
+    const render = (val: number, dec: number, sfx: string): string => {
+        // 천단위 구분자 — 시총(억) 같은 큰 정수 축의 가독용. 기존 축(%·일·개)은 세 자리를 잘 안 넘어 표기 불변.
+        const [int, frac] = val.toFixed(dec).split(".");
+        const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+        return `${signed && v > 0 ? "+" : ""}${grouped}${frac !== undefined ? `.${frac}` : ""}${sfx}`;
+    };
+    // 억 단위 축의 조 승격 — 1조(=10,000억) 이상은 "4.3조"(소수 한 자리). 축별 분기가 아니라 **단위의
+    // 규칙**이다(억을 쓰는 축은 전부 같은 접힘). 값의 계약(억원)은 그대로 — 표시만 접는다(필터 밴드 불변).
+    if (suffix === "억" && Math.abs(v) >= 10_000) return render(v / 10_000, 1, "조");
+    return render(v, decimals, suffix);
 }
 
 export interface ComputedAxisView {

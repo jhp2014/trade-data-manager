@@ -101,14 +101,14 @@ export function gridFeatureFeeds(view: AutoPointsView, gridOf: (code: string, da
         {
             key: "grid-pullback-pct",
             name: "눌림 깊이",
-            strongerWhen: "lower",
+            strongerWhen: "higher", // 큰 값 우측(2026-09-02 사용자 확정 — 얕음→깊음이 좌→우로 읽히게)
             display: { suffix: "%", decimals: 1, signed: false },
             values: pullback,
         },
         {
             key: "grid-renewal-elapsed",
             name: "재돌파 경과(분)",
-            strongerWhen: "lower", // 빨리 되돌아올수록 = 눌림을 소화한 힘이 큰 자리(잠정 — 화면 보고 뒤집기 쉬움)
+            strongerWhen: "higher", // 큰 값 우측(2026-09-02 사용자 확정 — 짧음→긺이 좌→우)
             display: { suffix: "분", decimals: 0, signed: false },
             values: renewalElapsed,
         },

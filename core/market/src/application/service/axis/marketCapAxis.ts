@@ -28,7 +28,7 @@ export function marketCapAxis(): DayComputedAxisDef {
         key: "market-cap",
         name: "시가총액",
         version: 1,
-        strongerWhen: "lower", // 작을수록 = 같은 대금으로 크게 움직이는 그릇
+        strongerWhen: "higher", // 큰 값이 우측(2026-09-02 사용자 확정 — 레일 좌→우 = 작은→큰 통일)
         grain: "day",
         display: { suffix: "억", decimals: 0, signed: false },
         inputs: ["marketCap"],
