@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isComputedAxis } from "../../lib/computedAxis.js";
 import type { AxisRef } from "../../lib/computedAxis.js";
+import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "./sheetColumns.js";
@@ -87,9 +88,11 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     const [previewWidths, setPreviewWidths] = useState<Record<string, number>>({});
 
     // 축을 지우면 그 축 키가 넷 모두에 유령으로 남는다 → 축 목록이 로드된 뒤 한 번 청소(위 ⚠ 참고).
+    // 격자 축은 **잠깐 숨을 수 있다** — 렌즈로 빠진 고점·다리 축, 그리고 격자 로딩 전(서버 축이 먼저 와서 이 청소가
+    // 도는 순간 격자 축은 아직 목록에 없다). 죽은 게 아니라 보호 목록을 합쳐 넘긴다(레일 서랍과 같은 처방).
     useEffect(() => {
         if (axesLoading || axes.length === 0) return;
-        const ids = pruneAxisIds ?? axes.map((a) => a.key);
+        const ids = [...(pruneAxisIds ?? axes.map((a) => a.key)), ...GRID_AXIS_IDS];
         setFrozenCols((f) => pruneAxisKeys(f, ids));
         setHiddenCols((h) => pruneAxisKeys(h, ids));
         setColWidths((w) => pruneAxisKeys(w, ids));

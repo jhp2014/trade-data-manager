@@ -21,8 +21,8 @@ import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { usePointRows } from "../../lib/usePointRows.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
-import { computedAxisId, type AxisRef } from "../../lib/computedAxis.js";
-import { HIGH_LENS_AXIS_KEYS } from "../../lib/gridFeatures.js";
+import { type AxisRef } from "../../lib/computedAxis.js";
+import { GRID_AXIS_IDS, HIGH_LENS_AXIS_IDS } from "../../lib/gridFeatures.js";
 import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
 import { useSubject } from "../../lib/subject.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
@@ -36,7 +36,7 @@ import { ComputedAxisRail } from "./rail/AxisRails.js";
 import { DateRail, TimeRail } from "./rail/RangeRails.js";
 import { GRAIN_TITLE, GrainSection, Note } from "./grain.js";
 import { predicateOfKind, stagesFor, type RailKey } from "./stageBinding.js";
-import { dropEdge, moveAxis, orderAxes, parseAxisOrder } from "./axisOrder.js";
+import { dropEdge, moveAxis, orderAxes, parseAxisOrder, retainHidden } from "./axisOrder.js";
 import { drawerCountsOf, drawerVisible, parseDrawerIds, parseDrawerOpen, pruneDrawer, splitByDrawer } from "./axisDrawer.js";
 import { FILTER } from "../../styles/palette.js";
 import type { AxisValueRange, FilterPredicate, FilterStage, Grain } from "./stage.js";
@@ -60,12 +60,13 @@ const DRAWER_OPEN_KEY = "wb.filterDrawerOpen";
  */
 const AXIS_DND = "application/x-filter-axis";
 /**
- * 고점 렌즈에서만 서는 축 id — 렌즈를 갱신으로 되돌리면 축 목록에서 **사라진다**(죽은 게 아니라 숨은 것).
- * 서랍 청소가 이걸 유령으로 오인해 지우면 렌즈를 한 번 되돌릴 때마다 서랍 멤버십이 영구 삭제된다 — 보호 목록.
- * 타점 칸 안에서 이 축들 앞에 "고점" 소제목 한 줄을 둔다(축 그룹핑 — 행 분할·새 칸·순서 강제 아님).
+ * 격자 축 id 는 **잠깐 숨을 수 있다** — 고점 렌즈 전용 축은 렌즈를 갱신으로 되돌리면, 격자 축 전부는 격자 로딩 전엔
+ * 목록에 없다(죽은 게 아니라 숨은 것). 서랍 청소(`pruneDrawer`)·순서 덮어쓰기(`moveAxis`)가 이걸 유령으로 오인하면
+ * 서랍 멤버십·순서가 영구 삭제된다 — 둘 다 보호 목록(`GRID_AXIS_IDS`)을 본다.
+ * 타점 칸 안에서 고점 렌즈 축 앞에 "고점" 소제목 한 줄을 둔다(축 그룹핑 — 행 분할·새 칸·순서 강제 아님).
  */
-const HIGH_LENS_IDS = HIGH_LENS_AXIS_KEYS.map(computedAxisId);
-const HIGH_LENS_ID_SET = new Set(HIGH_LENS_IDS);
+const GRID_AXIS_ID_SET = new Set(GRID_AXIS_IDS);
+const HIGH_LENS_ID_SET = new Set(HIGH_LENS_AXIS_IDS);
 
 export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
     const v = useFunnel();
@@ -124,7 +125,7 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
     useEffect(() => {
         if (ax.isLoading || ax.axes.length === 0) return;
         const live = ax.axes.map((a) => a.key);
-        setDrawerIds((ids) => pruneDrawer(ids, live, HIGH_LENS_IDS));
+        setDrawerIds((ids) => pruneDrawer(ids, live, GRID_AXIS_IDS));
     }, [ax.isLoading, ax.axes, setDrawerIds]);
 
     /** 이 축 위에 놓을 수 있나 — **같은 층위 · 같은 편(서랍 안/밖)**. 편이 다르면 안 보이는 자리로 순서가 옮겨진다. */
@@ -134,7 +135,8 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
     const dropAxis = (targetKey: string): void => {
         if (dragAxis === null || !canDropOn(targetKey)) return;
         const next = moveAxis(orderedIds, dragAxis, targetKey);
-        if (next) setAxisOrder(next);
+        // 화면 목록으로 덮어쓰기 전에 잠깐 숨은 격자 축의 자리를 되살린다(안 그러면 갱신 렌즈에서 한 번 끌 때마다 소멸).
+        if (next) setAxisOrder(retainHidden(next, axisOrder, GRID_AXIS_ID_SET));
         setDragAxis(null);
     };
 
@@ -278,10 +280,11 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
 
                                 {/* "축이 없다"는 **서랍 포함**으로 판단한다 — 전부 치운 칸에서 이 말은 거짓말이다. */}
                                 {axes.length === 0 && <Note>이 층위에 축이 없습니다</Note>}
-                                {outside.map((axis, i) => (
+                                {/* '걸린 것만' 은 그릴 줄을 먼저 좁힌다 — 안 그러면 줄은 빠지고 소제목만 홀로 남는다. */}
+                                {outside.filter((axis) => visible(stageOf({ kind: "axis", axisId: axis.key }) !== undefined)).map((axis, i, shown) => (
                                     <Fragment key={axis.key}>
                                         {/* 고점 소제목 — 고점 렌즈 축의 연속 구간이 시작하는 자리마다(사용자가 순서를 섞으면 여러 번 설 수 있다 — 순서 pref 는 안 건드린다). */}
-                                        {HIGH_LENS_ID_SET.has(axis.key) && (i === 0 || !HIGH_LENS_ID_SET.has(outside[i - 1].key)) && (
+                                        {HIGH_LENS_ID_SET.has(axis.key) && (i === 0 || !HIGH_LENS_ID_SET.has(shown[i - 1].key)) && (
                                             <div title="고점 렌즈 전용 축 — 결정 봉이 그 다리의 확정 고점 봉이라 시그널 이후 정보까지 조건으로 씁니다(고점 −2% 이상 지정가 전제)"
                                                 style={{ padding: "5px 10px 1px", fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", letterSpacing: "0.04em" }}>
                                                 고점

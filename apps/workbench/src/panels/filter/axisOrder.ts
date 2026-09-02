@@ -37,6 +37,9 @@ export function moveAxis(ids: readonly string[], dragged: string, target: string
     return next;
 }
 
+// 숨은 축의 자리 되살리기(`retainHidden`)는 시트와 공용이라 lib 에 산다 — `moveAxis` 결과에 입혀서 저장할 것.
+export { retainHidden } from "../../lib/axisPrefs.js";
+
 /**
  * 드롭하면 target 의 **어느 쪽**에 서나 — 표시선(2px)이 실제 결과와 어긋나면 안 되니 moveAxis 와 같은
  * 셈에서 나온다. 먼저 뽑고(splice) 넣기 때문에 아래로 끌면 target 뒤, 위로 끌면 target 앞이다.

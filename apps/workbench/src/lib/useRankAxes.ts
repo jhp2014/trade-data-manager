@@ -6,9 +6,12 @@ import { useQuery } from "@tanstack/react-query";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 import { computedAxesQuery } from "../api/queries.js";
 import { computedAxisView, type AxisRef } from "./computedAxis.js";
-import { gridFeatureFeeds } from "./gridFeatures.js";
+import { gridFeatureFeeds, GRID_AXIS_IDS } from "./gridFeatures.js";
 import { useAutoPoints, usePointGrids } from "./PointGridsContext.js";
 import { useWorkbench } from "../store/workbench.js";
+import { retainHidden } from "./axisPrefs.js";
+
+const GRID_AXIS_ID_SET = new Set(GRID_AXIS_IDS);
 
 /** 계산 축의 화면용 메타 — 값 자체가 아니라 값을 어떻게 놓고 어떻게 읽는지. */
 export interface ComputedAxisMeta {
@@ -57,7 +60,7 @@ export function useRankAxesValue(): RankAxesView {
     const autoView = useAutoPoints();
     const gridsView = usePointGrids();
     // 렌즈(정의 노브)에 따라 축 **목록**이 는다/준다 — 고점 렌즈에서만 고점·다리 축이 선다(누출 게이트).
-    // 갱신으로 되돌리면 그 축들이 목록에서 사라지므로 서랍 청소가 보호 목록(HIGH_LENS_AXIS_KEYS)을 봐야 한다.
+    // 갱신으로 되돌리면 그 축들이 목록에서 사라지므로 서랍·시트 열·순서 청소가 보호 목록(GRID_AXIS_IDS)을 봐야 한다.
     const lens = useWorkbench((s) => s.pointDef.lens);
     const computed = useMemo(() => {
         const server = computedQ.data ?? [];
@@ -92,8 +95,9 @@ export function useRankAxesValue(): RankAxesView {
         const to = ids.indexOf(targetId);
         if (from < 0 || to < 0) return;
         ids.splice(to, 0, ids.splice(from, 1)[0]);
-        setRankAxisOrder(ids);
-    }, [axes, setRankAxisOrder]);
+        // 화면 목록으로 덮어쓰기 전에 잠깐 숨은 격자 축(렌즈로 빠진 고점·다리 축, 격자 로딩 전)의 자리를 되살린다.
+        setRankAxisOrder(retainHidden(ids, orderPref, GRID_AXIS_ID_SET));
+    }, [axes, orderPref, setRankAxisOrder]);
 
     const computedValues = useMemo(() => new Map(computed.map((c) => [c.axis.key, c.values])), [computed]);
     const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.key, { strongerWhen: c.strongerWhen, scale: c.scale, fmt: c.fmt }])), [computed]);

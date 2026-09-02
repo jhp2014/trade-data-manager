@@ -47,7 +47,11 @@ export function encodeChartGrid(stockCode: string, g: PointGrid): WireChartGrid 
 
 const markOf = (min: number, tv: string, cum: string): GridBarMark | null => (min < 0 ? null : { min, tv, cum });
 
+/** 이 코덱이 아는 차트 튜플 칸 수 — 옛 번들(react-query 캐시·낡은 서버)이 오면 조용히 뒤틀리는 대신 여기서 죽는다. */
+const CHART_TUPLE_LEN = 9;
+
 export function decodeChartGrid(w: WireChartGrid): { stockCode: string; grid: PointGrid } {
+    if (w.length < CHART_TUPLE_LEN) throw new Error(`point-grid 튜플 칸 수 ${w.length} < ${CHART_TUPLE_LEN} — 옛 버전 번들(서버 재기동·하드 리로드 필요)`);
     return {
         stockCode: w[0],
         grid: {

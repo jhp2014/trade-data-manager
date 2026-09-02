@@ -30,6 +30,11 @@ describe("grid codec", () => {
         expect(decodeChartGrid(encodeChartGrid("A", grid)).grid).toEqual(grid);
     });
 
+    it("옛 버전 튜플(칸 수 부족)은 조용히 오독하지 않고 죽는다", () => {
+        const old = ["A", 100, 541, [], [], 98, 97] as unknown as Parameters<typeof decodeChartGrid>[0];
+        expect(() => decodeChartGrid(old)).toThrow(/칸 수 7/);
+    });
+
     it("튜플 위치 자체를 고정한다 — 왕복만으론 encode·decode 가 같은 방향으로 밀린 걸 못 잡는다", () => {
         const grid: PointGrid = {
             base: 100,

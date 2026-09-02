@@ -5,7 +5,7 @@
 // 1만 객체가 화면 수만큼 복제되므로, 소비자(시트·깔때기·차트 마커)는 전부 이 훅의 산출물을 본다.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { chartKeyOf, minuteToHms, pointsOf, type DerivedPoint, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
+import { chartKeyOf, minuteToHms, pointsOf, type DerivedPoint, type PointDefinition, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
 import { pointGridsQuery } from "../api/queries.js";
 import { useWorkbench } from "../store/workbench.js";
 
@@ -61,7 +61,13 @@ const EMPTY: DerivedPoint[] = [];
 /** ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(파생이 인스턴스마다 복제된다). */
 export function useAutoPointsValue(): AutoPointsView {
     const q = useQuery(pointGridsQuery());
-    const def = useWorkbench((s) => s.pointDef);
+    // 판정 노브만 구독한다 — `lens` 는 pointsOf 가 안 보는 필드라(행·행 시각 불변 계약) 통째 의존하면 렌즈 토글이
+    // 1만 Point 를 헛재파생하고 `points` 참조까지 갈아 하류 memo(useThemeStrengthStats 모듈 캐시)를 무효화한다.
+    const { baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly } = useWorkbench((s) => s.pointDef);
+    const def = useMemo<PointDefinition>(
+        () => ({ baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly, lens: "renewal" }),
+        [baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly],
+    );
     return useMemo<AutoPointsView>(() => {
         const data = q.data ?? null;
         const points: AutoPoint[] = [];

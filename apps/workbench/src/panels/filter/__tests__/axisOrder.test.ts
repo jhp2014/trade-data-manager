@@ -1,7 +1,7 @@
 // 보드 레일 순서(순수) — 표시선과 실제 결과가 **같은 셈**에서 나오는지가 이 파일의 요점이다.
 // 어긋나면 손이 놓은 자리와 축이 서는 자리가 달라지는데, 그건 드래그를 못 믿게 만든다.
 import { describe, it, expect } from "vitest";
-import { dropEdge, moveAxis, orderAxes, parseAxisOrder } from "../axisOrder.js";
+import { dropEdge, moveAxis, orderAxes, parseAxisOrder, retainHidden } from "../axisOrder.js";
 
 const ax = (key: string): { key: string } => ({ key });
 const keys = (a: readonly { key: string }[]): string[] => a.map((x) => x.key);
@@ -75,5 +75,23 @@ describe("parseAxisOrder", () => {
         expect(parseAxisOrder(["a", 3])).toBeNull();
         expect(parseAxisOrder({ a: 1 })).toBeNull();
         expect(parseAxisOrder(null)).toBeNull();
+    });
+});
+
+describe("retainHidden — 렌즈로 숨은 축의 자리를 pref 에 남긴다", () => {
+    const prot = new Set(["h1", "h2"]);
+
+    it("숨은 보호 축은 옛 pref 에서 바로 앞에 있던 축 뒤에 되끼운다 — 보이는 축의 상대 순서는 next 그대로", () => {
+        // 옛 pref [a, h1, b, h2, c] · 고점 렌즈를 끄고 b 를 a 앞으로 끌었다 → next [b, a, c].
+        // h1 은 a 뒤, h2 는 b 뒤 — 보이는 축의 순서 [b, a, c] 는 그대로다.
+        expect(retainHidden(["b", "a", "c"], ["a", "h1", "b", "h2", "c"], prot)).toEqual(["b", "h2", "a", "h1", "c"]);
+    });
+
+    it("앞 축이 없으면 맨 앞, 죽은(비보호) 축은 여전히 청소된다", () => {
+        expect(retainHidden(["a", "b"], ["h1", "dead", "a", "b"], prot)).toEqual(["h1", "a", "b"]);
+    });
+
+    it("숨은 게 없으면 next 와 같은 내용", () => {
+        expect(retainHidden(["a", "b"], ["a", "b"], prot)).toEqual(["a", "b"]);
     });
 });
