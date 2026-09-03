@@ -7,6 +7,8 @@
 // 띠는 zOrder "bottom"(캔들 뒤), 캡은 "top"(캔들 앞) — 층이 달라야 띠가 봉을 안 가린다.
 import type { IChartApi, ISeriesApi, ISeriesPrimitive, Time } from "lightweight-charts";
 import { snapToBar } from "../lib/chartFrame.js";
+import { HIGH_GAP } from "../lib/anchorMarks.js";
+import { MARKER_RESERVE } from "./anchorMarkOverlay.js";
 import { LEG_HIGH } from "../styles/palette.js";
 import type { MinutePoint } from "../lib/derive.js";
 
@@ -21,10 +23,13 @@ interface DrawTarget {
     useBitmapCoordinateSpace(f: (scope: BitmapScope) => void): void;
 }
 
-/** 드롭 캡 하나 — 고점 봉(time)과 그 봉의 고가(value, 분봉 % 축). */
+/** 드롭 캡 하나 — 고점 봉(time)과 그 봉의 고가(value, 분봉 % 축), 고가에서 띄울 간격(gap, px). */
 export interface LegCapSpec {
     time: Time;
     value: number;
+    /** 고가 위 예약 공간 계약(anchorMarkOverlay 와 동일) — HIGH_GAP + (그 봉에 거래대금 마커가 있으면) 예약분.
+     *  고정값이면 캡이 봉 위 마커를 관통한다(드롭선이 gap 을 두는 그 이유 그대로). */
+    gap: number;
 }
 
 /** 다리 띠 — 시작 봉(크로싱이 아니라 **시그널 봉**: 사용자가 고른 행의 자리)부터 고점 봉까지. */
@@ -33,7 +38,6 @@ export interface LegBandSpec {
     to: Time;
 }
 
-const CAP_GAP = 3; // 고가에서 점까지(px)
 const CAP_LEN = 12; // 점 위로 뻗는 선 길이(px)
 const CAP_DOT = 2.2; // 점 반지름(px)
 const BAND_FILL = "rgba(190,122,0,0.09)"; // LEG_HIGH 의 옅은 판 — 여러 봉을 덮어도 시끄럽지 않게
@@ -59,7 +63,7 @@ class LegCapsRenderer {
                 const y = series.priceToCoordinate(c.value);
                 if (x === null || y === null) continue; // 봉이 시리즈에 없거나 축 밖 — 지어내지 않는다
                 const px = Math.round((x as number) * hr) + 0.5;
-                const dotY = ((y as number) - CAP_GAP - CAP_DOT) * vr;
+                const dotY = ((y as number) - c.gap - CAP_DOT) * vr;
                 ctx.beginPath();
                 ctx.arc(px, dotY, CAP_DOT * Math.max(hr, vr) * 0.9, 0, Math.PI * 2);
                 ctx.fill();
@@ -153,11 +157,15 @@ export function asLegPrimitive(v: LegMarks): ISeriesPrimitive<Time> {
 /**
  * 스펙 조립(순수) — 시각(unix초)들을 실제 봉으로 스냅하고 그 봉의 고가(%)를 캡 값으로 든다.
  * 봉이 없는 시각(스냅 실패)·중복 봉은 버린다. 띠는 양끝 다 스냅돼야 선다(한쪽만 지어내지 않는다).
+ * `hasMarker` = 그 봉에 봉 위 마커(거래대금)가 있나 — 있으면 캡을 예약분만큼 더 띄운다(드롭선과 같은 계약).
+ * 같은 봉에 앵커 드롭선이 함께 서면 캡 점이 드롭선 끝을 막는 모양이 되는데, 둘 다 "이 봉"을 가리키는
+ * 표식이라 수용(색·실/파선으로 갈린다 — 2026-09-02 리뷰 판정).
  */
 export function buildLegSpecs(
     points: readonly MinutePoint[],
     highTimes: readonly number[],
     band: { from: number; to: number } | null,
+    hasMarker: (p: MinutePoint) => boolean = () => false,
 ): { caps: LegCapSpec[]; band: LegBandSpec | null } {
     const byTime = new Map(points.map((p) => [p.time, p]));
     const caps: LegCapSpec[] = [];
@@ -168,7 +176,7 @@ export function buildLegSpecs(
         const bar = byTime.get(s);
         if (!bar) continue;
         seen.add(s);
-        caps.push({ time: s as Time, value: bar.high });
+        caps.push({ time: s as Time, value: bar.high, gap: HIGH_GAP + (hasMarker(bar) ? MARKER_RESERVE : 0) });
     }
     let bandSpec: LegBandSpec | null = null;
     if (band !== null) {

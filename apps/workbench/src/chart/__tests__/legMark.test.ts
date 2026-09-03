@@ -19,13 +19,18 @@ const pt = (time: number, high: number): MinutePoint => ({
 const points = [pt(100, 1.5), pt(160, 3.2), pt(220, 5.0)];
 
 describe("buildLegSpecs", () => {
-    it("캡 — 봉으로 스냅하고 그 봉의 고가(%)를 값으로 든다", () => {
-        expect(buildLegSpecs(points, [160], null).caps).toEqual([{ time: 160, value: 3.2 }]);
+    it("캡 — 봉으로 스냅하고 그 봉의 고가(%)를 값으로, 기본 gap = HIGH_GAP(드롭선과 같은 계약)", () => {
+        expect(buildLegSpecs(points, [160], null).caps).toEqual([{ time: 160, value: 3.2, gap: 8 }]);
+    });
+
+    it("봉 위 마커가 있는 봉은 gap 에 예약분이 붙는다 — 캡이 마커를 관통하지 않게", () => {
+        const { caps } = buildLegSpecs(points, [160], null, (p) => p.time === 160);
+        expect(caps).toEqual([{ time: 160, value: 3.2, gap: 8 + 16 }]);
     });
 
     it("봉 사이 시각은 이하 최대 봉으로, 같은 봉 중복은 하나로", () => {
         const { caps } = buildLegSpecs(points, [170, 165], null);
-        expect(caps).toEqual([{ time: 160, value: 3.2 }]);
+        expect(caps.map((c) => c.time)).toEqual([160]);
     });
 
     it("첫 봉보다 이른 시각(스냅 실패)은 버린다 — 지어내지 않는다", () => {

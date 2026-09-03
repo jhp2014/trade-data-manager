@@ -5,6 +5,7 @@ import { type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { type VertLineSpec } from "./vertLine.js";
 import { buildLegSpecs } from "./legMark.js";
+import { amountBucketIndex } from "@trade-data-manager/market/domain";
 import { type MinutePoint } from "../lib/derive.js";
 import { linePct, snapToBar, type RenderLine } from "../lib/chartFrame.js";
 import { ALARM, PRICE_LINE } from "../styles/palette.js";
@@ -70,19 +71,21 @@ export function useMarkerVertLines(
 /**
  * 다리 표식(고점 렌즈) — 드롭 캡(고점 봉 전부) + 다리 띠(선택 시그널 하나). 스펙 조립은 buildLegSpecs(순수),
  * 여기는 스냅 결과를 primitive 에 미는 배선만. 갱신 렌즈·실시간 차트는 빈 입력이라 아무것도 안 그린다.
+ * 마커 규칙은 anchorMarkArgs 의 분봉 판정과 같은 함수(amountBucketIndex)를 쓴다 — 두 벌이면 예약분이 갈린다.
  */
 export function useLegMarks(
     series: MinuteSeries,
     points: MinutePoint[],
     highTimes: readonly number[] = NO_TIMES,
     band: { from: number; to: number } | null = null,
+    showAmountMarkers = false,
 ): void {
     useEffect(() => {
-        const specs = buildLegSpecs(points, highTimes, band);
+        const specs = buildLegSpecs(points, highTimes, band, (p) => showAmountMarkers && amountBucketIndex(p.amount) >= 0);
         series.legRef.current?.set(specs.caps, specs.band);
         series.bumpOverlay();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, highTimes, band, series.gen]);
+    }, [points, highTimes, band, showAmountMarkers, series.gen]);
 }
 
 // 선의 % 좌표(linePct)는 lib/chartFrame 으로 — RenderLine 의 집이 거기고, 렌더와 우클릭 판정이 같은 함수를 탄다.

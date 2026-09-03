@@ -213,7 +213,7 @@ export function MinuteChart({
     const series = useMinuteSeries(chartRef);
     const { amountMapRef, cumMapRef, pointMapRef } = useMinuteSeriesData(series, points, showAmountMarkers);
     const { currentSnapped, autoSnapped } = useMarkerVertLines(series, points, markerTime, autoPoints);
-    useLegMarks(series, points, legHighTimes, legBand);
+    useLegMarks(series, points, legHighTimes, legBand, showAmountMarkers);
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base, pctBase);
