@@ -11,6 +11,7 @@ import type { AnchorMark } from "../lib/anchorMarks.js";
 import { useMinuteSeries, useMinuteSeriesData } from "./minuteSeries.js";
 import { useMinuteVisibleRange } from "./minuteFraming.js";
 import {
+    useLegMarks,
     useMarkerOverlay,
     useMarkerVertLines,
     usePercentPriceLines,
@@ -149,6 +150,7 @@ export function MinuteChart({
     markerTime = null,
     autoPoints = NO_AUTO,
     legHighTimes,
+    legBand = null,
     showPointInfo = false,
     zoom = null,
     lockTimeScale = false,
@@ -169,8 +171,10 @@ export function MinuteChart({
     markerTime?: number | null; // 현재 타점 세로선(unix초). null = 없음.
     /** 자동 Point(격자 파생, unix초+라벨). ◇ 마커 + 청록 세로선 + hover 카드 — 안 넘기면 없음(실시간 차트가 그렇다). */
     autoPoints?: AutoPointInput[];
-    /** 고점 렌즈의 다리 고점 봉(unix초) — 호박색 세로선만. 안 넘기면 없음(갱신 렌즈·실시간 차트). */
+    /** 고점 렌즈의 다리 고점 봉(unix초) — 고가 위 드롭 캡. 안 넘기면 없음(갱신 렌즈·실시간 차트). */
     legHighTimes?: readonly number[];
+    /** 선택한 시그널의 다리 띠(unix초 구간, 시그널 봉→고점 봉) — 하나만. null = 띠 없음. */
+    legBand?: { from: number; to: number } | null;
     showPointInfo?: boolean; // 현재 타점 정보 박스 토글
     zoom?: { bars: number; anchorTime: number | null } | null; // f 줌 — anchorTime 중심 ±bars/2 봉. null = 세션 기본(07:50/08:50~15:30).
     lockTimeScale?: boolean; // 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지(리프레임 안 함)
@@ -208,7 +212,8 @@ export function MinuteChart({
     // 명령형 배선 — 시리즈 수명주기 → 데이터 푸시 → 타점 세로선 → 표시범위 → 상호작용 → 가격선(%).
     const series = useMinuteSeries(chartRef);
     const { amountMapRef, cumMapRef, pointMapRef } = useMinuteSeriesData(series, points, showAmountMarkers);
-    const { currentSnapped, autoSnapped } = useMarkerVertLines(series, points, markerTime, autoPoints, legHighTimes);
+    const { currentSnapped, autoSnapped } = useMarkerVertLines(series, points, markerTime, autoPoints);
+    useLegMarks(series, points, legHighTimes, legBand);
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base, pctBase);

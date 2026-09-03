@@ -83,23 +83,41 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const autoView = useAutoPoints();
     const grids = usePointGrids();
     const lens = useWorkbench((s) => s.pointDef.lens);
-    const { autoPoints, legHighTimes } = useMemo<{ autoPoints: AutoPointInput[]; legHighTimes: number[] }>(() => {
+    const { autoPoints, legHighTimes, legHighBySignal } = useMemo<{
+        autoPoints: AutoPointInput[];
+        legHighTimes: number[];
+        /** 시그널 봉(unix초) → 그 다리 고점 봉(unix초) — 선택 시그널의 다리 띠 재료. */
+        legHighBySignal: Map<number, number>;
+    }>(() => {
         const grid = lens === "high" ? grids.gridOf(code, viewDate) : undefined;
         const legTimes = new Set<number>();
+        const bySignal = new Map<number, number>();
         const list = autoPointsOfChart(autoView, code, viewDate).map((p) => {
+            const signalUnix = kstToUnix(viewDate, minuteToHms(p.min));
             let label = `자동 ${p.kind === "breakout" ? "돌파" : "재돌파"} ${p.ordinal + 1}번째 · 레벨 ${p.levelPrice.toLocaleString()} · 대금 ${(Number(p.tv) / 1e8).toFixed(0)}억`;
             if (lens === "high") {
                 const high = grid ? legHighOf(grid, p.min) : null;
                 if (high === null) label += " · 고점 없음(꼬리)";
                 else {
                     label += ` · 고점 ${minuteToHms(high.pivot.min).slice(0, 5)} (+${(((high.pivot.price - p.levelPrice) / p.levelPrice) * 100).toFixed(1)}%)`;
-                    legTimes.add(kstToUnix(viewDate, minuteToHms(high.pivot.min)));
+                    const highUnix = kstToUnix(viewDate, minuteToHms(high.pivot.min));
+                    legTimes.add(highUnix);
+                    bySignal.set(signalUnix, highUnix);
                 }
             }
-            return { time: kstToUnix(viewDate, minuteToHms(p.min)), label };
+            return { time: signalUnix, label };
         });
-        return { autoPoints: list, legHighTimes: [...legTimes] };
+        return { autoPoints: list, legHighTimes: [...legTimes], legHighBySignal: bySignal };
     }, [autoView, grids, lens, code, viewDate]);
+
+    // 다리 띠 — **선택한 시그널 하나**만(전 시그널에 칠하면 겹쳐서 바탕색이 된다). 선택 = focus.time 이
+    // 이 차트의 시그널일 때(subject 계약과 같은 판정). 시그널 봉 = 고점 봉이어도 한 봉짜리 띠가 선다.
+    const legBand = useMemo<{ from: number; to: number } | null>(() => {
+        if (!time || !viewDate) return null;
+        const sig = kstToUnix(viewDate, time);
+        const high = legHighBySignal.get(sig);
+        return high === undefined ? null : { from: sig, to: high };
+    }, [time, viewDate, legHighBySignal]);
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
@@ -224,6 +242,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     markerTime={markerTime}
                                     autoPoints={autoPoints}
                                     legHighTimes={legHighTimes}
+                                    legBand={legBand}
                                     showPointInfo={showPointInfo}
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                     lockTimeScale={lockScale}

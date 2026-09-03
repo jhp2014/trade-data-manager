@@ -93,6 +93,8 @@ export const THEME_PEER = "#16796f"; // 테마 동료 점 — PRICE_LINE 과 지
 
 export const AUTO_POINT = "#16796f"; // 자동 Point(격자 파생) 마커 ◇ — PRICE_LINE 과 지금 같은 teal 이지만 뜻이 다르다(머리 규칙: 이름을 가른다)
 
+export const LEG_HIGH = "#be7a00"; // 고점 렌즈의 다리 고점(드롭 캡·띠) — M 가격선과 지금 같은 앰버지만 뜻이 다르다(이름 가르기). 세로 캡+점이라 가로선인 M 과 형태로도 갈린다
+
 export const CHART_LABEL = "#a0a0a0"; // 차트 툴팁의 라벨 회색(툴팁 배경 위 — 본문 --text-tertiary 와 다름)
 export const CHART_VALUE = "#d4d4d8"; // 차트 툴팁의 값 회색(라벨보다 밝게)
 

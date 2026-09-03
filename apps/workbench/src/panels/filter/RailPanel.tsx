@@ -16,7 +16,7 @@
 //
 // 레일 순서는 **이름 열을 끌어** 바꾼다(트랙은 조건 긋기라 잡이가 못 된다). 그 순서·서랍은 이 패널의
 // 로컬 저장물이다 — 시트 축 서열과 갈라져 있고, 셈은 axisOrder·axisDrawer(순수)에 있다.
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { usePointRows } from "../../lib/usePointRows.js";
@@ -128,10 +128,12 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
         setDrawerIds((ids) => pruneDrawer(ids, live, GRID_AXIS_IDS));
     }, [ax.isLoading, ax.axes, setDrawerIds]);
 
-    /** 이 축 위에 놓을 수 있나 — **같은 층위 · 같은 편(서랍 안/밖)**. 편이 다르면 안 보이는 자리로 순서가 옮겨진다. */
+    /** 이 축 위에 놓을 수 있나 — **같은 층위 · 같은 편(서랍 안/밖) · 같은 서브 띠(갱신/고점)**.
+     *  편·띠가 다르면 안 보이는 자리로 순서가 옮겨진다 — 띠 간 순서가 섞이지 않는 건 이 가드 + 분할 렌더 둘이 진다. */
     const canDropOn = (axisKey: string): boolean =>
         dragAxis !== null && dragAxis !== axisKey && scopeOf.get(dragAxis) === scopeOf.get(axisKey)
-        && drawerSet.has(dragAxis) === drawerSet.has(axisKey);
+        && drawerSet.has(dragAxis) === drawerSet.has(axisKey)
+        && HIGH_LENS_ID_SET.has(dragAxis) === HIGH_LENS_ID_SET.has(axisKey);
     const dropAxis = (targetKey: string): void => {
         if (dragAxis === null || !canDropOn(targetKey)) return;
         const next = moveAxis(orderedIds, dragAxis, targetKey);
@@ -280,19 +282,23 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
 
                                 {/* "축이 없다"는 **서랍 포함**으로 판단한다 — 전부 치운 칸에서 이 말은 거짓말이다. */}
                                 {axes.length === 0 && <Note>이 층위에 축이 없습니다</Note>}
-                                {/* '걸린 것만' 은 그릴 줄을 먼저 좁힌다 — 안 그러면 줄은 빠지고 소제목만 홀로 남는다. */}
-                                {outside.filter((axis) => visible(stageOf({ kind: "axis", axisId: axis.key }) !== undefined)).map((axis, i, shown) => (
-                                    <Fragment key={axis.key}>
-                                        {/* 고점 소제목 — 고점 렌즈 축의 연속 구간이 시작하는 자리마다(사용자가 순서를 섞으면 여러 번 설 수 있다 — 순서 pref 는 안 건드린다). */}
-                                        {HIGH_LENS_ID_SET.has(axis.key) && (i === 0 || !HIGH_LENS_ID_SET.has(shown[i - 1].key)) && (
-                                            <div title="고점 렌즈 전용 축 — 결정 봉이 그 다리의 확정 고점 봉이라 시그널 이후 정보까지 조건으로 씁니다(고점 −2% 이상 지정가 전제)"
-                                                style={{ padding: "5px 10px 1px", fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)", letterSpacing: "0.04em" }}>
-                                                고점
-                                            </div>
-                                        )}
-                                        {axisRow(axis, false)}
-                                    </Fragment>
-                                ))}
+                                {/* 서브 띠(갱신/고점) — 고점 축이 있을 때만 두 묶음으로 **분할 렌더**한다: 순서 pref 가
+                                    어떻게 섞여 있어도 화면에선 띠 간 순서가 안 섞이고, 드래그도 canDropOn 이 띠를 넘지 못하게 막는다.
+                                    '걸린 것만'은 그릴 줄을 먼저 좁힌다 — 안 그러면 줄은 빠지고 띠만 홀로 남는다. */}
+                                {(() => {
+                                    const shown = outside.filter((axis) => visible(stageOf({ kind: "axis", axisId: axis.key }) !== undefined));
+                                    const renewal = shown.filter((a) => !HIGH_LENS_ID_SET.has(a.key));
+                                    const highAxes = shown.filter((a) => HIGH_LENS_ID_SET.has(a.key));
+                                    if (highAxes.length === 0) return shown.map((axis) => axisRow(axis, false));
+                                    return (
+                                        <>
+                                            {renewal.length > 0 && <SubBand kind="renewal" />}
+                                            {renewal.map((axis) => axisRow(axis, false))}
+                                            <SubBand kind="high" />
+                                            {highAxes.map((axis) => axisRow(axis, false))}
+                                        </>
+                                    );
+                                })()}
                             </GrainSection>
                         </div>
                     );
@@ -307,6 +313,32 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
 }
 
 // ── 조각들 ────────────────────────────────────────────────────────────────
+
+/**
+ * 타점 칸 안 서브 띠 — 갱신/고점 축 묶음의 머리 줄(층위 머리 띠의 축소판). 고점 렌즈에서만 선다
+ * (고점 축이 없으면 묶음이 하나뿐이라 띠가 소음이다). 고점 띠는 옅은 teal 로 "렌즈 전용"이 색으로도 읽힌다.
+ */
+function SubBand({ kind }: { kind: "renewal" | "high" }): JSX.Element {
+    const high = kind === "high";
+    return (
+        <div
+            title={high
+                ? "고점 렌즈 전용 축 — 결정 봉이 그 다리의 확정 고점 봉이라 시그널 이후 정보까지 조건으로 씁니다(고점 −2% 이상 지정가 전제)"
+                : "갱신 시점 축 — 시그널 봉까지의 정보만 봅니다(두 렌즈 공통)"}
+            style={{
+                display: "flex", alignItems: "baseline", gap: 6, padding: "2px 10px 1px", marginTop: 2,
+                background: high ? "var(--accent-soft)" : "var(--bg-secondary)",
+                color: high ? "var(--accent-hover)" : "var(--text-secondary)",
+                fontSize: 10.5, fontWeight: 700, letterSpacing: "0.03em",
+            }}
+        >
+            {high ? "고점" : "갱신"}
+            <span style={{ fontWeight: 400, fontSize: 10, color: high ? "var(--accent-primary)" : "var(--text-tertiary)" }}>
+                {high ? "고점 봉까지" : "시그널 봉까지"}
+            </span>
+        </div>
+    );
+}
 
 /** 계산 축 레일 — 재료(값·표시 규격)를 꺼내 꽂는 자리. 값이 없는 축은 어댑터가 이유를 적는다. */
 function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, dragHandle, stow, onType, onChange }: {

@@ -15,6 +15,7 @@ import { act, fireEvent, render } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import type { ComputedAxisFeed } from "@trade-data-manager/wire";
+import { DEFAULT_POINT_DEFINITION } from "@trade-data-manager/market/domain";
 import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
 import { RAIL_PAD } from "../rail/Rail.js";
@@ -591,5 +592,30 @@ describe("서랍 — 축을 치우되 조건은 살려 둔다", () => {
         expect(JSON.parse(localStorage.getItem(DRAWER_KEY)!)).toEqual(["c:day-a"]); // 서랍에 그대로
         // 서랍은 그 층위 칸의 **맨 아래**라 하루 칸 안(타점 칸보다 위)에 그려진다.
         expect(railNames(container)).toEqual(["하루축B", "하루축A", "타점축"]);
+    });
+});
+
+// ── 서브 띠(갱신/고점) — 고점 렌즈에서 타점 칸이 두 묶음으로 갈리고, 띠 간 순서는 pref 가 섞여 있어도 안 섞인다.
+describe("서브 띠 — 갱신/고점", () => {
+    afterEach(() => { useWorkbench.setState({ pointDef: DEFAULT_POINT_DEFINITION }); });
+
+    it("갱신 렌즈(기본)에선 띠가 없다 — 묶음이 하나뿐이라 띠는 소음이다", () => {
+        const { container } = renderRails();
+        expect(container.querySelector('[title^="고점 렌즈 전용 축"]')).toBeNull();
+        expect(container.querySelector('[title^="갱신 시점 축"]')).toBeNull();
+    });
+
+    it("고점 렌즈 — 갱신 띠 뒤 고점 띠가 서고, pref 가 고점 축을 앞에 둬도 화면에선 고점 띠 아래에 선다", () => {
+        // 순서 pref 를 일부러 섞는다: 고점 축(다리 시간)을 맨 앞에 — 분할 렌더가 이를 무시해야 한다.
+        localStorage.setItem("wb.filterAxisOrder", JSON.stringify(["c:grid-leg-minutes", "c:baseline-position"]));
+        useWorkbench.setState({ pointDef: { ...DEFAULT_POINT_DEFINITION, lens: "high" } });
+        const { container } = renderRails();
+        const text = container.textContent ?? "";
+        const renewalBand = text.indexOf("시그널 봉까지");
+        const highBand = text.indexOf("고점 봉까지");
+        expect(renewalBand).toBeGreaterThanOrEqual(0);
+        expect(highBand).toBeGreaterThan(renewalBand);
+        expect(text.indexOf("다리 시간(분)")).toBeGreaterThan(highBand); // pref 상 맨 앞이어도 고점 띠 뒤
+        expect(text.indexOf("기준선 대비 %")).toBeLessThan(highBand); // 갱신 축은 고점 띠 앞
     });
 });
