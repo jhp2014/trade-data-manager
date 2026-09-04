@@ -30,7 +30,7 @@
 
 ## apps/workbench/src
 
-`api/`(wire 소비 fetch 래퍼) · `store/`(zustand: board/chart/live/rank/filterFunnel/panelUi/dock) · `panels/`(LiveBoard/ThemeBoard/ReplayBoard/Chart/RankSheet/News/Watchlist/FilterFunnel/Workset, 서브폴더 canvas/filter/group/liveTape/norm/outcome(시그널 결과 패널·결과 시트 — 시그널 이후(미래) 값, filter 와 과거/미래 경계)/rank) · `chart/`(캔들 렌더링) · `lib/`(hooks+순수 파생로직) · `shell/`(WorkbenchShell, 패널 카탈로그) · `components/`,`ui/`,`keymap/`,`styles/`
+`api/`(wire 소비 fetch 래퍼) · `store/`(zustand: board/chart/live/rank/filterFunnel/panelUi/dock) · `panels/`(LiveBoard/ThemeBoard/ReplayBoard/Chart/RankSheet/News/Watchlist/FilterFunnel/Workset, 서브폴더 canvas/filter/group/liveTape/norm/outcome(시그널 결과 패널 — 시그널 이후(미래) 값, filter 와 과거/미래 경계. 결과 시트 패널은 폐지 — 결과 열은 rank 시트의 시트 전용 열)/rank) · `chart/`(캔들 렌더링) · `lib/`(hooks+순수 파생로직) · `shell/`(WorkbenchShell, 패널 카탈로그) · `components/`,`ui/`,`keymap/`,`styles/`
 
 ## apps/live/src
 
