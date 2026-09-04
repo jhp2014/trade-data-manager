@@ -27,6 +27,15 @@
       "port": 3100
     },
     {
+      "name": "api-wt",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set API_PORT=3011&& pnpm --filter @trade-data-manager/api dev"
+      ],
+      "port": 3011
+    },
+    {
       "name": "workbench-wt",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [
