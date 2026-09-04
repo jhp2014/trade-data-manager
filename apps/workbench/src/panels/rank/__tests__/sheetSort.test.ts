@@ -18,7 +18,11 @@ const row = (code: string, over: Partial<SheetRow> & { ax?: RankCell | null } = 
     };
 };
 
-const ctx: SortCtx = { nameOf: (c) => `${c}명` };
+// 결과 레코드는 코드별 리터럴로 — outcomeOf 는 시트 전용 소스(행에 없는 값)라 ctx 가 든다.
+// 정렬은 slice.status/recovered 와 eval 만 읽으므로 그 부분 형태만 만들고 캐스팅한다.
+type OutcomeRecordLite = { slice: { status: "exceeded" | "contained" | "none"; recovered: boolean | null }; eval: Partial<Record<string, number>> };
+const OUTCOMES = new Map<string, OutcomeRecordLite>();
+const ctx: SortCtx = { nameOf: (c) => `${c}명`, outcomeOf: (r) => OUTCOMES.get(r.stockCode) as ReturnType<SortCtx["outcomeOf"]> };
 const codes = (rows: SheetRow[]): string[] => rows.map((r) => r.stockCode);
 const AX: SortChain = [{ key: { kind: "axis", axisId: "A" }, dir: 1 }];
 
@@ -89,6 +93,39 @@ describe("정렬 체인", () => {
             row("C", { date: "2026-07-08", time: "09:00:00" }),
         ];
         expect(codes(sortSheetRows(rows, [{ key: { kind: "comment" }, dir: 1 }], ctx))).toEqual(["C", "A", "B"]);
+    });
+});
+
+describe("결과 열 정렬(out) — 값의 출처는 ctx.outcomeOf(시트 전용 소스)", () => {
+    const recOf = (extHigh: number | undefined, status: OutcomeRecordLite["slice"]["status"], recovered: boolean | null): OutcomeRecordLite =>
+        ({ slice: { status, recovered }, eval: extHigh === undefined ? {} : { extHigh } });
+
+    it("숫자(고점@T1) 내림차순 · 레코드 없는 행은 방향 무관 바닥", () => {
+        OUTCOMES.clear();
+        OUTCOMES.set("A", recOf(8, "exceeded", true));
+        OUTCOMES.set("B", recOf(30, "contained", false));
+        const rows = [row("A"), row("없음"), row("B")];
+        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh" }, dir: -1 }];
+        expect(codes(sortSheetRows(rows, chain, ctx))).toEqual(["B", "A", "없음"]);
+        expect(codes(sortSheetRows(rows, [{ key: { kind: "out", metric: "extHigh" }, dir: 1 }], ctx))).toEqual(["A", "B", "없음"]);
+    });
+
+    it("상태 서수(초과 0 < 이내 1 < 무눌림 2) · 회복(true=1) · 무사건 null 은 바닥", () => {
+        OUTCOMES.clear();
+        OUTCOMES.set("초", recOf(1, "exceeded", false));
+        OUTCOMES.set("이", recOf(2, "contained", true));
+        OUTCOMES.set("무", recOf(3, "none", null));
+        const rows = [row("무"), row("이"), row("초")];
+        expect(codes(sortSheetRows(rows, [{ key: { kind: "out", metric: "status" }, dir: 1 }], ctx))).toEqual(["초", "이", "무"]);
+        // 회복: true(1) 먼저(내림차순) · null(무눌림) 은 방향 무관 바닥.
+        expect(codes(sortSheetRows(rows, [{ key: { kind: "out", metric: "recovered" }, dir: -1 }], ctx))).toEqual(["이", "초", "무"]);
+        expect(codes(sortSheetRows(rows, [{ key: { kind: "out", metric: "recovered" }, dir: 1 }], ctx))).toEqual(["초", "이", "무"]);
+    });
+
+    it("영속 복원 — metric 도 검증한다(죽은 metric 이 살아남으면 그 정렬이 조용히 전 행 바닥이 된다)", () => {
+        expect(parseSortChain([{ key: { kind: "out", metric: "extHigh" }, dir: -1 }])).toEqual([{ key: { kind: "out", metric: "extHigh" }, dir: -1 }]);
+        expect(parseSortChain([{ key: { kind: "out", metric: "죽은지표" }, dir: -1 }])).toBeNull();
+        expect(parseSortChain([{ key: { kind: "out" }, dir: -1 }])).toBeNull();
     });
 });
 

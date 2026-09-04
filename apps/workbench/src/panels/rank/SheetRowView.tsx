@@ -9,12 +9,14 @@
 //
 // 열을 붙이는 법은 그대로: CELLS 항목 하나 + sheetColumns 의 COL_META 한 줄.
 import { memo, type CSSProperties, type ReactNode } from "react";
-import { COL_META, colKey, type Col, type ColKind } from "./sheetColumns.js";
+import { COL_META, colJustify, colKey, type Col, type ColKind } from "./sheetColumns.js";
+import { fmtOutcomePct, OUTCOME_COL_META, type OutcomeColId } from "./outcomeColumns.js";
 import { isComputedAxis } from "../../lib/computedAxis.js";
+import type { OutcomeRecord } from "../../lib/useOutcomes.js";
 import { rowKey } from "../../lib/pointKey.js";
 import type { SheetRow } from "./rankSheet.js";
 import type { RankCell } from "../../lib/rankIndex.js";
-import { PIN, heatOf } from "../../styles/palette.js";
+import { LEG_HIGH, PIN, heatOf } from "../../styles/palette.js";
 import { cellView, type CellMode, type ValuedCell } from "./sheetCell.js";
 
 // 행 피치 두 종류 — **가상화기의 estimateSize 가 이 상수를 그대로 쓴다**(측정 안 함).
@@ -54,6 +56,11 @@ export interface SheetRowViewProps {
      * 패널이 축별로 한 벌 만들어 **참조를 고정**해 넘긴다(memo 가 얕은 비교로 재사용하도록).
      */
     valuedOf: (axisId: string, row: SheetRow) => ValuedCell | undefined;
+    /**
+     * 결과 열의 레코드(시트 전용 소스 — useOutcomes). day 행은 언제나 undefined(결과는 타점의 개념).
+     * 패널이 **참조를 고정**해 넘긴다 — T(허용 폭)가 바뀌면 참조가 갈려 memo 가 새로 그린다.
+     */
+    outcomeOf: (row: SheetRow) => OutcomeRecord | undefined;
     sortAxisId: string | null;
     focus: boolean;
     pinned: boolean;
@@ -70,7 +77,7 @@ export interface SheetRowViewProps {
 }
 
 function SheetRowViewImpl({
-    row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, sortAxisId,
+    row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, outcomeOf, sortAxisId,
     focus, pinned, dim, inPinnedBlock = false, isLastPinned = false, top, h,
 }: SheetRowViewProps): JSX.Element {
     const key = rowKey(row);
@@ -151,6 +158,17 @@ function SheetRowViewImpl({
                 ? <span style={{ fontSize: 9, color: "var(--text-secondary)" }}>●</span>
                 : <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>,
         }),
+        // 결과 열(point 행 전용, 시트 전용 소스) — 표기·색·툴팁은 옛 결과 시트(2026-09-04 폐지) 승계.
+        out: (c) => {
+            const metric = (c as { metric: OutcomeColId }).metric;
+            const rec = outcomeOf(row);
+            return {
+                onClick: () => h.onNav(row),
+                title: OUTCOME_COL_META[metric].help,
+                style: { cursor: "pointer" },
+                body: <OutcomeCell metric={metric} rec={rec} />,
+            };
+        },
     };
 
     // ⚠ 행 div 에 overflow 를 걸지 말 것 — 걸리는 순간 그게 새 스크롤 기준이 돼 좌측 고정 열의
@@ -169,9 +187,9 @@ function SheetRowViewImpl({
                     <div key={colKey(c)} onClick={r.onClick} onContextMenu={r.onContextMenu} title={r.title}
                         style={{
                             width: widthOf(c), flex: "0 0 auto", boxSizing: "border-box", minWidth: 0,
-                            // 세로 가운데는 td 가 공짜로 주던 것(vertical-align:middle), 가로는 COL_META.justify —
-                            // 헤더가 이미 쓰던 그 필드다(정렬 소스가 헤더/본문 두 벌이던 게 한 벌로 합쳐졌다).
-                            display: "flex", alignItems: "center", justifyContent: COL_META[c.key].justify,
+                            // 세로 가운데는 td 가 공짜로 주던 것(vertical-align:middle), 가로는 colJustify —
+                            // 헤더와 같은 소스다(정렬 소스가 헤더/본문 두 벌이던 게 한 벌로 합쳐졌다).
+                            display: "flex", alignItems: "center", justifyContent: colJustify(c),
                             ...COL_META[c.key].td, ...r.style, ...stick(c),
                         }}>
                         {r.body}
@@ -189,10 +207,43 @@ function SheetRowViewImpl({
 export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.row === b.row && a.cols === b.cols && a.leftOf === b.leftOf && a.lastFrozenKey === b.lastFrozenKey &&
     a.widthOf === b.widthOf && a.name === b.name && a.mode === b.mode && a.valuedOf === b.valuedOf &&
-    a.sortAxisId === b.sortAxisId && a.focus === b.focus &&
+    a.outcomeOf === b.outcomeOf && a.sortAxisId === b.sortAxisId && a.focus === b.focus &&
     a.pinned === b.pinned && a.dim === b.dim && a.top === b.top &&
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,
 );
+
+// ── 결과 셀 — 숫자 4종(부호색, Δ>0 은 옅은 배경) · 회복 ○/✕/— · 상태 배지.
+// — 표기는 값 없음(격자 미도착)과 무사건(무눌림의 낙폭·회복)이 같다: 상태 열이 그 사정을 말한다(옛 결과 시트 승계).
+function OutcomeCell({ metric, rec }: { metric: OutcomeColId; rec: OutcomeRecord | undefined }): JSX.Element {
+    if (metric === "recovered") {
+        const r = rec?.slice.recovered ?? null;
+        return (
+            <span style={{ color: r === true ? "var(--rise)" : r === false ? "var(--fall)" : "var(--text-tertiary)" }}>
+                {r === true ? "○" : r === false ? "✕" : "—"}
+            </span>
+        );
+    }
+    if (metric === "status") {
+        if (rec === undefined) return <span style={{ color: "var(--text-tertiary)" }}>—</span>;
+        return rec.slice.status === "exceeded"
+            ? <span style={{ color: "var(--text-secondary)" }}>초과</span>
+            : rec.slice.status === "contained"
+                ? <span style={{ color: LEG_HIGH, border: `1px solid ${LEG_HIGH}`, borderRadius: 3, padding: "0 3px", fontSize: 10 }}>이내</span>
+                : <span style={{ color: "var(--text-tertiary)" }}>무눌림</span>;
+    }
+    const v = rec?.eval[metric]; // 정렬(outcomeSortValue)과 같은 출처 — 두 벌이면 "정렬은 X 순, 칸은 Y" 사고
+    const highlight = metric === "deltaExt" && v !== undefined && v > 0;
+    // +를 빨갛게 칠하는 건 연장 쪽 둘만(옛 결과 시트의 plusRed) — 낙폭 2종의 양수는 "종가 위 저가"라 성질이 다르다.
+    const plusRed = metric === "extHigh" || metric === "deltaExt";
+    return (
+        <span className="tabular" style={{
+            color: v === undefined ? "var(--text-tertiary)" : plusRed && v > 0 ? "var(--rise)" : v < 0 ? "var(--fall)" : "var(--text-primary)",
+            background: highlight ? "var(--warning-soft)" : undefined, borderRadius: highlight ? 3 : undefined, padding: highlight ? "0 3px" : undefined,
+        }}>
+            {v === undefined ? "—" : fmtOutcomePct(v)}
+        </span>
+    );
+}
 
 // ── 순위 셀(숫자 `rank/total` 또는 위치 눈금 틱). 미배치 = 흐린 점. prominent(선택 행) = 불릿처럼 굵게.
 function Cell({ cell, valued, mode, prominent, barWidth }: {

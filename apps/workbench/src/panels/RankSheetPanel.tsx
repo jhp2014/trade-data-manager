@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePointRows } from "../lib/usePointRows.js";
-import { useAutoPoints } from "../lib/PointGridsContext.js";
+import { useAutoPoints, useOutcomes } from "../lib/PointGridsContext.js";
 import { useCandidateDays } from "../lib/useCandidateDays.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { buildDaySheetRows, buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
@@ -15,6 +15,7 @@ import { GROUP_H, ROW_H, SheetRowView, type SheetRowHandlers } from "./rank/Shee
 import { flatIndexOfRow, flattenSheetGroups } from "./rank/sheetFlatRows.js";
 import { SheetHeaderRow } from "./rank/SheetHeaderRow.js";
 import { SheetMenusHost, useSheetMenus } from "./rank/SheetMenusHost.js";
+import { SheetPresetMenu } from "./rank/SheetPresetMenu.js";
 import { useSessionScroll } from "./rank/useSessionScroll.js";
 import { useRankAxes } from "../lib/RankAxesContext.js";
 import { valueDomain, valueToFrac } from "../lib/computedAxis.js";
@@ -187,7 +188,13 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
         [sortAxisId, cols.cuts, orderKeyOfSort],
     );
 
-    const sortCtx = useMemo<SortCtx>(() => ({ nameOf }), [nameOf]);
+    // ── 결과 열의 값 — 축 피드가 아니라 **시트 전용 소스**다(과거/미래 경계, decisions 「시그널 결과」).
+    //    T(허용 폭) 커밋마다 참조가 갈려 정렬·행이 재계산된다(드래그 중엔 안 돈다 — setPointDef 는 pointerup 1회).
+    //    day 행 키(2조각)는 byKey(타점 키, 3조각)에 없어 폴백 없이 그대로 undefined 가 맞다.
+    const outcomes = useOutcomes();
+    const outcomeOf = useMemo(() => (row: SheetRow) => outcomes.byKey.get(rowKey(row)), [outcomes]);
+
+    const sortCtx = useMemo<SortCtx>(() => ({ nameOf, outcomeOf }), [nameOf, outcomeOf]);
     const sorted = useMemo(() => sortSheetRows(rows, sort, sortCtx, cutKeys), [rows, sort, sortCtx, cutKeys]);
     const groups = useMemo(() => buildSheetGroups(sorted, sort, sortCtx, cutKeys), [sorted, sort, sortCtx, cutKeys]);
 
@@ -291,6 +298,8 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
 
     // ── 팝업 상태(셀 우클릭 · 열 이름 우클릭) — opener 만 행·헤더·컨트롤에 나눠 꽂는다.
     const menus = useSheetMenus();
+    // 열 프리셋 판 — 컨트롤 줄의 액션이 누른 자리에 띄운다(택1 순환이 아니다: 값이 동적이고 저장·삭제가 붙는다).
+    const [presetMenuAt, setPresetMenuAt] = useState<{ x: number; y: number } | null>(null);
 
     const navRow = (row: SheetRow): void => {
         if (row.time === undefined) goToDay({ date: row.date, code: row.stockCode }, "rank-sheet");
@@ -315,7 +324,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
             <SheetRowView key={key} row={row} cols={displayCols}
                 leftOf={leftOf} lastFrozenKey={lastFrozenKey} widthOf={widthOf}
                 name={nameOf(row.stockCode)}
-                mode={cellMode} valuedOf={valuedOf} sortAxisId={sortAxisId}
+                mode={cellMode} valuedOf={valuedOf} outcomeOf={outcomeOf} sortAxisId={sortAxisId}
                 focus={isSubjectRow(row)} pinned={isPinned}
                 dim={bandsActive && !interKeys.has(matchKeyOf(row)) && (isPinned || filterMode === "dim")}
                 inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} top={top} h={rowH} />
@@ -348,6 +357,11 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
             help: "매칭만 남길까, 전체를 두고 밖을 흐리게 할까",
             values: [{ v: "narrow", label: "좁히기" }, { v: "dim", label: "흐리게" }],
             value: filterMode, set: (v) => setFilterMode(v === "dim" ? "dim" : "narrow"),
+        },
+        {
+            kind: "action", id: "colPresets", name: "열 프리셋", label: "프리셋", group: "열",
+            help: "보이는 열 묶음 저장·전환 — 프리셋은 보이는 열 스냅샷뿐(순서·고정·폭은 안 담는다)",
+            run: (at) => setPresetMenuAt({ x: at.clientX, y: at.clientY }),
         },
         {
             kind: "action", id: "resetWidths", name: "폭 원위치", label: "원위치", group: "열",
@@ -423,6 +437,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
 
           <SheetMenusHost m={menus} axes={axes} cols={cols} sortAxisId={sortAxisId} sortLen={sort.length}
               dropSortKey={(k) => setSort((s) => dropSort(s, k))} />
+          {presetMenuAt && <SheetPresetMenu anchor={presetMenuAt} cols={cols} rowMode={rowMode} onClose={() => setPresetMenuAt(null)} />}
         </Wrap>
     );
 }

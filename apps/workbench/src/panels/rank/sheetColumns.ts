@@ -4,6 +4,7 @@
 //
 // 열을 하나 붙이려면 여기 **Col 한 항목 + COL_META 한 줄**, 그리고 패널의 CELLS 한 항목(컴파일러가 강제).
 import type { CSSProperties } from "react";
+import { OUTCOME_COL_META, type OutcomeColId } from "./outcomeColumns.js";
 
 // 고정폭(table-layout:fixed + colgroup) — 열 고정 sticky 오프셋이 실제 폭과 정확히 맞도록.
 const NAME_W = 96;
@@ -26,7 +27,13 @@ export type Col =
     | { key: "axis"; axisId: string; name: string; computed: boolean }
     /** day 행 모드 전용 둘 — 타점 수(분봉 작업 진도) · 당일 코멘트 유무(존재 지도 재사용). */
     | { key: "points" }
-    | { key: "comment" };
+    | { key: "comment" }
+    /**
+     * 결과 열(point 행 모드 전용) — 값은 축 피드가 아니라 **시트 전용 소스**(useOutcomes)에서 온다.
+     * 과거/미래 경계(decisions.md 「시그널 결과」): 결과는 레일/서랍의 특징이 아니고, 시트는 읽기 면이라
+     * 여기서만 합류한다. 폭·라벨·정렬(가로)이 열마다 갈려 axis 처럼 런타임 override 를 탄다.
+     */
+    | { key: "out"; metric: OutcomeColId };
 export type ColKind = Col["key"];
 
 // td 기본 스타일 3종 — COL_META 가 참조하므로 먼저 선언한다.
@@ -49,11 +56,17 @@ export const COL_META: Record<ColKind, ColMeta> = {
     axis: { width: AXIS_W, label: "", justify: "center", td: tdCell },
     points: { width: 52, label: "타점", justify: "center", td: tdCell },
     comment: { width: 52, label: "메모", justify: "center", td: tdCell },
+    out: { width: 56, label: "", justify: "flex-end", td: tdCell }, // 라벨·폭·정렬은 열별 override(아래 셋)
 };
 
-export const colKey = (c: Col): string => (c.key === "axis" ? `ax:${c.axisId}` : c.key);
-export const colWidth = (c: Col): number => (c.key === "axis" && c.computed ? AXIS_VALUE_W : COL_META[c.key].width);
-export const colLabel = (c: Col): string => (c.key === "axis" ? c.name : COL_META[c.key].label);
+export const colKey = (c: Col): string => (c.key === "axis" ? `ax:${c.axisId}` : c.key === "out" ? `out:${c.metric}` : c.key);
+export const colWidth = (c: Col): number =>
+    c.key === "axis" && c.computed ? AXIS_VALUE_W : c.key === "out" ? OUTCOME_COL_META[c.metric].width : COL_META[c.key].width;
+export const colLabel = (c: Col): string => (c.key === "axis" ? c.name : c.key === "out" ? OUTCOME_COL_META[c.metric].label : COL_META[c.key].label);
+/** 가로 정렬 — out 은 열마다 갈린다(숫자=우측, 회복/상태=중앙). COL_META.justify 직접 읽기를 대체. */
+export const colJustify = (c: Col): ColMeta["justify"] => (c.key === "out" ? OUTCOME_COL_META[c.metric].justify : COL_META[c.key].justify);
+/** 헤더 툴팁의 열 설명 — 결과 열만 든다(축·기본 열은 라벨이 곧 설명). */
+export const colHelp = (c: Col): string | null => (c.key === "out" ? OUTCOME_COL_META[c.metric].help : null);
 
 export interface SheetLayout {
     /** 그릴 순서 그대로 — [고정 스택…, 비고정…]. */

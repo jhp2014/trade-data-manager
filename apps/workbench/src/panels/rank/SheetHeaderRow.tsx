@@ -1,7 +1,7 @@
 // 시트의 열 헤더 한 줄 — 정렬(클릭/Shift+클릭) · 열 드래그 재정렬 두 종류 · 폭 손잡이 · 우클릭 메뉴 열기.
 // 그리기만 한다: 정렬 상태·열 구성은 본체가 주고, 우클릭은 payload 를 만들어 올려보낸다(메뉴는 SheetMenusHost 가).
 import type { CSSProperties } from "react";
-import { COL_META, colKey, colLabel, type Col } from "./sheetColumns.js";
+import { colHelp, colJustify, colKey, colLabel, type Col } from "./sheetColumns.js";
 import { sortKeyOf, sortStepNo, type SortChain, type SortKey } from "./sheetSort.js";
 import { ResizeHandle } from "./SheetMenus.js";
 import { ROW_H } from "./SheetRowView.js";
@@ -35,7 +35,8 @@ export function SheetHeaderRow({ displayCols, cols, sort, reorderAxis, onSort, o
                 const step = sortStepNo(sort, sk); // 0=미정렬, 1=1차, 2…=2차 이하
                 const active = step > 0;
                 const left = leftOf.get(colKey(c));
-                const justify = COL_META[c.key].justify;
+                const justify = colJustify(c);
+                const help = colHelp(c); // 결과 열만 설명 한 줄이 붙는다(축·기본 열은 라벨이 곧 설명)
                 // 드래그 재정렬 두 종류 — **고정 여부로 갈린다**(순서 소스가 둘이기 때문).
                 //   고정 열  = 시트 전용 자리 → frozenCols 배열만 재배치(배치 보드 무관)
                 //   비고정 축 = 축 서열 그 자체 → reorderAxis(store rankAxisOrder)
@@ -53,7 +54,7 @@ export function SheetHeaderRow({ displayCols, cols, sort, reorderAxis, onSort, o
                     onDrop: (e: React.DragEvent) => { const id = e.dataTransfer.getData(AXIS_DND); if (id) reorderAxis(id, (c as { axisId: string }).axisId); },
                 } : {};
                 return (
-                    <div key={colKey(c)} {...dnd} title={`${colLabel(c)} — 클릭=이 열로 정렬 · Shift+클릭=정렬 단 추가`}
+                    <div key={colKey(c)} {...dnd} title={`${colLabel(c)} — ${help ? `${help}\n` : ""}클릭=이 열로 정렬 · Shift+클릭=정렬 단 추가`}
                         ref={(el) => {
                             cols.registerTh(colKey(c), el);
                         }}

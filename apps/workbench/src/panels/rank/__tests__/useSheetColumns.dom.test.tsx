@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useWorkbench } from "../../../store/workbench.js";
 import type { AxisRef } from "../../../lib/computedAxis.js";
+import { colKey } from "../sheetColumns.js";
 import { useSheetColumns } from "../useSheetColumns.js";
 
 const axis = (key: string, name: string): AxisRef => ({ key, name, scope: "point" });
@@ -166,6 +167,53 @@ describe("그룹 컷 — 빈 조건을 키로 남기지 않는다", () => {
         act(() => { result.current.toggleCut("a1", "s1"); result.current.toggleCut("a2", "s9"); });
         act(() => result.current.clearCuts("a1"));
         expect(result.current.cuts).toEqual({ "ax:a2": ["s9"] });
+    });
+});
+
+describe("열 프리셋 — 보이는 열 스냅샷, 행 모드별 딴 주머니", () => {
+    const PRESETS_KEY = "wb.rankSheetPresets";
+
+    it("저장 → 적용 → 삭제 — 적용은 hiddenCols 교체뿐(고정·폭은 무접촉)", () => {
+        const { result } = setup();
+        // a2 를 숨긴 상태의 스냅샷 저장.
+        act(() => result.current.toggleHidden("ax:a2"));
+        act(() => result.current.savePreset("a1만"));
+        expect(result.current.presets).toEqual([{ name: "a1만", cols: result.current.displayCols.map(colKey) }]);
+        expect(result.current.presets[0]!.cols).toContain("out:extHigh"); // point 모드엔 결과 열도 선다
+        // 전부 꺼낸 뒤 적용하면 a2 가 다시 숨는다.
+        act(() => result.current.showAllHidden());
+        expect(result.current.hiddenCols).toEqual([]);
+        act(() => result.current.applyPreset(result.current.presets[0]!));
+        expect(result.current.hiddenCols).toContain("ax:a2");
+        expect(result.current.hiddenCols).not.toContain("ax:a1");
+        act(() => result.current.deletePreset("a1만"));
+        expect(result.current.presets).toEqual([]);
+    });
+
+    it("같은 이름 저장 = 덮어쓰기(목록이 안 는다)", () => {
+        const { result } = setup();
+        act(() => result.current.savePreset("p"));
+        act(() => result.current.toggleHidden("ax:a1"));
+        act(() => result.current.savePreset("p"));
+        expect(result.current.presets).toHaveLength(1);
+        expect(result.current.presets[0]!.cols).not.toContain("ax:a1");
+    });
+
+    it("day 모드는 딴 주머니(.day) — point 프리셋이 안 보인다", () => {
+        localStorage.setItem(PRESETS_KEY, JSON.stringify([{ name: "타점용", cols: ["name"] }]));
+        const { result } = setup({ rowMode: "day" });
+        expect(result.current.presets).toEqual([]);
+        act(() => result.current.savePreset("하루용"));
+        expect(JSON.parse(localStorage.getItem(`${PRESETS_KEY}.day`)!)).toHaveLength(1);
+        expect(JSON.parse(localStorage.getItem(PRESETS_KEY)!)).toEqual([{ name: "타점용", cols: ["name"] }]);
+    });
+
+    it("유령 청소에 합류 — 죽은 축 키는 프리셋에서도 지워지고 `out:` 은 살아남는다(로딩 중엔 안 지운다)", () => {
+        localStorage.setItem(PRESETS_KEY, JSON.stringify([{ name: "p", cols: ["name", "ax:a1", "ax:죽은축", "out:extHigh"] }]));
+        const { rerender } = setup({ axesLoading: true });
+        expect((JSON.parse(localStorage.getItem(PRESETS_KEY)!) as { cols: string[] }[])[0]!.cols).toContain("ax:죽은축");
+        rerender({ ...BASE, axesLoading: false });
+        expect((JSON.parse(localStorage.getItem(PRESETS_KEY)!) as { cols: string[] }[])[0]!.cols).toEqual(["name", "ax:a1", "out:extHigh"]);
     });
 });
 

@@ -13,13 +13,17 @@ import type { AxisRef } from "../../lib/computedAxis.js";
 import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useWorkbench } from "../../store/workbench.js";
-import { layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "./sheetColumns.js";
+import { OUTCOME_COL_IDS } from "./outcomeColumns.js";
+import { layoutColumns, colKey, pruneAxisKeys, reorderFrozenCols, type Col } from "./sheetColumns.js";
+import { parseSheetPresets, presetHidden, prunePresets, type SheetPreset } from "./sheetPresets.js";
 
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
 const HIDDEN_KEY = "wb.rankSheetHiddenCols";
 const WIDTHS_KEY = "wb.rankSheetColWidths";
 /** 축 열 그룹 컷 — colKey(`ax:<id>`) → slotId[]. 시트 전용(축의 속성이 아님)이라 로컬. */
 const CUTS_KEY = "wb.rankSheetCuts";
+/** 열 프리셋 — 보이는 열 스냅샷 목록(sheetPresets 참고). 다른 넷과 같은 사정(축 키를 든다)이라 여기서 소유·청소. */
+const PRESETS_KEY = "wb.rankSheetPresets";
 /** day 행 모드는 고정·숨김·폭을 **딴 주머니**에 — 모드 토글이 열 배치를 섞으면 안 된다.
  *  컷(CUTS_KEY)만 공유: 컷은 축의 자리(orderKey 앵커)라 행 모드와 무관하게 같은 뜻이다. */
 const dayKey = (k: string): string => `${k}.day`;
@@ -55,6 +59,14 @@ export interface SheetColumns {
     toggleCut: (axisId: string, slotId: string) => void;
     clearCuts: (axisId: string) => void;
 
+    /** 열 프리셋(보이는 열 스냅샷, 행 모드별 딴 주머니) — 붙박이는 sheetPresets 상수라 여기 없다. */
+    presets: SheetPreset[];
+    /** 지금 보이는 열들을 이 이름으로 저장(같은 이름이면 덮어쓰기). */
+    savePreset: (name: string) => void;
+    deletePreset: (name: string) => void;
+    /** 적용 = hiddenCols 를 "전체 − cols" 로 교체 — 순서·고정·폭은 안 만진다. */
+    applyPreset: (p: SheetPreset) => void;
+
     /** 열 헤더 등록(되짚기 스크롤 대상). */
     registerTh: (key: string, el: HTMLElement | null) => void;
     /** 지금 강조 중인 열 키. */
@@ -82,6 +94,7 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     const [hiddenCols, setHiddenCols] = usePersistedState<string[]>(day ? dayKey(HIDDEN_KEY) : HIDDEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), []);
     const [colWidths, setColWidths] = usePersistedState<Record<string, number>>(day ? dayKey(WIDTHS_KEY) : WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null), {});
     const [cuts, setCuts] = usePersistedState<Record<string, string[]>>(CUTS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, string[]>) : null), {});
+    const [presets, setPresets] = usePersistedState<SheetPreset[]>(day ? dayKey(PRESETS_KEY) : PRESETS_KEY, parseSheetPresets, []);
     // 드래그 중 폭의 **미리보기 층**(영속 밖) — pointermove 마다 localStorage 에 동기 기록하면 이벤트
     // 빈도만큼 JSON 직렬화가 돌아 드래그가 무거워진다. 움직이는 동안은 메모리로만 그리고 손을 뗄 때
     // commitWidth 가 한 번 영속에 적는다(최종 저장값 의미는 종전과 동일).
@@ -97,6 +110,7 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         setHiddenCols((h) => pruneAxisKeys(h, ids));
         setColWidths((w) => pruneAxisKeys(w, ids));
         setCuts((c) => pruneAxisKeys(c, ids));
+        setPresets((p) => prunePresets(p, ids));
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [axes, axesLoading, pruneAxisIds]);
 
@@ -124,11 +138,13 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
 
     // 기본 순서 → 숨김 제외 → 고정 먼저(기본순 유지, 좌측 스택) → 비고정. 종목은 항상 표시·고정.
     // day 모드: 시간(타점 소유)은 아예 없고, 타점 수(자동 파생)·코멘트(존재 지도)가 뒤에 선다.
+    // point 모드: 결과 열(시그널 이후 — 시트 전용 소스)이 축(시그널 시점까지) 뒤에 선다(과거→미래 읽기 순서).
+    //   day 행엔 안 선다 — 결과는 타점(시각)의 개념이라 grain 규칙상 정의되지 않는다.
     const baseCols = useMemo<Col[]>(() => [
         { key: "name" }, { key: "date" },
         ...(day ? [] : [{ key: "time" } as Col]),
         ...axes.map((a): Col => ({ key: "axis", axisId: a.key, name: a.name, computed: isComputedAxis(a.key) })),
-        ...(day ? [{ key: "points" } as Col, { key: "comment" } as Col] : []),
+        ...(day ? [{ key: "points" } as Col, { key: "comment" } as Col] : OUTCOME_COL_IDS.map((id): Col => ({ key: "out", metric: id }))),
     ], [axes, day]);
     // 미리보기 층이 영속 폭을 덮는다 — 드래그 중에도 열이 실시간으로 넓어져 보이되 저장은 안 된다.
     const effectiveWidths = useMemo(
@@ -154,6 +170,15 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         previewWidth: (k, w) => setPreviewWidths((m) => ({ ...m, [k]: w })),
         commitWidth: (k, w) => { setColWidths((m) => ({ ...m, [k]: w })); setPreviewWidths({}); },
         resetWidths: () => { setColWidths({}); setPreviewWidths({}); },
+        presets,
+        // 지금 **보이는** 열의 스냅샷 — displayCols 는 숨김 제외라 그대로가 "보고 싶은 열들"이다.
+        savePreset: (name) => setPresets((ps) => {
+            const cols = layout.displayCols.map(colKey);
+            const i = ps.findIndex((p) => p.name === name);
+            return i < 0 ? [...ps, { name, cols }] : ps.map((p, j) => (j === i ? { name, cols } : p));
+        }),
+        deletePreset: (name) => setPresets((ps) => ps.filter((p) => p.name !== name)),
+        applyPreset: (p) => setHiddenCols(presetHidden(baseCols.map(colKey), p.cols)),
         cuts,
         toggleCut: (axisId, slotId) => setCuts((m) => {
             const k = `ax:${axisId}`;

@@ -42,11 +42,9 @@ export function useOutcomeWalksValue(auto: AutoPointsView, grids: PointGridsView
 
 /** 시그널 하나의 결과 레코드 — 기준은 전부 T1(기본 허용) 단면(2026-09-04 T2→T1 뒤집음). */
 export interface OutcomeRecord {
-    /** T1 단면 — 술어·레일·차트 표식·시트 기본 열·상태의 기준. */
+    /** T1 단면 — 술어·레일·차트 표식·시트 결과 열·상태의 기준. */
     slice: OutcomeSlice;
-    /** T2(Δ 관찰) 단면 — 시트 @T2 열·Δ 의 재료일 뿐 기준이 아니다. */
-    sliceT2: OutcomeSlice;
-    /** 술어값(전부 정확) — 낙폭 2종은 무눌림(none)에서만 없음(무사건). */
+    /** 술어값(전부 정확) — T2 는 Δ(deltaExt) 재료로만 녹아 있다(@T2 열은 결과 시트 폐지와 함께 은퇴). */
     eval: Partial<Record<OutcomeMetric, number>>;
 }
 
@@ -106,7 +104,7 @@ export function buildOutcomesView(walks: OutcomeWalksView, t1: number, t2: numbe
         counts[s1.status] += 1;
         if (s1.recovered !== null) recovery[s1.recovered ? "recovered" : "unrecovered"] += 1;
         if (delta > 0) extendedCount += 1;
-        byKey.set(key, { slice: s1, sliceT2: s2, eval: ev });
+        byKey.set(key, { slice: s1, eval: ev });
     }
     return { t1, t2, byKey, counts, recovery, extendedCount, railValues, breakDepths };
 }

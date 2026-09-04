@@ -11,21 +11,25 @@
 // 돌면 축 열이 더 이상 순위 순서가 아니다. 그래서 비교자 순서가 [그룹 → 2차… → 1차 원값]이 된다
 // (2차가 없으면 1차 원값만 남아 컷 없는 정렬과 완전히 같아진다 → 드래그 배치도 그대로 살아 있다).
 import type { SheetRow } from "./rankSheet.js";
+import type { OutcomeRecord } from "../../lib/useOutcomes.js";
 import { rowKeyToChartKey } from "../../lib/pointKey.js";
+import { isOutcomeColId, outcomeSortValue, type OutcomeColId } from "./outcomeColumns.js";
 import type { Col } from "./sheetColumns.js";
 
 export type SortKey =
     | { kind: "name" | "date" | "time" | "points" | "comment" }
-    | { kind: "axis"; axisId: string };
+    | { kind: "axis"; axisId: string }
+    | { kind: "out"; metric: OutcomeColId };
 export type SortKind = SortKey["kind"];
 export interface SortStep { key: SortKey; dir: 1 | -1 }
 /** 1차부터 순서대로. 비어 있을 수 없다(비면 기본 체인). */
 export type SortChain = SortStep[];
 
-/** 열 → 그 열로 정렬할 때의 키. axis 만 축 id 를 실어야 해서 분기 하나. */
-export const sortKeyOf = (c: Col): SortKey => (c.key === "axis" ? { kind: "axis", axisId: c.axisId } : { kind: c.key });
-/** 정렬 키의 문자열 id — **colKey 와 같은 문자열**(`ax:<id>` / kind)이라 열 설정(고정·숨김·폭·컷)과 키를 공유한다. */
-export const sortKeyId = (k: SortKey): string => (k.kind === "axis" ? `ax:${k.axisId}` : k.kind);
+/** 열 → 그 열로 정렬할 때의 키. axis/out 만 id 를 실어야 해서 분기 둘. */
+export const sortKeyOf = (c: Col): SortKey =>
+    c.key === "axis" ? { kind: "axis", axisId: c.axisId } : c.key === "out" ? { kind: "out", metric: c.metric } : { kind: c.key };
+/** 정렬 키의 문자열 id — **colKey 와 같은 문자열**(`ax:<id>` / `out:<id>` / kind)이라 열 설정(고정·숨김·폭·컷·프리셋)과 키를 공유한다. */
+export const sortKeyId = (k: SortKey): string => (k.kind === "axis" ? `ax:${k.axisId}` : k.kind === "out" ? `out:${k.metric}` : k.kind);
 export const sameSortKey = (a: SortKey, b: SortKey): boolean => sortKeyId(a) === sortKeyId(b);
 /** 체인에서 그 키의 단 번호(1부터). 없으면 0 — 헤더 배지가 그대로 쓴다. */
 export const sortStepNo = (chain: SortChain, k: SortKey): number => chain.findIndex((s) => sameSortKey(s.key, k)) + 1;
@@ -55,14 +59,16 @@ export function dropSort(chain: SortChain, k: SortKey): SortChain {
 }
 
 // ── 영속 복원 ───────────────────────────────────────────────────────────────
-const SORT_KINDS: readonly string[] = ["name", "date", "time", "axis", "points", "comment"];
+const SORT_KINDS: readonly string[] = ["name", "date", "time", "axis", "points", "comment", "out"];
 function parseStep(o: unknown): SortStep | null {
     if (!o || typeof o !== "object") return null;
-    const s = o as { key?: { kind?: unknown; axisId?: unknown }; dir?: unknown };
+    const s = o as { key?: { kind?: unknown; axisId?: unknown; metric?: unknown }; dir?: unknown };
     if (s.dir !== 1 && s.dir !== -1) return null;
     const k = s.key;
     if (!k || typeof k.kind !== "string" || !SORT_KINDS.includes(k.kind)) return null;
     if (k.kind === "axis" && typeof k.axisId !== "string") return null;
+    // metric 도 검증 — 죽은 metric 이 저장물로 살아남으면 그 정렬이 조용히 전 행 결손(=바닥)이 된다.
+    if (k.kind === "out" && !isOutcomeColId(k.metric)) return null;
     return s as SortStep;
 }
 /** 저장된 정렬 복원. **옛 단일 정렬 객체(`{key,dir}`)도 1단 체인으로 받는다**(마이그레이션). 형태가 깨지면 null. */
@@ -76,9 +82,11 @@ export function parseSortChain(o: unknown): SortChain | null {
 }
 
 // ── 비교 ────────────────────────────────────────────────────────────────────
-/** 정렬이 행 밖에서 끌어와야 하는 값 — 지금은 종목명 하나뿐(이름은 마스터 조회라 행에 없다). */
+/** 정렬이 행 밖에서 끌어와야 하는 값 — 종목명(마스터 조회)과 결과 레코드(시트 전용 소스, 행에 없다). */
 export interface SortCtx {
     nameOf: (code: string) => string;
+    /** 결과 열의 레코드 — day 행·격자 미도착은 undefined(그 열 정렬에서 바닥). **필수**다: 옵셔널이면 공급 누락이 런타임 침묵으로 나온다. */
+    outcomeOf: (row: SheetRow) => OutcomeRecord | undefined;
 }
 
 /** 한 키에서 이 행의 값. **null = 값 없음**(미배치·미산정·미기입) → 방향 무관 바닥. */
@@ -90,6 +98,7 @@ export function sortValueOf(k: SortKey, row: SheetRow, ctx: SortCtx): string | n
         case "points": return row.pointCount ?? null;
         case "comment": return row.comment ? 1 : null;
         case "axis": return row.cells[k.axisId]?.rank ?? null;
+        case "out": return outcomeSortValue(ctx.outcomeOf(row), k.metric); // 셀 표기와 같은 출처(outcomeColumns)
     }
 }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { COL_META, colKey, layoutColumns, pruneAxisKeys, reorderFrozenCols, type Col } from "../sheetColumns.js";
+import { OUTCOME_COL_META } from "../outcomeColumns.js";
 
 const ax = (id: string): Col => ({ key: "axis", axisId: id, name: `축${id}`, computed: false });
 /** 계산 축 — 값이 들어가야 해서 고정폭(분배에서 빠진다). */
@@ -94,6 +95,26 @@ describe("pruneAxisKeys — 사라진 축의 유령 키 청소", () => {
         const obj = { "ax:1": 90 };
         expect(pruneAxisKeys(arr, ["1"])).toBe(arr);
         expect(pruneAxisKeys(obj, ["1"])).toBe(obj);
+    });
+    it("결과 열 키(`out:`)는 축이 아니라 안 건드린다 — 이름공간이 갈려 있는 이유", () => {
+        const arr = ["out:extHigh", "ax:9"];
+        expect(pruneAxisKeys(arr, ["1"])).toEqual(["out:extHigh"]);
+    });
+});
+
+describe("결과 열(out) — 시트 전용 소스의 열", () => {
+    const out = (metric: "extHigh" | "status"): Col => ({ key: "out", metric });
+    it("colKey 이름공간 = `out:<id>`(축 `ax:` 와 구분)", () => {
+        expect(colKey(out("extHigh"))).toBe("out:extHigh");
+    });
+    it("고정폭이다 — 축 잔여 분배에 안 낀다(값·부호가 잘리면 존재 이유가 없다)", () => {
+        const l = layoutColumns({
+            baseCols: [{ key: "name" }, out("extHigh"), ax("1"), ax("2")],
+            frozenCols: [], hiddenCols: [], colWidths: {}, containerW: 1000, axisMin: AXIS_MIN,
+        });
+        expect(l.widthOf(out("extHigh"))).toBe(OUTCOME_COL_META.extHigh.width); // OUTCOME_COL_META 폭 그대로
+        expect(l.widthOf(ax("1"))).toBe(l.widthOf(ax("2"))); // 남는 폭은 축끼리만 분배
+        expect(l.widthOf(ax("1"))).toBeGreaterThan(AXIS_MIN);
     });
 });
 
