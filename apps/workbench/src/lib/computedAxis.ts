@@ -52,7 +52,20 @@ export function formatAxisValue(v: number, display?: AxisDisplay): string {
     // 억 단위 축의 조 승격 — 1조(=10,000억) 이상은 "4.3조"(소수 한 자리). 축별 분기가 아니라 **단위의
     // 규칙**이다(억을 쓰는 축은 전부 같은 접힘). 값의 계약(억원)은 그대로 — 표시만 접는다(필터 밴드 불변).
     if (suffix === "억" && Math.abs(v) >= 10_000) return render(v / 10_000, 1, "조");
+    // 분 단위 축의 시각 표기 — `94분` 은 눈이 시간으로 못 옮긴다(2026-09-05 사용자 확정). 같은 단위 규칙이라
+    // 분을 쓰는 축은 전부 따라온다. 값의 계약(분)은 그대로 — 시트 셀도 레일 라벨도 이 문자열 하나를 쓴다.
+    if (suffix === "분") return durationLabel(v);
     return render(v, decimals, suffix);
+}
+
+/** 분 → `1h 34m` / `45m` / `2h`(정각). 부호는 앞에 붙는다(경과 축은 음수가 없지만 포맷이 거짓말하면 안 된다). */
+export function durationLabel(minutes: number): string {
+    const total = Math.round(Math.abs(minutes));
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    const sign = minutes < 0 ? "-" : "";
+    if (h === 0) return `${sign}${m}m`;
+    return m === 0 ? `${sign}${h}h` : `${sign}${h}h ${m}m`;
 }
 
 export interface ComputedAxisView {

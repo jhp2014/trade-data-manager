@@ -34,7 +34,8 @@ const BASE_SPECS = [
     // 큰 값 우측(2026-09-02 사용자 확정 — 얕음→깊음이 좌→우로 읽히게)
     { key: "grid-pullback-pct", name: "눌림 깊이", strongerWhen: "higher", display: { suffix: "%", decimals: 1, signed: false } },
     // 큰 값 우측(짧음→긺이 좌→우)
-    { key: "grid-renewal-elapsed", name: "재돌파 경과(분)", strongerWhen: "higher", display: { suffix: "분", decimals: 0, signed: false } },
+    // 이름에서 "(분)" 을 뗀 건 표기가 `1h 34m` 이라서다 — 값의 계약은 여전히 분이다(formatAxisValue 의 단위 규칙).
+    { key: "grid-renewal-elapsed", name: "재돌파 경과", strongerWhen: "higher", display: { suffix: "분", decimals: 0, signed: false } },
     // 1 에 가까울수록 = 늦게까지 눌리다 곧장 갱신(V자, 잠정)
     { key: "grid-pullback-pos", name: "눌림 저점 위치", strongerWhen: "higher", display: { suffix: "", decimals: 2, signed: false } },
 ] as const satisfies readonly Omit<ComputedAxisFeed, "values">[];

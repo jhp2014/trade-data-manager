@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildFracIndex, computedAxisView, formatAxisValue, nearestPointAt, nearestPointInIndex, valueDomain, valueToFrac } from "../computedAxis.js";
+import { buildFracIndex, computedAxisView, durationLabel, formatAxisValue, nearestPointAt, nearestPointInIndex, valueDomain, valueToFrac } from "../computedAxis.js";
 import type { ComputedAxisFeed, ComputedAxisPoint } from "@trade-data-manager/wire";
 
 const feed = (over: Partial<ComputedAxisFeed> = {}): ComputedAxisFeed => ({
@@ -35,6 +35,22 @@ describe("formatAxisValue", () => {
         expect(formatAxisValue(3000, eok)).toBe("3,000억"); // 1조 미만은 억 + 구분자
         expect(formatAxisValue(43000, eok)).toBe("4.3조");
         expect(formatAxisValue(19848000, eok)).toBe("1,984.8조"); // 조 표기에도 구분자
+    });
+
+    it("분 단위 축은 시각 표기 — `94분` 은 눈이 시간으로 못 옮긴다. 값의 계약(분)은 그대로", () => {
+        const min = { suffix: "분", decimals: 0, signed: false };
+        expect(formatAxisValue(94, min)).toBe("1h 34m");
+        expect(formatAxisValue(45, min)).toBe("45m");
+        expect(formatAxisValue(120, min)).toBe("2h"); // 정각은 분을 안 붙인다
+        expect(formatAxisValue(0, min)).toBe("0m");
+        expect(formatAxisValue(59.6, min)).toBe("1h"); // 반올림이 60분을 만들면 시간으로 올린다
+    });
+});
+
+describe("durationLabel", () => {
+    it("음수도 거짓말하지 않는다(경과 축엔 없지만 포맷의 계약이다)", () => {
+        expect(durationLabel(-94)).toBe("-1h 34m");
+        expect(durationLabel(-5)).toBe("-5m");
     });
 });
 
