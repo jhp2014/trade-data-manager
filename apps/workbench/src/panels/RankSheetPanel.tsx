@@ -34,7 +34,8 @@ import { useWorkbench } from "../store/workbench.js";
 import type { ReviewPointKey } from "@trade-data-manager/market/domain";
 
 // 타점 분석 시트 — 행=타점(격자 파생) · 열=축별 순위. (축은 전부 계산 축 — 판단축은 2026-08-25 폐지.)
-//  · 셀 = 숫자 / 순위 눈금 / 값 눈금(토글). 숫자엔 값이 먼저 오고(`+12.3% (3/12)`), 값 눈금은
+//  · 셀 = 숫자 / 순위 눈금 / 값 눈금(토글). 숫자는 **값만** 쓴다(`+12.3%` — 순위 수치는 타점이 만
+//    단위가 되며 말을 안 해서 뗐다; 순위는 눈금 모드의 자리와 툴팁에 산다). 값 눈금은
 //    **필터 보드 레일과 같은 좌표**라 쏠림이 보인다. 값 없음(결손·입력 전) = 빈칸.
 //  · 헤더 클릭 = 그 열로 정렬(축은 강 먼저) · **Shift+클릭 = 정렬 단 추가**(n차). 정렬 축에서 행범위
 //    체인·그룹 규칙은 sheetSort(순수·테스트)에. 필터(밴드·값구간)는 필터 패널로 이사 — 시트는 결과를 구독만.
@@ -331,11 +332,13 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
         );
     };
 
-    // 헤더 컨트롤 선언 — 눈금·필터모드·축 만들기. 아래 "⤺" 해제 손잡이들은 여기 안 든다:
-    // 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라 성격이 다르다(개수가 곧 정보다).
-    // **폭 원위치만 예외로 여기 든다** — 그것 하나는 실을 개수가 없다(정렬 2단·그룹 3·숨긴 열 2 와 달리
-    // "몇 개인지"를 말하지 않는 순수 액션이다). 개수가 정보가 아니면 나타났다 사라질 이유도 없고,
-    // 그러면 늘 같은 자리에 서서 할 게 없을 땐 흐려지는 컨트롤 줄의 규약이 더 맞다.
+    // 헤더 컨트롤 선언 — 눈금·필터모드·열 손잡이들. 왼쪽 "⤺" 해제 손잡이(정렬 단·그룹)는 여기 안 든다:
+    // **드물게 걸리고, 걸린 동안엔 개수가 곧 정보인** 문맥 손잡이라 성격이 다르다.
+    // 잣대는 "⤺ 냐"가 아니라 **"이게 예외 상태냐 정상 상태냐"**다 — 늘 서 있을 것은 컨트롤 줄이 제자리다:
+    //  · 폭 원위치 — 실을 개수가 아예 없는 순수 액션.
+    //  · 숨김 해제 — **열 프리셋(2026-09-04)이 들어오면서 "열이 숨겨져 있다"가 정상 상태가 됐다.**
+    //    프리셋 한 번이면 열 십수 개가 접히므로 옛 "⤺ 숨긴 열 13" 은 사실상 상주하는 문맥 손잡이였고,
+    //    상주하는 순간 그건 문맥이 아니라 컨트롤이다. 개수는 툴팁으로 내리고 자리는 안 움직인다(규약 ②).
     const controls: ControlSpec[] = [
         {
             kind: "choice", id: "rowMode", name: "행",
@@ -364,6 +367,13 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
             run: (at) => setPresetMenuAt({ x: at.clientX, y: at.clientY }),
         },
         {
+            kind: "action", id: "showAllHidden", name: "숨긴 열 보이기", label: "숨김 해제", group: "열",
+            // 개수는 여기(툴팁)에만 싣는다 — 라벨에 실으면 값이 바뀔 때마다 폭이 출렁인다(HeaderControls 규약 ②).
+            help: cols.hiddenCols.length > 0 ? `숨긴 열 ${cols.hiddenCols.length}개 모두 보이기` : "숨긴 열이 없습니다",
+            disabled: cols.hiddenCols.length === 0,
+            run: cols.showAllHidden,
+        },
+        {
             kind: "action", id: "resetWidths", name: "폭 원위치", label: "원위치", group: "열",
             help: "손으로 조절한 열 폭 전부 해제(기본 폭·축 잔여 분배로 복귀)",
             disabled: !cols.hasManualWidths,
@@ -380,7 +390,8 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
                 "⤺" 들이 왼쪽에 남는 건 걸린 게 있을 때만 뜻이 생기는 **문맥 손잡이**라서다 — 개수가 곧 정보고,
                 컨트롤처럼 늘 서 있는 것이 아니다. 바인딩 라벨이 칩(버튼)에서 못 누르는 말로 내려온 것도
                 그 잣대다: 늘 서 있는 손잡이였으니 사라지는 것들 틈이 아니라 컨트롤 줄이 제자리다.
-                같은 잣대로 "폭 원위치"도 컨트롤 줄로 갔다 — 셋과 달리 실을 개수가 없었다(controls 선언 참고). */}
+                같은 잣대로 "폭 원위치"(실을 개수가 없다)와 **"숨김 해제"(열 프리셋 이후 상주하게 됐다)**도
+                컨트롤 줄로 갔다 — 남은 둘은 정렬 단·그룹뿐이다(controls 선언의 잣대 참고). */}
             <PanelHeader gap={8}>
                 <ScrollRow gap={9}>
                     <SetBindingLabel linked={linked} members={setMembers} />
@@ -389,7 +400,6 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
                     <SubjectBadge subject={subject} status={status} name={subject ? nameOf(subject.code) : undefined} absentLabel="타점 없음" />
                     {sort.length > 1 && <button onClick={() => setSort((s) => [s[0]])} title="2차 이하 정렬 해제(1차만 남김)" style={{ ...miniBtn, flexShrink: 0 }}>정렬 {sort.length}단 ⤺</button>}
                     {cutKeys.length > 0 && <button onClick={() => cols.clearCuts(sortAxisId!)} title="이 축의 그룹 컷 모두 해제" style={{ ...miniBtn, flexShrink: 0 }}>그룹 {cutKeys.length + 1} ⤺</button>}
-                    {cols.hiddenCols.length > 0 && <button onClick={cols.showAllHidden} title="숨긴 열 모두 보이기" style={{ ...miniBtn, flexShrink: 0 }}>숨긴 열 {cols.hiddenCols.length} ⤺</button>}
                 </ScrollRow>
                 <HeaderControls controls={controls} storageKey="wb.headerPins.rankSheet" />
             </PanelHeader>
