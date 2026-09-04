@@ -17,9 +17,17 @@ const TIME_MIN = minutesOfDay("08:00");
 const TIME_MAX = minutesOfDay("20:00");
 const TIME_STEP = 5; // 분 — 이보다 잘게 자르는 조건은 손이 아니라 정밀 입력의 일
 
-export function DateRail({ dates, ranges, marker, onType, onChange }: {
+export function DateRail({ dates, rowDates, ranges, marker, onType, onChange }: {
     /** 후보 거래일(오름차 정렬·중복 없음). 이 목록이 곧 척도다. */
     dates: readonly string[];
+    /**
+     * 이 층위 **행마다 날짜 하나**(중복 있음) — 분포 전용. 날짜 레일은 하루 칸에 사니 행 = 차트
+     * (종목·날짜)다. 척도인 `dates` 와 갈라 두는 이유: 저건 거래일 하나당 하나라 세면 전 칸이
+     * "1건"인 울타리가 된다. 이건 그날 행이 몇이었나를 말한다.
+     * ⚠ `dates` 와 **같은 출처**여야 한다(거기서 접어 만든 목록) — 갈리면 없는 자리를 최근접
+     * 거래일로 지어내며 O(행 × 거래일) 스캔이 돈다.
+     */
+    rowDates: readonly string[];
     ranges: readonly DateRange[];
     /** 현재 보고 있는 날짜. */
     marker: string | null;
@@ -35,6 +43,8 @@ export function DateRail({ dates, ranges, marker, onType, onChange }: {
             fracs: [...idx.values()],
         };
     }, [dates]);
+    // 분포 모수는 수천 개다 — 렌더마다 새 배열이면 히스토그램이 매 렌더 다시 센다(Rail 의 deps 는 배열 신원).
+    const distTicks = useMemo(() => rowDates.map(fracOf), [rowDates, fracOf]);
 
     return (
         <Rail<string>
@@ -46,7 +56,9 @@ export function DateRail({ dates, ranges, marker, onType, onChange }: {
             minLabel={shortDate(dates[0] ?? "")}
             maxLabel={shortDate(dates[dates.length - 1] ?? "")}
             // 거래일이 수백 개면 틱이 벽이 된다 — 척도가 이미 균등하니 표식이 주는 정보가 없다.
+            // (분포는 그 벽의 처방이라 거래일 수와 무관하게 선다 — 세는 건 거래일이 아니라 그 층위의 행이다.)
             ticks={dates.length <= 60 ? fracs : undefined}
+            dist={distTicks.length > 0 ? { ticks: distTicks } : undefined}
             marker={marker ? { frac: fracOf(marker), label: shortDate(marker) } : null}
             disabledNote={dates.length === 0 ? "후보 날짜가 없습니다" : undefined}
             onType={onType}
@@ -68,6 +80,9 @@ export function TimeRail({ ranges, tickTimes, marker, onType, onChange }: {
         return timeOfMinutes(Math.round(min / TIME_STEP) * TIME_STEP);
     };
     const ticks = useMemo(() => [...new Set(tickTimes.map((t) => t.slice(0, 5)))].map(timeFrac), [tickTimes]);
+    // 틱은 **분 단위로 중복을 없앤** 과녁이라 세면 "서로 다른 분이 몇 개"가 된다.
+    // 분포는 중복 그대로 세야 "그 시각에 타점이 몇 건"이 된다 — 그래서 두 배열이 다르다.
+    const distTicks = useMemo(() => tickTimes.map(timeFrac), [tickTimes]);
 
     return (
         <Rail<string>
@@ -79,6 +94,7 @@ export function TimeRail({ ranges, tickTimes, marker, onType, onChange }: {
             minLabel={timeOfMinutes(TIME_MIN)}
             maxLabel={timeOfMinutes(TIME_MAX)}
             ticks={ticks}
+            dist={distTicks.length > 0 ? { ticks: distTicks } : undefined}
             marker={marker ? { frac: timeFrac(marker), label: marker.slice(0, 5) } : null}
             onType={onType}
             onChange={(next) => onChange(next.length > 0 ? next.map((r) => ({ from: r.from, to: r.to })) : null)}

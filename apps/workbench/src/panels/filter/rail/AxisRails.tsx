@@ -100,10 +100,12 @@ export function ComputedAxisRail({
             toFrac={boundFrac}
             // 경계는 늘 **실재하는 타점**에 세운다 — 상대비교(이 타점보다 위)가 이 축을 쓰는 방법이라서.
             fromFrac={(f) => {
-                // 값이 없으면 레일이 disabledNote 로 드래그를 막는다 — 여기 null 은 도달 불가라 값을 지어내지
+                // 호출자는 둘이다: 드래그(스냅)와 **분포 칸 툴팁**(렌더 중, Rail.dist).
+                // 값이 없으면 레일이 disabledNote 로 드래그를 막고 분포 손잡이도 서지 않는다 —
+                // 여기 null 은 도달 불가라 값을 지어내지
                 // 않는다(예전의 값 폴백은 이 잠복 속에서 방향(strongerWhen: "lower")을 무시한 값을 만들었다).
                 const key = fracIndex ? nearestPointInIndex(f, fracIndex) : null;
-                if (key === null) throw new Error("값 없는 계산 축의 드래그 — disabledNote 배선을 확인하세요");
+                if (key === null) throw new Error("값 없는 계산 축 — disabledNote·dist 배선을 확인하세요(드래그 또는 분포 툴팁)");
                 return { kind: "point", point: key };
             }}
             fmt={fmt}
@@ -111,6 +113,9 @@ export function ComputedAxisRail({
             maxLabel={fmtValue(strongerWhen === "higher" ? (domain?.max ?? 0) : (domain?.min ?? 0))}
             ticks={ticks}
             memberTicks={memberTicks}
+            // 계산 축은 타점 하나 = 틱 하나(values 한 항목)라 틱을 그대로 세면 "N건"이 곧 타점 수다.
+            // 날짜·시간 레일은 그렇지 않아 제 모수를 따로 준다(Rail.dist 주석).
+            dist={{ ticks, member: memberTicks }}
             marker={markerValue === undefined ? null : { frac: frac(markerValue), label: fmtValue(markerValue) }}
             dragHandle={dragHandle}
             stow={stow}

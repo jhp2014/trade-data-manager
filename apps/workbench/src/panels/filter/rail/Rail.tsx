@@ -12,6 +12,7 @@
 import { useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { clamp01 } from "../../../lib/num.js";
 import { ACTIVE, FILTER } from "../../../styles/palette.js";
+import { binCenter, binOverlaps, HIST_BINS, histogramOf, logHeight } from "./railHistogram.js";
 import { applyDrag, fracOfX, isTapRange, orderRanges, removeAt, type RailDrag, type RailRange } from "./railModel.js";
 
 /** 트랙 좌우 여백(px) — 경계가 끝에 서도 라벨이 잘리지 않을 만큼. */
@@ -50,6 +51,13 @@ export function capTickSpans(fracs: readonly number[], alpha: number, max = MAX_
 export const RAIL_LABEL_W = 96;
 /** 행 높이 — 레일이 아닌 줄(보드의 그룹 행)도 이 높이를 쓴다. */
 export const RAIL_ROW_H = 46;
+/**
+ * 펼친 분포 스트립의 높이와 막대 높이. 스트립을 **줄 아래**에 따로 세우는 이유: 레일 선 위아래는 이미
+ * 다 찼다(선 위 = 현재 타점 핀·구간 삭제 ✕·도메인 끝 라벨 / 선 아래 = 경계 값 라벨). 막대를 그 위에
+ * 겹치면 기존 표식을 전부 옮겨야 하고, 핀은 "선 위에 서는" 형태 자체를 잃는다.
+ */
+const HIST_ROW_H = 58;
+const HIST_BAR_H = 44;
 
 export interface RailProps<V> {
     /** 이 레일이 무엇인가(축 이름·"날짜"·"시간"). */
@@ -81,6 +89,15 @@ export interface RailProps<V> {
      * 이게 있으면 나머지 회색은 더 죽는다(전경/배경 분리) — 스냅 과녁 역할은 그대로다.
      */
     memberTicks?: readonly number[];
+    /**
+     * 펼침 분포(이름 열 "분포")의 모수 — **행 하나 = 자리 하나**인 자리들(0..1)과 그중 멤버.
+     * `ticks` 와 갈라 두는 이유: 저건 "자를 과녁"이라 어댑터가 중복을 없애거나(시간 = 분 단위 Set)
+     * 도메인 눈금 자체를 깔기도 한다(날짜 = 거래일 하나당 하나). 그걸 그대로 세면 "N건"의 N 이
+     * 타점 수가 아닌 딴것이 되고, 사용자는 그 숫자가 무엇인지 알 방법이 없다.
+     * 안 주면 손잡이가 서지 않는다 — 그릴 게 없는데 손잡이만 있으면 거짓 손잡이다.
+     * ⚠ 칸 툴팁이 `fromFrac`·`fmt` 를 **렌더 중에** 부른다(드래그 밖의 두 번째 호출자).
+     */
+    dist?: { ticks: readonly number[]; member?: readonly number[] };
     /** 현재 타점의 자리(있으면). */
     marker?: { frac: number; label: string } | null;
     /** 되짚기 강조 — 위 목록에서 이 조건을 눌러 찾아왔을 때. */
@@ -110,7 +127,7 @@ export interface RailProps<V> {
 
 export function Rail<V>({
     label, ranges, single = false, cut = false, removable = true, toFrac, fromFrac, fmt, minLabel, maxLabel,
-    ticks, memberTicks, marker, disabledNote, dragHandle, stow, onType, onChange,
+    ticks, memberTicks, dist, marker, disabledNote, dragHandle, stow, onType, onChange,
 }: RailProps<V>): JSX.Element {
     const trackRef = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<RailDrag | null>(null);
@@ -170,10 +187,30 @@ export function Rail<V>({
     );
     const memberSpans = useMemo(() => (memberTicks ? capTickSpans(memberTicks, 0.3) : undefined), [memberTicks]);
 
+    // 펼친 분포 — **읽는 행위**라 컴포넌트 수명이다(영속 키를 새로 만들면 단일 소유 규칙에 걸린다).
+    // 알파 층이 못 하는 일을 높이가 한다: 알파는 천장이 있어 몰린 자리가 전부 같은 색이 된다.
+    const canDist = !disabledNote && dist !== undefined && dist.ticks.length > 0;
+    const [distOpen, setDistOpen] = useState(false);
+    const hist = useMemo(
+        () => (distOpen && canDist ? histogramOf(dist?.ticks ?? [], dist?.member) : null),
+        // deps 는 **배열 신원**이다(감싼 객체가 아니라) — 어댑터가 인라인 객체로 넘기면 렌더마다
+        // 새 객체라, 객체를 물면 수천 개를 매 렌더 다시 센다.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [distOpen, canDist, dist?.ticks, dist?.member],
+    );
+    // 컷 구간(정렬된 프랙션 쌍) — 칸마다 다시 재면 칸 × 구간만큼 toFrac(계산 축에선 resolveBound)이 돈다.
+    const cuts = hist
+        ? shown.map((r) => {
+            const a = toFrac(r.from), z = toFrac(r.to);
+            return a <= z ? ([a, z] as const) : ([z, a] as const);
+        })
+        : [];
+
     return (
-        <div className="rail-row" style={{
-            display: "flex", alignItems: "center", height: RAIL_ROW_H, borderBottom: "1px solid var(--border-subtle)",
-        }}>
+        <div className="rail-row" style={{ borderBottom: "1px solid var(--border-subtle)" }}>
+        {/* ── 줄 본체(이름 열 + 트랙) — 아래 "줄 본체 끝"까지. 안쪽을 통째로 들여쓰지 않은 건 diff 를
+            줄이려는 것이고, 스트립은 이 형제 뒤에 선다. ────────────────────────────────────── */}
+        <div style={{ display: "flex", alignItems: "center", height: RAIL_ROW_H }}>
             {/* 이름 열 = 순서 잡이(잡이가 있을 때). 이름 자체를 끄는 건 시트 열 헤더와 같은 손짓이라
                 두 화면의 어휘가 갈리지 않는다. 아래 "입력" 버튼의 클릭은 그대로 산다. */}
             <div
@@ -188,6 +225,15 @@ export function Rail<V>({
                         <button onClick={(e) => onType(e.clientX, e.clientY)} title="값을 직접 입력(드래그로 못 맞추는 자리)"
                             style={miniLink}>
                             입력
+                        </button>
+                    )}
+                    {canDist && (
+                        // 순서 잡이(이름 열 draggable)가 이 클릭을 훔치면 안 된다 — 서랍 손잡이와 같은 격리.
+                        <button draggable={false} onDragStart={(e) => e.preventDefault()}
+                            onClick={(e) => { e.stopPropagation(); setDistOpen((v) => !v); }}
+                            title={distOpen ? "분포 접기" : "이 축의 분포를 막대로 펼치기(세로 로그 척도)"}
+                            style={distOpen ? { ...miniLink, color: "var(--accent-primary)", textDecoration: "underline" } : miniLink}>
+                            분포
                         </button>
                     )}
                     {stow && (
@@ -271,6 +317,54 @@ export function Rail<V>({
                             </span>
                         </>
                     )}
+                </div>
+            )}
+            </div>{/* ── 줄 본체 끝 ─────────────────────────────────────────────────────────── */}
+
+            {/* 펼친 분포 — 줄 **아래** 스트립. x 는 위 트랙과 같은 식(RAIL_PAD·at)이라 막대와 경계가 세로로 맞는다.
+                세로는 로그(logHeight): 봉우리 하나가 꼬리를 통째로 눌러 "여긴 아무것도 없다"처럼 보이는 걸 막는다.
+                대신 로그는 비율을 못 읽게 하므로 **최다 건수**를 왼쪽에 적고, 칸마다 실제 건수를 툴팁으로 준다. */}
+            {hist && (
+                <div style={{ display: "flex", height: HIST_ROW_H, background: "var(--bg-secondary)" }}>
+                    <div style={{ width: RAIL_LABEL_W, flexShrink: 0, padding: "0 6px 7px 8px", display: "flex", alignItems: "flex-end", fontSize: 9.5, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden" }}>
+                        최다 {hist.max.toLocaleString()}건
+                    </div>
+                    <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
+                        {/* 간격을 두지 않는다 — 좁은 패널(300px)이면 칸이 1px 아래로 내려가 간격이 막대를 먹는다.
+                            히스토그램은 원래 붙어 있는 그림이고, 컷 안/밖 구분은 색이 진다. */}
+                        <div style={{ position: "absolute", left: RAIL_PAD, right: RAIL_PAD, bottom: 7, height: HIST_BAR_H, display: "flex", alignItems: "flex-end" }}>
+                            {hist.bins.map((b, i) => {
+                                // 컷 안쪽/바깥쪽으로 색을 가른다 — "여기 자르면 어느 봉우리가 통째로 날아가나"를
+                                // 숫자 없이 보게 한다. 조건이 없으면 전부 통과다(기준선이 걸린 색인 것과 같은 뜻).
+                                const passed = empty || cuts.some(([lo, hi]) => binOverlaps(i, lo, hi, HIST_BINS));
+                                const h = logHeight(b.count, hist.max) * HIST_BAR_H;
+                                return (
+                                    // 칸은 **막대 높이가 아니라 칸 전체**다 — 0건·낮은 막대에서도 툴팁에 손이 닿는다.
+                                    // overflow:hidden 은 멤버 ⊆ 모수가 깨졌을 때 막대가 위로 삐져나가는 걸 막는다.
+                                    // data-bin 이 칸을 고르는 손잡이다 — title 로 고르면 서랍 버튼의
+                                    // "조건은 그대로…" 가 '건' 때문에 같이 잡힌다(실측에서 101개가 나왔다).
+                                    <div key={i} data-bin={i}
+                                        title={`${fmt(fromFrac(binCenter(i, HIST_BINS)))} · ${b.count.toLocaleString()}건${b.member > 0 ? ` (멤버 ${b.member.toLocaleString()})` : ""}`}
+                                        style={{ flex: 1, position: "relative", height: "100%", overflow: "hidden" }}>
+                                        {b.count > 0 && (
+                                            <span aria-hidden style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: h, background: passed ? "var(--text-tertiary)" : "var(--border-default)" }}>
+                                                {/* 멤버 층 — **모수의 최댓값**으로 정규화한다(각자 정규화하면 5건이 118건과 같은 키로 선다). */}
+                                                {b.member > 0 && (
+                                                    <span aria-hidden style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: logHeight(b.member, hist.max) * HIST_BAR_H, background: ACTIVE }} />
+                                                )}
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                        {/* 경계 세로선 연장 — 컷과 분포가 한 자리에서 만난다(막대와 경계가 다른 줄에 있으면 눈이 왕복한다). */}
+                        {shown.map((r, i) => (cut ? (["to"] as const) : (["from", "to"] as const)).map((edge) => (
+                            // translateX(-50%) 필수 — 위 손잡이(width 3)가 중심을 at(f) 에 두므로, 여기서
+                            // 빼면 선의 **왼쪽 모서리**가 at(f) 가 되어 반 픽셀 어긋난다(실측 확인).
+                            <span key={`${i}-${edge}`} aria-hidden style={{ position: "absolute", left: at(toFrac(r[edge])), transform: "translateX(-50%)", top: 0, bottom: 5, width: 1, background: FILTER, opacity: 0.55, pointerEvents: "none" }} />
+                        )))}
+                    </div>
                 </div>
             )}
         </div>

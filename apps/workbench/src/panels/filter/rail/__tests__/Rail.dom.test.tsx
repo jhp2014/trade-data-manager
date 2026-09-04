@@ -12,6 +12,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render } from "@testing-library/react";
 import { capTickSpans, MAX_TICK_SPANS, Rail, RAIL_PAD } from "../Rail.js";
+import { HIST_BINS } from "../railHistogram.js";
 import type { RailRange } from "../railModel.js";
 
 const WIDTH = 1000;
@@ -330,5 +331,77 @@ describe("표식 층 상한 — 비용은 점 수가 아니라 DOM 노드 수가
         expect(out[0]!.alpha).toBeCloseTo(1 - Math.pow(0.7, 3), 5);
         expect(out[1]!.alpha).toBeCloseTo(0.3, 5);
         expect(out[0]!.frac).toBeCloseTo(0.1, 5);
+    });
+});
+
+describe("펼침 분포 — 알파가 포화한 자리를 높이가 대신 말한다", () => {
+    const many = (n: number): number[] => Array.from({ length: n }, (_, i) => i / (n - 1));
+    /** 스트립의 칸. 막대는 그 **안**에 있다(0건 칸에서도 툴팁에 손이 닿게).
+     *  `[title*="건"]` 으로 고르면 서랍 버튼의 "조건은 그대로…" 가 '건' 때문에 같이 잡힌다 — data-bin 이 손잡이다. */
+    const cells = (c: HTMLElement): HTMLElement[] => [...c.querySelectorAll<HTMLElement>("[data-bin]")];
+    const bars = (c: HTMLElement): HTMLElement[] => cells(c).flatMap((x) => [...x.querySelectorAll<HTMLElement>(":scope > span")]);
+
+    it("모수를 안 주면 손잡이가 없다 — 틱이 있어도(날짜·시간 레일처럼 뜻이 다른 틱) 세지 않는다", () => {
+        expect(setup({ ticks: many(50) }).container.textContent).not.toContain("분포");
+        expect(setup({ dist: { ticks: [] } }).container.textContent).not.toContain("분포");
+        expect(setup({ dist: { ticks: many(50) }, disabledNote: "값 없음" }).container.textContent).not.toContain("분포");
+    });
+
+    it("누르면 스트립이 서고 최다 건수를 적는다(로그 척도라 비율을 이 숫자로 되찾는다)", () => {
+        const { container, getByText } = setup({ dist: { ticks: many(300) } });
+        expect(cells(container)).toHaveLength(0);
+        fireEvent.click(getByText("분포"));
+        expect(cells(container)).toHaveLength(HIST_BINS);
+        expect(container.textContent).toMatch(/최다 \d+건/);
+        fireEvent.click(getByText("분포"));
+        expect(cells(container)).toHaveLength(0);
+    });
+
+    it("0 건 칸도 칸은 남는다 — 자리가 밀리지 않고 툴팁에 손이 닿는다", () => {
+        // 왼쪽 절반에만 자리가 있는 모수: 오른쪽 칸들은 건수 0.
+        const { container, getByText } = setup({ dist: { ticks: many(200).map((f) => f / 2) } });
+        fireEvent.click(getByText("분포"));
+        const empty = cells(container).filter((c) => c.querySelector(":scope > span") === null);
+        expect(empty.length).toBeGreaterThan(40);
+        expect(empty[0]!.title).toContain("0건");
+    });
+
+    it("컷 안쪽 막대와 바깥쪽 막대가 색으로 갈린다", () => {
+        const { container, getByText } = setup({ dist: { ticks: many(300) }, ranges: [range(0.6, 1)] });
+        fireEvent.click(getByText("분포"));
+        const inside = bars(container).filter((b) => b.style.background.includes("text-tertiary"));
+        const outside = bars(container).filter((b) => b.style.background.includes("border-default"));
+        expect(inside.length).toBeCloseTo(40, -1);
+        expect(outside.length).toBeCloseTo(60, -1);
+    });
+
+    it("한 칸보다 좁은 컷도 통과 막대를 남긴다 — 칸을 점이 아니라 구간으로 보므로", () => {
+        // 폭 0.004 = 칸(0.01)보다 좁다. 가운데 판정이면 통과 막대가 0개가 된다.
+        const { container, getByText } = setup({ dist: { ticks: many(300) }, ranges: [range(0.601, 0.605)] });
+        fireEvent.click(getByText("분포"));
+        const inside = bars(container).filter((b) => b.style.background.includes("text-tertiary"));
+        expect(inside.length).toBeGreaterThan(0);
+        expect(inside.length).toBeLessThan(3);
+    });
+
+    it("멤버 층은 같은 칸에 겹치고 **모수의 최댓값**으로 정규화된다", () => {
+        const ticks = many(300);
+        const { container, getByText } = setup({ dist: { ticks, member: ticks.slice(0, 30) } });
+        fireEvent.click(getByText("분포"));
+        const withMember = bars(container).filter((b) => b.querySelector("span") !== null);
+        expect(withMember.length).toBeGreaterThan(0);
+        for (const bar of withMember) {
+            const inner = bar.querySelector<HTMLElement>("span")!;
+            // 멤버 ⊆ 모수라 안쪽이 바깥보다 높을 수 없다(각자 정규화하면 여기가 깨진다).
+            expect(parseFloat(inner.style.height)).toBeLessThanOrEqual(parseFloat(bar.style.height) + 1e-9);
+        }
+    });
+
+    it("조건 경계의 세로선이 스트립까지 내려온다", () => {
+        const { container, getByText } = setup({ dist: { ticks: many(300) }, ranges: [range(0.4, 0.8)] });
+        fireEvent.click(getByText("분포"));
+        const strip = cells(container)[0]!.parentElement!.parentElement!;
+        const lines = [...strip.querySelectorAll<HTMLElement>('span[aria-hidden]')].filter((s) => s.style.width === "1px");
+        expect(lines).toHaveLength(2); // from · to
     });
 });
