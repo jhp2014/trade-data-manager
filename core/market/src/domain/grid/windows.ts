@@ -1,5 +1,5 @@
 // core/market/domain/grid/windows — 격자의 대금 창·다리 고점 파생(읽기 층, 순수). 규칙: decisions.md
-// "대금은 창이 아니라 누적 스냅샷으로 굽는다" · "시그널 렌즈" 절.
+// "대금은 창이 아니라 누적 스냅샷으로 굽는다" · "시그널 결과" 절.
 //
 // 격자는 기록 봉마다 세션 누적 대금(`cum`, 그 봉 포함)만 굽고, 창은 여기서 두 기록 봉의 차로 낸다:
 //   포함 창 [a..b]      = b.cum − a.cum + a.tv   (a 는 창의 시작이 될 수 있는 봉 — GridBarMark·신고가 캔들)
@@ -12,8 +12,9 @@
 // (`legStartOf`) = 시그널이 넘은 레벨의 크로싱: 돌파(레벨 0)는 기준선 터치 봉, 재돌파는 그 레벨(전고점)
 // 피벗 **다음 확정 고점**이 든 `cross`(= 전고점 가격을 처음 넘은 봉). 병합(mergeRisePct)으로 다리 고점이
 // 더 뒤로 가도 크로싱 기록은 같은 자리다(그 다음 고점이 "L 의 크로싱"을 들고 있다).
-// `DerivedPoint` 에 필드로 넣지 않는 이유: pointsOf 판정은 렌즈를 모른다(행 정체성·행 시각 계약) —
-// 다리 고점은 소비처(축·차트 표식·outcome 시뮬)가 필요할 때 격자를 더 보고 얻는 파생이다.
+// `DerivedPoint` 에 필드로 넣지 않는 이유: pointsOf 판정은 결과를 모른다(행 정체성·행 시각 계약) —
+// 다리 고점은 소비처(차트 표식·결과 걷기 outcome.ts)가 필요할 때 격자를 더 보고 얻는 파생이다.
+// 다리 고점 ≡ 결과 걷기의 T=2% 연장 고점(outcome.test 가 동치로 고정).
 import type { GridBarMark, GridPivot, PointGrid } from "./grid.js";
 import type { DerivedPoint } from "./points.js";
 

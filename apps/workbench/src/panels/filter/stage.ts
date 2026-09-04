@@ -20,6 +20,7 @@ import type { Grain } from "@trade-data-manager/market/domain";
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr } from "../rank/groupFilter.js";
 import { DEFAULT_THEME_STRENGTH, anyConditionOn, parseThemeStrengthParams, type ThemeStrengthParams } from "../../lib/themeStrength.js";
+import { isOutcomeMetric, type OutcomeMetric } from "../../lib/outcomeMetric.js";
 
 // 판정 알갱이 — 도메인 공용 어휘(그룹 scope·축 scope·깔때기 Grain 이 전부 같은 타입). 여기서 재수출해
 // 필터 모듈들은 stage 만 본다(도메인 경로가 바뀌어도 한 줄).
@@ -59,7 +60,14 @@ export type FilterPredicate =
     | { kind: "time"; ranges: TimeRange[] }
     // 테마 강도 묶음 — **파라미터가 payload 안에 산다**(SavedSet 이 stages 를 통째 복사하므로
     // 외부 참조로 두면 집합의 자립이 깨진다). 전 파라미터는 보드 행(레일·칩)에서 직접 편집한다.
-    | { kind: "themeStrength"; params: ThemeStrengthParams };
+    | { kind: "themeStrength"; params: ThemeStrengthParams }
+    // 시그널 결과(미래 값) — 허용 폭 T 는 여기 없다: T1/T2 는 정의 상태(pointDef payload)고 술어는
+    // **기본 허용 T1 평가의 값 범위만** 갖는다(decisions.md "시그널 결과" — 레일 직결 편집과 T 다른
+    // 조건이 한 레일에 공존 불가라 술어 params 동결안을 뒤집었다). 경계는 axisValue 와 같은 AxisBound.
+    | { kind: "outcome"; metric: OutcomeMetric; ranges: AxisValueRange[] }
+    // 보고 저가의 회복 여부(그 저가 이후 직전 고가 재돌파 — 세션 최고가 판정, 볼륨 무관) — 명목값이라
+    // 레일이 아니라 결과 패널 머리글 칩이 편집 입구다. 무눌림(저가 없음)은 결손(3치 undefined).
+    | { kind: "outcomeRecovery"; recovered: boolean };
 
 export type PredicateKind = FilterPredicate["kind"];
 
@@ -82,6 +90,8 @@ export function isPredicateEmpty(p: FilterPredicate): boolean {
         case "date": return p.ranges.length === 0;
         case "time": return p.ranges.length === 0;
         case "themeStrength": return !anyConditionOn(p.params); // 활성 하위 조건 0 = 무제한 통과
+        case "outcome": return p.ranges.length === 0;
+        case "outcomeRecovery": return false; // boolean 하나라 항상 조건이다
     }
 }
 
@@ -126,6 +136,8 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
         case "axisValue": return look.axisScope(p.axisId);
         case "group": return finest(literalIds(p.expr).map((id) => literalScope(id, look)));
         case "themeStrength": return "point"; // 단면 조회에 시각이 필수 — 행 정체성은 타점(보드 테마 칸은 UI 그룹핑)
+        case "outcome": return "point"; // 결과 걷기의 앵커가 시그널(타점)이다 — 시각 없이는 판정 불가
+        case "outcomeRecovery": return "point";
     }
 }
 
@@ -345,8 +357,13 @@ const isFromToRange = (o: unknown): o is { from: string; to: string } => {
 };
 
 function parsePredicate(o: unknown): FilterPredicate | null {
-    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown; params?: unknown };
+    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown; params?: unknown; metric?: unknown; recovered?: unknown };
     switch (p?.kind) {
+        case "outcome":
+            return isOutcomeMetric(p.metric) && Array.isArray(p.ranges) && p.ranges.every(isAxisValueRange)
+                ? { kind: "outcome", metric: p.metric, ranges: p.ranges } : null;
+        case "outcomeRecovery":
+            return typeof p.recovered === "boolean" ? { kind: "outcomeRecovery", recovered: p.recovered } : null;
         case "themeStrength": {
             // 관대한 병합 — 필드가 늘어도 옛 저장물이 통째 안 죽는다. payload 자체가 누락·오염이어도
             // **조건-off 로 살린다**: 이 파서의 null 은 저장본 한 벌 통째 폐기라, 지어낸 활성 조건(기본값)보다

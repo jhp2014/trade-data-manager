@@ -7,22 +7,38 @@
 // ⚠ 이 Provider 는 RankAxesProvider **바깥**에 선다 — 축 합성이 자동 Point 를 재료로 쓴다.
 import { createContext, useContext, type ReactNode } from "react";
 import { useAutoPointsValue, usePointGridsValue, type AutoPointsView, type PointGridsView } from "./usePointGrids.js";
+import { useOutcomesValue, useOutcomeWalksValue, type OutcomesView } from "./useOutcomes.js";
 
 // 소비자는 이 파일 하나만 보면 되게 — 훅과 그 모양을 다른 곳에서 가져오게 하지 않는다.
 export type { AutoPoint, AutoPointsView, PointGridsView } from "./usePointGrids.js";
 export { autoPointsOfChart } from "./usePointGrids.js";
+export type { OutcomeMetric, OutcomeRecord, OutcomesView } from "./useOutcomes.js";
 
 const GridsCtx = createContext<PointGridsView | null>(null);
 const AutoCtx = createContext<AutoPointsView | null>(null);
+const OutcomesCtx = createContext<OutcomesView | null>(null);
 
 export function PointGridsProvider({ children }: { children: ReactNode }): JSX.Element {
     const grids = usePointGridsValue();
     const auto = useAutoPointsValue();
+    // 결과 파생 — 걷기(T 무관)·단면(T 의존) 두 층(useOutcomes 머리 주석). 같은 Provider 에 얹어
+    // main·테스트 배선 무변경 + Provider 순서 규칙(격자 → 축 → 깔때기) 유지.
+    const walks = useOutcomeWalksValue(auto, grids);
+    const outcomes = useOutcomesValue(walks);
     return (
         <GridsCtx.Provider value={grids}>
-            <AutoCtx.Provider value={auto}>{children}</AutoCtx.Provider>
+            <AutoCtx.Provider value={auto}>
+                <OutcomesCtx.Provider value={outcomes}>{children}</OutcomesCtx.Provider>
+            </AutoCtx.Provider>
         </GridsCtx.Provider>
     );
+}
+
+/** 시그널 결과 파생 한 벌 — 결과 패널·결과 시트·깔때기 평가가 전부 이걸 본다. */
+export function useOutcomes(): OutcomesView {
+    const v = useContext(OutcomesCtx);
+    if (!v) throw new Error("PointGridsProvider 밖에서 useOutcomes — main 배선을 확인하세요");
+    return v;
 }
 
 /** 격자 조회 한 벌 — 소비하는 곳은 전부 이걸 쓴다(usePointGridsValue 직접 호출 금지: 인덱스가 여러 벌 돈다). */

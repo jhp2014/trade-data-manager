@@ -40,17 +40,24 @@ export interface PointDefinition {
     /** 양봉(종가 > 시가) 캔들만 Point 자격. 기본 true. 양봉 여부는 격자 OHLC 의 읽기 파생이라 끄는 데 재굽기 불필요. */
     bullOnly: boolean;
     /**
-     * 시그널 렌즈 = 결정 봉(decisions.md "시그널 렌즈"). `renewal` = 갱신 즉시(결정 봉 = Point 봉),
-     * `high` = 고점 눌림(결정 봉 = 그 다리의 확정 고점 봉 — 고점 −x%(x ≥ zigzag 2%) 지정가라 체결이 확정
-     * 터치 전엔 불가능해 "고점까지 특징"이 누출이 아니다). ⚠ **`pointsOf` 는 이 필드를 보지 않는다** —
-     * 행·행 시각은 두 렌즈에서 같다. 렌즈가 바꾸는 건 허용 축(다리·고점 축은 high 에서만)·차트 표식·시뮬
-     * 진입 앵커뿐이고, 한 타입에 두는 이유는 영속(wb.pointDef)·SavedSet payload·parsePointDef 가 전부
-     * 이 타입 하나를 지나기 때문(모수 선언의 일부).
+     * 결과 걷기의 허용 폭 T 쌍(%, 도메인 [2,30] — 하한 2 는 zigzag 해상도, decisions.md "시그널 결과").
+     * ⚠ **판정 노브가 아니다** — `pointsOf`/`levelsOf` 는 `PointJudgeDef` 로 좁혀 받아 원리적으로 못 본다.
+     * 결과 값(연장 고점·낙폭)·차트 다리 표식(T2 연동)을 바꾸는 정의 상태이고, 한 타입에 두는 이유는
+     * 영속(wb.pointDef)·SavedSet payload·parsePointDef 가 전부 이 타입 하나를 지나기 때문(렌즈 노브의 후임).
      */
-    lens: "renewal" | "high";
+    toleranceT1Pct: number;
+    toleranceT2Pct: number;
 }
 
-export type SignalLens = PointDefinition["lens"];
+/** Point 판정이 실제로 보는 노브 5개 — T 를 구독에서 배제하는 계약이 시그니처다(usePointGrids 헛재파생 방지). */
+export type PointJudgeDef = Pick<
+    PointDefinition,
+    "baselineGateEok" | "renewalGateEok" | "excludeUptoMin" | "mergeRisePct" | "bullOnly"
+>;
+
+/** 허용 폭 T 의 도메인(%) — 하한 = zigzag 해상도(이보다 얕은 눌림은 격자에 없다). */
+export const TOLERANCE_MIN_PCT = 2;
+export const TOLERANCE_MAX_PCT = 30;
 
 export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     baselineGateEok: 50,
@@ -58,7 +65,8 @@ export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     excludeUptoMin: 0,
     mergeRisePct: 0,
     bullOnly: true,
-    lens: "renewal",
+    toleranceT1Pct: 2,
+    toleranceT2Pct: 5,
 };
 
 /** 판정된 Point. 파생 특징(기준선 대비 %·저점 깊이 등)은 특징 층이 격자+이 목록에서 계산한다. */
@@ -102,7 +110,7 @@ export interface PointLevel {
  * `pointsOf` 밖으로 뺀 이유는 recon(point-diff)이 **같은 레벨 정의** 위에서 옛/새 규칙을 대조해야 해서다 —
  * 사본을 두면 레벨 규칙이 바뀔 때 양쪽이 함께 틀어져 diff 가 조용히 무의미해진다. 기준선 없으면 빈 배열.
  */
-export function levelsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_DEFINITION): PointLevel[] {
+export function levelsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEFINITION): PointLevel[] {
     if (grid.base === null) return [];
     const levels: PointLevel[] = [{ price: grid.base, renewal: false, min: null }];
     let maxKept = grid.base;
@@ -130,7 +138,7 @@ export function levelsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_D
  * 산출물의 시간 오름차순도, 머리 주석의 단조성 논증도 전부 이 전제 위에 선다 — 격자를 손으로 만들거나
  * 구버전 파일을 읽히면(파일 버전 가드가 유일한 방어선) 여기서 조용히 틀어진다.
  */
-export function pointsOf(grid: PointGrid, def: PointDefinition = DEFAULT_POINT_DEFINITION): DerivedPoint[] {
+export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEFINITION): DerivedPoint[] {
     if (grid.base === null || grid.touch === null) return [];
     const levels = levelsOf(grid, def);
 

@@ -14,6 +14,7 @@
 // 같은 규칙이 두 곳에서 각자 자란다. 이 파일은 그 대수로 술어를 조립하는 일만 한다.
 import { and3, not3, or3, type FunnelItem, type Verdict } from "@trade-data-manager/market/domain";
 import { rowKeyToChartKey } from "../../lib/pointKey.js";
+import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { passesPoint, type SectionRanks, type ThemeProjection } from "../../lib/themeStrength.js";
 import { isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { isPredicateEmpty, type AxisBound, type FilterPredicate, type FilterStage } from "./stage.js";
@@ -45,6 +46,15 @@ export interface EvalLookup {
     sectionRanksAt: (date: string, time: string) => SectionRanks | null;
     /** 테마 멤버십 투영(읽기 시점 — 굽지 않는다). 재료 미도착이면 null. */
     themeProj: ThemeProjection | null;
+    /**
+     * 결과 술어값(**기본 허용 T1** 평가, 전부 정확 — 세션 최고가 굽기 이후 하한 기계 철거) —
+     * 무눌림의 낙폭 2종·격자 미도착은 undefined(3치).
+     */
+    outcomeEvalOf: (metric: OutcomeMetric, item: FunnelItem) => number | undefined;
+    /** 결과 경계 앵커(타점) 해석용 값 맵(레일과 같은 맵, resolveBound 규칙 공유). */
+    outcomeRailValues: (metric: OutcomeMetric) => Map<string, number> | undefined;
+    /** 보고 저가의 회복 여부 — 무눌림(저가 없음)·격자 미도착은 undefined(3치). */
+    outcomeRecoveredOf: (item: FunnelItem) => boolean | undefined;
 }
 
 /**
@@ -137,6 +147,30 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
             const v = look.axisValueOf(p.axisId, item);
             if (v === undefined) return undefined; // 결손 = 미배치(탈락 아님)
             return resolved.some(([from, to]) => v >= from && v <= to);
+        }
+
+        case "outcome": {
+            // 시각 없는 항목(타점 없는 후보 하루)은 걷기의 앵커가 없다 — time 술어와 같은 결.
+            if (item.time === undefined) return undefined;
+            const v = look.outcomeEvalOf(p.metric, item);
+            if (v === undefined) return undefined; // 무눌림의 낙폭·격자 미도착 = 결손
+            const values = look.outcomeRailValues(p.metric);
+            const resolved: [number, number][] = [];
+            for (const r of p.ranges) {
+                if (!r.from && !r.to) continue;
+                const lo = r.from ? resolveBound(r.from, values) : -Infinity;
+                const hi = r.to ? resolveBound(r.to, values) : Infinity;
+                if (lo === undefined || hi === undefined) continue;
+                resolved.push(lo <= hi ? [lo, hi] : [hi, lo]);
+            }
+            if (resolved.length === 0) return undefined;
+            return resolved.some(([from, to]) => v >= from && v <= to);
+        }
+
+        case "outcomeRecovery": {
+            if (item.time === undefined) return undefined;
+            const r = look.outcomeRecoveredOf(item);
+            return r === undefined ? undefined : r === p.recovered;
         }
     }
 }

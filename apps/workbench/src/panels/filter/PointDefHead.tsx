@@ -5,7 +5,8 @@
 import { useEffect, useState } from "react";
 import { useWorkbench } from "../../store/workbench.js";
 import { isDefaultPointDef } from "../../lib/pointDef.js";
-import type { PointDefinition } from "@trade-data-manager/market/domain";
+import { openAndFocus } from "../../lib/openPanel.js";
+import { OUTCOME_PANEL_ID } from "../outcome/outcomePanelIds.js";
 
 function NumField({ label, suffix, value, min, onCommit, title }: {
     label: string;
@@ -62,14 +63,13 @@ const chipStyle = (on: boolean): React.CSSProperties => ({
     fontWeight: 600,
 });
 
-/** 편성 보드 머리 한 줄 — 정의 6노브(게이트 2·제외·병합·양봉만·렌즈) + 기본값 되돌리기(비기본일 때만). */
+/** 편성 보드 머리 한 줄 — 판정 노브 5(게이트 2·제외·병합·양봉만) + 허용 폭 T 표시 칩 + 기본값 되돌리기. */
 export function PointDefHead(): JSX.Element {
     const def = useWorkbench((s) => s.pointDef);
     const setDef = useWorkbench((s) => s.setPointDef);
     const reset = useWorkbench((s) => s.resetPointDef);
-    type NumKey = "baselineGateEok" | "renewalGateEok" | "excludeUptoMin" | "mergeRisePct"; // 키 순회 타입 금지 — bullOnly·lens 가 섞인다
+    type NumKey = "baselineGateEok" | "renewalGateEok" | "excludeUptoMin" | "mergeRisePct"; // 키 순회 타입 금지 — bullOnly·T 가 섞인다
     const patch = (k: NumKey) => (v: number) => setDef({ [k]: v });
-    const lens: PointDefinition["lens"] = def.lens;
     return (
         <div
             style={{
@@ -99,21 +99,16 @@ export function PointDefHead(): JSX.Element {
             >
                 양봉만
             </button>
-            {/* 렌즈 = 결정 봉. 행은 안 바뀌고 허용 축이 바뀐다(고점 렌즈에서만 고점·다리 축이 선다 — 갱신 렌즈에선
-                그 값들이 시그널 이후 정보라 outcome 이지 조건이 아니다). 모수 선언의 일부라 이 줄에 산다. */}
-            <span
-                role="group"
-                aria-label="진입 방식"
-                title="진입 방식 = 결정 봉. 갱신 즉시: 시그널 봉까지의 정보만 조건으로 씁니다. 고점 눌림: 그 다리의 확정 고점 봉까지(고점 −2% 이상 지정가 전제) — 고점·다리 축이 추가로 열립니다. 행(시그널)은 두 쪽이 같습니다."
-                style={{ display: "inline-flex", gap: 2 }}
+            {/* 허용 폭 T — 정의의 일부지만 **편집면은 결과 패널의 T 레일 하나**다(분포를 보며 정해야 하는 값).
+                여기 두는 이유: 정의는 보드 머리에서 항상 보인다 — 안 그러면 결과 패널이 닫힌 채 T 가
+                결과 값·차트 표식을 조용히 지배한다. 클릭 = 그 편집면으로. */}
+            <button
+                onClick={() => openAndFocus(OUTCOME_PANEL_ID)}
+                title="결과 걷기 허용 폭 — 기본 허용 T1(연장 고점·저가·차트 표식의 기준)과 Δ 관찰 폭 T2. 편집은 결과 패널의 T 레일에서"
+                style={chipStyle(false)}
             >
-                <button onClick={() => lens !== "renewal" && setDef({ lens: "renewal" })} style={chipStyle(lens === "renewal")} aria-pressed={lens === "renewal"}>
-                    갱신 즉시
-                </button>
-                <button onClick={() => lens !== "high" && setDef({ lens: "high" })} style={chipStyle(lens === "high")} aria-pressed={lens === "high"}>
-                    고점 눌림
-                </button>
-            </span>
+                허용 T1 {def.toleranceT1Pct}% · Δ~{def.toleranceT2Pct}%
+            </button>
             {!isDefaultPointDef(def) && (
                 <button
                     onClick={reset}

@@ -19,6 +19,7 @@ describe("grid codec", () => {
             ],
             prevBase: 9990.5,
             prevBaseKrx: 9985,
+            sessionHigh: { min: 610, price: 10990 },
         };
         const decoded = decodeChartGrid(encodeChartGrid("005930", grid));
         expect(decoded.stockCode).toBe("005930");
@@ -26,7 +27,7 @@ describe("grid codec", () => {
     });
 
     it("무사건·미터치 격자(널 투성이)도 보존된다", () => {
-        const grid: PointGrid = { base: null, touch: null, pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null };
+        const grid: PointGrid = { base: null, touch: null, pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, sessionHigh: { min: 540, price: 100 } };
         expect(decodeChartGrid(encodeChartGrid("A", grid)).grid).toEqual(grid);
     });
 
@@ -46,6 +47,7 @@ describe("grid codec", () => {
             newHighs: [{ min: 541, open: 1, high: 2, low: 3, close: 4, tv: "5", cum: "6" }],
             prevBase: 98,
             prevBaseKrx: 97,
+            sessionHigh: { min: 545, price: 9990 },
         };
         expect(encodeChartGrid("A", grid)).toEqual([
             "A",
@@ -60,6 +62,8 @@ describe("grid codec", () => {
             97,
             "7",
             "8",
+            545,
+            9990,
         ]);
     });
 });

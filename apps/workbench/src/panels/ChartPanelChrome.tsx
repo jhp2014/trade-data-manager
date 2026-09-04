@@ -162,6 +162,12 @@ export const anchorMarkControl = (on: boolean, toggle: () => void): ControlSpec 
     help: "기준선·무시 캔들이 어느 봉인지 (상단 칩 + 드롭선)", on, set: toggle,
 });
 
+/** 다리 표식(드롭 캡 + 선택 다리 띠) — 앵커 = T1(기본 허용) 연동 연장 고점(결과 걷기). T1=2% 면 첫 확정 고점. */
+export const legMarkControl = (on: boolean, toggle: () => void): ControlSpec => ({
+    kind: "toggle", id: "legMark", name: "다리 고점", group: "마커", activeColor: ACCENT,
+    help: "시그널 이후 연장 고점(기본 허용 T1 기준) — 고점 봉 캡 + 선택 시그널의 다리 띠", on, set: toggle,
+});
+
 export const searchLineControl = (on: boolean, toggle: () => void): ControlSpec => ({
     kind: "toggle", id: "searchLine", name: "검색 날짜", group: "마커", activeColor: ACCENT,
     help: "검색 날짜 세로선", on, set: toggle,

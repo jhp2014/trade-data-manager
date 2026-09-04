@@ -6,7 +6,7 @@ import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
 import { autoPointsOfChart, useAutoPoints, usePointGrids } from "../lib/PointGridsContext.js";
-import { legHighOf, minuteToHms } from "@trade-data-manager/market/domain";
+import { minuteToHms, sliceOutcome, walkOutcome } from "@trade-data-manager/market/domain";
 import type { AutoPointInput } from "../chart/minuteOverlays.js";
 import { ownBundle, useAnchorMarks, useBaselineLines, useIgnoreCandles } from "../lib/chartAnchorHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
@@ -28,6 +28,7 @@ import {
     marketControl,
     pinControl,
     scaleControl,
+    legMarkControl,
     searchLineControl,
     viewControl,
 } from "./ChartPanelChrome.js";
@@ -57,6 +58,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [lockScale, setLockScale] = usePanelUi(panelId, "lockScale", false); // 분봉 스케일 고정
     const [showGuide, setShowGuide] = usePanelUi(panelId, "showGuide", true); // +30% 가이드선(검색일 전일종가 ×1.3)
     const [showAnchorMarks, setShowAnchorMarks] = usePanelUi(panelId, "showAnchorMarks", true); // 상단 앵커 표식(칩+드롭선)
+    const [showLegMarks, setShowLegMarks] = usePanelUi(panelId, "showLegMarks", false); // 다리 표식(드롭 캡+띠) — 기본 꺼짐(렌즈 폐지 전 갱신 렌즈 화면과 동일)
     // 우클릭 메뉴의 기준 시장 — 선 줄이 따른다. 패널에 남겨(sticky) 오염 회피로 KRX 를 보는 중에
     // 봉마다 다시 누르지 않게 한다. 분봉·KRX 부재 봉에서는 메뉴가 UN 으로 되돌린다(없는 시장은 못 지목).
     const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
@@ -79,36 +81,36 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const ignore = useIgnoreCandles(code, viewDate);
 
     // 자동 Point(격자 파생) — 정의(pointDef) 반영 즉석 파생. ◇ 마커가 품질 육안 검증 입구다(재현율 대신).
-    // 고점 렌즈면 ◇ 라벨에 다리 고점(시그널 이후 첫 확정 고점)을 덧붙이고, 그 봉엔 호박색 세로선을 따로 긋는다.
+    // 다리 표식이 켜지면 ◇ 라벨에 연장 고점(T1 연동 — 결과 걷기의 **기본 허용** 단면)을 덧붙이고, 그 봉엔
+    // 드롭 캡을 긋는다. 렌즈 노브의 후임(2026-09-04): 앵커 = 허용 폭 T1 의 함수(T1=2% ⇒ 옛 첫 고점과 동일).
     const autoView = useAutoPoints();
     const grids = usePointGrids();
-    const lens = useWorkbench((s) => s.pointDef.lens);
+    const t1 = useWorkbench((s) => s.pointDef.toleranceT1Pct);
     const { autoPoints, legHighTimes, legHighBySignal } = useMemo<{
         autoPoints: AutoPointInput[];
         legHighTimes: number[];
-        /** 시그널 봉(unix초) → 그 다리 고점 봉(unix초) — 선택 시그널의 다리 띠 재료. */
+        /** 시그널 봉(unix초) → 그 연장 고점 봉(unix초) — 선택 시그널의 다리 띠 재료. */
         legHighBySignal: Map<number, number>;
     }>(() => {
-        const grid = lens === "high" ? grids.gridOf(code, viewDate) : undefined;
+        const grid = showLegMarks ? grids.gridOf(code, viewDate) : undefined;
         const legTimes = new Set<number>();
         const bySignal = new Map<number, number>();
         const list = autoPointsOfChart(autoView, code, viewDate).map((p) => {
             const signalUnix = kstToUnix(viewDate, minuteToHms(p.min));
             let label = `자동 ${p.kind === "breakout" ? "돌파" : "재돌파"} ${p.ordinal + 1}번째 · 레벨 ${p.levelPrice.toLocaleString()} · 대금 ${(Number(p.tv) / 1e8).toFixed(0)}억`;
-            if (lens === "high") {
-                const high = grid ? legHighOf(grid, p.min) : null;
-                if (high === null) label += " · 고점 없음(꼬리)";
-                else {
-                    label += ` · 고점 ${minuteToHms(high.pivot.min).slice(0, 5)} (+${(((high.pivot.price - p.levelPrice) / p.levelPrice) * 100).toFixed(1)}%)`;
-                    const highUnix = kstToUnix(viewDate, minuteToHms(high.pivot.min));
-                    legTimes.add(highUnix);
-                    bySignal.set(signalUnix, highUnix);
-                }
+            if (showLegMarks && grid) {
+                // 세션 최고가 굽기 이후 걷기는 항상 선다 — 무눌림(옛 "고점 없음")도 연장 고점 = 세션 최고가.
+                const s = sliceOutcome(walkOutcome(grid, p.min), t1, p.close);
+                // 분모 = 레벨가(다리 상승폭) — 결과 패널·시트의 % 는 Point 봉 종가 분모라 값이 다르다. 기준을 라벨에 명시.
+                label += ` · 고점 ${minuteToHms(s.extHighMin).slice(0, 5)} (레벨+${(((s.extHighPrice - p.levelPrice) / p.levelPrice) * 100).toFixed(1)}%)`;
+                const highUnix = kstToUnix(viewDate, minuteToHms(s.extHighMin));
+                legTimes.add(highUnix);
+                bySignal.set(signalUnix, highUnix);
             }
             return { time: signalUnix, label };
         });
         return { autoPoints: list, legHighTimes: [...legTimes], legHighBySignal: bySignal };
-    }, [autoView, grids, lens, code, viewDate]);
+    }, [autoView, grids, showLegMarks, t1, code, viewDate]);
 
     // 다리 띠 — **선택한 시그널 하나**만(전 시그널에 칠하면 겹쳐서 바탕색이 된다). 선택 = focus.time 이
     // 이 차트의 시그널일 때(subject 계약과 같은 판정). 시그널 봉 = 고점 봉이어도 한 봉짜리 띠가 선다.
@@ -167,6 +169,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         searchLineControl(showLine, () => setShowLine((v) => !v)),
         guideControl(showGuide, () => setShowGuide((v) => !v)),
         anchorMarkControl(showAnchorMarks, () => setShowAnchorMarks((v) => !v)),
+        legMarkControl(showLegMarks, () => setShowLegMarks((v) => !v)),
         {
             kind: "action", id: "clearLines", name: "선 지우기", group: "지우기",
             help: "가격선 전체 지우기", run: lines.clear, disabled: !lines.hasLines,
@@ -174,7 +177,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         marketControl(mode, setMode),
     ], [view, setView, pinMinute, setPinMinute, lockScale, setLockScale, showPointInfo, setShowPointInfo,
         showMarkers, setShowMarkers, showLine, setShowLine, showGuide, setShowGuide,
-        showAnchorMarks, setShowAnchorMarks,
+        showAnchorMarks, setShowAnchorMarks, showLegMarks, setShowLegMarks,
         lines.clear, lines.hasLines, mode, setMode]);
 
     return (

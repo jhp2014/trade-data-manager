@@ -22,7 +22,7 @@ import { HeaderControls, type ControlSpec } from "../../components/HeaderControl
 import { usePointRows } from "../../lib/usePointRows.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { type AxisRef } from "../../lib/computedAxis.js";
-import { GRID_AXIS_IDS, HIGH_LENS_AXIS_IDS } from "../../lib/gridFeatures.js";
+import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
 import { useSubject } from "../../lib/subject.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
@@ -60,13 +60,12 @@ const DRAWER_OPEN_KEY = "wb.filterDrawerOpen";
  */
 const AXIS_DND = "application/x-filter-axis";
 /**
- * 격자 축 id 는 **잠깐 숨을 수 있다** — 고점 렌즈 전용 축은 렌즈를 갱신으로 되돌리면, 격자 축 전부는 격자 로딩 전엔
- * 목록에 없다(죽은 게 아니라 숨은 것). 서랍 청소(`pruneDrawer`)·순서 덮어쓰기(`moveAxis`)가 이걸 유령으로 오인하면
- * 서랍 멤버십·순서가 영구 삭제된다 — 둘 다 보호 목록(`GRID_AXIS_IDS`)을 본다.
- * 타점 칸 안에서 고점 렌즈 축 앞에 "고점" 소제목 한 줄을 둔다(축 그룹핑 — 행 분할·새 칸·순서 강제 아님).
+ * 격자 축 id 는 **잠깐 숨을 수 있다** — 격자 로딩 전엔 목록에 없다(죽은 게 아니라 숨은 것). 서랍 청소
+ * (`pruneDrawer`)·순서 덮어쓰기(`moveAxis`)가 이걸 유령으로 오인하면 서랍 멤버십·순서가 영구 삭제된다 —
+ * 둘 다 보호 목록(`GRID_AXIS_IDS`)을 본다. 시그널 이후를 보는 값(옛 고점·다리 축)은 이 패널에 없다 —
+ * 과거/미래 패널 경계(decisions.md "시그널 결과"): 여긴 시그널 봉까지, 결과 패널이 그 이후를 진다.
  */
 const GRID_AXIS_ID_SET = new Set(GRID_AXIS_IDS);
-const HIGH_LENS_ID_SET = new Set(HIGH_LENS_AXIS_IDS);
 
 export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
     const v = useFunnel();
@@ -83,6 +82,11 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
     const pts = usePointRows(); // point 행 원천(격자 파생 한 벌) — 시간 레일 척도도 같은 모수를 본다
     const dates = useMemo(() => [...new Set(cand.candidates.map((c) => c.date))].sort(), [cand.candidates]);
     const times = useMemo(() => pts.points.map((p) => p.time), [pts.points]);
+    // 날짜 레일의 **분포 모수** — 척도(dates, 거래일 중복 없음)와 다른 물건이다.
+    // **레일의 분포는 그 레일이 선 층위의 행을 센다**: 날짜는 하루 칸이라 차트(종목·날짜),
+    // 시간은 타점 칸이라 타점. 안 그러면 같은 칸에서 위 축 레일과 아래 날짜 레일의 "N건"이
+    // 서로 다른 자가 된다(day 축의 값 맵은 차트 키당 한 항목이다).
+    const rowDates = useMemo(() => cand.candidates.map((c) => c.date), [cand.candidates]);
 
     // 마커(지금 고른 자리) — **subject 계약**을 그대로 쓴다: 타점을 골랐으면 타점, 하루만 골랐으면 그 하루.
     // 키가 곧 층위다(rowKey 규약): 타점 키는 point 축 값 맵에, 차트 키는 day 축 값 맵에 닿는다.
@@ -128,12 +132,11 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
         setDrawerIds((ids) => pruneDrawer(ids, live, GRID_AXIS_IDS));
     }, [ax.isLoading, ax.axes, setDrawerIds]);
 
-    /** 이 축 위에 놓을 수 있나 — **같은 층위 · 같은 편(서랍 안/밖) · 같은 서브 띠(갱신/고점)**.
-     *  편·띠가 다르면 안 보이는 자리로 순서가 옮겨진다 — 띠 간 순서가 섞이지 않는 건 이 가드 + 분할 렌더 둘이 진다. */
+    /** 이 축 위에 놓을 수 있나 — **같은 층위 · 같은 편(서랍 안/밖)**.
+     *  편이 다르면 안 보이는 자리로 순서가 옮겨진다. */
     const canDropOn = (axisKey: string): boolean =>
         dragAxis !== null && dragAxis !== axisKey && scopeOf.get(dragAxis) === scopeOf.get(axisKey)
-        && drawerSet.has(dragAxis) === drawerSet.has(axisKey)
-        && HIGH_LENS_ID_SET.has(dragAxis) === HIGH_LENS_ID_SET.has(axisKey);
+        && drawerSet.has(dragAxis) === drawerSet.has(axisKey);
     const dropAxis = (targetKey: string): void => {
         if (dragAxis === null || !canDropOn(targetKey)) return;
         const next = moveAxis(orderedIds, dragAxis, targetKey);
@@ -263,6 +266,7 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
                                         {grain === "day" ? (
                                             <DateRail
                                                 dates={dates}
+                                                rowDates={rowDates}
                                                 ranges={predicateOfKind(stages, timeKey, "date")?.ranges ?? []}
                                                 marker={subject?.date ?? null}
                                                 onType={(x, y) => setEditor({ kind: "date", x, y })}
@@ -282,23 +286,7 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
 
                                 {/* "축이 없다"는 **서랍 포함**으로 판단한다 — 전부 치운 칸에서 이 말은 거짓말이다. */}
                                 {axes.length === 0 && <Note>이 층위에 축이 없습니다</Note>}
-                                {/* 서브 띠(갱신/고점) — 고점 축이 있을 때만 두 묶음으로 **분할 렌더**한다: 순서 pref 가
-                                    어떻게 섞여 있어도 화면에선 띠 간 순서가 안 섞이고, 드래그도 canDropOn 이 띠를 넘지 못하게 막는다.
-                                    '걸린 것만'은 그릴 줄을 먼저 좁힌다 — 안 그러면 줄은 빠지고 띠만 홀로 남는다. */}
-                                {(() => {
-                                    const shown = outside.filter((axis) => visible(stageOf({ kind: "axis", axisId: axis.key }) !== undefined));
-                                    const renewal = shown.filter((a) => !HIGH_LENS_ID_SET.has(a.key));
-                                    const highAxes = shown.filter((a) => HIGH_LENS_ID_SET.has(a.key));
-                                    if (highAxes.length === 0) return shown.map((axis) => axisRow(axis, false));
-                                    return (
-                                        <>
-                                            {renewal.length > 0 && <SubBand kind="renewal" />}
-                                            {renewal.map((axis) => axisRow(axis, false))}
-                                            <SubBand kind="high" />
-                                            {highAxes.map((axis) => axisRow(axis, false))}
-                                        </>
-                                    );
-                                })()}
+                                {outside.map((axis) => axisRow(axis, false))}
                             </GrainSection>
                         </div>
                     );
@@ -313,32 +301,6 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
 }
 
 // ── 조각들 ────────────────────────────────────────────────────────────────
-
-/**
- * 타점 칸 안 서브 띠 — 갱신/고점 축 묶음의 머리 줄(층위 머리 띠의 축소판). 고점 렌즈에서만 선다
- * (고점 축이 없으면 묶음이 하나뿐이라 띠가 소음이다). 고점 띠는 옅은 teal 로 "렌즈 전용"이 색으로도 읽힌다.
- */
-function SubBand({ kind }: { kind: "renewal" | "high" }): JSX.Element {
-    const high = kind === "high";
-    return (
-        <div
-            title={high
-                ? "고점 렌즈 전용 축 — 결정 봉이 그 다리의 확정 고점 봉이라 시그널 이후 정보까지 조건으로 씁니다(고점 −2% 이상 지정가 전제)"
-                : "갱신 시점 축 — 시그널 봉까지의 정보만 봅니다(두 렌즈 공통)"}
-            style={{
-                display: "flex", alignItems: "baseline", gap: 6, padding: "2px 10px 1px", marginTop: 2,
-                background: high ? "var(--accent-soft)" : "var(--bg-secondary)",
-                color: high ? "var(--accent-hover)" : "var(--text-secondary)",
-                fontSize: 10.5, fontWeight: 700, letterSpacing: "0.03em",
-            }}
-        >
-            {high ? "고점" : "갱신"}
-            <span style={{ fontWeight: 400, fontSize: 10, color: high ? "var(--accent-primary)" : "var(--text-tertiary)" }}>
-                {high ? "고점 봉까지" : "시그널 봉까지"}
-            </span>
-        </div>
-    );
-}
 
 /** 계산 축 레일 — 재료(값·표시 규격)를 꺼내 꽂는 자리. 값이 없는 축은 어댑터가 이유를 적는다. */
 function ComputedAxisRailRow({ axis, stages, markerKey, memberKeys, dragHandle, stow, onType, onChange }: {

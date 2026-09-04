@@ -6,7 +6,7 @@ import { amountFrom, breakoutAmountOf, legAmountOf, legHighOf, legStartOf, legWi
 const mark = (min: number, tv: number, cum: number): GridBarMark => ({ min, tv: String(tv), cum: String(cum) });
 const hi = (min: number, price: number, cum: number, cross: GridBarMark | null, confirmedMin = min + 1): GridPivot => ({ kind: "high", min, price, confirmedMin, cum: String(cum), cross });
 const lo = (min: number, price: number, cum: number): GridPivot => ({ kind: "low", min, price, confirmedMin: null, cum: String(cum), cross: null });
-const gridOf = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touch: mark(550, 10, 100), pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, ...partial });
+const gridOf = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touch: mark(550, 10, 100), pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, sessionHigh: { min: 600, price: 10900 }, ...partial });
 
 // 세션: 터치 550(누적 100) → 고점 H1 560(누적 300, 첫 고점) → 저점 565(누적 400) → 크로싱 570(tv 50, 누적 450)
 //       → 고점 H2 580(누적 700) → 저점 585(누적 800) → 크로싱 590(tv 30, 누적 830) → 고점 H3 600(누적 1000) → 저점 605(누적 1100)

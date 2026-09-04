@@ -50,7 +50,7 @@ import { POINT_GRID_FILE_VERSION } from "./gridStore.js";
  *  6: 2026-09-02 KRX 기준가(prevBaseKrx) 수록 — 당일 %(KRX) 특징의 분모
  *  5: 2026-09-01 그날 기준가(prevBase) 수록 — 당일 % 를 클라가 격자만으로 파생
  *  4: 2026-08-31 zigzag 재정식화(상태기계 폐기·정의 직접 계산·renewalAmount) */
-export const POINT_GRID_CALC_VERSION = 7;
+export const POINT_GRID_CALC_VERSION = 8;
 
 /** 그날 기준가 조회 창 — `basePricesOf` 는 **date 보다 이른 최대 날짜**(직전 거래일) 하나만 있으면 되고,
  *  창은 연휴·거래정지를 덮는 여유일 뿐이다(넓혀도 값이 안 바뀐다 — 더 이른 봉은 안 쓰인다).

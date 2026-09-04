@@ -5,6 +5,7 @@
 // 숫자와 화면이 같은 이야기를 해야 한다.
 import { NONE_LABEL, isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { shortDate } from "../../lib/date.js";
+import { OUTCOME_METRIC_NAME } from "../../lib/outcomeMetric.js";
 import type { ThemeStrengthParams } from "../../lib/themeStrength.js";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 
@@ -43,6 +44,8 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
                 ? `${p.ranges[0]!.from}~${p.ranges[0]!.to}`
                 : `시간 ${p.ranges.length}구간`;
         case "themeStrength": return themeStrengthLabel(p.params);
+        case "outcome": return OUTCOME_METRIC_NAME[p.metric];
+        case "outcomeRecovery": return p.recovered ? "저가 회복" : "저가 미회복";
     }
 }
 
@@ -66,6 +69,8 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         case "date": return "날짜";
         case "time": return "시간";
         case "themeStrength": return "테마";
+        case "outcome":
+        case "outcomeRecovery": return "결과";
         default: return "";
     }
 }

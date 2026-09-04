@@ -26,10 +26,16 @@ describe("parsePointDef", () => {
         expect(parsePointDef({ bullOnly: false })!.bullOnly).toBe(false);
     });
 
-    it("lens — 옛 저장물(필드 없음)·오염은 갱신(renewal), high 는 보존", () => {
-        expect(parsePointDef({})!.lens).toBe("renewal");
-        expect(parsePointDef({ lens: "pullback" })!.lens).toBe("renewal");
-        expect(parsePointDef({ lens: "high" })!.lens).toBe("high");
-        expect(isDefaultPointDef(parsePointDef({ lens: "high" })!)).toBe(false);
+    it("허용 폭 T — 옛 저장물(필드 없음·lens 시절)은 기본 2/5, 오염은 그 필드만 기본", () => {
+        expect(parsePointDef({})!.toleranceT1Pct).toBe(2);
+        expect(parsePointDef({})!.toleranceT2Pct).toBe(5);
+        expect(parsePointDef({ lens: "high" })).toEqual(DEFAULT_POINT_DEFINITION); // 렌즈 필드는 무시(관대 병합)
+        expect(parsePointDef({ toleranceT2Pct: "x" })!.toleranceT2Pct).toBe(5);
+    });
+
+    it("허용 폭 T — 도메인 [2,30] 클램프, 역전(t1 > t2)은 정규화", () => {
+        expect(parsePointDef({ toleranceT1Pct: 0.5, toleranceT2Pct: 99 })).toMatchObject({ toleranceT1Pct: 2, toleranceT2Pct: 30 });
+        expect(parsePointDef({ toleranceT1Pct: 8, toleranceT2Pct: 3 })).toMatchObject({ toleranceT1Pct: 3, toleranceT2Pct: 8 });
+        expect(isDefaultPointDef(parsePointDef({ toleranceT2Pct: 8 })!)).toBe(false);
     });
 });

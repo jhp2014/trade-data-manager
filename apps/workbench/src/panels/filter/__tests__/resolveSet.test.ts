@@ -53,6 +53,9 @@ const evalLook: EvalLookup = {
     boundValue: () => undefined,
     sectionRanksAt: () => null,
     themeProj: null,
+    outcomeEvalOf: () => undefined,
+    outcomeRailValues: () => undefined,
+    outcomeRecoveredOf: () => undefined,
 };
 
 const ctx: SetResolveCtx = {

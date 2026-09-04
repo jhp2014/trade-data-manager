@@ -23,6 +23,8 @@ export interface BoardReveal {
 export const REVEAL_SCOPE = "funnelReveal";
 /** 레일 줄(축·날짜·시간)이 사는 화면의 자리 — 보내는 손과 받는 화면이 이 키 하나로 만난다. */
 export const RAIL_REVEAL = "rails";
+/** 결과 술어가 사는 화면(결과 패널) — 필터 레일과 편집면이 다르다(과거/미래 패널 경계). */
+export const OUTCOME_REVEAL = "outcome";
 
 /** 되짚기를 보내는 쪽(조건 목록). */
 export function useRevealSender(key: string): (stageId: string) => void {
@@ -58,7 +60,8 @@ export function useRevealConsumer(key: string): { reveal: BoardReveal | null; ma
     return { reveal: fresh, markHandled };
 }
 
-export const rowIdOfKey = (k: RailKey): string => (k.kind === "axis" ? `axis:${k.axisId}` : k.kind);
+export const rowIdOfKey = (k: RailKey): string =>
+    k.kind === "axis" ? `axis:${k.axisId}` : k.kind === "outcome" ? `outcome:${k.metric}` : k.kind;
 
 /** 이 필터가 보드의 어느 줄에 사는가 — 되짚기(위 목록 → 보드)의 유일한 대응표. */
 export function rowIdOfStage(s: FilterStage): string {
@@ -68,6 +71,8 @@ export function rowIdOfStage(s: FilterStage): string {
         case "group": return `group:${s.id}`;
         case "axisBand":
         case "axisValue": return `axis:${first.axisId}`;
+        case "outcome": return `outcome:${first.metric}`; // 지표별 줄 — kind 하나로 뭉개면 레일 4개가 한 줄로 접힌다
+        case "outcomeRecovery": return `recovery:${s.id}`;
         case "date": return "date";
         case "time": return "time";
         case "themeStrength": return `theme:${s.id}`;

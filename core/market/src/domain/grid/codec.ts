@@ -15,10 +15,10 @@ export type WirePivot = [number, number, number, number, string, number, string,
 /** [min, open, high, low, close, tv, cum] */
 export type WireNewHigh = [number, number, number, number, number, string, string];
 /** [stockCode, base(null=기준선 값 없음), touchMin(−1=미터치), pivots, newHighs, prevBase(null=결손), prevBaseKrx(null=결손),
- *   touchTv("-1"=미터치), touchCum("-1"=미터치)]
+ *   touchTv("-1"=미터치), touchCum("-1"=미터치), sessionHighMin, sessionHighPrice]
  *  ⚠ 새 자리는 **끝에만** 붙인다 — 위치가 계약이라 중간 삽입은 옛 파일·옛 클라를 조용히 뒤튼다.
- *  (터치 봉의 tv·cum 이 touchMin 옆이 아니라 끝에 선 이유가 이 규칙이다.) */
-export type WireChartGrid = [string, number | null, number, WirePivot[], WireNewHigh[], number | null, number | null, string, string];
+ *  (터치 봉의 tv·cum 이 touchMin 옆이 아니라 끝에 선 이유가 이 규칙이다. 세션 최고가 두 칸도 그래서 끝.) */
+export type WireChartGrid = [string, number | null, number, WirePivot[], WireNewHigh[], number | null, number | null, string, string, number, number];
 
 const NONE = "-1";
 
@@ -42,13 +42,15 @@ export function encodeChartGrid(stockCode: string, g: PointGrid): WireChartGrid 
         g.prevBaseKrx,
         g.touch?.tv ?? NONE,
         g.touch?.cum ?? NONE,
+        g.sessionHigh.min,
+        g.sessionHigh.price,
     ];
 }
 
 const markOf = (min: number, tv: string, cum: string): GridBarMark | null => (min < 0 ? null : { min, tv, cum });
 
 /** 이 코덱이 아는 차트 튜플 칸 수 — 옛 번들(react-query 캐시·낡은 서버)이 오면 조용히 뒤틀리는 대신 여기서 죽는다. */
-const CHART_TUPLE_LEN = 9;
+const CHART_TUPLE_LEN = 11;
 
 export function decodeChartGrid(w: WireChartGrid): { stockCode: string; grid: PointGrid } {
     if (w.length < CHART_TUPLE_LEN) throw new Error(`point-grid 튜플 칸 수 ${w.length} < ${CHART_TUPLE_LEN} — 옛 버전 번들(서버 재기동·하드 리로드 필요)`);
@@ -70,6 +72,7 @@ export function decodeChartGrid(w: WireChartGrid): { stockCode: string; grid: Po
             newHighs: w[4].map((e): GridNewHigh => ({ min: e[0], open: e[1], high: e[2], low: e[3], close: e[4], tv: e[5], cum: e[6] })),
             prevBase: w[5] ?? null,
             prevBaseKrx: w[6] ?? null,
+            sessionHigh: { min: w[9], price: w[10] },
         },
     };
 }

@@ -18,7 +18,7 @@ const hi = (min: number, price: number, confirmedMin: number | null): GridPivot 
 // 재정식화 격자의 저점: confirmedMin·cross 항상 null — 헬퍼가 규칙을 증언한다.
 const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: null, cum: "0", cross: null });
 const touch = (min: number) => ({ min, tv: "0", cum: "0" });
-const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touch: touch(550), pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, ...partial });
+const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touch: touch(550), pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, sessionHigh: { min: 550, price: 10000 }, ...partial });
 
 describe("pointsOf", () => {
     it("기준선 미터치(또는 기준선 없음) → Point 없음", () => {

@@ -18,6 +18,9 @@ const base: EvalLookup = {
     boundValue: (_axisId, b) => (b.kind === "value" ? b.value : undefined),
     sectionRanksAt: () => null,
     themeProj: null,
+    outcomeEvalOf: () => undefined,
+    outcomeRailValues: () => undefined,
+    outcomeRecoveredOf: () => undefined,
 };
 const look = (over: Partial<EvalLookup> = {}): EvalLookup => ({ ...base, ...over });
 
@@ -234,5 +237,45 @@ describe("evalPredicate3 — 테마 강도 묶음", () => {
         const base = pred(1) as Extract<FilterPredicate, { kind: "themeStrength" }>;
         const off: FilterPredicate = { kind: "themeStrength", params: { ...base.params, countOn: false } };
         expect(evalPredicate3(off, sItem, themed({ themeProj: null }))).toBe(true); // 재료 없어도 — 조건이 없으니까
+    });
+});
+
+describe("outcome 술어 — 값 전부 정확(세션 최고가 이후, 하한 규칙 철거)", () => {
+    const rng = (from?: number, to?: number): FilterPredicate => ({
+        kind: "outcome", metric: "extHigh",
+        ranges: [{ ...(from !== undefined ? { from: { kind: "value", value: from } } : {}), ...(to !== undefined ? { to: { kind: "value", value: to } } : {}) }],
+    });
+    const withOutcome = (value: number): EvalLookup =>
+        look({ outcomeEvalOf: (metric) => (metric === "extHigh" ? value : undefined) });
+
+    it("구간 판정 그대로 — 값이 있으면 정확 판정", () => {
+        expect(evalPredicate3(rng(4), item, withOutcome(8.9))).toBe(true);
+        expect(evalPredicate3(rng(10), item, withOutcome(8.9))).toBe(false);
+        expect(evalPredicate3(rng(4, 10), item, withOutcome(8.9))).toBe(true);
+    });
+
+    it("무눌림 낙폭(값 없음)·격자 미도착·시각 없는 항목은 결손", () => {
+        expect(evalPredicate3(rng(4), item, look())).toBeUndefined(); // outcomeEvalOf → undefined
+        expect(evalPredicate3(rng(4), dayItem, withOutcome(8.9))).toBeUndefined(); // 시각 없음
+    });
+
+    it("빈 범위 = 빈 술어 = 통과", () => {
+        expect(evalPredicate3({ kind: "outcome", metric: "extHigh", ranges: [] }, item, look())).toBe(true);
+    });
+});
+
+describe("outcomeRecovery 술어 — 보고 저가의 회복 여부(명목값)", () => {
+    const p = (recovered: boolean): FilterPredicate => ({ kind: "outcomeRecovery", recovered });
+    const withRecovered = (r: boolean | undefined): EvalLookup => look({ outcomeRecoveredOf: () => r });
+
+    it("회복/미회복 그대로 판정", () => {
+        expect(evalPredicate3(p(true), item, withRecovered(true))).toBe(true);
+        expect(evalPredicate3(p(true), item, withRecovered(false))).toBe(false);
+        expect(evalPredicate3(p(false), item, withRecovered(false))).toBe(true);
+    });
+
+    it("무눌림(저가 없음)·격자 미도착·시각 없는 항목은 결손", () => {
+        expect(evalPredicate3(p(true), item, withRecovered(undefined))).toBeUndefined();
+        expect(evalPredicate3(p(true), dayItem, withRecovered(true))).toBeUndefined();
     });
 });

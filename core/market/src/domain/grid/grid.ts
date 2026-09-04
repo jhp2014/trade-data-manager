@@ -106,6 +106,14 @@ export interface PointGrid {
     prevBase: number | null;
     /** prevBase 의 KRX 짝 — "당일 %(KRX)" 의 분모(2026-09-02, 같은 원칙: 사실만 굽고 폴백 없음). */
     prevBaseKrx: number | null;
+    /**
+     * 세션 최고가 = 세션 창 안 러닝 최고가의 **최종값**(그 봉의 시각·고가, 원주가). 순수 사실이라 굽는다
+     * (2026-09-04 — 옛 "미확정 꼬리 고점은 굽지 않는다" 기각을 뒤집음: 결과 트랙이 소비자로 생겼다).
+     * 마지막 확정 고점보다 높으면 그 초과분은 반드시 꼬리(마지막 사건 이후)의 것 — 이 한 값으로
+     * ① 무눌림·꼬리 시그널의 "어디까지 올라갔는지"가 정확해지고 ② 마지막 저점의 회복 여부
+     * (세션 최고가 > 그 고점가 ⟺ 재크로싱 발생, 볼륨 무관)가 판정된다(outcome.ts).
+     */
+    sessionHigh: { min: number; price: number };
 }
 
 /** 검출기 파라미터 — 전부 격자에 구워진다(바꾸면 version 상향 + 재계산). */
@@ -254,10 +262,12 @@ export function detectGrid(
     const newHighs: GridNewHigh[] = [];
     let touch: GridBarMark | null = null;
     let runningMax = -Infinity;
+    let maxIdx = 0; // 세션 최고가를 세운 봉 — floor 무관(순수 가격 사실)
     for (let i = 0; i < n; i++) {
         if (base !== null && touch === null && highs[i] >= base) touch = markOf(i);
         if (highs[i] <= runningMax) continue;
         runningMax = highs[i];
+        maxIdx = i;
         if (tvs[i] < floorWon) continue;
         newHighs.push({
             min: mins[i],
@@ -270,5 +280,5 @@ export function detectGrid(
         });
     }
 
-    return { base, touch, pivots, newHighs, prevBase, prevBaseKrx };
+    return { base, touch, pivots, newHighs, prevBase, prevBaseKrx, sessionHigh: { min: mins[maxIdx], price: highs[maxIdx] } };
 }

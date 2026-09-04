@@ -65,6 +65,8 @@ function gridsFromPoints(points: readonly SeedPoint[]): DecodedPointGrids {
             newHighs: mins.map((m, i) => ({ min: m, open: 100 + i, high: 101 + i, low: 100 + i, close: 101 + i, tv: "6000000000", cum: String((2 * i + 2) * 1_000_000_000) })),
             prevBase: 100,
             prevBaseKrx: null,
+            // 세션 최고가 = 마지막 신고가 캔들(러닝 최고가 최종값) — 격자 사실 필드(버전 8).
+            sessionHigh: { min: mins[mins.length - 1], price: 101 + (mins.length - 1) },
         };
         if (!byDate.has(date)) byDate.set(date, new Map());
         byDate.get(date)!.set(stockCode, grid);

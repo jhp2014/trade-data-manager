@@ -16,6 +16,7 @@ import { usePointRows } from "../../lib/usePointRows.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
+import { useOutcomes } from "../../lib/PointGridsContext.js";
 import { useRankSections } from "../../lib/useRankSections.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { themeProjectionOf } from "../../lib/themeStrength.js";
@@ -82,6 +83,9 @@ const NO_SECTION = (): null => null;
 const hasThemePredicate = (stages: readonly FilterStage[]): boolean =>
     stages.some((s) => s.predicates.some((p) => p.kind === "themeStrength"));
 
+const hasOutcomePredicate = (stages: readonly FilterStage[]): boolean =>
+    stages.some((s) => s.predicates.some((p) => p.kind === "outcome" || p.kind === "outcomeRecovery"));
+
 /** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
 export function useFilterFunnel(): FunnelView {
     const stages = useWorkbench(selectFilterStages);
@@ -91,6 +95,15 @@ export function useFilterFunnel(): FunnelView {
     const ax = useRankAxes();
     const cand = useCandidateDays(); // 복제본 파생 — 서버 왕복 없음(candidateDaysOf)
     const pts = usePointRows(); // point 행 원천(격자 파생 한 벌) — 깔때기 모수가 여기서 온다
+    const outcomes = useOutcomes(); // 결과 파생 한 벌(기본 허용 T1 단면) — outcome 술어의 재료
+    // 결과 술어가 **어디에도 없으면**(활성 단계 ∪ 저장 집합) 재료를 상수로 끊는다 — 테마 재료의
+    // themeInUse 게이트와 같은 이유: 안 그러면 T 레일을 만질 때마다 결과와 무관한 화면 전체의
+    // 정산·저장 집합 캐시가 materialsEpoch 를 타고 통째 재계산된다.
+    const outcomeInUse = useMemo(
+        () => hasOutcomePredicate(stages) || savedSets.some((f) => hasOutcomePredicate(f.stages)),
+        [stages, savedSets],
+    );
+    const outcomesEff = outcomeInUse ? outcomes : null;
 
     const isLoading = gv.isLoading || ax.isLoading || cand.isLoading || pts.isLoading;
 
@@ -172,8 +185,20 @@ export function useFilterFunnel(): FunnelView {
             // 순위 단면(구운 번들) — 로딩·오류면 sectionAt 이 null 을 줘 테마 술어가 미배치로 선다.
             sectionRanksAt,
             themeProj: themeProjEff,
+            // 결과 술어(기본 허용 T1 평가) — 무눌림의 낙폭·격자 미도착은 레코드에 없어 그대로 3치의 undefined 가 된다.
+            // T 변경은 outcomesEff 참조를 갈아 evalLook → materialsEpoch 까지 자동 무효(의도 — T 는 결과를
+            // 바꾼다). 결과 술어가 없으면 outcomesEff = null(상수)이라 그 무효화가 안 돈다(위 게이트).
+            outcomeEvalOf: (metric, i) =>
+                outcomesEff === null || i.time === undefined ? undefined
+                    : outcomesEff.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.eval[metric],
+            outcomeRailValues: (metric) => outcomesEff?.railValues.get(metric),
+            outcomeRecoveredOf: (i) => {
+                if (outcomesEff === null || i.time === undefined) return undefined;
+                const r = outcomesEff.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.slice.recovered;
+                return r === null ? undefined : r; // 무눌림(저가 없음) = 결손
+            },
         }),
-        [gv, placements, ax.computedValues, sectionRanksAt, themeProjEff],
+        [gv, placements, ax.computedValues, sectionRanksAt, themeProjEff, outcomesEff],
     );
 
     // ── 정산 ── 표시와 정산이 **같은 순서**를 봐야 한다(하루 먼저) — 어긋나면 "상류"가 화면과 다른 걸 가리킨다.

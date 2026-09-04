@@ -14,6 +14,7 @@ const grid: PointGrid = {
     newHighs: [{ min: 560, open: 9950, high: 10050, low: 9900, close: 10050, tv: "6000000000", cum: "6000000000" }],
     prevBase: 9900,
     prevBaseKrx: null,
+    sessionHigh: { min: 560, price: 10050 },
 };
 
 function Probe(): JSX.Element {

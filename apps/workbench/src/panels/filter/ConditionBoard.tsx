@@ -27,15 +27,17 @@ import { GrainSection, Note } from "./grain.js";
 import { GroupEditors, type GroupEditorAnchor } from "./ConditionEditors.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
-import { RAIL_REVEAL, useRevealSender } from "./boardReveal.js";
+import { OUTCOME_REVEAL, RAIL_REVEAL, useRevealSender } from "./boardReveal.js";
 import { useLinkedThemeStage } from "./themeLink.js";
+import { OUTCOME_PANEL_ID } from "../outcome/outcomePanelIds.js";
 import { stageLabel } from "./label.js";
 import { stageKind, type FilterStage, type Grain } from "./stage.js";
 
 const GRAINS: Grain[] = ["day", "point"];
-/** 종류별 편집면 — 줄 이름을 누르면 여기로 데려간다. */
+/** 종류별 편집면 — 줄 이름을 누르면 여기로 데려간다. 결과 패널 id 는 공용 상수(주소가 세 곳이라 잎 모듈). */
 const RAIL_PANEL = "filter-rails-1";
 const THEME_PANEL = "theme-rank-1";
+const OUTCOME_PANEL = OUTCOME_PANEL_ID;
 
 export function ConditionBoard({ barsOpen }: {
     /** 막대(5칸)와 수치 줄을 편다 — 머리글 토글 하나가 목록 전체를 지배한다. */
@@ -57,6 +59,7 @@ export function ConditionBoard({ barsOpen }: {
 
     // ── 편집면으로 데려가기 ──
     const sendReveal = useRevealSender(RAIL_REVEAL);
+    const sendOutcomeReveal = useRevealSender(OUTCOME_REVEAL);
     const { linkedId, setLinked } = useLinkedThemeStage();
     const [groupEditor, setGroupEditor] = useState<GroupEditorAnchor | null>(null);
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
@@ -78,6 +81,14 @@ export function ConditionBoard({ barsOpen }: {
                 return;
             case "group":
                 setGroupEditor({ stageId: stage.id, x: e.clientX, y: e.clientY });
+                return;
+            // ⚠ default 로 흘리면 필터 레일 패널로 가는데 거기엔 결과 줄이 없다(조용한 무반응) — 명시 분기.
+            case "outcome":
+                sendOutcomeReveal(stage.id);
+                openAndFocus(OUTCOME_PANEL);
+                return;
+            case "outcomeRecovery": // 편집면 = 결과 패널 머리글 칩(레일 줄이 없어 되짚기 신호는 안 보낸다)
+                openAndFocus(OUTCOME_PANEL);
                 return;
             default:
                 sendReveal(stage.id);
@@ -160,6 +171,7 @@ export function ConditionBoard({ barsOpen }: {
                 {!v.isLoading && (
                     <AddCondition
                         onRails={() => openAndFocus(RAIL_PANEL)}
+                        onOutcome={() => openAndFocus(OUTCOME_PANEL)}
                         onGroup={(e) => groupCreate.open(e.clientX, e.clientY)}
                         onTheme={() => {
                             addStage([{ kind: "themeStrength", params: { ...DEFAULT_THEME_STRENGTH } }]);
@@ -188,8 +200,9 @@ export function ConditionBoard({ barsOpen }: {
  * 거기서 긋는 순간 조건이 된다(레일 하나 = 필터 하나). 테마·그룹은 기본값이 뜻을 갖거나 팔레트에서
  * 곧바로 식을 쓰므로 행을 만든다.
  */
-function AddCondition({ onRails, onGroup, onTheme }: {
+function AddCondition({ onRails, onOutcome, onGroup, onTheme }: {
     onRails: () => void;
+    onOutcome: () => void;
     onGroup: (e: React.MouseEvent) => void;
     onTheme: () => void;
 }): JSX.Element {
@@ -221,6 +234,7 @@ function AddCondition({ onRails, onGroup, onTheme }: {
                     boxShadow: "0 2px 8px rgba(0,0,0,.12)", padding: "3px 0",
                 }}>
                     {item("레일 — 계산 축 · 날짜 · 시간", "필터 레일 판으로 — 분포를 보며 그으면 그 자리에서 조건이 됩니다(빈 조건은 안 만듭니다)", onRails)}
+                    {item("결과 — 시그널 이후", "시그널 결과 판으로 — 연장 고점·저가(미래 값) 분포를 보며 그으면 조건이 됩니다", onOutcome)}
                     {item("그룹 조건", "그룹 식 — 여러 개로 나누면 각각의 기여도가 보입니다(그룹은 하루 층위 하나뿐)", onGroup)}
                     {item("테마 강도", "기본값으로 켜진 행을 만들고 테마 순위 패널에서 엽니다", onTheme)}
                 </div>

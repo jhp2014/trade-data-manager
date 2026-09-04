@@ -23,6 +23,9 @@ import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 import { WatchlistPanel } from "../panels/WatchlistPanel.js";
 import { LiveTapePanel } from "../panels/liveTape/LiveTapePanel.js";
 import { ThemeRankPanel } from "../panels/themeRank/ThemeRankPanel.js";
+import { OutcomePanel } from "../panels/outcome/OutcomePanel.js";
+import { OutcomeSheetPanel } from "../panels/outcome/OutcomeSheetPanel.js";
+import { OUTCOME_PANEL_ID, OUTCOME_SHEET_PANEL_ID } from "../panels/outcome/outcomePanelIds.js";
 import { AlertLogPanel } from "../panels/AlertLogPanel.js";
 import { UniverseRulesPanel } from "../panels/UniverseRulesPanel.js";
 
@@ -66,6 +69,9 @@ export const PANEL_CATALOG: PanelEntry[] = [
     // 필터 레일 — 1차원 조건(축·날짜·시간)을 분포 보며 긋는 자리. 편성 보드와 **같은 조건**을 다른
     // 렌즈로 본다(사본 없음) — 그어진 컷이 곧 보드의 행이다.
     { id: "filter-rails-1", component: "filterRails", title: "필터 레일", plane: "eod", render: (id) => <RailPanel panelId={id} /> },
+    // 시그널 결과 — 시그널 **이후**(미래) 값의 분포·조건(과거/미래 패널 경계 — 필터 레일의 형제).
+    { id: OUTCOME_PANEL_ID, component: "outcomeRails", title: "시그널 결과", plane: "eod", render: () => <OutcomePanel /> },
+    { id: OUTCOME_SHEET_PANEL_ID, component: "outcomeSheet", title: "결과 시트", plane: "eod", render: () => <OutcomeSheetPanel /> },
     // 정규화 두 판 — 골격 패널의 후신(골격의 실가치 = 정규화, 2026-08-23 은퇴). 실물 캔들/종가선을 원점으로 접어 겹친다.
     // 옛 골격 컴포넌트("rankSkeleton"/"rankSkeletonMinute")는 저장 프리셋에서 sanitizeLayout 이 걷어낸다(맵 패널과 같은 길).
     { id: "norm-daily-1", component: "normDaily", title: "정규화 [일봉]", plane: "eod", render: () => <NormOverlayPanel grain="daily" /> },

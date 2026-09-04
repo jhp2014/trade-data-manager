@@ -10,11 +10,13 @@
 //
 // ⚠ 그룹은 레일이 아니다(순서가 없다) — railKeyOf 가 null 을 준다. 그룹 조건은 보드에서 리스트로 관리하고
 // 필터 여러 개가 될 수 있다(테마A / 돌파형을 나눠 걸어야 각각의 기여도가 보인다).
+import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { addStage, removeStage, setStagePredicates, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 
-/** 레일 하나를 가리키는 열쇠. 축은 id 로, 날짜·시간은 종류만으로 유일하다. */
+/** 레일 하나를 가리키는 열쇠. 축은 id 로, 결과는 지표로, 날짜·시간은 종류만으로 유일하다. */
 export type RailKey =
     | { kind: "axis"; axisId: string }
+    | { kind: "outcome"; metric: OutcomeMetric }
     | { kind: "date" }
     | { kind: "time" };
 
@@ -23,15 +25,20 @@ export function railKeyOf(p: FilterPredicate): RailKey | null {
     switch (p.kind) {
         case "axisBand":
         case "axisValue": return { kind: "axis", axisId: p.axisId };
+        case "outcome": return { kind: "outcome", metric: p.metric }; // 결과 패널의 레일(과거/미래 경계 저쪽)
         case "date": return { kind: "date" };
         case "time": return { kind: "time" };
         case "group": return null;
         case "themeStrength": return null; // 레일이 아니다 — 보드 테마 칸의 목록 행(그룹과 동형)
+        case "outcomeRecovery": return null; // 명목값 — 레일이 아니라 결과 패널 머리글 칩이 편집 입구
     }
 }
 
 export function sameRailKey(a: RailKey, b: RailKey): boolean {
-    return a.kind === b.kind && (a.kind !== "axis" || a.axisId === (b as { axisId: string }).axisId);
+    if (a.kind !== b.kind) return false;
+    if (a.kind === "axis") return a.axisId === (b as { axisId: string }).axisId;
+    if (a.kind === "outcome") return a.metric === (b as { metric: OutcomeMetric }).metric;
+    return true;
 }
 
 /** 이 레일에 매인 필터들 — 정상은 0~1개. 옛 저장본에서 2개 이상일 수 있어 리스트로 답한다. */
