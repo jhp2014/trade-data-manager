@@ -22,10 +22,20 @@ describe("cellView — 판단 축(값 없음)", () => {
 describe("cellView — 계산 축(값 있음)", () => {
     const valued = { frac: 0.35, text: "+12.3%" };
 
-    it("숫자는 값이 먼저, 순위는 보조로", () => {
+    it("숫자는 값만 — 순위 괄호는 없다(타점이 만 단위라 순위 수치가 말을 안 한다)", () => {
         const v = cellView(cell, "number", valued);
         expect(v.text).toBe("+12.3%");
-        expect(v.sub).toBe(" (3/12)");
+        expect(v.sub).toBe("");
+    });
+
+    it("부호 색은 부호가 뜻을 갖는 축에서만 — 단위만 붙은 값(억·일·시간)은 색이 없다", () => {
+        expect(cellView(cell, "number", valued).tone).toBe("rise");
+        expect(cellView(cell, "number", { frac: 0.1, text: "-4.0%" }).tone).toBe("fall");
+        // signed:false 축의 표기 — 큰 값을 빨갛게 칠하면 거짓말이 된다.
+        expect(cellView(cell, "number", { frac: 0.5, text: "3,035억" }).tone).toBeNull();
+        expect(cellView(cell, "number", { frac: 0.5, text: "1h 34m" }).tone).toBeNull();
+        expect(cellView(cell, "number", { frac: 0.5, text: "∞" }).tone).toBeNull();
+        expect(cellView(cell, "number").tone).toBeNull(); // 순위만 있는 셀
     });
 
     it("순위 눈금은 균등 자리, 값 눈금은 값의 실제 자리 — 둘은 다른 것을 말한다", () => {

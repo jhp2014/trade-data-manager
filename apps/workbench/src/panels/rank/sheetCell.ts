@@ -34,6 +34,13 @@ export interface CellView {
     frac: number;
     /** 툴팁 — 모드와 무관하게 아는 걸 다 말한다. */
     title: string;
+    /**
+     * 숫자 모드의 부호 색(결과 열과 같은 어휘) — **부호가 뜻을 갖는 축에서만** 선다.
+     * 판정은 포맷된 글자의 부호로 한다: `+` 는 `signed` 축에서만 찍히므로(formatAxisValue 의 계약),
+     * `3,035억`·`236일`·`1h 34m` 처럼 부호가 없는 축은 저절로 색이 안 붙는다 — 큰 값을 빨갛게
+     * 칠하는 건 그 축들에선 거짓말이다. 플래그를 따로 실어 나르지 않는 이유가 그거다.
+     */
+    tone: "rise" | "fall" | null;
 }
 
 /**
@@ -43,12 +50,16 @@ export interface CellView {
 export function cellView(cell: RankCell, mode: CellMode, valued?: ValuedCell): CellView {
     const rank = `${cell.rank}/${cell.total}`;
     const frac = mode === "value" && valued ? valued.frac : cell.frac;
-    // ⚠ 자릿수를 채워 괄호를 세로로 맞추는 건 해봤다 그만뒀다 — 괄호 안이 벌어져 어색하고,
-    //   값·순위를 양끝으로 밀면 둘 사이가 너무 떨어진다. 가운데 모인 한 덩어리가 읽기 좋다.
+    // **숫자 모드에 순위 괄호(`+12.3% (3/12)`)는 없다**(2026-09-04 사용자 확정) — 자동 타점이 만 단위가
+    // 되면서 `3/9,869` 같은 순위 **수치**는 읽어도 아무 말을 안 한다(같은 순위가 하루마다 다른 뜻이고,
+    // 눈이 분모를 못 쥔다). 순위의 쓸모는 **자리**(눈금 모드)와 툴팁에 남는다 — 그래서 title 은 그대로 다 말한다.
+    // 값을 못 아는 축(도메인이 한 점이라 값 좌표가 없는 경우)은 순위가 유일한 정보라 그대로 둔다.
     return valued
-        ? { text: valued.text, sub: ` (${rank})`, frac, title: `${valued.text} · ${rank}` }
-        : { text: String(cell.rank), sub: `/${cell.total}`, frac, title: rank };
+        ? { text: valued.text, sub: "", frac, title: `${valued.text} · ${rank}`, tone: toneOf(valued.text) }
+        : { text: String(cell.rank), sub: `/${cell.total}`, frac, title: rank, tone: null };
 }
+
+const toneOf = (text: string): CellView["tone"] => (text.startsWith("+") ? "rise" : text.startsWith("-") ? "fall" : null);
 
 /**
  * 영속값 읽기 — 옛 저장본은 `posBar: boolean`(true=눈금 / false=숫자)이었다.

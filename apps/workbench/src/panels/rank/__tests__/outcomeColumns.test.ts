@@ -42,9 +42,9 @@ describe("outcomeSortValue — null = 값 없음(방향 무관 바닥)", () => {
 });
 
 describe("표기", () => {
-    it("부호 붙은 % 한 자리(옛 결과 시트 승계)", () => {
-        expect(fmtOutcomePct(12.34)).toBe("+12.3");
-        expect(fmtOutcomePct(-5.45)).toBe("-5.5");
-        expect(fmtOutcomePct(0)).toBe("0.0");
+    it("부호 붙은 % 한 자리 — 단위까지 글자에 싣는다(축 열과 같은 줄에 서므로)", () => {
+        expect(fmtOutcomePct(12.34)).toBe("+12.3%");
+        expect(fmtOutcomePct(-5.45)).toBe("-5.5%");
+        expect(fmtOutcomePct(0)).toBe("0.0%");
     });
 });

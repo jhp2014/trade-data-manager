@@ -28,8 +28,8 @@ interface OutcomeColMeta {
 }
 
 export const OUTCOME_COL_META: Record<OutcomeColId, OutcomeColMeta> = {
-    extHigh: { label: "고점@T1", width: 70, justify: "flex-end", help: "기본 허용 T1 의 연장 고점 %(Point 종가 대비) — 술어·차트 표식과 같은 기준" },
-    deltaExt: { label: "Δ연장", width: 60, justify: "flex-end", help: "Δ 연장폭(T1→T2) — T2 관찰 폭까지 허용을 넓히면 더 가는 만큼" },
+    extHigh: { label: "고점@T1", width: 76, justify: "flex-end", help: "기본 허용 T1 의 연장 고점 %(Point 종가 대비) — 술어·차트 표식과 같은 기준" },
+    deltaExt: { label: "Δ연장", width: 70, justify: "flex-end", help: "Δ 연장폭(T1→T2) — T2 관찰 폭까지 허용을 넓히면 더 가는 만큼" },
     dropFromHigh: { label: "저가·고점比", width: 84, justify: "flex-end", help: "보고 저가의 직전 고점 대비 % — 무눌림이면 무사건(—)" },
     dropFromClose: { label: "저가·종가比", width: 84, justify: "flex-end", help: "보고 저가의 Point 종가 대비 % — 무눌림이면 무사건(—)" },
     recovered: { label: "회복", width: 46, justify: "center", help: "보고 저가 이후 직전 고가 재돌파 여부(세션 최고가 판정) — 무눌림은 대상 아님(—)" },
@@ -47,5 +47,8 @@ export function outcomeSortValue(rec: OutcomeRecord | undefined, id: OutcomeColI
     return rec.eval[id] ?? null;
 }
 
-/** 부호 붙은 % 한 자리 — 옛 결과 시트의 표기 그대로(셀 렌더러가 쓴다). */
-export const fmtOutcomePct = (v: number): string => `${v > 0 ? "+" : ""}${v.toFixed(1)}`;
+/**
+ * 부호 붙은 % 한 자리. **단위(%)를 글자에 싣는다**(2026-09-05 사용자 확정) — 축 열이 전부 단위를
+ * 달고 서는 줄에서 결과 열만 맨 숫자면 그 넷이 무슨 단위인지 매번 헤더로 되돌아가 확인하게 된다.
+ */
+export const fmtOutcomePct = (v: number): string => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;

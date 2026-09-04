@@ -212,6 +212,10 @@ export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,
 );
 
+/** 부호 색 한 벌 — 축 숫자 셀과 결과 셀이 같은 어휘를 쓴다(한 줄에 나란히 서므로). */
+const toneColor = (tone: "rise" | "fall" | null): string =>
+    tone === "rise" ? "var(--rise)" : tone === "fall" ? "var(--fall)" : "var(--text-primary)";
+
 // ── 결과 셀 — 숫자 4종(부호색, Δ>0 은 옅은 배경) · 회복 ○/✕/— · 상태 배지.
 // — 표기는 값 없음(격자 미도착)과 무사건(무눌림의 낙폭·회복)이 같다: 상태 열이 그 사정을 말한다(옛 결과 시트 승계).
 function OutcomeCell({ metric, rec }: { metric: OutcomeColId; rec: OutcomeRecord | undefined }): JSX.Element {
@@ -235,9 +239,10 @@ function OutcomeCell({ metric, rec }: { metric: OutcomeColId; rec: OutcomeRecord
     const highlight = metric === "deltaExt" && v !== undefined && v > 0;
     // +를 빨갛게 칠하는 건 연장 쪽 둘만(옛 결과 시트의 plusRed) — 낙폭 2종의 양수는 "종가 위 저가"라 성질이 다르다.
     const plusRed = metric === "extHigh" || metric === "deltaExt";
+    const tone = v === undefined ? null : plusRed && v > 0 ? "rise" : v < 0 ? "fall" : null;
     return (
         <span className="tabular" style={{
-            color: v === undefined ? "var(--text-tertiary)" : plusRed && v > 0 ? "var(--rise)" : v < 0 ? "var(--fall)" : "var(--text-primary)",
+            color: v === undefined ? "var(--text-tertiary)" : toneColor(tone),
             background: highlight ? "var(--warning-soft)" : undefined, borderRadius: highlight ? 3 : undefined, padding: highlight ? "0 3px" : undefined,
         }}>
             {v === undefined ? "—" : fmtOutcomePct(v)}
@@ -252,9 +257,11 @@ function Cell({ cell, valued, mode, prominent, barWidth }: {
     if (!cell) return <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>;
     const v = cellView(cell, mode, valued);
     if (mode === "number") {
+        // 결과 열(OutcomeCell)과 같은 글꼴·부호색 — 한 줄에 축 값과 결과 값이 나란히 서므로 둘이
+        // 다른 규격이면 그 줄이 두 표처럼 읽힌다(2026-09-05 사용자 확정). 색은 부호가 뜻을 갖는 축만(cellView.tone).
         return (
-            <span title={v.title} style={{ fontVariantNumeric: "tabular-nums", fontWeight: 600, whiteSpace: "nowrap" }}>
-                {v.text}<span style={{ color: "var(--text-tertiary)", fontWeight: 400, fontSize: 10 }}>{v.sub}</span>
+            <span title={v.title} className="tabular" style={{ whiteSpace: "nowrap", color: toneColor(v.tone) }}>
+                {v.text}<span style={{ color: "var(--text-tertiary)", fontSize: 10 }}>{v.sub}</span>
             </span>
         );
     }

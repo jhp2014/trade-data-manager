@@ -126,7 +126,7 @@ describe("계산 축 열 — 고정폭", () => {
             frozenCols: [], hiddenCols: [], colWidths: {}, containerW: 1000, axisMin: AXIS_MIN,
         });
         const computedW = l.widthOf(cax("c"));
-        expect(computedW).toBeGreaterThan(AXIS_MIN); // 값+순위가 들어갈 만큼
+        expect(computedW).toBeGreaterThan(AXIS_MIN); // 값 하나가 안 잘릴 만큼
         expect(l.widthOf(ax("1"))).toBe(Math.floor((1000 - COL_META.name.width - computedW) / 2));
         expect(l.widthOf(ax("1"))).toBe(l.widthOf(ax("2")));
     });
