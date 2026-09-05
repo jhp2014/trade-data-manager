@@ -63,10 +63,11 @@ export function useAutoPointsValue(): AutoPointsView {
     const q = useQuery(pointGridsQuery());
     // 판정 노브만 구독한다 — 허용 폭 T 는 `PointJudgeDef` 가 원리적으로 못 보는 필드라(행·행 시각 불변 계약)
     // 통째 의존하면 T 드래그가 1만 Point 를 헛재파생하고 `points` 참조까지 갈아 하류 memo 를 무효화한다.
-    const { baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly } = useWorkbench((s) => s.pointDef);
+    // ⚠ 판정 노브를 늘리면 여기 구조분해·deps **둘 다** 늘린다 — 빠뜨리면 노브를 돌려도 화면이 안 변한다.
+    const { baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly, approachPct } = useWorkbench((s) => s.pointDef);
     const def = useMemo<PointJudgeDef>(
-        () => ({ baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly }),
-        [baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly],
+        () => ({ baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly, approachPct }),
+        [baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly, approachPct],
     );
     return useMemo<AutoPointsView>(() => {
         const data = q.data ?? null;

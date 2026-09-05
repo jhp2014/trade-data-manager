@@ -41,6 +41,14 @@ export interface PointDefinition {
     /** 양봉(종가 > 시가) 캔들만 Point 자격. 기본 true. 양봉 여부는 격자 OHLC 의 읽기 파생이라 끄는 데 재굽기 불필요. */
     bullOnly: boolean;
     /**
+     * 기준 밴드 마진 m'(%, 도메인 [0, 0.5] — 상한 = 굽는 하한 `GridDetectOptions.approachPct`, §10.3).
+     * 기준 가격 P(러닝 최고가·마디·기준선)를 선이 아니라 밴드 [P×(1−m'), P] 로 본다 — 전고점에 딱 닿기
+     * 전의 접근 봉부터 갱신 영역(보수적 측정). 0 = 옛 strict 갱신(v8 동치 — recon 회귀 증명 모드).
+     * 사건 재구성 `high > maxBefore×(1−m')` 하나로 하단 없이 정확하다(grid.ts maxBefore 주석).
+     * ⚠ 검출 옵션의 `approachPct`(굽는 하한)와 **동명이지만 다른 물건** — 이쪽은 읽기 조절이다.
+     */
+    approachPct: number;
+    /**
      * 결과 걷기의 허용 폭 T 쌍(%, 도메인 [2,30] — 하한 2 는 zigzag 해상도, decisions.md "시그널 결과").
      * ⚠ **판정 노브가 아니다** — `pointsOf`/`levelsOf` 는 `PointJudgeDef` 로 좁혀 받아 원리적으로 못 본다.
      * 결과 값(연장 고점·낙폭)·차트 다리 표식(T2 연동)을 바꾸는 정의 상태이고, 한 타입에 두는 이유는
@@ -50,15 +58,19 @@ export interface PointDefinition {
     toleranceT2Pct: number;
 }
 
-/** Point 판정이 실제로 보는 노브 5개 — T 를 구독에서 배제하는 계약이 시그니처다(usePointGrids 헛재파생 방지). */
+/** Point 판정이 실제로 보는 노브 6개 — T 를 구독에서 배제하는 계약이 시그니처다(usePointGrids 헛재파생 방지). */
 export type PointJudgeDef = Pick<
     PointDefinition,
-    "baselineGateEok" | "renewalGateEok" | "excludeUptoMin" | "mergeRisePct" | "bullOnly"
+    "baselineGateEok" | "renewalGateEok" | "excludeUptoMin" | "mergeRisePct" | "bullOnly" | "approachPct"
 >;
 
 /** 허용 폭 T 의 도메인(%) — 하한 = zigzag 해상도(이보다 얕은 눌림은 격자에 없다). */
 export const TOLERANCE_MIN_PCT = 2;
 export const TOLERANCE_MAX_PCT = 30;
+
+/** 기준 밴드 마진 m' 의 도메인(%) — 상한 = 굽는 하한(0.5, 이 위는 재굽기 없인 정확 재구성 불가). */
+export const APPROACH_MIN_PCT = 0;
+export const APPROACH_MAX_PCT = 0.5;
 
 export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     baselineGateEok: 50,
@@ -66,6 +78,7 @@ export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     excludeUptoMin: 0,
     mergeRisePct: 0,
     bullOnly: true,
+    approachPct: 0.5, // 기본 = 밴드 폭 전부(사용자 확정 — "전고점 −0.5% 안이면 갱신 영역")
     toleranceT1Pct: 2,
     toleranceT2Pct: 5,
 };
@@ -78,7 +91,7 @@ export interface DerivedPoint {
     ordinal: number;
     /** Point 캔들 시각(자정기준 분). */
     min: number;
-    /** Point 캔들 고가(그 시점 러닝 최고가, 원주가). */
+    /** Point 캔들 고가(원주가). 상단 돌파 Point 는 그 시점 러닝 최고가, 밴드 Point(m'>0)는 밴드 안 고가. */
     high: number;
     /** Point 캔들 종가(원주가) — 값 축("기준선 대비 %"·"당일 %")의 분자다. 서버 축이 쓰던
      *  "타점 시각 이하 마지막 UN 종가"와 같은 값이다(그 봉이 곧 타점 봉이므로). */
@@ -140,8 +153,9 @@ export function levelsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
  * 부분열의 `high` 가 강한 단조 증가**(detectGrid 의 불변식 — v9 밴드 목록은 통째로는 톱니다).
  * 산출물의 시간 오름차순도, 머리 주석의 단조성 논증도 전부 이 전제 위에 선다 — 격자를 손으로 만들거나
  * 구버전 파일을 읽히면(버전 가드가 유일한 방어선) 여기서 조용히 틀어진다.
- * 1단계(§10 이전 동치): 후보 = 상단 돌파 봉(`high > maxBefore`)만 — 진입 봉 판정은 approachPct
- * 노브(2단계)가 연다.
+ * 후보 = `high > maxBefore×(1−m')` 인 사건 봉(m' = approachPct). m'=0 이면 상단 돌파만(v8 동치),
+ * 기본 0.5 면 전고점 −0.5% 밴드 접근 봉까지 — 밴드 Point 가 먼저 서면 뒤의 실제 크로싱 봉은 그 레벨의
+ * Point 가 아니다(의도 — 접근이 곧 갱신 영역).
  */
 export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEFINITION): DerivedPoint[] {
     if (grid.base === null || grid.touch === null) return [];
@@ -153,17 +167,24 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
     // 몫이다(격자·판정이 미리 좁히지 않는다).
     const gateBase = BigInt(def.baselineGateEok) * KRW_PER_EOK;
     const gateRenewal = BigInt(def.renewalGateEok) * KRW_PER_EOK;
+    // 밴드 마진 m'(§10.3) — 0 이면 (1−m)=1 이라 아래 비교가 옛 strict 판정과 비트 동일(v8 동치 모드).
+    const bandK = 1 - def.approachPct / 100;
     const chosen: { levelIdx: number; e: GridNewHigh }[] = [];
-    let usedLevel = -1; // 이미 Point 를 낸 최고 레벨 — 귀속이 시간에 대해 비감소라 이 하나로 "레벨당 1개"가 선다
+    // 이미 Point 를 낸 최고 레벨 커서. 귀속은 m' > 0 에서도 시간 비감소다(진입 봉도 자기 시점까지의 전
+    // 레벨을 (1−m') 마진으로 넘는다 — 사건 조건이 그걸 보장). 커서가 "위 레벨을 지난 뒤 아래 레벨 재접근"
+    // 을 삼키는 것은 **의도**다: 저대금으로 이미 넘은 자리의 재접근은 새 시그널이 아니다(§10.3 원문).
+    let usedLevel = -1;
     for (const e of grid.newHighs) {
-        if (!(e.high > e.maxBefore)) continue; // 밴드 진입 봉 제외 — 1단계는 상단 돌파만(v8 동치)
+        // 사건 재구성 — m'=0: 상단 돌파만(v8 동치) / m'>0: 그 마진의 밴드 사건까지(§10.3 증명).
+        if (!(e.high > e.maxBefore * bandK)) continue;
         if (e.min <= def.excludeUptoMin) continue;
         if (def.bullOnly && !(e.close > e.open)) continue; // 양봉 여부는 격자 OHLC 에서 파생(사실만 굽는 원칙)
         // 기준선은 스침(≥)이 돌파, 마디는 초과(>)가 갱신 — 터치 의미론과 러닝 최고가 갱신 의미론의 차이.
+        // 마진은 레벨 가격에도 건다(기준 선 → 기준 밴드): m'=0 에서 오늘의 ≥/> 와 일치.
         let li = -1;
         for (let i = levels.length - 1; i >= 0; i--) {
             const lv = levels[i];
-            if (lv.renewal ? e.high > lv.price : e.high >= lv.price) {
+            if (lv.renewal ? e.high > lv.price * bandK : e.high >= lv.price * bandK) {
                 li = i;
                 break;
             }

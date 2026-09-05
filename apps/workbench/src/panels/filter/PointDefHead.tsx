@@ -63,12 +63,12 @@ const chipStyle = (on: boolean): React.CSSProperties => ({
     fontWeight: 600,
 });
 
-/** 편성 보드 머리 한 줄 — 판정 노브 5(게이트 2·제외·병합·양봉만) + 허용 폭 T 표시 칩 + 기본값 되돌리기. */
+/** 편성 보드 머리 한 줄 — 판정 노브 6(게이트 2·제외·병합·양봉·근접) + 허용 폭 T 표시 칩 + 기본값 되돌리기. */
 export function PointDefHead(): JSX.Element {
     const def = useWorkbench((s) => s.pointDef);
     const setDef = useWorkbench((s) => s.setPointDef);
     const reset = useWorkbench((s) => s.resetPointDef);
-    type NumKey = "baselineGateEok" | "renewalGateEok" | "excludeUptoMin" | "mergeRisePct"; // 키 순회 타입 금지 — bullOnly·T 가 섞인다
+    type NumKey = "baselineGateEok" | "renewalGateEok" | "excludeUptoMin" | "mergeRisePct" | "approachPct"; // 키 순회 타입 금지 — bullOnly·T 가 섞인다
     const patch = (k: NumKey) => (v: number) => setDef({ [k]: v });
     return (
         <div
@@ -92,6 +92,7 @@ export function PointDefHead(): JSX.Element {
             <NumField label="재돌파" suffix="억" value={def.renewalGateEok} onCommit={patch("renewalGateEok")} title="마디 갱신 게이트" />
             <NumField label="제외~" suffix="분" value={def.excludeUptoMin} onCommit={patch("excludeUptoMin")} title="이 분(자정기준) 이하 캔들은 Point 자격 없음 — 0 = 프리마켓·시초 포함(기본)" />
             <NumField label="병합" suffix="%" value={def.mergeRisePct} onCommit={patch("mergeRisePct")} title="직전 저점 대비 상승폭이 이보다 작은 마디는 레벨에서 병합(잔 갱신 무시) — 0 = 병합 없음" />
+            <NumField label="근접" suffix="%" value={def.approachPct} onCommit={patch("approachPct")} title="기준 밴드 마진 — 전고점·마디·기준선 아래 이 % 안에 든 접근 캔들부터 갱신 영역으로 판정(0 = 정확 돌파만, 최대 0.5 = 굽는 하한)" />
             <button
                 onClick={() => setDef({ bullOnly: !def.bullOnly })}
                 title="양봉(종가>시가) 캔들만 Point 자격 — 격자의 캔들 사실에서 파생하는 읽기 노브(끄는 데 재계산만, 재굽기 없음)"

@@ -1,10 +1,13 @@
 // pointsOf — 격자 리터럴로 읽기 층 Point 판정을 못 박는다(분봉·DB 0 — 격자 스키마 충분성의 증거).
 import { describe, expect, it } from "vitest";
 import type { GridNewHigh, GridPivot, PointGrid } from "../grid.js";
-import { DEFAULT_POINT_DEFINITION, pointsOf } from "../points.js";
+import { DEFAULT_POINT_DEFINITION, pointsOf, type PointDefinition } from "../points.js";
+
+/** v8 동치 모드(근접 0 — 정확 돌파만). 기존 기대값 전부의 회귀선(§10.5) — 밴드(0.5)는 전용 describe 몫. */
+const DEF0: PointDefinition = { ...DEFAULT_POINT_DEFINITION, approachPct: 0 };
 
 // 양봉/음봉은 OHLC 파생(close > open)이라 픽스처가 몸통 방향으로 표현한다.
-const nh = (min: number, high: number, eok: number, bull = true): GridNewHigh => ({
+const nh = (min: number, high: number, eok: number, bull = true, maxBefore = 0): GridNewHigh => ({
     min,
     open: bull ? high - 100 : high,
     high,
@@ -12,7 +15,7 @@ const nh = (min: number, high: number, eok: number, bull = true): GridNewHigh =>
     close: bull ? high : high - 100,
     tv: String(eok * 100_000_000),
     cum: "0",
-    maxBefore: 0, // 전부 상단 돌파 취급(1단계 후보 필터 high > maxBefore 통과) — 진입 봉 판정은 2단계 몫
+    maxBefore, // 기본 0 = 상단 돌파 취급. 밴드 진입 봉은 maxBefore 를 고가 위로 준다(전용 describe).
 });
 // 판정은 대금 창을 안 보므로 cum 은 자리만 채운다(창 파생은 windows.test 몫). v9 경로 뷰 유효성:
 // 레벨(첫 레벨 제외)엔 cross 를, 레벨마다 짝 저점을 채워야 levelViewOf 가 선다(불변식 ④·⑥).
@@ -30,8 +33,8 @@ const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touch: 
 
 describe("pointsOf", () => {
     it("기준선 미터치(또는 기준선 없음) → Point 없음", () => {
-        expect(pointsOf(grid({ touch: null, newHighs: [nh(560, 10050, 60)] }))).toEqual([]);
-        expect(pointsOf(grid({ base: null, newHighs: [nh(560, 10050, 60)] }))).toEqual([]);
+        expect(pointsOf(grid({ touch: null, newHighs: [nh(560, 10050, 60)] }), DEF0)).toEqual([]);
+        expect(pointsOf(grid({ base: null, newHighs: [nh(560, 10050, 60)] }), DEF0)).toEqual([]);
     });
 
     it("기본 흐름 — 기준선 돌파(50억 게이트) + 마디 갱신(30억 게이트)", () => {
@@ -39,7 +42,7 @@ describe("pointsOf", () => {
             pivots: [hi(575, 10300, 585), lo(585, 10100)],
             newHighs: [nh(560, 10050, 60), nh(600, 10350, 35)],
         });
-        const pts = pointsOf(g);
+        const pts = pointsOf(g, DEF0);
         expect(pts).toHaveLength(2);
         expect(pts[0]).toMatchObject({ kind: "breakout", ordinal: 0, min: 560, levelPrice: 10000 });
         expect(pts[1]).toMatchObject({ kind: "renewal", ordinal: 1, min: 600, levelPrice: 10300 });
@@ -50,29 +53,29 @@ describe("pointsOf", () => {
             pivots: [hi(575, 10300, 585), lo(585, 10100)],
             newHighs: [nh(560, 10050, 60), nh(600, 10350, 35), nh(620, 10400, 60)],
         });
-        const base = pointsOf(g).filter((p) => p.kind === "renewal");
+        const base = pointsOf(g, DEF0).filter((p) => p.kind === "renewal");
         expect(base).toHaveLength(1);
         expect(base[0].min).toBe(600);
-        const raised = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, renewalGateEok: 50 }).filter((p) => p.kind === "renewal");
+        const raised = pointsOf(g, { ...DEF0, renewalGateEok: 50 }).filter((p) => p.kind === "renewal");
         expect(raised).toHaveLength(1);
         expect(raised[0].min).toBe(620);
     });
 
     it("제외 창 — 기본은 꺼짐(프리마켓도 Point 자격), 올리면 다음 자격 캔들로 이동", () => {
         const g = grid({ touch: touch(500), newHighs: [nh(505, 10100, 60), nh(560, 10150, 60)] });
-        expect(pointsOf(g)[0]).toMatchObject({ kind: "breakout", min: 505 }); // 08:25 프리마켓 캔들이 그대로 Point
-        const excluded = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, excludeUptoMin: 9 * 60 + 5 });
+        expect(pointsOf(g, DEF0)[0]).toMatchObject({ kind: "breakout", min: 505 }); // 08:25 프리마켓 캔들이 그대로 Point
+        const excluded = pointsOf(g, { ...DEF0, excludeUptoMin: 9 * 60 + 5 });
         expect(excluded[0]).toMatchObject({ kind: "breakout", min: 560 });
     });
 
     it("음봉은 게이트를 넘어도 Point 가 아니다(기본 bullOnly)", () => {
         const g = grid({ newHighs: [nh(560, 10050, 60, false), nh(570, 10100, 60)] });
-        expect(pointsOf(g)[0]).toMatchObject({ kind: "breakout", min: 570 });
+        expect(pointsOf(g, DEF0)[0]).toMatchObject({ kind: "breakout", min: 570 });
     });
 
     it("bullOnly 를 끄면 음봉도 Point 자격이 있다(읽기 노브 — 재굽기 없이 뒤집힌다)", () => {
         const g = grid({ newHighs: [nh(560, 10050, 60, false), nh(570, 10100, 60)] });
-        expect(pointsOf(g, { ...DEFAULT_POINT_DEFINITION, bullOnly: false })[0]).toMatchObject({ kind: "breakout", min: 560 });
+        expect(pointsOf(g, { ...DEF0, bullOnly: false })[0]).toMatchObject({ kind: "breakout", min: 560 });
     });
 
     it("한 캔들이 기준선+마디를 한 번에 넘으면 Point 는 하나 — **높은 레벨 몫**(갈리면 재돌파)", () => {
@@ -80,7 +83,7 @@ describe("pointsOf", () => {
             pivots: [hi(575, 10300, 585), lo(585, 10100)],
             newHighs: [nh(600, 10500, 60)],
         });
-        const pts = pointsOf(g);
+        const pts = pointsOf(g, DEF0);
         expect(pts).toHaveLength(1);
         expect(pts[0]).toMatchObject({ kind: "renewal", min: 600, levelPrice: 10300, levelIdx: 1, levelMin: 575 });
     });
@@ -92,7 +95,7 @@ describe("pointsOf", () => {
             pivots: [hi(550, 10050, 560), lo(565, 9800)],
             newHighs: [nh(550, 10050, 25), nh(570, 10100, 40)],
         });
-        const pts = pointsOf(g);
+        const pts = pointsOf(g, DEF0);
         expect(pts).toHaveLength(1);
         expect(pts[0]).toMatchObject({ kind: "renewal", min: 570, levelPrice: 10050, levelIdx: 1 });
     });
@@ -100,7 +103,7 @@ describe("pointsOf", () => {
     it("고가를 못 만든 채 그대로 오르면 여전히 돌파다(기준선 게이트 50억)", () => {
         // 같은 저대금 터치지만 −2% 눌림이 없어 마디가 안 선다 → 레벨은 기준선 하나.
         const g = grid({ newHighs: [nh(550, 10050, 25), nh(570, 10100, 40), nh(590, 10200, 60)] });
-        const pts = pointsOf(g);
+        const pts = pointsOf(g, DEF0);
         expect(pts).toHaveLength(1);
         expect(pts[0]).toMatchObject({ kind: "breakout", min: 590, levelPrice: 10000, levelIdx: 0 });
     });
@@ -113,14 +116,14 @@ describe("pointsOf", () => {
             pivots: [hi(550, 10050, 560), lo(565, 9800)],
             newHighs: [nh(550, 10050, 25), nh(570, 10100, 35), nh(600, 10200, 60)],
         });
-        const pts = pointsOf(g);
+        const pts = pointsOf(g, DEF0);
         expect(pts).toHaveLength(1);
         expect(pts[0]).toMatchObject({ kind: "renewal", min: 570, levelIdx: 1 });
     });
 
     it("레벨당 Point 는 최대 하나 — 같은 레벨 구간의 뒤 캔들이 또 서지 않는다", () => {
         const g = grid({ newHighs: [nh(560, 10050, 60), nh(570, 10100, 60), nh(580, 10150, 60)] });
-        const pts = pointsOf(g);
+        const pts = pointsOf(g, DEF0);
         expect(pts).toHaveLength(1);
         expect(pts.filter((p) => p.levelIdx === 0)).toHaveLength(1);
     });
@@ -132,7 +135,7 @@ describe("pointsOf", () => {
             pivots: [hi(575, 10300, 585), lo(585, 10100)],
             newHighs: [nh(600, 10350, 35), nh(620, 10400, 60)],
         });
-        const raised = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, renewalGateEok: 50 });
+        const raised = pointsOf(g, { ...DEF0, renewalGateEok: 50 });
         expect(raised).toHaveLength(1);
         expect(raised[0]).toMatchObject({ kind: "renewal", min: 620, levelIdx: 1 });
     });
@@ -143,7 +146,7 @@ describe("pointsOf", () => {
             newHighs: [nh(560, 10050, 60), nh(620, 10250, 60)],
         });
         // 10,200 마디는 러닝 최고가(10,300) 아래라 레벨이 아니고, 10,250 캔들은 아무것도 못 넘는다.
-        expect(pointsOf(g)).toHaveLength(1);
+        expect(pointsOf(g, DEF0)).toHaveLength(1);
     });
 
     it("미확정 마지막 마디는 넘을 대상이 아니다", () => {
@@ -151,7 +154,7 @@ describe("pointsOf", () => {
             pivots: [hi(575, 10300, null)],
             newHighs: [nh(560, 10050, 60), nh(600, 10350, 35)],
         });
-        expect(pointsOf(g).filter((p) => p.kind === "renewal")).toHaveLength(0);
+        expect(pointsOf(g, DEF0).filter((p) => p.kind === "renewal")).toHaveLength(0);
     });
 
     it("mergeRisePct — 잔 마디를 병합하면 그 마디를 넘은 캔들의 귀속이 아래 레벨로 내려가 선점/탈락이 갈린다", () => {
@@ -167,14 +170,14 @@ describe("pointsOf", () => {
             ],
             newHighs: [nh(550, 10050, 60), nh(585, 10260, 35), nh(605, 10300, 35), nh(618, 10700, 35)],
         });
-        const loose = pointsOf(g);
+        const loose = pointsOf(g, DEF0);
         expect(loose.map((p) => [p.min, p.levelPrice])).toEqual([
             [550, 10000],
             [585, 10250],
             [605, 10280],
             [618, 10600],
         ]);
-        const merged = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, mergeRisePct: 3 });
+        const merged = pointsOf(g, { ...DEF0, mergeRisePct: 3 });
         // 10,280 마디 병합 — 10,300 캔들의 귀속이 10,250(이미 선점)으로 내려가 탈락, Point 는 셋만.
         expect(merged.map((p) => [p.min, p.levelPrice])).toEqual([
             [550, 10000],
@@ -183,12 +186,34 @@ describe("pointsOf", () => {
         ]);
     });
 
+    it("기준 밴드(approachPct=0.5, 기본) — 접근 캔들이 밴드 Point 가 되고, 뒤의 실제 크로싱 봉은 그 레벨을 선점당한다", () => {
+        // 마디 10,300 확정 후 M=10,300. 10,270 진입 캔들(maxBefore 10,300): 0.5% 마진에서
+        // 10,270 > 10,300×0.995=10,248.5 → 사건이자 마디 밴드 통과 → renewal Point. 뒤의 10,350
+        // (실제 크로싱)은 같은 레벨이라 탈락. 근접 0 이면 10,270 은 무사건이고 10,350 이 Point(v8).
+        const g = grid({
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
+            newHighs: [nh(600, 10270, 60, true, 10300), nh(620, 10350, 60, true, 10300)],
+        });
+        expect(pointsOf(g).map((p) => [p.min, p.kind, p.levelPrice])).toEqual([[600, "renewal", 10300]]); // 기본 정의 = 0.5
+        expect(pointsOf(g, DEF0).map((p) => [p.min, p.kind, p.levelPrice])).toEqual([[620, "renewal", 10300]]);
+    });
+
+    it("기준 밴드 — 마진의 기준은 러닝 최고가 M 이다: M 이 마디 위면 마디 근접만으론 무사건", () => {
+        // 저대금 스침이 M 을 10,400 까지 올린 뒤(마디는 10,300 그대로), 10,330 캔들이 밴드에 실렸어도
+        // (그때의 하단이 더 낮았던 탓) 읽기 재구성 10,330 > 10,400×0.995=10,348 은 거짓 — 사건 아님.
+        const g = grid({
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
+            newHighs: [nh(600, 10330, 60, true, 10400)],
+        });
+        expect(pointsOf(g)).toEqual([]); // 기본 0.5 에서도 무사건 — 옛 규칙에서 갱신이 아니던 것과 같은 판단
+    });
+
     it("첫 마디는 직전 레벨 쌍 저점이 없어 mergeRisePct 병합이 안 걸린다 — 선행 저점은 분모가 아니다(v8 동치)", () => {
         // v9 경로 뷰엔 선행 저점이 있을 수 있지만 병합 분모는 **직전 레벨 쌍의 저점**뿐 — 첫 마디는 스킵.
         const g = grid({
             pivots: [lo(560, 10150, 570), hi(570, 10250, 580), lo(580, 10100)],
             newHighs: [nh(590, 10280, 35)],
         });
-        expect(pointsOf(g, { ...DEFAULT_POINT_DEFINITION, mergeRisePct: 99 }).map((p) => p.min)).toEqual([590]);
+        expect(pointsOf(g, { ...DEF0, mergeRisePct: 99 }).map((p) => p.min)).toEqual([590]);
     });
 });

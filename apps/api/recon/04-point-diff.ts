@@ -100,13 +100,14 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
     }
 
     const gate = (renewal: boolean): bigint => BigInt(renewal ? def.renewalGateEok : def.baselineGateEok) * KRW_PER_EOK;
+    const bandK = 1 - def.approachPct / 100; // m'=0 이면 1 — 옛 strict 판정과 동일
     const claimed = new Set<number>();
     const out: DerivedPoint[] = [];
     for (const e of [...grid.newHighs].sort((a, b) => a.min - b.min)) {
-        if (!(e.high > e.maxBefore)) continue; // 1단계 후보 = 상단 돌파 봉만
+        if (!(e.high > e.maxBefore * bandK)) continue; // 후보 = m' 밴드의 사건 봉(§10.3 재구성)
         if (e.min <= def.excludeUptoMin) continue;
         if (def.bullOnly && !(e.close > e.open)) continue;
-        const crossed = levels.map((l, i) => ({ l, i })).filter(({ l }) => (l.renewal ? e.high > l.price : e.high >= l.price));
+        const crossed = levels.map((l, i) => ({ l, i })).filter(({ l }) => (l.renewal ? e.high > l.price * bandK : e.high >= l.price * bandK));
         if (crossed.length === 0) continue;
         const top = crossed[crossed.length - 1];
         if (claimed.has(top.i)) continue;
@@ -170,6 +171,8 @@ async function main(): Promise<void> {
         excludeUptoMin: numFlag("exclude", DEFAULT_POINT_DEFINITION.excludeUptoMin),
         mergeRisePct: numFlag("merge", DEFAULT_POINT_DEFINITION.mergeRisePct),
         bullOnly: numFlag("bull", DEFAULT_POINT_DEFINITION.bullOnly ? 1 : 0) !== 0,
+        // v8 회귀 증명은 --approach 0(정확 돌파만 = v8 동치), 밴드 변화 계측은 0.5(기본).
+        approachPct: numFlag("approach", DEFAULT_POINT_DEFINITION.approachPct),
     };
     const sampleCap = numFlag("samples", 20);
     const oldRoot = strFlag("old");

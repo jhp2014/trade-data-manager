@@ -28,6 +28,7 @@ async function main(): Promise<void> {
         excludeUptoMin: numFlag("exclude", DEFAULT_POINT_DEFINITION.excludeUptoMin),
         mergeRisePct: numFlag("merge", DEFAULT_POINT_DEFINITION.mergeRisePct),
         bullOnly: numFlag("bull", DEFAULT_POINT_DEFINITION.bullOnly ? 1 : 0) !== 0,
+        approachPct: numFlag("approach", DEFAULT_POINT_DEFINITION.approachPct),
     };
 
     const pool = createPoolFromEnv();

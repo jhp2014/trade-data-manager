@@ -1,7 +1,7 @@
 // 타점 정의 파서 — 영속 슬라이스(wb.pointDef.v1)와 SavedSet payload 가 **같은 유효성 정의**를 본다
 // (themeStrength 의 parseThemeStrengthParams 선례 — 갈리면 저장 집합이 남의 값으로 평가된다).
 // 관대한 병합: 필드 누락·오염은 그 필드만 기본값 — null 반환으로 통째 폐기하지 않는다(옛 저장물 호환).
-import { DEFAULT_POINT_DEFINITION, TOLERANCE_MAX_PCT, TOLERANCE_MIN_PCT, type PointDefinition } from "@trade-data-manager/market/domain";
+import { APPROACH_MAX_PCT, APPROACH_MIN_PCT, DEFAULT_POINT_DEFINITION, TOLERANCE_MAX_PCT, TOLERANCE_MIN_PCT, type PointDefinition } from "@trade-data-manager/market/domain";
 
 export function parsePointDef(raw: unknown): PointDefinition | null {
     if (!raw || typeof raw !== "object") return null;
@@ -19,6 +19,8 @@ export function parsePointDef(raw: unknown): PointDefinition | null {
         excludeUptoMin: num(r.excludeUptoMin, DEFAULT_POINT_DEFINITION.excludeUptoMin),
         mergeRisePct: num(r.mergeRisePct, DEFAULT_POINT_DEFINITION.mergeRisePct),
         bullOnly: bool(r.bullOnly, DEFAULT_POINT_DEFINITION.bullOnly), // 2026-08-31 추가 — 옛 저장물엔 없어 기본 true 로 채워진다
+        // 2026-09-05 추가(격자 v9 기준 밴드) — 옛 저장물엔 없어 기본 0.5, 도메인 [0, 0.5] 클램프(상한 = 굽는 하한).
+        approachPct: Math.min(APPROACH_MAX_PCT, Math.max(APPROACH_MIN_PCT, num(r.approachPct, DEFAULT_POINT_DEFINITION.approachPct))),
         toleranceT1Pct: Math.min(t1raw, t2raw),
         toleranceT2Pct: Math.max(t1raw, t2raw),
     };

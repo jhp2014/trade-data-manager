@@ -57,7 +57,9 @@ function gridsFromPoints(points: readonly SeedPoint[]): DecodedPointGrids {
         // 시각을 채운다(v9 — 마지막이 아닌데 null 이면 꼬리로 오독, 불변식 ② 위반).
         // 누적 대금은 봉마다 10억씩 단조 증가하는 가짜 값 — 창 파생이 0 이 아니게만 둔다(값 자체는 시험 대상 아님).
         const pivots = mins.slice(0, -1).flatMap((m, i) => [
-            { kind: "high" as const, min: m, price: 101 + i, confirmedMin: m + 1, cum: String((2 * i + 2) * 1_000_000_000), cross: i === 0 ? null : { min: m, tv: "1000000000", cum: String((2 * i + 1) * 1_000_000_000) } },
+            // 마디 가격은 캔들 고가의 +0.6% — 기준 밴드(approachPct ≤ 0.5%)에서 캔들이 **자기 마디**를
+            // 넘은 걸로 읽히지 않게(같으면 밴드가 자기 레벨을 무조건 관통해 다음 시드가 선점 탈락한다).
+            { kind: "high" as const, min: m, price: (101 + i) * 1.006, confirmedMin: m + 1, cum: String((2 * i + 2) * 1_000_000_000), cross: i === 0 ? null : { min: m, tv: "1000000000", cum: String((2 * i + 1) * 1_000_000_000) } },
             { kind: "low" as const, min: Math.min(m + 2, mins[i + 1] - 1), price: 99 + i, confirmedMin: mins[i + 1], cum: String((2 * i + 3) * 1_000_000_000), cross: null },
         ]);
         const grid: PointGrid = {
