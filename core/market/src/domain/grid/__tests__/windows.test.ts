@@ -52,11 +52,14 @@ describe("windows — 시그널 → 다리 고점", () => {
         expect(legHighOf(grid, 601)).toBeNull();
     });
 
-    it("legStartOf — 돌파(레벨 0)는 터치 봉, 재돌파는 레벨 피벗 다음 확정 고점의 cross", () => {
-        expect(legStartOf(grid, { levelIdx: 0, levelMin: null })).toEqual(mark(550, 10, 100));
-        expect(legStartOf(grid, { levelIdx: 1, levelMin: 560 })).toEqual(mark(570, 50, 450));
-        expect(legStartOf(grid, { levelIdx: 2, levelMin: 580 })).toEqual(mark(590, 30, 830));
-        expect(legStartOf(grid, { levelIdx: 3, levelMin: 600 })).toBeNull(); // 다음 고점 아직 없음(꼬리)
+    it("legStartOf — 돌파(레벨 0)는 터치 봉(단 터치가 Point 이전일 때만 — 접근 Point 는 결손), 재돌파는 다음 레벨의 cross", () => {
+        expect(legStartOf(grid, { min: 555, levelIdx: 0, levelMin: null })).toEqual(mark(550, 10, 100));
+        // touch 게이트 폐지 후: 접근 Point 가 터치보다 앞이면 돌파 창 시작이 미래 봉이 된다 — 결손(음수 창 금지).
+        expect(legStartOf(grid, { min: 545, levelIdx: 0, levelMin: null })).toBeNull();
+        expect(legStartOf(gridOf({ ...grid, touch: null }), { min: 555, levelIdx: 0, levelMin: null })).toBeNull();
+        expect(legStartOf(grid, { min: 561, levelIdx: 1, levelMin: 560 })).toEqual(mark(570, 50, 450));
+        expect(legStartOf(grid, { min: 581, levelIdx: 2, levelMin: 580 })).toEqual(mark(590, 30, 830));
+        expect(legStartOf(grid, { min: 601, levelIdx: 3, levelMin: 600 })).toBeNull(); // 다음 고점 아직 없음(꼬리)
     });
 
     it("legWindowOf — 돌파 시그널 555 의 다리 = 터치 550 → H1 560", () => {

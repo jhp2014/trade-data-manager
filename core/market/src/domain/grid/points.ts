@@ -85,7 +85,8 @@ export const DEFAULT_POINT_DEFINITION: PointDefinition = {
 
 /** 판정된 Point. 파생 특징(기준선 대비 %·저점 깊이 등)은 특징 층이 격자+이 목록에서 계산한다. */
 export interface DerivedPoint {
-    /** breakout = 훼손 없는 기준선 돌파(레벨 0), renewal = 마디 재돌파. 머리 주석의 단조성 논증 참조. */
+    /** breakout = 기준선의 슬롯 1(첫 자격 사건), renewal = 마디 슬롯 1 **또는 슬롯 2 재돌파**(훼손된
+     *  고가의 재돌파 — 기준선 슬롯 2 포함). ⚠ levelIdx===0 파생이 아니다(슬롯 2 모델, pointsOf 머리). */
     kind: "breakout" | "renewal";
     /** 시간순 순번(0부터). */
     ordinal: number;
@@ -98,11 +99,13 @@ export interface DerivedPoint {
     close: number;
     /** Point 캔들 자신의 거래대금(원, string) — 게이트 판정에 쓴 값. */
     tv: string;
-    /** 넘은 레벨 가격 — breakout 은 기준선 값, renewal 은 (병합 후) 마디 가격. */
+    /** 넘은 것의 가격 — breakout 은 기준선 값, renewal 은 (병합 후) 마디 가격 **또는 슬롯 2 의
+     *  워터마크(슬롯 1 캔들 고가 — 기준선 아래일 수 있다)**. */
     levelPrice: number;
-    /** 넘은 레벨의 서수 — 0 = 기준선, n = (병합 후) n번째 유효 마디. "직전 마디 수" 특징의 원자재. */
+    /** 귀속 레벨의 서수 — 0 = 기준선, n = (병합 후) n번째 유효 마디. 슬롯 2 도 자기 레벨의 서수를 쓴다. */
     levelIdx: number;
-    /** 넘은 마디의 발생 시각(분). breakout(기준선)은 null — 저점 깊이·간격 특징이 창의 왼쪽 끝으로 쓴다. */
+    /** 넘은 고가의 발생 시각(분) — renewal 은 마디 봉 또는 슬롯 2 의 워터마크 봉(슬롯 1 캔들).
+     *  breakout(기준선 슬롯 1)만 null — 저점 깊이·간격 특징이 창의 왼쪽 끝으로 쓴다. */
     levelMin: number | null;
 }
 
@@ -150,34 +153,47 @@ export function levelsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
 }
 
 /**
- * 격자 → Point 목록(시간 오름차순). 기준선이 없거나 그날 한 번도 안 닿았으면 빈 배열 —
- * Point 문법은 기준선 돌파에서 시작한다(마디도 기준선 위에서만 레벨이 된다).
+ * 격자 → Point 목록(시간 오름차순). 기준선이 없으면 빈 배열.
+ * ⚠ touch 게이트는 폐지됐다(2026-09-05 저녁 — 미래 누출): "그날 한 번이라도 닿았나"는 하루 전체의
+ * 사실이라, 밴드 접근 Point(m'>0)의 존재가 오후의 터치 여부로 갈렸다(같은 아침 캔들이 미래에 의해
+ * 시그널이 되거나 안 되거나). 접근 캔들이 있으면 터치가 끝내 없어도 Point 다 — 실패한 시도가 결과
+ * 분포에 정직하게 들어온다. m'=0 에선 후보가 전부 기준선을 실제로 넘어 터치가 자동 보장이라 무영향.
  *
  * ⚠ **전제: `grid.newHighs` 는 시간 오름차순, `maxBefore` 비감소, `high > maxBefore` 로 걸러낸
  * 부분열의 `high` 가 강한 단조 증가**(detectGrid 의 불변식 — v9 밴드 목록은 통째로는 톱니다).
  * 산출물의 시간 오름차순도, 머리 주석의 단조성 논증도 전부 이 전제 위에 선다 — 격자를 손으로 만들거나
  * 구버전 파일을 읽히면(버전 가드가 유일한 방어선) 여기서 조용히 틀어진다.
- * 후보 = `high > maxBefore×(1−m')` 인 사건 봉(m' = approachPct). m'=0 이면 상단 돌파만(v8 동치),
- * 기본 0.5 면 전고점 −0.5% 밴드 접근 봉까지 — 밴드 Point 가 먼저 서면 뒤의 실제 크로싱 봉은 그 레벨의
- * Point 가 아니다(의도 — 접근이 곧 갱신 영역).
+ * 후보 = `high > maxBefore×(1−m')` 인 사건 봉(m' = approachPct). m'=0 이면 상단 돌파만(v8 동치).
+ *
+ * **슬롯 2 모델(2026-09-05 저녁 확정 — "밴드 Point 가 서면 뒤 크로싱은 Point 아님"을 뒤집음)**:
+ * 재돌파의 통일 정의 = "이미 세워진 고가를 다시 넘음, 넘음 = 밴드 하단 넘음". 레벨당 Point 는 최대 2개다 —
+ *   슬롯 1 = 그 레벨 밴드의 첫 자격 사건 캔들(kind·게이트 기존 그대로).
+ *   슬롯 2 = 슬롯 1 이 **상단(정확 선)을 못 넘었을 때만** 열린다(기준선 미달 = high < base, 마디 미달 =
+ *   high ≤ L): 접근이 기준을 훼손해 워터마크(슬롯 1 고가)를 세웠고, 그것을 **실제로 넘는** 다음 자격
+ *   사건 캔들이 재돌파(kind renewal·게이트 = 재돌파 30억·levelPrice/levelMin = 워터마크 가격/봉).
+ * 슬롯 1 이 처음부터 상단을 넘었으면(전형) 슬롯 2 없음 — 그리고 m'=0 에선 미달 자체가 불가능해
+ * 슬롯 2 가 영영 안 열린다(v8 동치 보존). 눌림 조건은 없다 — 2% 미만 눌림은 격자 해상도 밖이라
+ * "다음 자격 사건"으로만 정의 가능(연속 상승 코너 수용, recon 이 빈도를 센다).
+ * ⚠ 이로써 "kind = levelIdx===0 파생" 정리는 폐기 — 기준선 슬롯 2 는 levelIdx 0 인데 kind renewal 이다.
  */
 export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEFINITION): DerivedPoint[] {
-    if (grid.base === null || grid.touch === null) return [];
+    if (grid.base === null) return [];
     const levels = levelsOf(grid, def);
 
     // 캔들 중심 판정 — 자격 캔들마다 **최고 레벨**에 귀속시키고 그 레벨의 게이트로 거른다.
     // 게이트 비대칭(기준선 50 > 재돌파 30) 탓에 breakout Point 없이 renewal 만 서는 날이 있을 수 있다 —
-    // 의도된 동작: 돌파 사건 자체는 touch 가 증언하고, "유효 breakout 있는 날만 보기"는 읽기 층 필터의
-    // 몫이다(격자·판정이 미리 좁히지 않는다).
+    // 의도된 동작: "유효 breakout 있는 날만 보기"는 읽기 층 필터의 몫이다(격자·판정이 미리 좁히지 않는다).
     const gateBase = BigInt(def.baselineGateEok) * KRW_PER_EOK;
     const gateRenewal = BigInt(def.renewalGateEok) * KRW_PER_EOK;
     // 밴드 마진 m'(§10.3) — 0 이면 (1−m)=1 이라 아래 비교가 옛 strict 판정과 비트 동일(v8 동치 모드).
     const bandK = 1 - def.approachPct / 100;
-    const chosen: { levelIdx: number; e: GridNewHigh }[] = [];
-    // 이미 Point 를 낸 최고 레벨 커서. 귀속은 m' > 0 에서도 시간 비감소다(진입 봉도 자기 시점까지의 전
+    const chosen: { kind: "breakout" | "renewal"; levelIdx: number; levelPrice: number; levelMin: number | null; e: GridNewHigh }[] = [];
+    // 슬롯 1 을 낸 최고 레벨 커서. 귀속은 m' > 0 에서도 시간 비감소다(진입 봉도 자기 시점까지의 전
     // 레벨을 (1−m') 마진으로 넘는다 — 사건 조건이 그걸 보장). 커서가 "위 레벨을 지난 뒤 아래 레벨 재접근"
     // 을 삼키는 것은 **의도**다: 저대금으로 이미 넘은 자리의 재접근은 새 시그널이 아니다(§10.3 원문).
-    let usedLevel = -1;
+    let claimedLevel = -1;
+    // 열린 슬롯 2 — 워터마크(슬롯 1 캔들의 고가·시각). 더 높은 레벨로 귀속이 점프하면 소멸(위 커서 원칙).
+    let slot2: { level: number; watermark: number; watermarkMin: number } | null = null;
     for (const e of grid.newHighs) {
         // 사건 재구성 — m'=0: 상단 돌파만(v8 동치) / m'>0: 그 마진의 밴드 사건까지(§10.3 증명).
         if (!(e.high > e.maxBefore * bandK)) continue;
@@ -196,23 +212,39 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
                 break;
             }
         }
-        if (li < 0 || li <= usedLevel) continue; // 넘은 레벨 없음 · 이미 Point 를 낸 레벨(그 레벨의 첫 자격 캔들만)
-        // 귀속 레벨의 게이트로만 판정한다 — 미달이면 낮은 레벨로 **내려가지 않는다**(그 캔들은 Point 아님).
-        // 대신 같은 레벨의 다음 자격 캔들이 계속 후보다(게이트 상향 = Point 이동 의미론 보존).
-        if (BigInt(e.tv) < (levels[li].renewal ? gateRenewal : gateBase)) continue;
-        usedLevel = li;
-        chosen.push({ levelIdx: li, e });
+        if (li < 0) continue;
+        if (li > claimedLevel) {
+            // ── 슬롯 1: 그 레벨의 첫 자격 캔들. 게이트 미달이면 낮은 레벨로 **내려가지 않고**(그 캔들은
+            // Point 아님) 같은 레벨의 다음 자격 캔들이 계속 후보다(게이트 상향 = Point 이동 의미론 보존).
+            if (BigInt(e.tv) < (levels[li].renewal ? gateRenewal : gateBase)) continue;
+            claimedLevel = li;
+            const lv = levels[li];
+            // 상단(정확 선) 미달이면 슬롯 2 개방 — 접근이 기준을 훼손했고 워터마크가 새 자다.
+            const crossedTop = lv.renewal ? e.high > lv.price : e.high >= lv.price;
+            slot2 = crossedTop ? null : { level: li, watermark: e.high, watermarkMin: e.min };
+            chosen.push({ kind: li === 0 ? "breakout" : "renewal", levelIdx: li, levelPrice: lv.price, levelMin: lv.min, e });
+            continue;
+        }
+        if (li === claimedLevel && slot2 !== null && slot2.level === li) {
+            // ── 슬롯 2(재돌파): 워터마크를 **실제로 넘어야** 한다 — 상단 돌파로 밴드가 리셋돼 하단이
+            // 내려간 뒤의 워터마크 아래 사건은 "다시 넘음"이 아니다.
+            if (!(e.high > slot2.watermark)) continue;
+            if (BigInt(e.tv) < gateRenewal) continue;
+            chosen.push({ kind: "renewal", levelIdx: li, levelPrice: slot2.watermark, levelMin: slot2.watermarkMin, e });
+            slot2 = null;
+        }
+        // li < claimedLevel 또는 슬롯 소진 — 아래로 안 내려가고, 같은 레벨 3번째는 없다.
     }
 
     return chosen.map((c, i) => ({
-        kind: c.levelIdx === 0 ? ("breakout" as const) : ("renewal" as const),
+        kind: c.kind,
         ordinal: i,
         min: c.e.min,
         high: c.e.high,
         close: c.e.close,
         tv: c.e.tv,
-        levelPrice: levels[c.levelIdx].price,
+        levelPrice: c.levelPrice,
         levelIdx: c.levelIdx,
-        levelMin: levels[c.levelIdx].min,
+        levelMin: c.levelMin,
     }));
 }

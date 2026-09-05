@@ -70,8 +70,12 @@ export function legHighOf(grid: PointGrid, pointMin: number): { pivot: GridPivot
  * (마디 뷰에서 레벨은 연속이라 다음 레벨의 cross = 이 레벨 가격을 처음 넘은 봉 — v8 의 pivots[i+2] 와
  * 같은 값). 다음 레벨이 아직 없으면(꼬리) null.
  */
-export function legStartOf(grid: PointGrid, point: Pick<DerivedPoint, "levelIdx" | "levelMin">): GridBarMark | null {
-    if (point.levelIdx === 0) return grid.touch;
+export function legStartOf(grid: PointGrid, point: Pick<DerivedPoint, "min" | "levelIdx" | "levelMin">): GridBarMark | null {
+    if (point.levelIdx === 0 && point.levelMin === null) {
+        // 돌파 창 시작 = 터치 봉 — 접근 Point(touch 게이트 폐지 후)는 터치가 없거나 Point 보다 뒤일 수
+        // 있다: 그 창은 결손이다(음수 창 금지 — 미래 봉을 시작으로 쓰지 않는다).
+        return grid.touch !== null && grid.touch.min <= point.min ? grid.touch : null;
+    }
     if (point.levelMin === null) return null;
     const pairs = levelViewOf(grid);
     const k = pairs.findIndex((p) => p.high.min === point.levelMin);

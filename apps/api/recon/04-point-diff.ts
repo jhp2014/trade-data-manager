@@ -26,7 +26,7 @@ import {
     type PointGrid,
 } from "@trade-data-manager/market";
 import { fileGridStore } from "../src/market/grid/gridStore.js";
-import { numFlag, saveReport, strFlag } from "./_shared.js";
+import { distributionOf, numFlag, saveReport, strFlag } from "./_shared.js";
 
 const KRW_PER_EOK = 100_000_000n;
 
@@ -80,12 +80,15 @@ function pointsOfV8(grid: OldGrid, def: PointDefinition): DerivedPoint[] {
 }
 
 /**
- * 정의의 브루트포스 재진술 — 검출 구현(단조 커서 usedLevel·입력 순서 신뢰)과 **다른 형태**라 전제 위반을
- * 잡는다: 레벨은 마디 뷰의 prefix max 로 재계산, 캔들은 min 으로 **정렬해서** 돌고, 후보는 상단 돌파
- * (`high > maxBefore` — 1단계), 레벨당 1개는 claimed **집합**. 갈리면 귀속 단조성·목록 정렬성 위반(정지 신호).
+ * 정의의 브루트포스 재진술 — 검출 구현(단조 커서 claimedLevel·입력 순서 신뢰)과 **다른 형태**라 전제
+ * 위반을 잡는다: 레벨은 마디 뷰의 prefix max 로 재계산, 캔들은 min 으로 **정렬해서** 돌고, 사건은
+ * `high > maxBefore×(1−m')`, 레벨당 슬롯은 커서가 아니라 **레벨별 슬롯 맵**으로 센다.
+ * 슬롯 모델(2026-09-05 저녁): 슬롯 1 = 레벨 밴드 첫 자격 캔들, 슬롯 2(재돌파·게이트 30) = 슬롯 1 이
+ * 상단 미달일 때만, 워터마크(슬롯 1 고가)를 실제로 넘는 다음 자격 캔들. touch 게이트 없음(폐지).
+ * 갈리면 귀속 단조성·목록 정렬성 위반(정지 신호).
  */
 function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
-    if (grid.base === null || grid.touch === null) return [];
+    if (grid.base === null) return [];
     const base = grid.base;
     const pairHighs = levelViewOf(grid).map((p) => p.high);
     const lowOfPair = new Map(levelViewOf(grid).map((p) => [p.high.min, p.low.price]));
@@ -103,7 +106,8 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
 
     const gate = (renewal: boolean): bigint => BigInt(renewal ? def.renewalGateEok : def.baselineGateEok) * KRW_PER_EOK;
     const bandK = 1 - def.approachPct / 100; // m'=0 이면 1 — 옛 strict 판정과 동일
-    const claimed = new Set<number>();
+    // 레벨별 슬롯 맵 — 커서(pointsOf)와 다른 형태. 값 = 슬롯 1 캔들(상단 미달이면 슬롯 2 후보의 워터마크).
+    const slot1 = new Map<number, { high: number; min: number; crossedTop: boolean; slot2Done: boolean }>();
     const out: DerivedPoint[] = [];
     for (const e of [...grid.newHighs].sort((a, b) => a.min - b.min)) {
         if (!(e.high > e.maxBefore * bandK)) continue; // 후보 = m' 밴드의 사건 봉(§10.3 재구성)
@@ -116,20 +120,22 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
             .filter(({ l }) => (l.renewal ? e.high > l.price * bandK : e.high >= l.price * bandK));
         if (crossed.length === 0) continue;
         const top = crossed[crossed.length - 1];
-        if (claimed.has(top.i)) continue;
-        if (BigInt(e.tv) < gate(top.l.renewal)) continue;
-        claimed.add(top.i);
-        out.push({
-            kind: top.i === 0 ? "breakout" : "renewal",
-            ordinal: out.length,
-            min: e.min,
-            high: e.high,
-            close: e.close,
-            tv: e.tv,
-            levelPrice: top.l.price,
-            levelIdx: top.i,
-            levelMin: top.l.min,
-        });
+        const maxClaimed = Math.max(-1, ...slot1.keys());
+        if (top.i < maxClaimed) continue; // 아래로 안 내려감(귀속 비감소 전제의 재진술 쪽 표현)
+        const s = slot1.get(top.i);
+        if (s === undefined) {
+            if (BigInt(e.tv) < gate(top.l.renewal)) continue;
+            const crossedTop = top.l.renewal ? e.high > top.l.price : e.high >= top.l.price;
+            slot1.set(top.i, { high: e.high, min: e.min, crossedTop, slot2Done: false });
+            out.push({ kind: top.i === 0 ? "breakout" : "renewal", ordinal: out.length, min: e.min, high: e.high, close: e.close, tv: e.tv, levelPrice: top.l.price, levelIdx: top.i, levelMin: top.l.min });
+            continue;
+        }
+        // 슬롯 2 — 슬롯 1 상단 미달 + 그 레벨이 여전히 최고 귀속 + 워터마크 실초과 + 재돌파 게이트.
+        if (s.crossedTop || s.slot2Done || top.i !== maxClaimed) continue;
+        if (!(e.high > s.high)) continue;
+        if (BigInt(e.tv) < gate(true)) continue;
+        s.slot2Done = true;
+        out.push({ kind: "renewal", ordinal: out.length, min: e.min, high: e.high, close: e.close, tv: e.tv, levelPrice: s.high, levelIdx: top.i, levelMin: s.min });
     }
     return out;
 }
@@ -197,6 +203,8 @@ async function main(): Promise<void> {
         if (samples[bucket].length < sampleCap) samples[bucket].push(row);
     };
     const naive = { ok: 0, okWithPoints: 0, bad: [] as { code: string; date: string; expected: unknown; actual: unknown }[] };
+    const slot2Stats = { count: 0, topCrossed: 0, gapMinutes: [] as number[] };
+    const touchRelax = { noTouchDays: 0, noTouchPoints: 0, preTouchPoints: 0 };
     const gridOrder = { minOrder: 0, maxBeforeOrder: 0, breakoutMonotone: 0 }; // 논증이 기대는 격자 전제
 
     for (const date of dates) {
@@ -220,6 +228,21 @@ async function main(): Promise<void> {
             if (old.length > 0 || now.length > 0) counts.gridsWithPoints++;
             for (const p of old) (p.kind === "breakout" ? kinds.oldBreakout++ : kinds.oldRenewal++);
             for (const p of now) (p.kind === "breakout" ? kinds.nowBreakout++ : kinds.nowRenewal++);
+
+            // ── 슬롯 2·touch 완화 계측(2026-09-05 저녁 규칙) ──
+            // 슬롯 2 식별: levelPrice 가 레벨 목록의 그 서수 가격과 다르면 워터마크(슬롯 1 고가)다.
+            const lvls = levelsOf(entry.grid, def);
+            for (const p of now) {
+                const lv = lvls[p.levelIdx];
+                if (lv !== undefined && p.levelPrice !== lv.price) {
+                    slot2Stats.count++;
+                    const topCrossed = lv.renewal ? p.high > lv.price : p.high >= lv.price;
+                    if (topCrossed) slot2Stats.topCrossed++;
+                    if (p.levelMin !== null) slot2Stats.gapMinutes.push(p.min - p.levelMin);
+                }
+            }
+            if (entry.grid.touch === null && now.length > 0) touchRelax.noTouchDays++, (touchRelax.noTouchPoints += now.length);
+            else if (entry.grid.touch !== null) for (const p of now) if (p.min < entry.grid.touch.min) touchRelax.preTouchPoints++;
 
             // 독립 재계산 대조 — 어기면 정지 신호(분류 이전의 문제). **값으로** 비교한다.
             const naiveNow = naivePoints(entry.grid, def);
@@ -285,12 +308,16 @@ async function main(): Promise<void> {
     const cleanDiff = counts.relabeled + counts.moved + counts.added + counts.removed;
     console.log(`동일 ${counts.equal} · 재라벨 ${counts.relabeled} · 이동 ${counts.moved} · 신설 ${counts.added} · 소멸 ${counts.removed} ${isRegressionMode ? (cleanDiff > 0 ? "⚠ 정지 신호" : "— 통과") : ""}`);
     console.log(`클래스① 차트의 행 갈림(예고된 것 — 게이트 아님): ${counts.class1Rows}`);
+    const gapDist = distributionOf(slot2Stats.gapMinutes);
+    console.log(`\n── 슬롯 2(워터마크 재돌파)·touch 완화 계측 ──`);
+    console.log(`슬롯 2 Point ${slot2Stats.count}(상단까지 관통 ${slot2Stats.topCrossed} = ${slot2Stats.count > 0 ? ((slot2Stats.topCrossed / slot2Stats.count) * 100).toFixed(1) : 0}%) · 훼손→재돌파 간격(분) p50 ${gapDist.p50} / p90 ${gapDist.p90} / max ${gapDist.max} · 1분(연속 상승 코너) ${slot2Stats.gapMinutes.filter((g) => g <= 1).length}`);
+    console.log(`무터치 날의 Point ${touchRelax.noTouchPoints}(${touchRelax.noTouchDays}일 — touch 게이트 폐지로 신설) · 터치 이전 접근 Point ${touchRelax.preTouchPoints}`);
     console.log(`\n── 독립 재계산 대조(전 차트) ──`);
     console.log(`일치 ${naive.ok}(그중 Point 있는 차트 ${naive.okWithPoints}) / 불일치 ${naive.bad.length} ${naive.bad.length > 0 ? "⚠ 정지 신호" : "— 통과"}`);
     const orderBad = gridOrder.minOrder + gridOrder.maxBeforeOrder + gridOrder.breakoutMonotone;
     console.log(`격자 전제: 시각 역행 ${gridOrder.minOrder} · maxBefore 감소 ${gridOrder.maxBeforeOrder} · 돌파 부분열 비단조 ${gridOrder.breakoutMonotone} ${orderBad > 0 ? "⚠ 정지 신호" : "— 통과"}`);
 
-    saveReport("point-diff", { def, counts, kinds, total, naive: { ok: naive.ok, bad: naive.bad }, gridOrder, samples });
+    saveReport("point-diff", { def, counts, kinds, total, slot2: { ...slot2Stats, gapDist }, touchRelax, naive: { ok: naive.ok, bad: naive.bad }, gridOrder, samples });
 }
 
 main().catch((err) => {

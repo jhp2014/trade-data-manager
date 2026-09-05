@@ -32,9 +32,16 @@ const touch = (min: number) => ({ min, tv: "0", cum: "0" });
 const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touch: touch(550), pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, sessionHigh: { min: 550, price: 10000 }, ...partial });
 
 describe("pointsOf", () => {
-    it("기준선 미터치(또는 기준선 없음) → Point 없음", () => {
-        expect(pointsOf(grid({ touch: null, newHighs: [nh(560, 10050, 60)] }), DEF0)).toEqual([]);
+    it("기준선 없음 → Point 없음. 미터치는 더는 게이트가 아니다(touch 게이트 폐지 — 미래 누출)", () => {
         expect(pointsOf(grid({ base: null, newHighs: [nh(560, 10050, 60)] }), DEF0)).toEqual([]);
+        // m'=0 에선 기준선 미달 캔들이 레벨을 못 넘어 여전히 [] — 게이트 폐지가 v8 동작을 안 바꾼다.
+        expect(pointsOf(grid({ touch: null, newHighs: [nh(560, 9940, 60)] }), DEF0)).toEqual([]);
+    });
+
+    it("touch 게이트 폐지 — 접근 캔들이 있으면 그날 터치가 끝내 없어도 돌파 Point(실패 시도가 모수에 남는다)", () => {
+        const g = grid({ touch: null, newHighs: [nh(560, 9970, 60, true, 9800)] });
+        expect(pointsOf(g).map((p) => [p.min, p.kind, p.levelPrice])).toEqual([[560, "breakout", 10000]]); // 기본 0.5
+        expect(pointsOf(g, DEF0)).toEqual([]); // m'=0 불변 — 접근 자체가 후보가 아니다
     });
 
     it("기본 흐름 — 기준선 돌파(50억 게이트) + 마디 갱신(30억 게이트)", () => {
@@ -187,16 +194,69 @@ describe("pointsOf", () => {
         ]);
     });
 
-    it("기준 밴드(approachPct=0.5, 기본) — 접근 캔들이 밴드 Point 가 되고, 뒤의 실제 크로싱 봉은 그 레벨을 선점당한다", () => {
-        // 마디 10,300 확정 후 M=10,300. 10,270 진입 캔들(maxBefore 10,300): 0.5% 마진에서
-        // 10,270 > 10,300×0.995=10,248.5 → 사건이자 마디 밴드 통과 → renewal Point. 뒤의 10,350
-        // (실제 크로싱)은 같은 레벨이라 탈락. 근접 0 이면 10,270 은 무사건이고 10,350 이 Point(v8).
+    it("기준 밴드(0.5 기본) — 접근이 슬롯 1, 워터마크를 넘는 다음 자격 캔들이 슬롯 2 재돌파(마디 대칭)", () => {
+        // 마디 10,300 확정 후 M=10,300. 10,270 진입 캔들(maxBefore 10,300): 마디 밴드 통과 →
+        // 슬롯 1 renewal — 상단(10,300) 미달이라 슬롯 2 개방(워터마크 10,270). 뒤의 10,350 캔들이
+        // 워터마크를 넘어 슬롯 2 재돌파(levelPrice = 워터마크, levelMin = 슬롯 1 봉). ⚠ 옛 "선점당해
+        // Point 아님" 규칙(2026-09-05 오전)은 같은 날 저녁 슬롯 2 모델로 뒤집혔다.
+        // 근접 0 이면 10,270 은 무사건이고 10,350 이 유일한 Point(v8 동치).
         const g = grid({
             pivots: [hi(575, 10300, 585), lo(585, 10100)],
             newHighs: [nh(600, 10270, 60, true, 10300), nh(620, 10350, 60, true, 10300)],
         });
-        expect(pointsOf(g).map((p) => [p.min, p.kind, p.levelPrice])).toEqual([[600, "renewal", 10300]]); // 기본 정의 = 0.5
+        expect(pointsOf(g).map((p) => [p.min, p.kind, p.levelPrice, p.levelMin])).toEqual([
+            [600, "renewal", 10300, 575], // 슬롯 1 — 마디 접근
+            [620, "renewal", 10270, 600], // 슬롯 2 — 워터마크(10,270) 재돌파
+        ]);
         expect(pointsOf(g, DEF0).map((p) => [p.min, p.kind, p.levelPrice])).toEqual([[620, "renewal", 10300]]);
+    });
+
+    it("슬롯 2 — 기준선에서도: 접근(훼손) 뒤 워터마크를 넘는 다음 자격 캔들이 재돌파, 3번째는 없다", () => {
+        const g = grid({
+            newHighs: [
+                nh(560, 9970, 60, true, 9800), // 슬롯 1 — 기준선 접근(9,970 ≥ 9,950), 상단(10,000) 미달 → 슬롯 2 개방
+                nh(580, 9990, 40, true, 9970), // 슬롯 2 — 워터마크 9,970 초과, 재돌파 게이트(30) 통과
+                nh(600, 10050, 60, true, 9990), // 상단까지 넘었지만 슬롯 소진 — 3번째 Point 없음
+            ],
+        });
+        expect(pointsOf(g).map((p) => [p.min, p.kind, p.levelIdx, p.levelPrice, p.levelMin])).toEqual([
+            [560, "breakout", 0, 10000, null],
+            [580, "renewal", 0, 9970, 560], // 기준선 슬롯 2 — levelIdx 0 인데 renewal("kind = levelIdx 파생" 정리 폐기)
+        ]);
+    });
+
+    it("슬롯 2 — 워터마크 이하 사건은 '다시 넘음'이 아니다(밴드 리셋으로 하단이 내려간 자리)", () => {
+        const g = grid({
+            newHighs: [
+                nh(560, 9970, 60, true, 9800), // 슬롯 1 접근, 워터마크 9,970
+                nh(580, 9955, 60, true, 9990), // 저대금 갱신(M 9,990) 뒤 밴드 사건 — 워터마크 미달 → 무사건
+                nh(600, 9985, 60, true, 9990), // 워터마크 초과 → 슬롯 2 재돌파
+            ],
+        });
+        expect(pointsOf(g).map((p) => [p.min, p.levelPrice])).toEqual([
+            [560, 10000],
+            [600, 9970],
+        ]);
+    });
+
+    it("슬롯 1 이 상단을 넘으면 슬롯 2 는 안 열린다 — 전형적 돌파는 오늘과 동일(레벨당 1개)", () => {
+        const g = grid({ newHighs: [nh(560, 10050, 60), nh(580, 10100, 60, true, 10050)] });
+        expect(pointsOf(g)).toHaveLength(1);
+    });
+
+    it("슬롯 2 는 귀속이 위 레벨로 점프하면 소멸한다 — 아래로 안 내려가는 커서 원칙", () => {
+        const g = grid({
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
+            newHighs: [
+                nh(600, 9970, 60, true, 9800), // 기준선 접근 슬롯 1(슬롯 2 개방)
+                nh(620, 10400, 60, true, 9970), // 마디(10,300) 돌파 — 귀속 점프, 기준선 슬롯 2 소멸
+                nh(640, 10500, 60, true, 10400), // 마디 레벨 소진 — 추가 없음(워터마크 9,970 을 넘었어도)
+            ],
+        });
+        expect(pointsOf(g).map((p) => [p.min, p.kind, p.levelPrice])).toEqual([
+            [600, "breakout", 10000],
+            [620, "renewal", 10300],
+        ]);
     });
 
     it("기준 밴드 — 아직 확정 전(미래)의 마디는 관통하지 않는다(미래 누출 차단)", () => {
