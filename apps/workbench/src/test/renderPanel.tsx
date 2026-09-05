@@ -51,18 +51,21 @@ function gridsFromPoints(points: readonly SeedPoint[]): DecodedPointGrids {
     for (const [k, list] of byChart) {
         const [date, stockCode] = k.split("|");
         const mins = [...list].map((p) => hmsToMinute(p.time)).sort((a, b) => a - b);
-        // 피벗 = (확정 고점, 구간 저점) 쌍의 교대. 고점 i 는 캔들 i 자신이고 확정은 **뒤 봉**(m+1),
-        // 저점은 그 사이(m+2)에 한 칸 낮게 둔다 — 눌림 깊이가 실제로 계산되는 최소 구조.
+        // 피벗 = (확정 고점, 레벨 구간 저점) 쌍의 교대(v9 유효 경로 뷰). 고점 i 는 캔들 i 자신이고 확정은
+        // **뒤 봉**(m+1), 저점은 다음 레벨의 크로싱(= 다음 레벨 봉 자신) **앞**에 한 칸 낮게 둔다 —
+        // levelViewOf 의 구간 (레벨, 다음 레벨 cross) 이 비지 않아야 한다(⑥ 결손 throw). 저점도 확정
+        // 시각을 채운다(v9 — 마지막이 아닌데 null 이면 꼬리로 오독, 불변식 ② 위반).
         // 누적 대금은 봉마다 10억씩 단조 증가하는 가짜 값 — 창 파생이 0 이 아니게만 둔다(값 자체는 시험 대상 아님).
         const pivots = mins.slice(0, -1).flatMap((m, i) => [
-            { kind: "high" as const, min: m, price: 101 + i, confirmedMin: m + 1, cum: String((2 * i + 2) * 1_000_000_000), cross: i === 0 ? null : { min: m - 1, tv: "1000000000", cum: String((2 * i + 1) * 1_000_000_000) } },
-            { kind: "low" as const, min: m + 2, price: 99 + i, confirmedMin: null, cum: String((2 * i + 3) * 1_000_000_000), cross: null },
+            { kind: "high" as const, min: m, price: 101 + i, confirmedMin: m + 1, cum: String((2 * i + 2) * 1_000_000_000), cross: i === 0 ? null : { min: m, tv: "1000000000", cum: String((2 * i + 1) * 1_000_000_000) } },
+            { kind: "low" as const, min: Math.min(m + 2, mins[i + 1] - 1), price: 99 + i, confirmedMin: mins[i + 1], cum: String((2 * i + 3) * 1_000_000_000), cross: null },
         ]);
         const grid: PointGrid = {
             base: 100,
             touch: { min: mins[0], tv: "1000000000", cum: "1000000000" },
             pivots,
-            newHighs: mins.map((m, i) => ({ min: m, open: 100 + i, high: 101 + i, low: 100 + i, close: 101 + i, tv: "6000000000", cum: String((2 * i + 2) * 1_000_000_000) })),
+            // maxBefore = 직전 캔들 고가(첫 캔들 0) — 전 캔들이 상단 돌파(1단계 후보 필터 통과).
+            newHighs: mins.map((m, i) => ({ min: m, open: 100 + i, high: 101 + i, low: 100 + i, close: 101 + i, tv: "6000000000", cum: String((2 * i + 2) * 1_000_000_000), maxBefore: i === 0 ? 0 : 100 + i })),
             prevBase: 100,
             prevBaseKrx: null,
             // 세션 최고가 = 마지막 신고가 캔들(러닝 최고가 최종값) — 격자 사실 필드(버전 8).

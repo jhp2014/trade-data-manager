@@ -136,9 +136,12 @@ export function levelsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
  * 격자 → Point 목록(시간 오름차순). 기준선이 없거나 그날 한 번도 안 닿았으면 빈 배열 —
  * Point 문법은 기준선 돌파에서 시작한다(마디도 기준선 위에서만 레벨이 된다).
  *
- * ⚠ **전제: `grid.newHighs` 는 시간 오름차순이고 `high` 가 강한 단조 증가**(detectGrid 의 불변식).
+ * ⚠ **전제: `grid.newHighs` 는 시간 오름차순, `maxBefore` 비감소, `high > maxBefore` 로 걸러낸
+ * 부분열의 `high` 가 강한 단조 증가**(detectGrid 의 불변식 — v9 밴드 목록은 통째로는 톱니다).
  * 산출물의 시간 오름차순도, 머리 주석의 단조성 논증도 전부 이 전제 위에 선다 — 격자를 손으로 만들거나
- * 구버전 파일을 읽히면(파일 버전 가드가 유일한 방어선) 여기서 조용히 틀어진다.
+ * 구버전 파일을 읽히면(버전 가드가 유일한 방어선) 여기서 조용히 틀어진다.
+ * 1단계(§10 이전 동치): 후보 = 상단 돌파 봉(`high > maxBefore`)만 — 진입 봉 판정은 approachPct
+ * 노브(2단계)가 연다.
  */
 export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEFINITION): DerivedPoint[] {
     if (grid.base === null || grid.touch === null) return [];
@@ -153,6 +156,7 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
     const chosen: { levelIdx: number; e: GridNewHigh }[] = [];
     let usedLevel = -1; // 이미 Point 를 낸 최고 레벨 — 귀속이 시간에 대해 비감소라 이 하나로 "레벨당 1개"가 선다
     for (const e of grid.newHighs) {
+        if (!(e.high > e.maxBefore)) continue; // 밴드 진입 봉 제외 — 1단계는 상단 돌파만(v8 동치)
         if (e.min <= def.excludeUptoMin) continue;
         if (def.bullOnly && !(e.close > e.open)) continue; // 양봉 여부는 격자 OHLC 에서 파생(사실만 굽는 원칙)
         // 기준선은 스침(≥)이 돌파, 마디는 초과(>)가 갱신 — 터치 의미론과 러닝 최고가 갱신 의미론의 차이.

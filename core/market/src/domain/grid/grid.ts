@@ -60,7 +60,10 @@ export interface GridPivot {
     cross: GridBarMark | null;
 }
 
-/** 신고가 캔들 — 세션 창 안 당일 러닝 최고가를 갱신했고 tv ≥ floor 인 봉. Point 후보의 전체 모집합.
+/** 기준 밴드 사건 캔들(코드 심볼은 newHighs 유지 — 개명은 와이어·설정 주소를 흔든다) — 세션 창 안
+ *  러닝 밴드 [M×(1−approachPct), M] 의 상단 돌파(high > M) 또는 밴드 진입(bottom < high ≤ M) 봉 중
+ *  tv ≥ floor 인 것. Point 후보의 전체 모집합(§10.2). 목록은 더는 단조가 아니다 — 갱신 뒤 그 아래
+ *  진입들이 톱니로 선다(`maxBefore` 는 비감소). `high > maxBefore` 부분열 = 옛 v8 신고가 목록.
  *  OHLC 를 절대가(그 날 원주가, 원)로 완결 수록한다 — %(몸통·꼬리·종가위치)는 분모 선택이 정책이라
  *  굽지 않고 전부 읽기 층 파생(양봉 여부도 close > open 파생 — bullOnly 노브가 읽는다). */
 export interface GridNewHigh {
@@ -68,7 +71,7 @@ export interface GridNewHigh {
     min: number;
     /** 그 봉 시가(원주가, 원). */
     open: number;
-    /** 그 봉 고가 = 갱신된 러닝 최고가(원주가, 원). */
+    /** 그 봉 고가(원주가, 원) — 상단 돌파 봉은 갱신된 러닝 최고가, 진입 봉은 밴드 안 고가. */
     high: number;
     /** 그 봉 저가(원주가, 원). */
     low: number;
@@ -78,6 +81,11 @@ export interface GridNewHigh {
     tv: string;
     /** 세션 첫 봉부터 이 봉까지(포함) 누적 거래대금(원, string) — Point 봉→고점 창의 시작 재료. */
     cum: string;
+    /** 그 봉을 처리하기 **직전**의 러닝 최고가 M(원주가, 원 — 세션 첫 봉은 0). 상단 돌파는
+     *  `high > maxBefore` 로 읽힌다(플래그 불필요). 읽기 노브 m' ≤ approachPct 의 사건 재구성
+     *  `high > maxBefore×(1−m')` 이 하단을 굽지 않고도 정확한 이유는 §10.3(같은 M 레짐 안
+     *  진입 봉의 고가가 강한 단조라 "하단보다 높다" ⟺ "이전 진입 전부보다 높다"). */
+    maxBefore: number;
 }
 
 /**
@@ -130,6 +138,10 @@ export interface GridDetectOptions {
     zigzagPct?: number;
     /** 신고가 목록 수록 하한(억원). 기본 20 — 읽기 층 게이트(50/30억)는 이 위에서만 조절 가능. */
     floorEok?: number;
+    /** 기준 밴드 폭 하한(%, §10.1) — [M×(1−m), M] 진입 봉까지 newHighs 에 싣는다. 기본 0.5.
+     *  ⚠ 읽기 노브 `PointDefinition.approachPct`(m' ∈ [0, 이 값])와 **동명이지만 다른 물건**:
+     *  이쪽은 굽는 하한(바꾸면 재굽기), 그쪽은 Point 판정의 조절이다. */
+    approachPct?: number;
     /** 세션 창 시작(자정기준 분, 이상). 기본 480 = 08:00(프리마켓 포함). */
     sessionStartMin?: number;
     /** 세션 창 끝(자정기준 분, 이하). 기본 1200 = 20:00(NXT 애프터마켓 포함). */
@@ -141,6 +153,7 @@ export const DEFAULT_GRID_OPTIONS: Required<GridDetectOptions> = {
     floorEok: 20,
     sessionStartMin: 8 * 60,
     sessionEndMin: 20 * 60,
+    approachPct: 0.5,
 };
 
 const KRW_PER_EOK = 100_000_000n;
@@ -323,17 +336,31 @@ export function detectGrid(
         };
     });
 
-    // ── 신고가 캔들 목록 + 기준선 첫 터치 ────────────────────────────────────
+    // ── 기준 밴드 사건 캔들 목록 + 기준선 첫 터치 + 세션 최고가 ──────────────
+    // 러닝 밴드(§10.2): 상단 돌파(high > M)는 밴드를 갱신·리셋(bottom = M×(1−m)), 밴드 진입
+    // (bottom < high ≤ M)은 하단을 그 고가로 좁힌다(같은 자리 재진입은 무사건). 상태 갱신은 볼륨
+    // 무관이고 수록만 tv ≥ floor 로 거른다. maxBefore = 봉 처리 직전의 M(첫 봉은 0) —
+    // `high > maxBefore` 부분열이 v8 신고가 목록과 비트 동일해야 한다(recon 게이트).
+    // sessionHigh(maxIdx)는 상단 돌파 가지에서만 갱신 — v8 의 `> runningMax` 와 같은 자리.
     const floorWon = BigInt(o.floorEok) * KRW_PER_EOK;
+    const bandM = o.approachPct / 100;
     const newHighs: GridNewHigh[] = [];
     let touch: GridBarMark | null = null;
     let runningMax = -Infinity;
+    let bottom = Infinity; // 첫 상단 돌파 전엔 진입 사건 없음
     let maxIdx = 0; // 세션 최고가를 세운 봉 — floor 무관(순수 가격 사실)
     for (let i = 0; i < n; i++) {
         if (base !== null && touch === null && highs[i] >= base) touch = markOf(i);
-        if (highs[i] <= runningMax) continue;
-        runningMax = highs[i];
-        maxIdx = i;
+        const maxBefore = runningMax === -Infinity ? 0 : runningMax;
+        if (highs[i] > runningMax) {
+            runningMax = highs[i];
+            maxIdx = i;
+            bottom = runningMax * (1 - bandM);
+        } else if (highs[i] > bottom) {
+            bottom = highs[i];
+        } else {
+            continue; // 무사건(밴드 밖 또는 이미 좁아진 하단 이하)
+        }
         if (tvs[i] < floorWon) continue;
         newHighs.push({
             min: mins[i],
@@ -343,6 +370,7 @@ export function detectGrid(
             close: Number(bars[i].un.close),
             tv: tvs[i].toString(),
             cum: prefix[i].toString(),
+            maxBefore,
         });
     }
 

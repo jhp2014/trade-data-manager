@@ -46,7 +46,7 @@ describe("detectGrid — 신고가 목록", () => {
     it("갭 시작 — 첫 봉이 러닝 최고가, OHLC 절대가가 그대로 실린다(양봉 여부는 읽기 층 파생)", () => {
         const g = detectGrid([mc("09:00:00", 13000, 13000, 12900, 13000, 200000), flat("09:01:00", 12950, 1), flat("09:02:00", 12900, 1)], px());
         expect(g?.newHighs).toHaveLength(1);
-        expect(g?.newHighs[0]).toEqual({ min: 540, open: 13000, high: 13000, low: 12900, close: 13000, tv: "2595000000", cum: "2595000000" });
+        expect(g?.newHighs[0]).toEqual({ min: 540, open: 13000, high: 13000, low: 12900, close: 13000, tv: "2595000000", cum: "2595000000", maxBefore: 0 });
     });
 
     it("직전 봉 대금 구제는 없다 — 수록 기준은 자기 봉 대금뿐(tvMax2 폐기, 2026-08-31)", () => {
@@ -74,6 +74,42 @@ describe("detectGrid — 신고가 목록", () => {
         expect(yes?.newHighs).toHaveLength(1);
         const no = detectGrid([flat("09:00:00", 10000, 199999)], px());
         expect(no?.newHighs).toHaveLength(0);
+    });
+});
+
+describe("detectGrid — 기준 밴드(maxBefore, §10.2)", () => {
+    it("상단 돌파 직후 밴드 진입 — 리셋된 밴드 안 봉이 사건이고, 좁아진 하단 아래 봉은 무사건", () => {
+        const g = chk(detectGrid(
+            [
+                flat("09:00:00", 10000, 250000), // 상단 돌파(첫 봉) — maxBefore 0, bottom = 9950
+                flat("09:01:00", 9970, 250000), // 진입(9970 > 9950) — 하단이 9970 으로 좁아진다
+                flat("09:02:00", 9960, 250000), // 무사건(9960 ≤ 9970 — 같은 자리 재진입 아님)
+                flat("09:03:00", 9980, 250000), // 진입(9980 > 9970)
+                flat("09:04:00", 10100, 250000), // 상단 돌파 — 밴드 리셋(bottom = 10049.5)
+                flat("09:05:00", 10040, 250000), // 무사건(10040 ≤ 10049.5)
+            ], px(),
+        ));
+        expect(g.newHighs.map((e) => [e.min, e.high, e.maxBefore])).toEqual([
+            [540, 10000, 0], // 세션 첫 봉 maxBefore = 0
+            [541, 9970, 10000],
+            [543, 9980, 10000],
+            [544, 10100, 10000],
+        ]);
+        // maxBefore 비감소 + 상단 돌파 부분열(high > maxBefore) = v8 신고가 목록.
+        const mb = g.newHighs.map((e) => e.maxBefore);
+        expect(mb.every((v, i) => i === 0 || v >= mb[i - 1])).toBe(true);
+        expect(g.newHighs.filter((e) => e.high > e.maxBefore).map((e) => e.min)).toEqual([540, 544]);
+    });
+
+    it("저대금 진입 봉은 수록되지 않지만 하단은 올린다 — 그 아래 고대금 봉은 무사건(같은 자리)", () => {
+        const g = chk(detectGrid(
+            [
+                flat("09:00:00", 10000, 200000), // 상단 돌파
+                flat("09:01:00", 9990, 1), // 진입이지만 저대금 — 미수록, bottom = 9990
+                flat("09:02:00", 9985, 200000), // 무사건(9985 ≤ 9990) — 저대금 봉이 이미 그 자리를 지웠다
+            ], px(),
+        ));
+        expect(g.newHighs.map((e) => e.min)).toEqual([540]);
     });
 });
 

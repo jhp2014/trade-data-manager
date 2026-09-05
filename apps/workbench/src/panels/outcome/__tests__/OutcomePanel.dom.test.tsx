@@ -26,9 +26,9 @@ const gridOf = (pairs: readonly [high: number, low: number][]): PointGrid => ({
             cum: String((3 + 2 * i) * 1_000_000_000),
             cross: i === 0 ? null : { min: 573 + i * 15, tv: "1000000000", cum: String((2 + 2 * i) * 1_000_000_000) },
         },
-        { kind: "low" as const, min: 580 + i * 15, price: low, confirmedMin: null, cum: String((4 + 2 * i) * 1_000_000_000), cross: null },
+        { kind: "low" as const, min: 580 + i * 15, price: low, confirmedMin: 585 + i * 15, cum: String((4 + 2 * i) * 1_000_000_000), cross: null },
     ]),
-    newHighs: [{ min: 570, open: 100, high: 101, low: 100, close: 101, tv: "6000000000", cum: "2000000000" }],
+    newHighs: [{ min: 570, open: 100, high: 101, low: 100, close: 101, tv: "6000000000", cum: "2000000000", maxBefore: 0 }],
     prevBase: 100,
     prevBaseKrx: null,
     // 세션 최고가 = 마지막 (고점) 쌍의 고가 — 꼬리 없음(회복/미회복이 마지막 저가에서 갈리게 두려면 여기서 조절).

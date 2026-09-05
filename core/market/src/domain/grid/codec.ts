@@ -9,11 +9,17 @@
 // 갈리면 위치 계약이 어긋나는 날 그림이 조용히 뒤틀린다. 왕복 보존은 codec.test 가 못 박는다.
 import type { GridBarMark, GridNewHigh, GridPivot, PointGrid } from "./grid.js";
 
-/** [kind(0=high, 1=low), min, price, confirmedMin(−1=null — 저점은 항상), cum,
- *   crossMin(−1=null), crossTv("-1"=null), crossCum("-1"=null) — 셋은 함께 null(첫 고점·저점)] */
+/** [kind(0=high, 1=low), min, price, confirmedMin(−1 = 꼬리(미확정, 항상 마지막 1개)), cum,
+ *   crossMin(−1=null), crossTv("-1"=null), crossCum("-1"=null) — 셋은 함께 null(레벨 아닌 피벗·첫 레벨)] */
 export type WirePivot = [number, number, number, number, string, number, string, string];
-/** [min, open, high, low, close, tv, cum] */
-export type WireNewHigh = [number, number, number, number, number, string, string];
+/** [min, open, high, low, close, tv, cum, maxBefore] — maxBefore 는 v9 에서 끝에 추가(위치 계약). */
+export type WireNewHigh = [number, number, number, number, number, string, string, number];
+
+/** 격자 검출 규칙 버전 — 파일·와이어·클라 디코더가 전부 이 하나를 본다(값 두 벌 금지).
+ *  9: 2026-09-05 피벗 = 양방향 zigzag 경로 뷰(마디는 읽기 파생) + 기준 밴드 maxBefore.
+ *  튜플 칸 수가 같은 "의미만 바뀐 번들"은 CHART_TUPLE_LEN 가드가 못 잡는다 — 디코더 진입
+ *  (workbench fetchPointGrids)이 bundle.version ≠ 이 값이면 throw 하는 것이 유일한 방어선. */
+export const POINT_GRID_RULE_VERSION = 9;
 /** [stockCode, base(null=기준선 값 없음), touchMin(−1=미터치), pivots, newHighs, prevBase(null=결손), prevBaseKrx(null=결손),
  *   touchTv("-1"=미터치), touchCum("-1"=미터치), sessionHighMin, sessionHighPrice]
  *  ⚠ 새 자리는 **끝에만** 붙인다 — 위치가 계약이라 중간 삽입은 옛 파일·옛 클라를 조용히 뒤튼다.
@@ -37,7 +43,7 @@ export function encodeChartGrid(stockCode: string, g: PointGrid): WireChartGrid 
             p.cross?.tv ?? NONE,
             p.cross?.cum ?? NONE,
         ]),
-        g.newHighs.map((e): WireNewHigh => [e.min, e.open, e.high, e.low, e.close, e.tv, e.cum]),
+        g.newHighs.map((e): WireNewHigh => [e.min, e.open, e.high, e.low, e.close, e.tv, e.cum, e.maxBefore]),
         g.prevBase,
         g.prevBaseKrx,
         g.touch?.tv ?? NONE,
@@ -69,7 +75,7 @@ export function decodeChartGrid(w: WireChartGrid): { stockCode: string; grid: Po
                     cross: markOf(p[5], p[6], p[7]),
                 }),
             ),
-            newHighs: w[4].map((e): GridNewHigh => ({ min: e[0], open: e[1], high: e[2], low: e[3], close: e[4], tv: e[5], cum: e[6] })),
+            newHighs: w[4].map((e): GridNewHigh => ({ min: e[0], open: e[1], high: e[2], low: e[3], close: e[4], tv: e[5], cum: e[6], maxBefore: e[7] })),
             prevBase: w[5] ?? null,
             prevBaseKrx: w[6] ?? null,
             sessionHigh: { min: w[9], price: w[10] },

@@ -12,6 +12,7 @@ const nh = (min: number, high: number, eok: number, bull = true): GridNewHigh =>
     close: bull ? high : high - 100,
     tv: String(eok * 100_000_000),
     cum: "0",
+    maxBefore: 0, // 전부 상단 돌파 취급(1단계 후보 필터 high > maxBefore 통과) — 진입 봉 판정은 2단계 몫
 });
 // 판정은 대금 창을 안 보므로 cum 은 자리만 채운다(창 파생은 windows.test 몫). v9 경로 뷰 유효성:
 // 레벨(첫 레벨 제외)엔 cross 를, 레벨마다 짝 저점을 채워야 levelViewOf 가 선다(불변식 ④·⑥).

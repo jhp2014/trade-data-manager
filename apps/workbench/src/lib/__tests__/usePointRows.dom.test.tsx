@@ -11,7 +11,7 @@ const grid: PointGrid = {
     base: 10000,
     touch: { min: 550, tv: "0", cum: "0" },
     pivots: [],
-    newHighs: [{ min: 560, open: 9950, high: 10050, low: 9900, close: 10050, tv: "6000000000", cum: "6000000000" }],
+    newHighs: [{ min: 560, open: 9950, high: 10050, low: 9900, close: 10050, tv: "6000000000", cum: "6000000000", maxBefore: 0 }],
     prevBase: 9900,
     prevBaseKrx: null,
     sessionHigh: { min: 560, price: 10050 },
