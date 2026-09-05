@@ -89,13 +89,15 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
     const base = grid.base;
     const pairHighs = levelViewOf(grid).map((p) => p.high);
     const lowOfPair = new Map(levelViewOf(grid).map((p) => [p.high.min, p.low.price]));
-    const levels: { price: number; renewal: boolean; min: number | null }[] = [{ price: base, renewal: false, min: null }];
+    const levels: { price: number; renewal: boolean; min: number | null; confirmedMin: number | null }[] = [
+        { price: base, renewal: false, min: null, confirmedMin: null },
+    ];
     let prevLow: number | null = null;
     for (const h of pairHighs) {
         const keep =
             h.price > Math.max(base, ...levels.map((l) => l.price)) &&
             !(def.mergeRisePct > 0 && prevLow !== null && ((h.price - prevLow) / prevLow) * 100 < def.mergeRisePct);
-        if (keep) levels.push({ price: h.price, renewal: true, min: h.min });
+        if (keep) levels.push({ price: h.price, renewal: true, min: h.min, confirmedMin: h.confirmedMin });
         prevLow = lowOfPair.get(h.min) ?? prevLow;
     }
 
@@ -107,7 +109,11 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
         if (!(e.high > e.maxBefore * bandK)) continue; // 후보 = m' 밴드의 사건 봉(§10.3 재구성)
         if (e.min <= def.excludeUptoMin) continue;
         if (def.bullOnly && !(e.close > e.open)) continue;
-        const crossed = levels.map((l, i) => ({ l, i })).filter(({ l }) => (l.renewal ? e.high > l.price * bandK : e.high >= l.price * bandK));
+        // 캔들 이전에 확정된 레벨만(strict) — 밴드 마진의 미래 마디 관통(미래 누출) 차단, pointsOf 와 같은 규칙 재진술.
+        const crossed = levels
+            .map((l, i) => ({ l, i }))
+            .filter(({ l }) => l.confirmedMin === null || l.confirmedMin < e.min)
+            .filter(({ l }) => (l.renewal ? e.high > l.price * bandK : e.high >= l.price * bandK));
         if (crossed.length === 0) continue;
         const top = crossed[crossed.length - 1];
         if (claimed.has(top.i)) continue;
@@ -274,9 +280,10 @@ async function main(): Promise<void> {
     console.log(`\n── Point 총수 ──`);
     console.log(`옛 ${total.old}(돌파 ${kinds.oldBreakout} · 재돌파 ${kinds.oldRenewal}) → 새 ${total.now}(돌파 ${kinds.nowBreakout} · 재돌파 ${kinds.nowRenewal})`);
     console.log(`차트 ${counts.charts}(Point 있는 차트 ${counts.gridsWithPoints} · 클래스① ${counts.class1Charts} · 존재차 ${counts.presence})`);
-    console.log(`\n── 갈림 4분류(클래스① 밖 — 1단계 게이트: 전부 0) ──`);
+    const isRegressionMode = def.approachPct === 0; // v8 동치 모드에서만 "갈림 0" 이 게이트 — 0.5 는 의도된 변화의 계측
+    console.log(`\n── 갈림 4분류(클래스① 밖${isRegressionMode ? " — v8 회귀 게이트: 전부 0" : " — 밴드 변화 계측(게이트 아님)"}) ──`);
     const cleanDiff = counts.relabeled + counts.moved + counts.added + counts.removed;
-    console.log(`동일 ${counts.equal} · 재라벨 ${counts.relabeled} · 이동 ${counts.moved} · 신설 ${counts.added} · 소멸 ${counts.removed} ${cleanDiff > 0 ? "⚠ 정지 신호" : "— 통과"}`);
+    console.log(`동일 ${counts.equal} · 재라벨 ${counts.relabeled} · 이동 ${counts.moved} · 신설 ${counts.added} · 소멸 ${counts.removed} ${isRegressionMode ? (cleanDiff > 0 ? "⚠ 정지 신호" : "— 통과") : ""}`);
     console.log(`클래스① 차트의 행 갈림(예고된 것 — 게이트 아님): ${counts.class1Rows}`);
     console.log(`\n── 독립 재계산 대조(전 차트) ──`);
     console.log(`일치 ${naive.ok}(그중 Point 있는 차트 ${naive.okWithPoints}) / 불일치 ${naive.bad.length} ${naive.bad.length > 0 ? "⚠ 정지 신호" : "— 통과"}`);

@@ -113,6 +113,10 @@ export interface PointLevel {
     price: number;
     renewal: boolean;
     min: number | null;
+    /** 마디의 확정 봉 시각(기준선은 null = 항상 유효). 귀속은 **캔들 이전에 확정된 레벨**만 본다 —
+     *  m'=0 에선 단조성 정리가 미래 레벨 교차를 원천 차단해 불필요했지만, 밴드 마진(m'>0)은 캔들
+     *  고가보다 0.5% 안까지 높은 **미래** 마디를 관통시킨다(2026-09-05 recon 실측 42차트 — 미래 누출). */
+    confirmedMin: number | null;
 }
 
 /**
@@ -128,7 +132,7 @@ export interface PointLevel {
  */
 export function levelsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEFINITION): PointLevel[] {
     if (grid.base === null) return [];
-    const levels: PointLevel[] = [{ price: grid.base, renewal: false, min: null }];
+    const levels: PointLevel[] = [{ price: grid.base, renewal: false, min: null, confirmedMin: null }];
     let maxKept = grid.base;
     let lastLow: number | null = null;
     for (const pair of levelViewOf(grid)) {
@@ -137,7 +141,7 @@ export function levelsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
             p.price > maxKept &&
             !(def.mergeRisePct > 0 && lastLow !== null && ((p.price - lastLow) / lastLow) * 100 < def.mergeRisePct)
         ) {
-            levels.push({ price: p.price, renewal: true, min: p.min });
+            levels.push({ price: p.price, renewal: true, min: p.min, confirmedMin: p.confirmedMin });
             maxKept = p.price;
         }
         lastLow = pair.low.price; // 다음 레벨의 병합 분모 = 직전 레벨 쌍의 저점
@@ -181,9 +185,12 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
         if (def.bullOnly && !(e.close > e.open)) continue; // 양봉 여부는 격자 OHLC 에서 파생(사실만 굽는 원칙)
         // 기준선은 스침(≥)이 돌파, 마디는 초과(>)가 갱신 — 터치 의미론과 러닝 최고가 갱신 의미론의 차이.
         // 마진은 레벨 가격에도 건다(기준 선 → 기준 밴드): m'=0 에서 오늘의 ≥/> 와 일치.
+        // **캔들 이전에 확정된 레벨만**(strict — 확정 봉과 같은 분도 배제: 봉 내부 순서 증명 불가) —
+        // m'=0 에선 정리가 보장하던 것을 마진 아래에선 명시로 지킨다(미래 마디 관통 = 미래 누출).
         let li = -1;
         for (let i = levels.length - 1; i >= 0; i--) {
             const lv = levels[i];
+            if (lv.confirmedMin !== null && lv.confirmedMin >= e.min) continue;
             if (lv.renewal ? e.high > lv.price * bandK : e.high >= lv.price * bandK) {
                 li = i;
                 break;
