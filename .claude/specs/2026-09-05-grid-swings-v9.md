@@ -1,0 +1,208 @@
+# 격자 v9 — 피벗을 양방향 zigzag(경로 뷰)로, 마디 뷰는 읽기 파생 + 기준 밴드(approachPct) + 순위 단면 기대집합 확장
+
+2026-09-05 설계 확정(B안 — 같은 날 A안 "두 배열 병행"을 뒤집음, §9). **같은 날 저녁 §10 기준 밴드 추가**(굽기는 1단계로 v9 에 흡수, 읽기 노브·걷기 개정은 2단계). 구현은 별도 세션. 규칙 원문은 `.claude/decisions.md` "자동 타점 격자"·"테마 강도·순위 단면" 절이고, 이 문서는 그 절을 **개정할** 내용의 구현 명세다. 구현 세션은 착수 전에 이 파일, decisions.md 두 절, `core/market/src/domain/grid/grid.ts`·`outcome.ts` 머리 주석을 읽는다.
+
+## 0. 범위
+
+**한다**
+1. `detectGrid` 의 `pivots` 를 **양방향 zigzag(국소 고점·저점 교대 열, 경로 뷰)** 로 바꾼다. 세션 러닝 최고가 고점(마디)은 그 부분집합이 되고, 마디 저점(레벨 구간 봉 최저)은 읽기 파생이 된다.
+2. 마디 뷰 파생 헬퍼를 core 에 하나 두고(`levelViewOf`), 피벗을 읽던 소비처 4곳이 그것을 거치게 한다.
+3. 코덱(튜플 모양 불변, 의미 개정)·번들 버전 가드·파일/계산 버전 9·전량 재굽기·recon 검증.
+4. 순위 단면(`/rank-sections`)의 기대집합을 "신고가 분" 에서 "밴드 갱신 캔들 분 ∪ 피벗 분" 으로 넓힌다.
+5. **§10 1단계**: `newHighs` 를 "러닝 최고가 갱신 캔들" 에서 "기준 밴드 사건 캔들(상단 돌파 + 밴드 진입)" 로 넓히고 `maxBefore` 를 굽는다(같은 버전 9, 재굽기 한 번).
+6. **§10 2단계**(1단계 뒤 같은 브랜치, 멈춰도 무해): `PointDefinition.approachPct` 노브(0~0.5)·판정 개정·`walkOutcome` 의 밴드 Point 처리·`PointDefHead` 노브.
+
+**안 한다**(후속 세션 — 소비자 미정, 2026-09-05 사용자 확정)
+- 경로 뷰를 읽는 새 클라 특징·결과·시뮬(TP/SL 레이스, 트레일링, 꼬리 고점) 일체(§10 2단계의 걷기 개정은 예외 — 밴드 Point 가 요구한다). 1단계까지의 화면 값은 **v8 과 같아야 한다**(두 tie 클래스의 소수 행 제외, §2.6). 2단계는 `approachPct = 0` 에서 v8 과 같고 기본값 0.5 에서 달라진다(의도).
+- 피벗 시점 테마를 읽는 술어·축·패널.
+- 순위 단면 계산 규칙(`rankSectionOf`)·접기(fold)·`RANK_SECTION_CALC_VERSION`.
+- 상승 3% 임계 — 굽지 않는다. 2% 경로 뷰의 읽기 축약으로 얻는다(§1).
+
+## 1. 배경과 목표
+
+현재 격자의 고점 피벗은 **세션 러닝 최고가**만 싣고 저점은 그 레벨 구간의 봉 최저 1개다. 전고점 미달 반등이 격자에 없어서 decisions.md 가 "격자로 못 보는 것"으로 적어 둔 익절/손절 레이스·고점 미달 반등·꼬리 고점이 클라에서 답이 안 난다. 목표는 **경로 구조(국소 극값의 교대 열)** 를 사실로 굽어, 뒤에 올 결과 트랙이 다음을 격자만으로 정확히 답하게 하는 것이다.
+
+- 진입(시그널 봉 종가 또는 눌림 진입) 후 +TP 도달 여부와 그 전 −SL 터치 여부, 둘의 순서
+- 트레일링 D(≥2%) 청산가와 최대 고가(MFE)·최대 낙폭(MAE)
+- 세션 최고가가 아닌 **꼬리 고점**(마지막 확정 이후 미확정 극값)
+
+원칙은 그대로다: **굽는 임계 = 하한(2%), 읽기 = 상향 조절.** 임계는 고점·저점 대칭 2% 하나(`zigzagPct` 재사용, 새 옵션 없음). 사용자가 말한 "저점에서 3% 오르면 고가를 찾는다"의 3% 는 읽기 층이 (저점, 다음 고점) 쌍 중 상승폭 3% 미만인 것을 병합해 얻는다 — 소비자가 생길 때 그 축약 함수를 core 에 둔다(이번 범위 밖).
+
+**한 배열이어야 하는 이유(A안 기각의 근거)**: 마디 뷰와 경로 뷰를 따로 구우면 같은 시그널의 "저가"가 두 진실이 된다 — 결과 패널의 T 걷기 저가(마디)와 거래 시뮬의 손절 터치(경로)가 넓은 봉 하나에서 갈린다. 갈림의 원인은 tie 규칙이지 데이터의 본질이 아니었다(§2.3).
+
+## 2. `pivots` 정의(v9)
+
+### 2.1 입력·봉 우주
+불변: 세션 창 [08:00, 20:00] 필터 → `densifyMinutes` → dense 분봉. 채움봉 참여 규칙 동일. 분봉 없거나 창 안 봉 0 이면 `null`.
+
+### 2.2 검출 — 순차 정의
+임계 `d = zigzagPct = 2`. `up = 1 + d/100`, `down = 1 − d/100`. 상태: `dir ∈ {none, up, down}`, `runHigh`(현재 상승 스윙의 러닝 최고가 봉 색인), `runLow`(현재 하락 스윙의 러닝 최저가 봉 색인), `sessMax`(직전 봉까지의 세션 최고가).
+
+봉 i 마다 먼저 `renew = highs[i] > sessMax` 를 판정하고 `sessMax` 를 갱신한다. **`renew` 가 tie 규칙의 스위치다(§2.3).**
+
+- **`dir = none`**(첫 스윙 전): `highs[i] > highs[runHigh]` 면 `runHigh = i`, `lows[i] < lows[runLow]` 면 `runLow = i`(세션 첫 봉은 둘 다 0). 그 뒤
+  - `renew` 면(고가 우선): `runLow ≠ i` 이고 `highs[i] ≥ lows[runLow] × up` 이면 **저점 확정**(`runLow` → low, `confirmedMin = mins[i]`, `dir = up`, `runHigh = i`). 고점 판정은 없다(자기 봉).
+  - 아니면(저가 우선): `runHigh ≠ i` 이고 `lows[i] ≤ highs[runHigh] × down` 이면 **고점 확정**(`runHigh` → high, `dir = down`, `runLow = i`). 그것도 아니면 `runLow ≠ i` 이고 `highs[i] ≥ lows[runLow] × up` 이면 저점 확정(`dir = up`, `runHigh = i`).
+- **`dir = up`**(마지막 확정 = 저점, `runHigh` 추적):
+  - `renew` 면 `runHigh = i`, **continue**(고가 우선 — v8 고점 규칙 그대로: 터치 검사 생략).
+  - 아니면 `lows[i] ≤ highs[runHigh] × down` 이면 고점 확정(`dir = down`, `runLow = i`) — **터치를 국소 갱신보다 먼저** 본다(저가 우선). 그것도 아니면 `highs[i] > highs[runHigh]` 면 `runHigh = i`(세션 최고가 아닌 국소 갱신).
+- **`dir = down`**(마지막 확정 = 고점, `runLow` 추적):
+  - `renew` 면(고가 우선) `highs[i] ≥ lows[runLow] × up` 로 **저점 확정**(`dir = up`, `runHigh = i`). 이 조건은 **항상 참**이다(`runLow ≤ 0.98 × 직전 확정 고점 ≤ sessMax < highs[i]`) — 거짓이면 불변식 위반이므로 throw.
+  - 아니면(저가 우선) `lows[i] < lows[runLow]` 면 `runLow = i`. 그것도 아니면 `highs[i] ≥ lows[runLow] × up` 이면 저점 확정(`dir = up`, `runHigh = i`).
+- **꼬리**: 루프 뒤 `dir = up` 이면 `runHigh` 를, `dir = down` 이면 `runLow` 를 `confirmedMin = null` 로 **마지막에 1개** 덧붙인다. `dir = none` 이면 빈 배열(무사건).
+
+자기 봉 확정 금지는 위 `≠ i` 검사와 `continue` 가 내장한다. 확정 시각은 항상 극값 봉보다 뒤다.
+
+### 2.3 tie 규칙 하나 — "세션 최고가를 갱신한 봉에서만 고가가 이기고, 그 외 모든 봉에서는 저가가 이긴다"
+한 봉 안의 순서는 증명할 수 없으므로 규칙은 정보 손실을 어디에 둘지의 선택이다.
+- **세션 최고가 갱신 봉**은 러닝 최고가라는 상태값의 사건이라 반드시 남겨야 한다 — 그 봉의 고가를 잃으면 마디가 사라져 Point 문법이 바뀐다(v8 도 이 봉을 열린 구간 밖에 두어 저가를 세지 않는다). 그래서 이 봉에서는 고가가 이긴다: `dir=up` 이면 갱신(터치 생략), `dir=down` 이면 저점 확정(그 봉의 더 낮은 저가는 버림).
+- **그 밖의 봉**에서는 눌림 깊이가 정보다. 트레일링 T 는 이미 선 세션 최고가 기준이라, 그 봉이 국소 고점을 갱신했든 말든 저가가 H−T% 아래면 스탑은 맞은 것이다. 그래서 저가가 이긴다: `dir=up` 이면 터치 확정을 국소 갱신보다 먼저, `dir=down` 이면 저가 갱신을 저점 확정보다 먼저. 이것은 decisions.md 의 시뮬 원칙 "봉 내 손절·익절 동시 터치는 비관적 타이브레이크(손절 먼저)"와 같은 말이다.
+
+### 2.4 항목 모양(타입 불변, 의미 개정)
+```ts
+interface GridPivot {
+    kind: "high" | "low";
+    min: number;                  // 극값 봉 시각
+    price: number;                // 극값(원주가)
+    confirmedMin: number | null;  // 확정 봉 시각. null = 꼬리(미확정, 항상 마지막 1개). ⚠ v8 의 "저점은 항상 null" 폐기
+    cum: string;                  // 세션 첫 봉부터 이 봉까지(포함) 누적 대금 — 관례 불변
+    cross: GridBarMark | null;    // 레벨(§2.5)인 고점에만: 직전 레벨 가격을 처음 넘은 봉(strict >). 첫 레벨·국소 고점·저점은 null
+}
+```
+`cross` 는 굽기 시점에 §2.5 의 레벨 판정을 같은 봉 배열 위에서 돌려 붙인다(스캔: 직전 레벨 봉 이후 `highs > 직전 레벨 가격` 인 첫 봉 — v8 루프의 `crossIdx` 와 같은 값).
+
+### 2.5 마디 뷰 = 읽기 파생(core 헬퍼 `levelViewOf(grid)`)
+```ts
+interface LevelPair { high: GridPivot; low: GridPivot; highIndex: number; lowIndex: number }
+function levelViewOf(grid: PointGrid): LevelPair[]
+```
+- **레벨** = 확정(`confirmedMin !== null`) 고점 중 **가격이 그 이전 모든 고점 피벗(확정·미확정 불문)보다 큰 것**(strict). 정리: `dir=up` 에서는 러닝 최고가 후보가 확정될 때까지 스윙 구조가 생기지 않으므로, 첫 스윙 이후의 확정 고점은 "세션 최고가 갱신 봉 ⟺ 이전 고점 전부보다 큼" 이다(첫 스윙 전 국면의 예외는 §2.6 ①). 미확정 꼬리 고점은 레벨이 아니다(v8 "미확정 마지막 마디는 넘을 대상이 아니다" 유지).
+- **레벨 저점** = `(레벨.min, 다음 레벨.cross.min)` 열린 구간(마지막 레벨은 세션 끝까지) 안 저점 피벗의 최솟값(동가 tie 는 이른 봉 — 배열이 오름차순이라 strict `<`). 항상 존재한다: 레벨은 터치 봉에서 확정되고 그 봉이 `runLow` 로 추적되어 확정되거나 꼬리로 남으며, 크로싱 봉에서는 `renew` 규칙이 저점 확정을 강제한다(§2.2 `dir=down` 의 "항상 참"). 결손이면 throw(침묵 오염 금지).
+- 이 헬퍼가 v8 `pivots` 의 (high, low) 쌍 열을 **재현**한다 — §2.6 의 두 클래스만 빼고 값이 같다. `sessionHigh` 는 파생 가능해졌지만(전 고점 피벗 + 꼬리의 max) 필드는 남긴다(§3, 불변식 ⑤로 정합만 검사).
+
+### 2.6 v8 과의 괴리 — 두 tie 클래스뿐(둘 다 가격 차 0.04% 안)
+① **선행 국면 동가 클래스(고점)**: 첫 스윙 전(`dir=none`) 세션 최고가 H 봉에서 저점 확정이 안 나고(그때까지 세션 최저가가 H 의 98% 위 — 평평한 개장), 이후 −2% 미만 눌림으로 `runLow` 가 내려간 뒤 고가가 **H 의 99.96% 이상**으로 되돌아온 봉 j 가 먼저 저점을 확정하면 상승 스윙이 j 에서 시작해 H 는 고점 피벗이 못 된다. v9 의 첫 레벨은 j(가격 ≤ H). v8 은 strict `>` 로 H 를 레벨로 둔다.
+② **저가 우선 동가 클래스(저점)**: `dir=up` 에서 확정 저점 L 뒤의 봉이 `0.98 × runHigh < low < L` 인 좁은 띠(≤ 0.04%)에 들면 v8 구간 최저는 그 봉인데 v9 는 터치가 아니라 추적하지 않는다.
+recon 이 둘을 **따로** 센다(예상 각각 한 자릿수). 이 두 클래스 밖의 마디 뷰 차이는 0 이어야 한다.
+
+### 2.7 불변식(테스트·recon 이 고정)
+① 시간 강한 오름차순, kind 교대, 첫 항목 kind 는 high/low 둘 다 가능(선행 저점 허용 — v8 "high 시작·low 끝·짝수" 규칙 폐기).
+② 확정 항목은 `confirmedMin > min`. 미확정은 있다면 마지막 1개.
+③ 확정 규칙 재진술: 확정 high 는 `(그 봉, 확정 봉)` **열린 구간**에 더 높은 고가 없이, 확정 봉 저가 `≤ price × down` 도달 — **확정 봉 자신은 고가 검사에서 제외**한다(§2.3 저가 우선 탓에 확정 봉이 국소적으로 더 높은 고가를 가질 수 있다, §7 (g)). 확정 low 는 대칭(확정 봉의 더 낮은 저가 허용 — §7 (d)의 고가 우선 케이스). 브루트포스(§7 `naivePivots`)가 표본에서 검사.
+④ `cross !== null` ⟺ 레벨이면서 첫 레벨이 아님. `cross.min` 은 직전 레벨 봉 뒤·이 레벨 봉 이전(이하), 파생 창 `0 < renewal ≤ leg` 는 레벨 쌍 위에서 유지(windows.ts, §5).
+⑤ `sessionHigh.price ≥ max(고점 피벗 가격)`(꼬리 포함), `sessionHigh.min` 은 그 최댓값의 **첫** 봉. 등식이 아니라 `≥` 인 이유: **클래스 ①(§2.6) 차트에서는 세션 최고가 H 가 피벗이 못 되어 strict `>` 가 된다** — 전수 스캔은 `≥` 로 검사하고, `>` 인 차트가 recon 의 클래스 ① 분류와 정확히 일치하는지를 따로 센다(그 밖에서 `>` 면 위반).
+⑥ 레벨 쌍마다 저점 존재(§2.5), 저점 봉 < 다음 레벨의 크로싱 봉.
+
+## 3. 타입·코덱·버전
+
+- `core/.../grid/grid.ts`: `GridPivot` 주석 개정(§2.4), `PointGrid.pivots` 주석을 경로 뷰로, 머리 주석에 §1·§2.3 요지. `detectGrid` 의 피벗 루프를 §2.2 로 교체하고 `cross` 스캔을 붙인다. `newHighs` 루프는 §10.2 러닝 밴드로 바꾸되 상단 돌파 항목은 옛 값 그대로여야 한다(§7 부분열 동일성). `touch`·`sessionHigh`·`prevBase*` 는 **한 줄도 바꾸지 않는다**(§7 비트 동일 대상).
+- `core/.../grid/codec.ts`: `WirePivot` 8칸·`WireChartGrid` 11칸·`CHART_TUPLE_LEN = 11` 불변. **`WireNewHigh` 는 끝에 `maxBefore` 1칸 추가(8칸)**(§10). 주석 표의 "confirmedMin(−1=null — 저점은 항상)" 을 "−1 = 꼬리(미확정)" 로 고친다. **번들 버전 가드 추가**: core 에 `POINT_GRID_RULE_VERSION = 9` 를 두고(`codec.ts`), 디코더 진입(`apps/workbench/src/api/pointGrids.ts` 의 `fetchPointGrids` — `decodeChartGrid` 를 도는 유일한 자리. `PointGridBundle.version` 은 이미 와이어에 실린다)에서 `bundle.version !== POINT_GRID_RULE_VERSION` 이면 throw — 튜플 칸 수가 같아 옛 가드가 못 잡는 "의미만 바뀐 번들"을 여기서 끊는다(옛 서버 3001 + 새 클라 조합의 침묵 오독 방지). `apps/api` 의 `POINT_GRID_CALC_VERSION` 은 이 상수를 **재노출**한다(값 두 벌 금지).
+- `apps/api/src/market/grid/gridStore.ts`: `POINT_GRID_FILE_VERSION = 9`(주석 "9: 2026-09-05 피벗 = 양방향 zigzag 경로 뷰, 마디는 읽기 파생").
+- `contracts/wire/src/pointGrid.ts`·`rankSection.ts` 머리 주석 개정(§8).
+
+## 4. 순위 단면 기대집합 확장
+
+- `apps/api/src/market/grid/pointGrids.ts` `candidateMinutes()`: 분 집합에 `grid.newHighs[].min`(§10 이후엔 밴드 사건 캔들 전부 — Point ⊆ 이 목록이라는 닫힘은 그대로) 에 더해 **`grid.pivots[].min`(꼬리 포함, 두 kind 모두)** 을 넣는다. `confirmedMin` 은 넣지 않는다(소비자 없음).
+- 이름은 `sectionMinutes()` 로 바꾼다("후보"가 더는 정확하지 않다). `apps/api/src/market/board/rankSections.ts:48` 포트 시그니처(⚠ `market/rank/` 아님), `apps/api/src/market/board/__tests__/rankSections.test.ts:79·106` fixture, `pointGrids.test.ts` 동반. `pointGrids.ts:154-159` 근거문은 "단면 분 = 격자의 사건 봉 전부(신고가·피벗)" 로.
+- 접기·`n`·`RANK_SECTION_CALC_VERSION`·GC 무변경. 기대집합만 커지므로 기존 단면 파일 전부 재사용, 빠진 분만 계산. 단면 캐시는 검출 버전 무관 공유라 격자 재굽기와 독립.
+- 예상 규모(2026-09-05 실측, 280일·6,016차트): 신고가 분 34,202 → 신고가 ∪ v8 피벗 분 42,799(+25%). v9 피벗은 국소 극값이 더해져 분 단위 포화로 대략 1.5~2배 안쪽 예상. 디스크 95MB → 150MB 안팎. 실측치를 §7 에 기록.
+
+## 5. 소비처 4곳 — 마디 뷰 헬퍼로 수렴
+
+원칙: **레벨 구조를 묻는 코드는 `pivots` 를 직접 순회하지 않고 `levelViewOf` 를 거친다.** 경로 뷰를 직접 읽는 소비자는 이번엔 없다.
+
+- `core/.../grid/points.ts` `levelsOf`: `levelViewOf` 순회로 교체. `lastLow`(mergeRisePct 분모) = 직전 레벨 쌍의 저점 가격(v8 과 같은 값). "도달 불가 가드" 주석 정리. `pointsOf`: 1단계에서는 **후보 = `newHighs` 중 `high > maxBefore`** 로 좁혀 v8 과 동일하게 두고(137행 "high 강한 단조" 전제 문장은 `maxBefore` 비감소로 교체), 2단계에서 §10.3 판정으로 바꾼다.
+- `core/.../grid/windows.ts`: `legHighOf(pointMin)` = **레벨** 고점 중 `min ≥ pointMin` 인 첫 것(시그널 뒤 첫 확정 고점은 정리상 레벨이지만 명시). `legStartOf` 의 `pivots[i+2]` 를 "다음 레벨의 cross" 로. `legAmountOf(pivotIndex)` 는 레벨 쌍 색인 기준으로 재정의(직전 레벨 쌍의 저점 cum 차 — recon·테스트 도구). `renewalAmountOf`·`breakoutAmountOf`·`amountFrom` 은 무변경.
+- `core/.../grid/outcome.ts` `walkOutcome`: `i += 2` 쌍 순회를 `levelViewOf` 순회로. 나머지(`sliceOutcome`, breakpoint 압축, `sessionHigh` 회복 판정) 무변경. 머리 주석의 "고점 피벗은 세션 러닝 최고가라 단조" 를 "레벨(마디 뷰)은 단조" 로.
+- `apps/workbench/src/lib/gridFeatures.ts` `pullbackLowPivot`: 코드 무변경(창 안 저점 피벗의 min — 국소 저점이 더 들어와도 최솟값은 같다, §2.6 ② 제외). 주석의 "저점 confirmedMin 은 항상 null" 문장을 지운다.
+- `apps/api/recon/04-point-diff.ts`: 무변경(newHighs 전제만).
+- fixture(`apps/workbench/src/test/renderPanel.tsx`, dom/hook 테스트의 격자 fixture): 피벗 모양이 v8 의 (high, low) 쌍이면 v9 에서도 유효한 경로 뷰다(교대·확정 시각 조건만 맞으면). 저점의 `confirmedMin: null` 이 꼬리로 읽히지 않게 **확정 시각을 채운다**(마지막 항목이 아닌데 null 이면 ② 위반).
+
+## 6. 구현 순서와 주의
+
+1. **캐시 사본 먼저**: `apps/api/.cache/point-grid` → `point-grid-v8` 복사. 그 다음에야 버전 상수를 편집한다(반대면 tsx watch 가 편집 순간 재대사해 사본이 이미 v9 다 — decisions.md 실측 함정).
+2. 편집·재굽기 중 **api dev 서버를 내린다**(`PointGrids.prior` 상주 메모 우선 → 옛 메모가 새 파일을 덮는 경합). 개발 워크트리(`C:\Dev\tdm-work`, 3011)에서만. 사용자 폴더(3001)는 손대지 않는다 — 사용자 인스턴스는 사용자가 api 를 재기동할 때 스스로 재대사한다(순위 단면도 그때 확장 기대집합으로 채운다. 첫 `/rank-sections` 가 오래 걸릴 수 있음을 사용자에게 알린다).
+3. 순서: grid.ts(§2.2 검출 + cross 스캔 + §10.2 러닝 밴드·`maxBefore`) → `levelViewOf`(core, 새 파일 `levelView.ts` 또는 points.ts 상단) → detectGrid.test·levelView.test → 소비처 4곳(§5, `pointsOf` 는 1단계 `high > maxBefore` 후보) + 각 테스트 → codec.ts(`WireNewHigh` 8칸)·주석·버전 가드·상수 → fixture 확정 시각·`maxBefore` → `pnpm type-check`·`pnpm test` → api 기동해 전량 재굽기 → recon(§7) → `sectionMinutes` 확장 + 테스트 → 재기동해 단면 대사 → 실측 기록 → 문서(§8) → **2단계**(§10.3~10.4: `approachPct` 노브·판정·걷기·`PointDefHead`, recon point-diff 0/0.5).
+4. 워크벤치 **하드 리로드** 필수(react-query IMMUTABLE). 버전 가드 덕에 옛 번들은 throw 로 보인다(정상).
+
+## 7. 검증
+
+**단위 테스트(core)**
+- `detectGrid.test.ts`: (a) 상승→−2%→+2% 교대 기본형, (b) 개장 급락 후 반등 = 선행 저점이 첫 항목, (c) 꼬리 high / 꼬리 low / 무사건, (d) `dir=down` 세션 최고가 갱신 봉 = 저점 확정·그 봉이 `runHigh`·그 봉의 더 낮은 저가 미수록(고가 우선), (e) `dir=down` 비갱신 넓은 봉 = 저가 갱신 우선(+2% 무시), (f) `dir=up` 세션 갱신 봉 = 터치 생략, (g) `dir=up` 국소 갱신+터치 동봉 = 터치 확정 우선(저가 우선), (h) 자기 봉 확정 금지, (i) `cross` 가 v8 과 같은 봉, (j) `newHighs`·`touch`·`sessionHigh` 기존 케이스 무수정 통과, (k) 불변식 ①~⑥ 자동 검사 헬퍼를 전 fixture 에 적용.
+- `levelView.test.ts`: v8 모양 fixture(교대 쌍)에서 레벨 쌍이 그대로 나옴, 국소 극값이 섞인 fixture 에서 레벨만 골라내고 저점 = 구간 최솟값, ⑥ 결손 throw.
+- `pointsOf.test`·`windows.test`·`outcome.test`: 기대값 **무수정** 통과가 목표(v8 fixture 는 유효한 v9 경로 뷰). `legHighOf` 동치(T=2 특수해) 유지.
+- `codec.test.ts`: 왕복 보존 + 버전 가드(다른 version 번들 throw).
+
+**recon (`apps/api/recon/03-grid-diff.ts` 개정)**
+- `point-grid-v8` vs 새 캐시: `touch`·`sessionHigh`·`prevBase*` **6,016차트 비트 동일(diff 0)**. `newHighs` 는 §10 으로 넓어지므로 **`high > maxBefore` 인 항목만 골라낸 부분열이 v8 `newHighs` 와 비트 동일**(diff 0) — 이게 1단계 회귀 증명이다. 추가로 밴드 진입 항목 수·raw 바이트 증가분을 기록(§10.5).
+- `recon:point-diff` 를 `approachPct = 0` 으로 돌려 v8 캐시 Point 와 **차이 0**(§2.6 클래스 ① 행 제외), `approachPct = 0.5` 로 돌려 이동·신설·소멸 분포를 보고(의도된 변화의 크기 기록 — 게이트 아님).
+- 마디 뷰 대조: v8 `pivots` 쌍 열 vs v9 `levelViewOf` 결과 — 차트별 3분류 **equal / 클래스① / 클래스②**, 그 밖 **0**. 클래스별 건수와 최대 가격 차(%)를 보고서에(예상 0.04% 이하).
+- 경로 뷰 불변식 ①~⑥ 전수 스캔. `0 < renewal ≤ leg` 는 레벨 쌍 위에서.
+- 표본 분봉 브루트포스 `naivePivots`(§2.2 를 독립 재구현) 대조 — 기존 `naiveGrid` 자리.
+- `recon:grid-scale`: 피벗 항목 수·raw 바이트(현 10.2MB 기준) — 게이트 아닌 기록.
+- `recon:point-diff`(옛 규칙 = v8 캐시의 Point, 새 규칙 = v9): 이동·신설·소멸·재라벨 전부 클래스①에서만 나와야 한다(레벨 집합이 그 밖엔 동일).
+
+**순위 단면·화면**
+- 재기동 후 `.cache/rank-section` 단면 총수·날짜당 평균·디스크 크기 기록(§4 예상치 대조). 임의 날짜에서 국소 저점 분에 단면이 있고 접힌 행에 자기 서수가 실리는지.
+- `/point-grids` 응답 크기(gzip 전후), 하드 리로드 후 콘솔 에러 0, 시트 결과 열·눌림 깊이 열 표본 3행이 재굽기 전과 같은지(클래스 ①② 행이 아니면 같아야 한다).
+
+## 8. 문서
+
+- `.claude/decisions.md` 격자 절: "확정 고점 = 세션 러닝 최고가" 3줄 정의를 §2.2·§2.3 으로 교체, "high 시작·low 끝·짝수" 불변식 폐기 → §2.7, 마디 뷰 = 읽기 파생(§2.5)·괴리 클래스(§2.6)·버전 9·기각(§9). 순위 단면 절: 기대집합 = 사건 봉 전부. `/decision-log` 스킬 사용.
+- `grid.ts`·`outcome.ts`·`points.ts`·`windows.ts` 머리 주석, `codec.ts` 튜플 표, `contracts/wire` 두 파일 머리 주석.
+- 메모리 `auto-point-grid-design` 말미에 v9 한 단락(구현 세션이 끝나면 메인 세션이 갱신).
+
+## 9. 기각안
+
+- **A안: `pivots`(마디) + `swings`(경로) 두 배열**: 같은 시그널의 저가가 두 진실이 되어 결과 패널(T 걷기)과 시뮬(손절 터치)이 넓은 봉에서 갈린다. 갈림의 원인은 "고점 쪽 갱신 우선" tie 규칙이 넓은 봉의 저가를 버리는 것이었고, §2.3 규칙이 그것을 없앤다. 두 배열의 남는 이점(소비처 무수정·비트 동일 증명)은 진실 둘의 비용에 못 미친다(2026-09-05 사용자 확정).
+- **양쪽 다 "갱신 우선"(대칭)**: 세션 최고가 갱신 봉(크로싱 봉)의 고가가 다음 스윙에서 빠져 마디가 소실 — Point 문법이 바뀐다.
+- **양쪽 다 "확정 우선"**: 세션 최고가 갱신 봉이 `dir=up` 에서 터치로 먼저 잡혀 그 봉의 고가(세션 최고가)가 피벗이 못 된다.
+- **봉 색(양봉=저가 먼저) 휴리스틱으로 봉 내부 순서 추정**: 추정을 사실로 굽는다. 격자 원칙 위반.
+- **비대칭 임계(하락 2 / 상승 3) 굽기**: 굽는 임계는 하한. 3% 는 읽기 축약.
+- **세션 전 분 순위 단면**: 상한 약 200,000단면, 클라가 통째 드는 구조와 불일치.
+- **`confirmedMin` 분도 단면 기대집합에**: 소비자 없음. 필요 시 한 줄 추가(additive).
+- **`sessionHigh` 폐기(파생 가능)**: 튜플 위치 계약상 중간 칸 제거 불가, 소비처가 있고 값 하나. 불변식 ⑤로 정합만 검사.
+- **`level: boolean` 굽기**: 러닝 max 한 줄 파생. 굽지 않는다.
+
+## 10. 기준 밴드(approachPct) — 2026-09-05 저녁 확정
+
+### 10.1 본질 — 기준 선이 기준 밴드가 된다
+갱신의 기준 가격 P(그날 러닝 최고가 M, 마디, 기준선)는 선이 아니라 **밴드 [P×(1−m), P]** 다. 실전에서는 전고점에 딱 닿기 전에 사므로, 밴드에 들어온 순간부터 "갱신 영역"으로 본다(사용자 확정, 보수적 측정 방향). 굽는 하한 `m = 0.5%`(`approachPct` 검출 옵션, zigzag 2%·floor 20억과 같은 층), 읽기 노브 `m' ∈ [0, 0.5]`, 기본값 0.5. 1% 가 필요해지면 재굽기다.
+
+마진은 **Point 판정에만** 건다. 가격 구조(zigzag·레벨·크로싱·세션 최고가)와 창 시작 봉(터치·크로싱)은 정확 사실로 남는다 — 구조까지 밴드로 움직이면 레벨 저점 구간이 앞당겨져 T 걷기가 바뀌고 거기엔 실전 논리가 없다(사용자 미이의, 2026-09-05).
+
+### 10.2 러닝 밴드 상태기계(굽기)
+상태 `(M, bottom)`: `M` = 러닝 최고가, `bottom` = 밴드 하단. **`M` 은 −∞(v8 루프 모양 그대로)에서 시작한다 — 세션 첫 봉은 언제나 상단 돌파 사건이고 `maxBefore = 0` 으로 실린다**(v8 이 첫 봉을 수록하므로 부분열 비트 동일성이 이를 요구). `maxBefore` = 그 봉을 처리하기 **직전**의 `M`(첫 봉만 0 으로 치환). 봉 i 마다(볼륨 무관):
+- **상단 돌파** `high > M`: `M = high`, `bottom = M×(1−m)` — 밴드가 **갱신·리셋**된다.
+- **밴드 진입** `bottom < high ≤ M`: `bottom = high` — 밴드가 **좁아진다**.
+- 그 밖(`high ≤ bottom`): 무사건.
+두 사건의 봉 중 `tv ≥ floor` 인 것을 `newHighs` 에 싣는다(코드 심볼은 `newHighs` 유지 — 화면·문서 어휘는 "밴드 갱신 캔들", 심볼 개명은 사용자 설정·와이어 주소를 흔든다는 기존 규칙). 항목 = 기존 7필드 + **`maxBefore`(그 봉 직전의 M, 세션 첫 봉은 0)**. 상단 돌파는 `high > maxBefore` 로 읽힌다(플래그 불필요).
+
+옛 목록과의 관계: 상단 돌파 봉은 자동 포함되므로 **`high > maxBefore` 부분열 = v8 `newHighs` 비트 동일**. 목록은 더는 단조가 아니다 — 갱신 뒤 그 아래 진입들이 톱니로 선다(`maxBefore` 는 비감소).
+
+리셋의 뜻: 갱신 봉 A 직후 0.997·M_A 봉 B 는 진입이다(A 가 게이트 미달이면 B 가 그 레벨의 Point 가 될 수 있다 — "전고점 −0.5% 안에 들어오면 갱신 영역"의 원문 그대로). 갱신 없이 저대금 진입 봉이 하단을 올린 뒤 그보다 낮은 고대금 봉은 무사건이다(M 이 저대금 봉으로 오르는 것과 같은 자리).
+
+### 10.3 읽기 판정(2단계, `pointsOf`)
+- 기록 봉이 m' 에서 **사건**인가: `high > maxBefore×(1−m')` 하나. 증명: 굽기의 "하단보다 높다"는 "그 갱신 이후 모든 진입 봉(저대금 포함)보다 높다"를 이미 내장하므로 하단을 따로 굽지 않아도 m' ≤ 0.5 전부 정확히 재구성된다. `m' = 0` 이면 `high > maxBefore` = 옛 strict 갱신.
+- 사건 봉이 넘은 **레벨**: 최고 레벨 규칙 그대로 — 기준선 `high ≥ base×(1−m')`, 마디 `high > L×(1−m')`(m'=0 에서 오늘의 ≥/> 와 일치). 레벨당 Point 1개·게이트·제외 창·병합·양봉은 불변. 밴드 Point 가 먼저 서면 뒤의 실제 크로싱 봉은 Point 가 아니다(의도).
+- 결과: 마진의 기준은 언제나 그날 러닝 최고가다. 마디가 곧 M 인 보통의 경우엔 "전고점 −0.5%" 와 같고, 저대금 봉이 마디 위를 스쳐 M 이 더 높으면 M 근처여야 잡힌다(옛 규칙에서 그 봉이 갱신이 아니라 Point 가 못 되던 것과 같은 판단). 기준선도 같다: 아직 안 닿았으면 접근 봉이 곧 갱신이고, 저대금으로 이미 넘은 뒤의 재접근은 잡히지 않는다.
+- `PointDefinition.approachPct`(6번째 판정 노브, `PointJudgeDef` Pick 에 포함, `parsePointDef` 관대 병합 — 옛 저장물은 0.5 기본), `PointDefHead` 노브 1개, SavedSet payload 동승. 축 `baseline-position`·`grid-*` 는 Point 봉 종가 기준이라 자동으로 따라온다.
+
+### 10.4 결과 걷기 개정(2단계, `walkOutcome`) — 경로 뷰가 필요한 자리
+밴드 Point P(시각 p)는 그 레벨 L 의 **저점 구간 안**에 놓인다(아직 상단을 안 넘었다). 옛 걷기("고점 시각 ≥ p 인 레벨 쌍만")는 P 직후의 눌림을 통째로 놓쳐 결과를 낙관한다. 개정:
+- p 를 품는 레벨 쌍(레벨 봉 < p < 그 레벨의 크로싱 봉 또는 세션 끝)이 있으면, 그 구간에서 **p 이후 경로 뷰 저점의 최솟값**을 첫 눌림 후보로 넣는다. 깊이의 기준 고점은 그때의 러닝 최고가 = 그 레벨 가격(트레일링은 이미 선 최고가 기준). 이후는 옛 걷기 그대로(뒤 레벨 쌍 순회, 러닝-최대 접두 압축).
+- 연장 고점("어디까지 올라갔는지")도 p 이후만: p 이후 경로 뷰 고점·뒤 레벨·세션 최고가의 max. p 가 상단 돌파 봉 자신이면(m'=0 케이스) 개정 전과 동일해야 한다(outcome.test 가 고정).
+- `legHighOf`(T=2 특수해·차트 표식)는 상단 돌파 Point 에 대해서만 동치를 주장하고, 밴드 Point 는 걷기 결과를 쓴다.
+
+### 10.5 검증(§7 에 추가)
+- detectGrid.test: 갱신 직후 진입(리셋)·좁아진 밴드 아래 봉 무사건·저대금 진입이 하단만 올리는 케이스·`maxBefore` 비감소·`high > maxBefore` 부분열 = 옛 목록.
+- pointsOf.test: `approachPct = 0` 에서 기존 기대값 전부 무수정 통과, 0.5 에서 밴드 Point 가 크로싱 봉을 대체하는 케이스·M 이 마디 위일 때 마디 근접이 무사건인 케이스.
+- outcome.test: 밴드 Point 직후 3% 눌림 뒤 크로싱 케이스에서 깊이·연장 고점, 상단 돌파 Point 는 개정 전과 동일.
+- recon: §7 의 `newHighs` 부분열 동일성·point-diff 0/0.5 두 번. 목록 항목 수 증가분(예상: 레벨당 0~2개 진입 봉)과 raw 바이트 기록.
+
+### 10.6 기각
+- **밴드 안 캔들 전부 수록**: 고점 아래 횡보 봉이 전부 실려 크기 폭발. 하단이 좁아지는 규칙이 같은 정보를 사건 봉만으로 준다.
+- **갱신 뒤 밴드를 [M, M] 으로 닫기(R 규칙, 같은 날 오후 제안)**: 목록이 단조라 편하지만 "전고점 −0.5% 안이면 갱신 영역"의 원문에 어긋난다(갱신 봉 직후 0.997M 진입을 버린다). `maxBefore` 가 단조 전제를 대신하므로 이점이 없다.
+- **하단(`bottomBefore`) 굽기**: 10.3 증명대로 불필요.
+- **마진 0.5 고정·노브 없음**: 정확 모드가 없어 v8 회귀 증명을 recon 이 분봉을 다시 읽어야 한다. 숫자 한 칸(`maxBefore`)이 노브와 증명을 둘 다 산다.
+- **구조·창 시작 봉에도 마진**: 10.1.
