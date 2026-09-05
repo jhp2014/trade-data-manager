@@ -14,8 +14,11 @@ export function parsePointDef(raw: unknown): PointDefinition | null {
     const t1raw = tol(r.toleranceT1Pct, DEFAULT_POINT_DEFINITION.toleranceT1Pct);
     const t2raw = tol(r.toleranceT2Pct, DEFAULT_POINT_DEFINITION.toleranceT2Pct);
     return {
-        baselineGateEok: num(r.baselineGateEok, DEFAULT_POINT_DEFINITION.baselineGateEok),
-        renewalGateEok: num(r.renewalGateEok, DEFAULT_POINT_DEFINITION.renewalGateEok),
+        // 게이트는 **정수 억**으로 정규화 — pointsOf 의 `BigInt(gateEok)` 가 소수를 받으면 던진다
+        // (RangeError). setPointDef 가 매번 이 파서를 지나므로 여기 한 곳이 전 입력 경로(타이핑·
+        // 스트립 칸 클릭·SavedSet payload·영속 복원)의 유일한 가드다.
+        baselineGateEok: Math.round(num(r.baselineGateEok, DEFAULT_POINT_DEFINITION.baselineGateEok)),
+        renewalGateEok: Math.round(num(r.renewalGateEok, DEFAULT_POINT_DEFINITION.renewalGateEok)),
         excludeUptoMin: num(r.excludeUptoMin, DEFAULT_POINT_DEFINITION.excludeUptoMin),
         mergeRisePct: num(r.mergeRisePct, DEFAULT_POINT_DEFINITION.mergeRisePct),
         bullOnly: bool(r.bullOnly, DEFAULT_POINT_DEFINITION.bullOnly), // 2026-08-31 추가 — 옛 저장물엔 없어 기본 true 로 채워진다

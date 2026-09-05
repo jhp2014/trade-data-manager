@@ -15,6 +15,8 @@ export interface PointGridsView {
     error: Error | null;
     /** (종목, 날짜) → 격자. 없으면 undefined(기준선 미확정·재료 없음 — 결손은 결손). */
     gridOf(code: string, date: string): PointGrid | undefined;
+    /** 전수 순회 소비자용(게이트 분포 등) — 낟알 조회는 `gridOf`. 로딩 전엔 null. */
+    byDate: ReadonlyMap<string, ReadonlyMap<string, PointGrid>> | null;
     version: number | null;
 }
 
@@ -27,6 +29,7 @@ export function usePointGridsValue(): PointGridsView {
             isLoading: q.isLoading,
             error: (q.error as Error | null) ?? null,
             gridOf: (code, date) => data?.byDate.get(date)?.get(code),
+            byDate: data?.byDate ?? null,
             version: data?.version ?? null,
         };
     }, [q.data, q.isLoading, q.error]);

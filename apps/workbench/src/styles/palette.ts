@@ -93,6 +93,8 @@ export const THEME_PEER = "#16796f"; // 테마 동료 점 — PRICE_LINE 과 지
 
 export const AUTO_POINT = "#16796f"; // 자동 Point(격자 파생) 마커 ◇ — PRICE_LINE 과 지금 같은 teal 이지만 뜻이 다르다(머리 규칙: 이름을 가른다)
 
+export const POINT_DEF = "#16796f"; // 정의층(모수 선언 — PointDefHead·게이트 스트립) — AUTO_POINT 와 지금 같은 teal 이고 뜻도 이웃("그 ◇들이 무엇인지 선언하는 층")이지만 이름을 가른다. FILTER 빨강(조건)·LEG_HIGH 앰버(T 레일)와 구분이 이 색의 존재 이유
+
 export const LEG_HIGH = "#be7a00"; // 결과의 연장 고점(차트 드롭 캡·띠, 결과 패널 T 레일) — M 가격선과 지금 같은 앰버지만 뜻이 다르다(이름 가르기). 세로 캡+점이라 가로선인 M 과 형태로도 갈린다
 
 export const CHART_LABEL = "#a0a0a0"; // 차트 툴팁의 라벨 회색(툴팁 배경 위 — 본문 --text-tertiary 와 다름)

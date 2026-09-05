@@ -64,6 +64,11 @@ export type PointJudgeDef = Pick<
     "baselineGateEok" | "renewalGateEok" | "excludeUptoMin" | "mergeRisePct" | "bullOnly" | "approachPct"
 >;
 
+/** 게이트 2필드를 타입상 못 보는 판정 부분집합 — 게이트 분포(`levelMaxTvOf`)가 게이트 불변임을
+ *  시그니처로 못박는다(`PointJudgeDef` 가 T 를 못 보는 계약의 재사용). 게이트 드래그 중 분포가
+ *  움직이면 스트립의 존재 이유("드래그 전에 보인다")가 무너진다. */
+export type PointCandidateDef = Omit<PointJudgeDef, "baselineGateEok" | "renewalGateEok">;
+
 /** 허용 폭 T 의 도메인(%) — 하한 = zigzag 해상도(이보다 얕은 눌림은 격자에 없다). */
 export const TOLERANCE_MIN_PCT = 2;
 export const TOLERANCE_MAX_PCT = 30;
@@ -133,7 +138,7 @@ export interface PointLevel {
  * `pointsOf` 밖으로 뺀 이유는 recon(point-diff)이 **같은 레벨 정의** 위에서 옛/새 규칙을 대조해야 해서다 —
  * 사본을 두면 레벨 규칙이 바뀔 때 양쪽이 함께 틀어져 diff 가 조용히 무의미해진다. 기준선 없으면 빈 배열.
  */
-export function levelsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEFINITION): PointLevel[] {
+export function levelsOf(grid: PointGrid, def: PointCandidateDef = DEFAULT_POINT_DEFINITION): PointLevel[] {
     if (grid.base === null) return [];
     const levels: PointLevel[] = [{ price: grid.base, renewal: false, min: null, confirmedMin: null }];
     let maxKept = grid.base;
@@ -150,6 +155,35 @@ export function levelsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
         lastLow = pair.low.price; // 다음 레벨의 병합 분모 = 직전 레벨 쌍의 저점
     }
     return levels;
+}
+
+/**
+ * 자격 캔들인가 — 사건 재구성(밴드 마진) + 제외 창 + 양봉 요건. **게이트는 여기 없다**(슬롯·레벨별이라
+ * 호출부 몫). `pointsOf` 밖으로 뺀 이유는 levelsOf 와 같다 — 게이트 분포(`levelMaxTvOf`)가 같은 자격
+ * 정의 위에 서야 "max tv ≥ gate ⟺ Point 존재" 등가가 성립한다(사본이면 조용히 갈린다).
+ */
+function isQualifiedEvent(e: GridNewHigh, bandK: number, def: Pick<PointCandidateDef, "excludeUptoMin" | "bullOnly">): boolean {
+    // 사건 재구성 — m'=0: 상단 돌파만(v8 동치) / m'>0: 그 마진의 밴드 사건까지(§10.3 증명).
+    if (!(e.high > e.maxBefore * bandK)) return false;
+    if (e.min <= def.excludeUptoMin) return false;
+    if (def.bullOnly && !(e.close > e.open)) return false; // 양봉 여부는 격자 OHLC 에서 파생(사실만 굽는 원칙)
+    return true;
+}
+
+/**
+ * 귀속 레벨(그 캔들이 넘은 **최고** 레벨, 캔들 이전에 확정된 것만) — 없으면 -1.
+ * 기준선은 스침(≥)이 돌파, 마디는 초과(>)가 갱신 — 터치 의미론과 러닝 최고가 갱신 의미론의 차이.
+ * 마진은 레벨 가격에도 건다(기준 선 → 기준 밴드): m'=0 에서 오늘의 ≥/> 와 일치.
+ * **캔들 이전에 확정된 레벨만**(strict — 확정 봉과 같은 분도 배제: 봉 내부 순서 증명 불가) —
+ * m'=0 에선 정리가 보장하던 것을 마진 아래에선 명시로 지킨다(미래 마디 관통 = 미래 누출).
+ */
+function attributedLevelIdx(levels: readonly PointLevel[], e: GridNewHigh, bandK: number): number {
+    for (let i = levels.length - 1; i >= 0; i--) {
+        const lv = levels[i];
+        if (lv.confirmedMin !== null && lv.confirmedMin >= e.min) continue;
+        if (lv.renewal ? e.high > lv.price * bandK : e.high >= lv.price * bandK) return i;
+    }
+    return -1;
 }
 
 /**
@@ -195,23 +229,8 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
     // 열린 슬롯 2 — 워터마크(슬롯 1 캔들의 고가·시각). 더 높은 레벨로 귀속이 점프하면 소멸(위 커서 원칙).
     let slot2: { level: number; watermark: number; watermarkMin: number } | null = null;
     for (const e of grid.newHighs) {
-        // 사건 재구성 — m'=0: 상단 돌파만(v8 동치) / m'>0: 그 마진의 밴드 사건까지(§10.3 증명).
-        if (!(e.high > e.maxBefore * bandK)) continue;
-        if (e.min <= def.excludeUptoMin) continue;
-        if (def.bullOnly && !(e.close > e.open)) continue; // 양봉 여부는 격자 OHLC 에서 파생(사실만 굽는 원칙)
-        // 기준선은 스침(≥)이 돌파, 마디는 초과(>)가 갱신 — 터치 의미론과 러닝 최고가 갱신 의미론의 차이.
-        // 마진은 레벨 가격에도 건다(기준 선 → 기준 밴드): m'=0 에서 오늘의 ≥/> 와 일치.
-        // **캔들 이전에 확정된 레벨만**(strict — 확정 봉과 같은 분도 배제: 봉 내부 순서 증명 불가) —
-        // m'=0 에선 정리가 보장하던 것을 마진 아래에선 명시로 지킨다(미래 마디 관통 = 미래 누출).
-        let li = -1;
-        for (let i = levels.length - 1; i >= 0; i--) {
-            const lv = levels[i];
-            if (lv.confirmedMin !== null && lv.confirmedMin >= e.min) continue;
-            if (lv.renewal ? e.high > lv.price * bandK : e.high >= lv.price * bandK) {
-                li = i;
-                break;
-            }
-        }
+        if (!isQualifiedEvent(e, bandK, def)) continue;
+        const li = attributedLevelIdx(levels, e, bandK);
         if (li < 0) continue;
         if (li > claimedLevel) {
             // ── 슬롯 1: 그 레벨의 첫 자격 캔들. 게이트 미달이면 낮은 레벨로 **내려가지 않고**(그 캔들은
@@ -251,4 +270,50 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
         levelIdx: c.levelIdx,
         levelMin: c.levelMin,
     }));
+}
+
+/** 레벨 하나의 게이트 통계 — 게이트 분포 스트립(정의층)의 낟알. */
+export interface LevelGateStat {
+    levelIdx: number;
+    /** 이 레벨의 **슬롯 1** 을 지배하는 게이트 — baseline ⟺ levelIdx 0. 명시 필드인 이유: "kind =
+     *  levelIdx===0 파생" 정리가 폐기된 마당에(슬롯 2 모델) 호출부가 그 폐기된 규칙을 재발명하지 않게. */
+    gate: "baseline" | "renewal";
+    /** 그 레벨에 귀속된 자격 캔들들의 tv 최댓값(원). number 가 정확한 근거: tv ≤ ~1e13 < 2^53 이고
+     *  게이트(정수 억 × 1e8)도 2^53 안이라 BigInt 비교와 비트 동일. */
+    maxTv: number;
+}
+
+/**
+ * 게이트 분포의 재료 — 레벨당 최대 자격 대금. **자격 캔들이 하나도 귀속 안 된 레벨은 뺀다**
+ * (어떤 게이트에서도 Point 를 못 낳는 레벨 — 분포에 넣으면 "소멸 예측"이 부풀려진다).
+ *
+ * 등가 정리(스트립의 정직성 근거): **레벨 L 이 Point(슬롯 1)를 낳는다 ⟺ maxTv(L) ≥ gate(L)** —
+ * 게이트에 대해 단조. 증명 골자: 귀속(`attributedLevelIdx`)은 게이트를 안 보고, 귀속의 시간 비감소
+ * (`pointsOf` claimedLevel 주석의 정리) 탓에 li=L 캔들들은 연속 구간을 이루며 그동안 커서 < L 이라
+ * 전부 슬롯 1 후보다 — 첫 통과가 곧 슬롯 1, 전무하면 슬롯 2 도 없다(슬롯 2 는 슬롯 1 존재가 전제).
+ * 슬롯 2 캔들의 tv 가 max 에 섞여도 등가는 유지된다(슬롯 2 국면 = 이미 슬롯 1 이 선 뒤).
+ * ⚠ 정리가 깨지면(귀속 역행 격자) 과대평가로 조용히 틀어진다 — recon(05-gate-dist)의 예측 vs 실행
+ * 전수 대조가 그물이다.
+ *
+ * def 가 `PointCandidateDef` 인 것이 계약의 몸통: 게이트 값이 무엇이든 이 함수의 산출은 불변이다.
+ */
+export function levelMaxTvOf(grid: PointGrid, def: PointCandidateDef = DEFAULT_POINT_DEFINITION): LevelGateStat[] {
+    if (grid.base === null) return [];
+    const levels = levelsOf(grid, def);
+    const bandK = 1 - def.approachPct / 100;
+    const max: (number | null)[] = levels.map(() => null);
+    for (const e of grid.newHighs) {
+        if (!isQualifiedEvent(e, bandK, def)) continue;
+        const li = attributedLevelIdx(levels, e, bandK);
+        if (li < 0) continue;
+        const tv = Number(e.tv);
+        const cur = max[li];
+        if (cur === null || tv > cur) max[li] = tv;
+    }
+    const out: LevelGateStat[] = [];
+    for (let i = 0; i < levels.length; i++) {
+        const m = max[i];
+        if (m !== null) out.push({ levelIdx: i, gate: levels[i].renewal ? "renewal" : "baseline", maxTv: m });
+    }
+    return out;
 }

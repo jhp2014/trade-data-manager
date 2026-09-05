@@ -1,7 +1,7 @@
 // pointsOf — 격자 리터럴로 읽기 층 Point 판정을 못 박는다(분봉·DB 0 — 격자 스키마 충분성의 증거).
 import { describe, expect, it } from "vitest";
 import type { GridNewHigh, GridPivot, PointGrid } from "../grid.js";
-import { DEFAULT_POINT_DEFINITION, pointsOf, type PointDefinition } from "../points.js";
+import { DEFAULT_POINT_DEFINITION, levelMaxTvOf, pointsOf, type PointDefinition } from "../points.js";
 
 /** v8 동치 모드(근접 0 — 정확 돌파만). 기존 기대값 전부의 회귀선(§10.5) — 밴드(0.5)는 전용 describe 몫. */
 const DEF0: PointDefinition = { ...DEFAULT_POINT_DEFINITION, approachPct: 0 };
@@ -305,5 +305,71 @@ describe("pointsOf", () => {
             newHighs: [nh(590, 10280, 35)],
         });
         expect(pointsOf(g, { ...DEF0, mergeRisePct: 99 }).map((p) => p.min)).toEqual([590]);
+    });
+});
+
+describe("levelMaxTvOf — 게이트 분포의 재료(레벨당 최대 자격 대금)", () => {
+    const EOK = 100_000_000;
+
+    it("기본 흐름 — 레벨별 max tv + 게이트 분류(기준선 baseline / 마디 renewal)", () => {
+        const g = grid({
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
+            newHighs: [nh(560, 10050, 60), nh(600, 10350, 35), nh(620, 10400, 45)],
+        });
+        expect(levelMaxTvOf(g, DEF0)).toEqual([
+            { levelIdx: 0, gate: "baseline", maxTv: 60 * EOK },
+            { levelIdx: 1, gate: "renewal", maxTv: 45 * EOK }, // 35억·45억 중 최댓값
+        ]);
+    });
+
+    it("자격 캔들이 하나도 귀속 안 된 레벨은 목록에서 빠진다(어떤 게이트에서도 Point 불가)", () => {
+        // 유일 캔들이 마디까지 한 번에 넘어 레벨 1 귀속 — 기준선(레벨 0)은 자격 캔들 0개.
+        const g = grid({
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
+            newHighs: [nh(600, 10500, 60)],
+        });
+        expect(levelMaxTvOf(g, DEF0)).toEqual([{ levelIdx: 1, gate: "renewal", maxTv: 60 * EOK }]);
+    });
+
+    it("자격 필터(양봉·제외 창)를 통과 못 한 캔들은 max 에 안 들어간다 — 모수가 그 노브의 함수", () => {
+        const g = grid({ newHighs: [nh(560, 10050, 90, false), nh(570, 10100, 60)] });
+        expect(levelMaxTvOf(g, DEF0)).toEqual([{ levelIdx: 0, gate: "baseline", maxTv: 60 * EOK }]);
+        expect(levelMaxTvOf(g, { ...DEF0, bullOnly: false })).toEqual([{ levelIdx: 0, gate: "baseline", maxTv: 90 * EOK }]);
+        // 제외 창은 **양봉** 90억 캔들로 검증한다 — 음봉이면 bullOnly 가 먼저 먹어 assertion 이 트리비얼해진다.
+        const g2 = grid({ newHighs: [nh(560, 10050, 90), nh(570, 10100, 60)] });
+        expect(levelMaxTvOf(g2, DEF0)).toEqual([{ levelIdx: 0, gate: "baseline", maxTv: 90 * EOK }]);
+        expect(levelMaxTvOf(g2, { ...DEF0, excludeUptoMin: 565 })).toEqual([{ levelIdx: 0, gate: "baseline", maxTv: 60 * EOK }]);
+    });
+
+    it("게이트 불변 — 게이트만 다른 정의에서 산출이 동일하다(타입이 못 보게 하지만 런타임 회귀선)", () => {
+        const g = grid({
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
+            newHighs: [nh(560, 10050, 60), nh(600, 10350, 35)],
+        });
+        expect(levelMaxTvOf(g, { ...DEF0, baselineGateEok: 999, renewalGateEok: 999 } as PointDefinition)).toEqual(levelMaxTvOf(g, DEF0));
+    });
+
+    it("등가 정리 — maxTv ≥ gate ⟺ pointsOf 에 그 레벨의 Point 존재(여러 게이트 전수 대조)", () => {
+        // 뒤 캔들(80억)이 앞 캔들(60억)보다 크다: 게이트 70억이면 슬롯 1 이 뒤 캔들로 이동해 레벨 생존 —
+        // "max 가 슬롯 2 국면 캔들에서 와도 등가 유지"의 그 형태(앞이 게이트에 떨어지면 뒤가 슬롯 1 후보).
+        const g = grid({
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
+            newHighs: [nh(560, 9970, 60, true, 9800), nh(566, 9995, 80, true, 9970), nh(600, 10350, 35), nh(620, 10400, 45)],
+        });
+        const def = { ...DEFAULT_POINT_DEFINITION }; // 밴드 0.5 — 슬롯 2 가 실제로 서는 모드
+        const stats = levelMaxTvOf(g, def);
+        for (const gate of [20, 40, 50, 70, 90, 200]) {
+            const pts = pointsOf(g, { ...def, baselineGateEok: gate, renewalGateEok: gate });
+            const survived = new Set(pts.map((p) => p.levelIdx));
+            for (const s of stats) {
+                expect(survived.has(s.levelIdx)).toBe(s.maxTv >= gate * EOK);
+            }
+            // 역방향 — 목록에 없는 레벨은 어떤 게이트에서도 Point 를 못 낳는다.
+            for (const li of survived) expect(stats.some((s) => s.levelIdx === li)).toBe(true);
+        }
+    });
+
+    it("기준선 없음 → 빈 배열", () => {
+        expect(levelMaxTvOf(grid({ base: null, newHighs: [nh(560, 10050, 60)] }), DEF0)).toEqual([]);
     });
 });
