@@ -94,6 +94,24 @@ describe("levelViewOf", () => {
         expect(() => levelViewOf(g)).toThrow(/저점 결손/);
     });
 
+    it("퇴화 예외 — 확정 봉 = 다음 레벨의 크로싱 봉이라 구간이 비면, 바로 다음 저점 피벗이 폴백이다", () => {
+        // 선행 국면(클래스 ①): 레벨 10,000@541 이 542 에서 확정됐는데 542 가 곧 10,000 을 넘은 봉
+        // (다음 레벨 10,500 의 cross=542) — 열린 구간 (541, 542) 이 빈다. 폴백 = pivots[1](9,790@545).
+        const g = gridOf(
+            [
+                piv("high", 541, 10000, 542),
+                piv("low", 545, 9790, 550),
+                piv("high", 552, 10500, 553, 542),
+                piv("low", 553, 10280, null),
+            ],
+            { min: 552, price: 10500 },
+        );
+        expect(levelViewOf(g).map((p) => [p.high.price, p.low.min, p.low.price])).toEqual([
+            [10000, 545, 9790], // 구간 밖(≥ cross 542)이지만 폴백으로 짝지어진다
+            [10500, 553, 10280],
+        ]);
+    });
+
     it("피벗 0(무사건) — 빈 배열", () => {
         expect(levelViewOf(gridOf([]))).toEqual([]);
     });

@@ -12,6 +12,8 @@ export interface GridInvariantReport {
     violations: string[];
     /** sessionHigh.price > max(고점 피벗 가격) — 클래스 ① 차트에서만 참이어야 한다. */
     sessionHighAbovePivots: boolean;
+    /** 퇴화 쌍(폴백 저점 — levelView.ts 머리) 수 — 클래스 ① 차트에서만 나와야 한다(관찰). */
+    degeneratePairs: number;
 }
 
 export function checkGridInvariants(grid: PointGrid): GridInvariantReport {
@@ -61,23 +63,32 @@ export function checkGridInvariants(grid: PointGrid): GridInvariantReport {
         sessionHighAbovePivots = true; // 저점 피벗만 있는 격자 — 세션 최고가는 정의상 피벗 밖
     }
     // ⑥ 레벨 쌍마다 저점 존재(levelViewOf 가 throw) + 파생 창 0 < renewal ≤ leg(레벨 쌍 위, §2.7 ④).
+    // 퇴화 쌍(levelView.ts 머리 — 확정 봉 = 크로싱 봉이라 구간이 비어 폴백 저점을 쓴 쌍)은 "저점 봉 <
+    // 다음 크로싱" 전제 밖이라 두 검사에서 제외하고 관찰로만 센다(클래스 ① 차트에서만 나와야 한다).
+    let degeneratePairs = 0;
     try {
         const pairs = levelViewOf(grid);
         for (let k = 0; k < pairs.length; k++) {
             const pair = pairs[k];
-            const leg = BigInt(legAmountOfPair(pair, k > 0 ? pairs[k - 1] : null));
+            const nextCross = k + 1 < pairs.length ? pairs[k + 1].high.cross : null;
+            const degenerate = nextCross !== null && pair.low.min >= nextCross.min;
+            if (degenerate) {
+                degeneratePairs++;
+                continue;
+            }
+            const prev = k > 0 ? pairs[k - 1] : null;
+            const prevCross = prev !== null ? pair.high.cross : null;
+            const prevDegenerate = prev !== null && prevCross !== null && prev.low.min >= prevCross.min;
+            if (prevDegenerate) continue; // 직전 쌍이 퇴화면 이 쌍의 leg 분모가 전제 밖 — 창 검사 제외
+            const leg = BigInt(legAmountOfPair(pair, prev));
             if (leg <= 0n) v.push(`④ leg ≤ 0: 레벨 min=${pair.high.min}`);
             if (pair.high.cross !== null) {
                 const renewal = BigInt(amountFrom(pair.high.cross, pair.high.cum));
                 if (!(renewal > 0n && renewal <= leg)) v.push(`④ renewal 창 위반(0 < r ≤ leg): 레벨 min=${pair.high.min}`);
             }
-            if (k + 1 < pairs.length) {
-                const nextCross = pairs[k + 1].high.cross;
-                if (nextCross !== null && pair.low.min >= nextCross.min) v.push(`⑥ 저점 봉 ≥ 다음 레벨 크로싱: 레벨 min=${pair.high.min}`);
-            }
         }
     } catch (err) {
         v.push(`⑥ ${err instanceof Error ? err.message : String(err)}`);
     }
-    return { violations: v, sessionHighAbovePivots };
+    return { violations: v, sessionHighAbovePivots, degeneratePairs };
 }

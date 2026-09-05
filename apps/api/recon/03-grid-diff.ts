@@ -162,6 +162,9 @@ function naivePivots(minutes: MinuteCandle[]): NaivePivot[] {
             }
         }
     }
+    // 마지막 봉에서 확정이 난 경우(i = n 으로 탈출) — 확정 봉 자신이 새 스윙의 미확정 꼬리다.
+    if (dir === "up") raw.push({ kind: "high", idx: argmaxHigh(swingStart, n - 1), confirmIdx: null });
+    else if (dir === "down") raw.push({ kind: "low", idx: argminLow(swingStart, n - 1), confirmIdx: null });
 
     // cross 스캔(§2.5 재진술) + 누적은 구간 직합(prefix 없음 — 독립 산술).
     const cumTo = (to: number): string => {
@@ -237,9 +240,11 @@ function classify(oldPairs: Pair[], newPairs: Pair[]): { cls: ChartClass; lowUps
         j--;
     }
     if (i === 0 && j === 0) return { cls: lowUps > 0 ? "class2" : "equal", lowUps, firstLevelDropPct: null };
-    // 남은 접두: 옛 쪽 ≤ 1쌍(v8 의 첫 마디), 새 쪽 ≥ 1쌍(전부 옛 첫 마디 가격 이하) = 클래스 ①.
-    if (i === 1 && j >= 1) {
+    // 남은 접두: 옛 쪽 ≤ 1쌍(v8 의 첫 마디) = 클래스 ①. 새 쪽은 ≥1쌍(선행 레벨, 전부 옛 첫 마디 가격
+    // 이하)일 수도, 0쌍(소멸형 — 선행 스윙이 고점을 끝내 확정 못 해 첫 레벨 자체가 없음)일 수도 있다.
+    if (i === 1) {
         const h = oldPairs[0].highPrice;
+        if (j === 0) return { cls: lowUps > 0 ? "class1and2" : "class1", lowUps, firstLevelDropPct: 100 }; // 소멸형
         const allBelow = newPairs.slice(0, j).every((p) => p.highPrice <= h);
         if (allBelow) {
             const drop = ((h - newPairs[0].highPrice) / h) * 100;
@@ -323,7 +328,8 @@ async function main(): Promise<void> {
             clsCounts[cls]++;
             if (cls === "class1" || cls === "class1and2") {
                 class1Set.add(`${code}|${date}`);
-                if (firstLevelDropPct !== null) class1Drops.push(firstLevelDropPct);
+                if (firstLevelDropPct !== null && firstLevelDropPct < 100) class1Drops.push(firstLevelDropPct); // 100 = 소멸형 센티널
+
                 if (class1Samples.length < 20) class1Samples.push({ code, date, oldFirst: oldPairs[0], newFirst: newPairs[0], firstLevelDropPct });
             }
             if (cls === "unexplained" && unexplainedSamples.length < 20) unexplainedSamples.push({ code, date, oldPairs, newPairs });
@@ -384,10 +390,14 @@ async function main(): Promise<void> {
                 invBad++;
                 if (invSamples.length < 20) invSamples.push({ code, date, violations: rep.violations });
             }
-            // ⑤ 의 `>`(세션 최고가가 피벗 밖) 차트는 클래스 ① 로 분류돼 있어야 한다 — 아니면 미분류 누락.
-            // (옛 파일이 없어 분류 자체가 없던 차트(presence)는 제외.)
-            if (rep.sessionHighAbovePivots && oldFiles.has(date) && oldFiles.get(date)!.charts[code] && !class1Set.has(`${code}|${date}`)) {
-                aboveNotClass1.push(`${code}|${date}`);
+            // ⑤ 의 `>`(세션 최고가가 피벗 밖) 차트와 퇴화 쌍(폴백 저점) 차트는 클래스 ① 로 분류돼 있어야
+            // 한다 — 아니면 미분류 누락. (옛 파일이 없어 분류 자체가 없던 차트(presence)는 제외.)
+            const comparable = oldFiles.has(date) && oldFiles.get(date)!.charts[code] !== undefined;
+            if (rep.sessionHighAbovePivots && comparable && !class1Set.has(`${code}|${date}`)) {
+                aboveNotClass1.push(`⑤ ${code}|${date}`);
+            }
+            if (rep.degeneratePairs > 0 && comparable && !class1Set.has(`${code}|${date}`)) {
+                aboveNotClass1.push(`퇴화쌍 ${code}|${date}`);
             }
             let prevMax = -1;
             let prevBreakHigh = -Infinity;
