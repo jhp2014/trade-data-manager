@@ -52,18 +52,24 @@ describe("windows — 시그널 → 다리 고점", () => {
         expect(legHighOf(grid, 601)).toBeNull();
     });
 
-    it("legStartOf — 돌파(레벨 0)는 터치 봉(단 터치가 Point 이전일 때만 — 접근 Point 는 결손), 재돌파는 다음 레벨의 cross", () => {
-        expect(legStartOf(grid, { min: 555, levelIdx: 0, levelMin: null })).toEqual(mark(550, 10, 100));
+    it("legStartOf — 돌파(레벨 0)는 터치 봉(단 터치가 Point 이전일 때만 — 접근 Point 는 결손), 마디 재돌파는 다음 레벨의 cross", () => {
+        expect(legStartOf(grid, { min: 555, levelIdx: 0, levelMin: null, levelPrice: 10000 })).toEqual(mark(550, 10, 100));
         // touch 게이트 폐지 후: 접근 Point 가 터치보다 앞이면 돌파 창 시작이 미래 봉이 된다 — 결손(음수 창 금지).
-        expect(legStartOf(grid, { min: 545, levelIdx: 0, levelMin: null })).toBeNull();
-        expect(legStartOf(gridOf({ ...grid, touch: null }), { min: 555, levelIdx: 0, levelMin: null })).toBeNull();
-        expect(legStartOf(grid, { min: 561, levelIdx: 1, levelMin: 560 })).toEqual(mark(570, 50, 450));
-        expect(legStartOf(grid, { min: 581, levelIdx: 2, levelMin: 580 })).toEqual(mark(590, 30, 830));
-        expect(legStartOf(grid, { min: 601, levelIdx: 3, levelMin: 600 })).toBeNull(); // 다음 고점 아직 없음(꼬리)
+        expect(legStartOf(grid, { min: 545, levelIdx: 0, levelMin: null, levelPrice: 10000 })).toBeNull();
+        expect(legStartOf(gridOf({ ...grid, touch: null }), { min: 555, levelIdx: 0, levelMin: null, levelPrice: 10000 })).toBeNull();
+        expect(legStartOf(grid, { min: 561, levelIdx: 1, levelMin: 560, levelPrice: 10300 })).toEqual(mark(570, 50, 450));
+        expect(legStartOf(grid, { min: 581, levelIdx: 2, levelMin: 580, levelPrice: 10600 })).toEqual(mark(590, 30, 830));
+        expect(legStartOf(grid, { min: 601, levelIdx: 3, levelMin: 600, levelPrice: 10900 })).toBeNull(); // 다음 고점 아직 없음(꼬리)
+    });
+
+    it("legStartOf — 슬롯 2 재돌파(levelMin = 워터마크 봉)는 결손: 시각·가격이 레벨 쌍과 다 맞아야 창이 선다", () => {
+        // 워터마크 봉이 우연히 레벨 봉과 같은 시각이어도 가격이 다르면 다른 레벨의 창으로 새지 않는다.
+        expect(legStartOf(grid, { min: 583, levelIdx: 1, levelMin: 560, levelPrice: 10250 })).toBeNull(); // 시각 일치·가격 불일치(워터마크)
+        expect(legStartOf(grid, { min: 583, levelIdx: 0, levelMin: 562, levelPrice: 10250 })).toBeNull(); // 기준선 슬롯 2 — 쌍에 없는 봉
     });
 
     it("legWindowOf — 돌파 시그널 555 의 다리 = 터치 550 → H1 560", () => {
-        expect(legWindowOf(grid, { min: 555, levelIdx: 0, levelMin: null })).toEqual({
+        expect(legWindowOf(grid, { min: 555, levelIdx: 0, levelMin: null, levelPrice: 10000 })).toEqual({
             start: mark(550, 10, 100),
             high: grid.pivots[0],
             amount: "210",
@@ -72,7 +78,7 @@ describe("windows — 시그널 → 다리 고점", () => {
     });
 
     it("legWindowOf — 재돌파 시그널(레벨 H1, 봉 575)의 다리 = 크로싱 570 → H2 580, 저대금 크로싱~Point 사이가 창에 섞인다(의도)", () => {
-        expect(legWindowOf(grid, { min: 575, levelIdx: 1, levelMin: 560 })).toEqual({
+        expect(legWindowOf(grid, { min: 575, levelIdx: 1, levelMin: 560, levelPrice: 10300 })).toEqual({
             start: mark(570, 50, 450),
             high: grid.pivots[2],
             amount: "300",
@@ -82,12 +88,12 @@ describe("windows — 시그널 → 다리 고점", () => {
 
     it("legWindowOf — 시그널 봉이 곧 고점 봉이면 창 끝 = 시작이 될 수 있다(minutes 0)", () => {
         const g = gridOf({ pivots: [hi(560, 10300, 300, null), lo(565, 10100, 400), hi(570, 10600, 450, mark(570, 50, 450)), lo(575, 10400, 500)] });
-        expect(legWindowOf(g, { min: 570, levelIdx: 1, levelMin: 560 })).toMatchObject({ amount: "50", minutes: 0 });
+        expect(legWindowOf(g, { min: 570, levelIdx: 1, levelMin: 560, levelPrice: 10300 })).toMatchObject({ amount: "50", minutes: 0 });
     });
 
     it("legWindowOf — 병합으로 시그널 레벨이 L 이고 다리 고점이 L 다음 고점을 지나쳐도 시작은 L 의 크로싱(다음 고점의 cross)", () => {
         // 레벨 L = H1(560). H2(580)는 병합된 잔 고점, 시그널은 H2 를 넘은 595 봉 → 다리 고점 = H3(600). 시작 = H2.cross(570).
-        expect(legWindowOf(grid, { min: 595, levelIdx: 1, levelMin: 560 })).toEqual({
+        expect(legWindowOf(grid, { min: 595, levelIdx: 1, levelMin: 560, levelPrice: 10300 })).toEqual({
             start: mark(570, 50, 450),
             high: grid.pivots[4],
             amount: "600", // 1000 − 450 + 50
@@ -96,7 +102,7 @@ describe("windows — 시그널 → 다리 고점", () => {
     });
 
     it("legWindowOf — 꼬리 시그널(확정 고점 없음)은 null(결손)", () => {
-        expect(legWindowOf(grid, { min: 601, levelIdx: 3, levelMin: 600 })).toBeNull();
+        expect(legWindowOf(grid, { min: 601, levelIdx: 3, levelMin: 600, levelPrice: 10900 })).toBeNull();
     });
 
     it("시그널 둘이 같은 다리 고점을 공유하지 않는다 — 고점 사이엔 시그널이 최대 하나(≤1:1)", () => {

@@ -9,9 +9,10 @@
 // 0 < renewal ≤ leg 는 레벨 쌍 위(`legAmountOfPair`)의 성질로 남는다(invariants.ts·recon).
 //
 // 다리 고점(`legHighOf`) = 시그널 이후 첫 **레벨** 고점(마디 뷰). 없으면 꼬리(세션 끝까지 −2% 안 빠짐)
-// = 결손. 다리 창의 시작(`legStartOf`) = 시그널이 넘은 레벨의 크로싱: 돌파(레벨 0)는 기준선 터치 봉,
-// 재돌파는 **다음 레벨**의 `cross`(= 그 레벨 가격을 처음 넘은 봉). 병합(mergeRisePct)으로 다리 고점이
-// 더 뒤로 가도 크로싱 기록은 같은 자리다(그 다음 레벨이 "L 의 크로싱"을 들고 있다).
+// = 결손. 다리 창의 시작(`legStartOf`) = 시그널이 넘은 레벨의 크로싱: 돌파(기준선 슬롯 1)는 기준선 터치
+// 봉(터치가 Point 이전일 때만 — 접근 Point 는 결손), 마디 재돌파는 **다음 레벨**의 `cross`(= 그 레벨
+// 가격을 처음 넘은 봉), **슬롯 2 재돌파(워터마크)는 결손** — 워터마크는 레벨 쌍이 아니라 크로싱 기록이
+// 없다. 병합(mergeRisePct)으로 다리 고점이 더 뒤로 가도 크로싱 기록은 같은 자리다.
 // `DerivedPoint` 에 필드로 넣지 않는 이유: pointsOf 판정은 결과를 모른다(행 정체성·행 시각 계약) —
 // 다리 고점은 소비처(차트 표식·결과 걷기 outcome.ts)가 필요할 때 격자를 더 보고 얻는 파생이다.
 // 다리 고점 ≡ 결과 걷기의 T=2% 연장 고점 — **상단 돌파 Point 에 대해서만**(outcome.test 가 동치로 고정).
@@ -70,15 +71,21 @@ export function legHighOf(grid: PointGrid, pointMin: number): { pivot: GridPivot
  * (마디 뷰에서 레벨은 연속이라 다음 레벨의 cross = 이 레벨 가격을 처음 넘은 봉 — v8 의 pivots[i+2] 와
  * 같은 값). 다음 레벨이 아직 없으면(꼬리) null.
  */
-export function legStartOf(grid: PointGrid, point: Pick<DerivedPoint, "min" | "levelIdx" | "levelMin">): GridBarMark | null {
+export function legStartOf(grid: PointGrid, point: Pick<DerivedPoint, "min" | "levelIdx" | "levelMin" | "levelPrice">): GridBarMark | null {
     if (point.levelIdx === 0 && point.levelMin === null) {
         // 돌파 창 시작 = 터치 봉 — 접근 Point(touch 게이트 폐지 후)는 터치가 없거나 Point 보다 뒤일 수
         // 있다: 그 창은 결손이다(음수 창 금지 — 미래 봉을 시작으로 쓰지 않는다).
         return grid.touch !== null && grid.touch.min <= point.min ? grid.touch : null;
     }
     if (point.levelMin === null) return null;
+    // 기준선 슬롯 2(levelIdx 0 + levelMin ≠ null — 이 조합은 슬롯 2 뿐이다)는 확정 결손: 워터마크가
+    // 기준선 아래라 levelViewOf 의 sub-base 쌍과 **구조적으로 일치할 수 있어**(워터마크 봉이 나중에
+    // 피벗·레벨로 확정되는 경우) 시각·가격 매칭만으론 못 거른다.
+    if (point.levelIdx === 0) return null;
+    // 마디 슬롯 2 는 워터마크 < 그 레벨 가격이라 prefix max 를 못 넘어 레벨 쌍과 일치할 수 없다 —
+    // 아래 시각·가격 매칭이 자연 결손을 준다(가격까지 맞추는 건 시각 우연 일치 차단).
     const pairs = levelViewOf(grid);
-    const k = pairs.findIndex((p) => p.high.min === point.levelMin);
+    const k = pairs.findIndex((p) => p.high.min === point.levelMin && p.high.price === point.levelPrice);
     if (k < 0) return null;
     const next = pairs[k + 1];
     return next ? next.high.cross : null;
@@ -94,7 +101,7 @@ export interface LegWindow {
     minutes: number;
 }
 
-export function legWindowOf(grid: PointGrid, point: Pick<DerivedPoint, "min" | "levelIdx" | "levelMin">): LegWindow | null {
+export function legWindowOf(grid: PointGrid, point: Pick<DerivedPoint, "min" | "levelIdx" | "levelMin" | "levelPrice">): LegWindow | null {
     const high = legHighOf(grid, point.min);
     const start = legStartOf(grid, point);
     if (high === null || start === null || start.min > high.pivot.min) return null;

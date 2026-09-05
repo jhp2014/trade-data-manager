@@ -120,8 +120,9 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
             .filter(({ l }) => (l.renewal ? e.high > l.price * bandK : e.high >= l.price * bandK));
         if (crossed.length === 0) continue;
         const top = crossed[crossed.length - 1];
-        const maxClaimed = Math.max(-1, ...slot1.keys());
-        if (top.i < maxClaimed) continue; // 아래로 안 내려감(귀속 비감소 전제의 재진술 쪽 표현)
+        // ⚠ 커서 규칙(귀속 비감소·아래로 안 내려감)을 여기 **복사하지 않는다** — 재진술은 슬롯 맵만
+        // 든다. 구현(pointsOf)은 claimedLevel 커서에 기대므로, 귀속이 실제로 내려가는 오염 격자에선
+        // 두 산출이 갈려 정지 신호가 된다(커서를 베끼면 그 갈림을 흡수해 그물이 사라진다).
         const s = slot1.get(top.i);
         if (s === undefined) {
             if (BigInt(e.tv) < gate(top.l.renewal)) continue;
@@ -130,8 +131,8 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
             out.push({ kind: top.i === 0 ? "breakout" : "renewal", ordinal: out.length, min: e.min, high: e.high, close: e.close, tv: e.tv, levelPrice: top.l.price, levelIdx: top.i, levelMin: top.l.min });
             continue;
         }
-        // 슬롯 2 — 슬롯 1 상단 미달 + 그 레벨이 여전히 최고 귀속 + 워터마크 실초과 + 재돌파 게이트.
-        if (s.crossedTop || s.slot2Done || top.i !== maxClaimed) continue;
+        // 슬롯 2 — 슬롯 1 상단 미달 + 워터마크 실초과 + 재돌파 게이트.
+        if (s.crossedTop || s.slot2Done) continue;
         if (!(e.high > s.high)) continue;
         if (BigInt(e.tv) < gate(true)) continue;
         s.slot2Done = true;
@@ -230,16 +231,19 @@ async function main(): Promise<void> {
             for (const p of now) (p.kind === "breakout" ? kinds.nowBreakout++ : kinds.nowRenewal++);
 
             // ── 슬롯 2·touch 완화 계측(2026-09-05 저녁 규칙) ──
-            // 슬롯 2 식별: levelPrice 가 레벨 목록의 그 서수 가격과 다르면 워터마크(슬롯 1 고가)다.
+            // 슬롯 2 식별 = **같은 levelIdx 의 두 번째 항목**(정의상 exact — levelPrice 비교는 워터마크가
+            // 정확히 레벨 가격과 같은 미달 케이스(마디 high == L)를 놓친다).
             const lvls = levelsOf(entry.grid, def);
+            const seenLevel = new Set<number>();
             for (const p of now) {
-                const lv = lvls[p.levelIdx];
-                if (lv !== undefined && p.levelPrice !== lv.price) {
-                    slot2Stats.count++;
-                    const topCrossed = lv.renewal ? p.high > lv.price : p.high >= lv.price;
-                    if (topCrossed) slot2Stats.topCrossed++;
-                    if (p.levelMin !== null) slot2Stats.gapMinutes.push(p.min - p.levelMin);
+                if (!seenLevel.has(p.levelIdx)) {
+                    seenLevel.add(p.levelIdx);
+                    continue;
                 }
+                slot2Stats.count++;
+                const lv = lvls[p.levelIdx];
+                if (lv !== undefined && (lv.renewal ? p.high > lv.price : p.high >= lv.price)) slot2Stats.topCrossed++;
+                if (p.levelMin !== null) slot2Stats.gapMinutes.push(p.min - p.levelMin);
             }
             if (entry.grid.touch === null && now.length > 0) touchRelax.noTouchDays++, (touchRelax.noTouchPoints += now.length);
             else if (entry.grid.touch !== null) for (const p of now) if (p.min < entry.grid.touch.min) touchRelax.preTouchPoints++;

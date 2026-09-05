@@ -241,7 +241,23 @@ describe("pointsOf", () => {
 
     it("슬롯 1 이 상단을 넘으면 슬롯 2 는 안 열린다 — 전형적 돌파는 오늘과 동일(레벨당 1개)", () => {
         const g = grid({ newHighs: [nh(560, 10050, 60), nh(580, 10100, 60, true, 10050)] });
-        expect(pointsOf(g)).toHaveLength(1);
+        expect(pointsOf(g).map((p) => [p.min, p.kind, p.levelIdx, p.levelPrice, p.levelMin])).toEqual([
+            [560, "breakout", 0, 10000, null],
+        ]);
+    });
+
+    it("슬롯 2 후보가 게이트 미달이면 다음 자격 캔들로 넘어가고, 워터마크는 슬롯 1 고가로 고정이다", () => {
+        const g = grid({
+            newHighs: [
+                nh(560, 9970, 60, true, 9800), // 슬롯 1 접근 — 워터마크 9,970 고정
+                nh(580, 9985, 25, true, 9970), // 워터마크는 넘었지만 재돌파 게이트(30) 미달 — 슬롯 2 불발, 워터마크 안 따라감
+                nh(600, 9980, 40, true, 9985), // 9,985(직전 봉 고가)보다 낮아도 워터마크(9,970)만 넘으면 슬롯 2
+            ],
+        });
+        expect(pointsOf(g).map((p) => [p.min, p.kind, p.levelPrice, p.levelMin])).toEqual([
+            [560, "breakout", 10000, null],
+            [600, "renewal", 9970, 560],
+        ]);
     });
 
     it("슬롯 2 는 귀속이 위 레벨로 점프하면 소멸한다 — 아래로 안 내려가는 커서 원칙", () => {

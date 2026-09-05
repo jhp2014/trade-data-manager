@@ -90,9 +90,14 @@ export function gridFeatureFeeds(
         pushBase("grid-prior-levels", { ...key, value: a.point.levelIdx });
         const low = pullbackLowPivot(grid, a.point.levelMin, a.point.min);
         if (low !== null && a.point.levelPrice > 0) pushBase("grid-pullback-pct", { ...key, value: r2(((a.point.levelPrice - low.price) / a.point.levelPrice) * 100) });
-        // 재돌파 전용 둘 — breakout 은 levelMin === null 이라 자연 결손("기준선 돌파는 해당 없음").
+        // 재돌파 전용 둘 — breakout(= levelMin null: 기준선 슬롯 1)은 자연 결손("기준선 돌파는 해당 없음").
+        // ⚠ 슬롯 2(2026-09-05 저녁)부터 이 축들의 모수에 **워터마크 재돌파**가 들어온다: levelMin =
+        // 워터마크 봉(슬롯 1 캔들)이라 "넘은 고가 발생 → 재돌파까지"라는 정의는 그대로인데, 그 고가가
+        // 마디가 아니라 밴드 안 워터마크일 수 있고 경과 분이 짧다(실측 p50 2분). 눌림 깊이(grid-pullback-pct)
+        // 의 분모도 슬롯 2 에선 워터마크다 — 결과 걷기의 "고점 대비 %"(마디 분모)와 자가 다르다(의도,
+        // decisions.md 슬롯 2 항목).
         if (a.point.levelMin !== null) {
-            const span = a.point.min - a.point.levelMin; // 마디(직전 고가) 발생 → 갱신(Point 봉)까지 경과 분
+            const span = a.point.min - a.point.levelMin; // 넘은 고가(마디 또는 워터마크) 발생 → 재돌파(Point 봉)까지 경과 분
             if (span > 0) {
                 pushBase("grid-renewal-elapsed", { ...key, value: span });
                 // 저점 위치 — 마디 시각을 0, Point 시각을 1 로 놓은 구간에서 눌림 저점이 어디쯤인가.

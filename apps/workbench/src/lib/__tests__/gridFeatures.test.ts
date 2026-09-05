@@ -83,6 +83,29 @@ describe("gridFeatureFeeds", () => {
         ]);
     });
 
+    it("슬롯 2 재돌파(levelIdx 0 + levelMin = 워터마크 봉) — 재돌파 전용 특징이 워터마크 자로 선다", () => {
+        // 기준선 슬롯 2(2026-09-05 저녁): 워터마크 9,970@560 재돌파 Point 600. levelIdx 0 이지만
+        // levelMin ≠ null 이라 breakout 결손 규칙에 안 걸리고, 경과 분 = 600−560, 눌림 창 = (560, 600].
+        const slot2View = {
+            ...view,
+            points: [
+                { stockCode: "A", date: "2026-07-01", time: "10:00:00", point: { kind: "renewal", ordinal: 0, min: 600, high: 10050, close: 10040, tv: "0", levelPrice: 9970, levelIdx: 0, levelMin: 560 } },
+            ],
+        } as unknown as AutoPointsView;
+        const g: PointGrid = {
+            ...grid,
+            pivots: [
+                { kind: "high", min: 565, price: 9960, confirmedMin: 572, cum: "0", cross: null },
+                { kind: "low", min: 572, price: 9760, confirmedMin: 580, cum: "0", cross: null },
+            ],
+        };
+        const feeds2 = gridFeatureFeeds(slot2View, () => g);
+        const f = (key: string) => feeds2.find((x) => x.key === key)!.values;
+        expect(f("grid-renewal-elapsed")).toEqual([{ stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 40 }]); // 600 − 560
+        expect(f("grid-pullback-pct").map((v) => v.value)).toEqual([2.11]); // (9970 − 9760)/9970 — 분모 = 워터마크
+        expect(f("grid-pullback-pos").map((v) => v.value)).toEqual([0.3]); // (572 − 560)/40
+    });
+
     it("격자가 없는 차트의 Point 는 전 특징에서 결손", () => {
         expect(gridFeatureFeeds(view, () => undefined).every((f) => f.values.length === 0)).toBe(true);
     });
