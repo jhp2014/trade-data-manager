@@ -36,25 +36,72 @@ export interface OutcomeBreak {
 
 /** 시그널 하나의 T 무관 걷기 산출물 — 항상 존재한다(세션 최고가가 격자 사실이라). */
 export interface OutcomeWalk {
-    /** 깊이 러닝-최대 접두. 비어 있음 ⟺ 시그널 이후 확정 고점 0(2% 이상 눌림 자체가 없음 = 무눌림). */
+    /** 깊이 러닝-최대 접두. 비어 있음 ⟺ 시그널 이후 2% 이상 눌림 자체가 없음(무눌림). */
     breaks: OutcomeBreak[];
-    /** 세션 최고가(격자 사실) — "T 이내"·"무눌림"의 연장 고점이자 회복 판정의 자. */
+    /** 시그널 **이후**의 연장 상한 — "T 이내"·"무눌림"의 연장 고점이자 회복 판정의 자. 보통 세션
+     *  최고가(격자 사실) 그대로지만, 밴드 Point 처럼 시그널이 세션 최고가 봉 **뒤**에 설 수 있어
+     *  그때는 p 이후 경로 뷰 고점(없으면 시그널 봉 자신의 고가 — 해상도 밖 상승은 결손이 아니다)으로
+     *  갈음한다(§10.4 — p 이전 고가가 연장 고점으로 새지 않게). */
     sessionHigh: { min: number; price: number };
 }
 
-/** 시그널(Point 봉 시각) 이후 마디 뷰(레벨 쌍)를 걷어 breakpoint 목록을 만든다. */
-export function walkOutcome(grid: PointGrid, pointMin: number): OutcomeWalk {
+/** 걷기의 시그널 좌표 — 시각과 자기 봉 고가(연장 상한 폴백에만 쓰인다). DerivedPoint 가 그대로 들어온다. */
+export interface OutcomeSignal {
+    min: number;
+    high: number;
+}
+
+/**
+ * 시그널 이후 마디 뷰(레벨 쌍)를 걷어 breakpoint 목록을 만든다.
+ *
+ * 밴드 Point(§10.4) — p 가 어느 레벨 쌍의 저점 구간 안(레벨 봉 < p < 그 레벨의 크로싱)에 서면, 그
+ * 구간에서 **p 이후 경로 뷰 저점의 최솟값**을 첫 눌림 후보로 넣는다(깊이의 기준 고점 = 그 레벨 가격 —
+ * 트레일링은 이미 선 러닝 최고가 기준이고, 구간 안 러닝 최고가 = 레벨 가격). 여기가 경로 뷰를 직접
+ * 순회하는 유일한 소비처다. p 가 상단 돌파 봉 자신이면 품는 쌍이 없어(크로싱 이후) 개정 전과 동일하다
+ * (outcome.test 가 고정).
+ */
+export function walkOutcome(grid: PointGrid, point: OutcomeSignal): OutcomeWalk {
+    const pairs = levelViewOf(grid);
     const breaks: OutcomeBreak[] = [];
     let maxDepth = 0;
-    for (const { high, low } of levelViewOf(grid)) {
-        if (high.min < pointMin) continue; // 시그널 이전 사이클
-        const depth = ((high.price - low.price) / high.price) * 100;
+    const push = (highMin: number, highPrice: number, lowMin: number, lowPrice: number): void => {
+        const depth = ((highPrice - lowPrice) / highPrice) * 100;
         if (depth > maxDepth) {
             maxDepth = depth;
-            breaks.push({ depth, highMin: high.min, highPrice: high.price, lowMin: low.min, lowPrice: low.price });
+            breaks.push({ depth, highMin, highPrice, lowMin, lowPrice });
         }
+    };
+    // p 를 품는 레벨 쌍(최대 하나 — 다음 레벨 봉은 자기 크로싱 뒤라 p 를 못 품는다).
+    for (let k = 0; k < pairs.length; k++) {
+        const pair = pairs[k];
+        if (!(pair.high.min < point.min)) break; // 시간순 — p 이전 레벨만 후보
+        const nextCross = k + 1 < pairs.length ? pairs[k + 1].high.cross : null;
+        const endMin = nextCross === null ? Infinity : nextCross.min;
+        if (!(point.min < endMin)) continue;
+        let low: { min: number; price: number } | null = null;
+        for (let i = pair.highIndex + 1; i < grid.pivots.length; i++) {
+            const q = grid.pivots[i];
+            if (q.min >= endMin) break;
+            if (q.min <= point.min || q.kind !== "low") continue;
+            if (low === null || q.price < low.price) low = { min: q.min, price: q.price };
+        }
+        if (low !== null) push(pair.high.min, pair.high.price, low.min, low.price);
+        break;
     }
-    return { breaks, sessionHigh: grid.sessionHigh };
+    for (const { high, low } of pairs) {
+        if (high.min < point.min) continue; // 시그널 이전 사이클
+        push(high.min, high.price, low.min, low.price);
+    }
+    // 연장 상한 — 세션 최고가가 p 이전이면 p 이후 경로 뷰 고점(폴백 = 시그널 봉 자신)으로.
+    let sessionHigh = grid.sessionHigh;
+    if (sessionHigh.min < point.min) {
+        let cap = { min: point.min, price: point.high };
+        for (const q of grid.pivots) {
+            if (q.kind === "high" && q.min > point.min && q.price > cap.price) cap = { min: q.min, price: q.price };
+        }
+        sessionHigh = cap;
+    }
+    return { breaks, sessionHigh };
 }
 
 /**

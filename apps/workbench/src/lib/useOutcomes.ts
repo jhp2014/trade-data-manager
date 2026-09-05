@@ -34,7 +34,7 @@ export function useOutcomeWalksValue(auto: AutoPointsView, grids: PointGridsView
         for (const a of auto.points) {
             const grid = grids.gridOf(a.stockCode, a.date);
             if (!grid) continue;
-            byKey.set(pointKeyOf({ stockCode: a.stockCode, date: a.date, time: a.time }), { walk: walkOutcome(grid, a.point.min), close: a.point.close });
+            byKey.set(pointKeyOf({ stockCode: a.stockCode, date: a.date, time: a.time }), { walk: walkOutcome(grid, a.point), close: a.point.close });
         }
         return { byKey, total: auto.points.length };
     }, [auto, grids]);
