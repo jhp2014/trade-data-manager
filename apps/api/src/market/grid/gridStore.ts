@@ -9,7 +9,8 @@ import path from "node:path";
 import type { PointGrid } from "@trade-data-manager/market";
 
 /** 파일 스키마 버전(파일 모양). 검출 규칙 변경은 POINT_GRID_CALC_VERSION(pointGrids.ts) 쪽. */
-export const POINT_GRID_FILE_VERSION = 8; // 8: 2026-09-04 세션 최고가(sessionHigh) 수록 — 꼬리 연장 고점·회복 판정 재료. 7: 대금 창 폐기 → 기록 봉 누적·크로싱·터치 수록
+export const POINT_GRID_FILE_VERSION = 9; // 9: 2026-09-05 피벗 = 양방향 zigzag 경로 뷰(마디는 읽기 파생) + 기준 밴드 maxBefore
+// 8: 2026-09-04 세션 최고가(sessionHigh) 수록 — 꼬리 연장 고점·회복 판정 재료. 7: 대금 창 폐기 → 기록 봉 누적·크로싱·터치 수록
 // 6: 2026-09-02 KRX 기준가(prevBaseKrx) 수록
 // 5: 2026-09-01 그날 기준가(prevBase) 수록
 // 4: 2026-08-31 zigzag 재정식화 — 피벗에 renewalAmount 추가, 저점 confirmedMin null 고정
