@@ -45,7 +45,7 @@ const UNSEALED_TTL_MS = 5 * 60_000;
 export interface RankSectionsDeps {
     derived: Pick<DerivedCache, "snapshot" | "isSealed">;
     /** 기대집합 공급자 — 격자의 후보 캔들: 날짜 → 분("HH:MM") → 그 분의 후보 종목들. */
-    candidates: { candidateMinutes(): Promise<Map<string, Map<string, Set<string>>>> };
+    candidates: { sectionMinutes(): Promise<Map<string, Map<string, Set<string>>>> };
     /** 테마 멤버십(시트 캐시) — **서빙 접기에만** 쓴다(저장물은 테마를 모른다). */
     membership: { load(): Promise<ThemeMember[]> };
     store: RankSectionStore;
@@ -126,7 +126,7 @@ export class RankSections {
     private async doBundle(): Promise<RankSectionBundle> {
         const gen = this.gen;
         const today = (this.deps.today ?? kstToday)();
-        const [candidates, members] = await Promise.all([this.deps.candidates.candidateMinutes(), this.deps.membership.load()]);
+        const [candidates, members] = await Promise.all([this.deps.candidates.sectionMinutes(), this.deps.membership.load()]);
         const expected = new Map<string, Map<string, Set<string>>>();
         const pending = new Set<string>();
         for (const [date, byMinute] of candidates) {

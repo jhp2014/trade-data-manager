@@ -76,7 +76,7 @@ class FakeSectionStore implements RankSectionStore {
 const cand = (date: string, time: string, code = "A"): Candidate => ({ stockCode: code, date, time });
 interface Candidate { stockCode: string; date: string; time: string }
 
-/** 후보 목록 → 날짜 → 분("HH:MM") → 종목 집합(PointGrids.candidateMinutes 와 같은 모양). */
+/** 단면 분 목록 → 날짜 → 분("HH:MM") → 종목 집합(PointGrids.sectionMinutes 와 같은 모양). */
 const minutesOf = (list: readonly Candidate[]): Map<string, Map<string, Set<string>>> => {
     const out = new Map<string, Map<string, Set<string>>>();
     for (const c of list) {
@@ -103,7 +103,7 @@ function make(
     const sections = new RankSections({
         derived,
         candidates: {
-            candidateMinutes: async () => {
+            sectionMinutes: async () => {
                 await opts?.gate?.();
                 return minutesOf(list);
             },
