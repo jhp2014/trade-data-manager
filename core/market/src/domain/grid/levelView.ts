@@ -30,6 +30,9 @@ export interface LevelPair {
     low: GridPivot;
     highIndex: number;
     lowIndex: number;
+    /** 저점 구간의 끝(다음 레벨의 크로싱 봉 시각, 마지막 레벨은 Infinity) — 구간 경계 규칙의 단일 출처.
+     *  소비처(walkOutcome 의 품는 쌍 판정)가 여길 봐야 §2.5 경계가 바뀔 때 함께 움직인다. */
+    endMin: number;
 }
 
 /** 경로 뷰 → 마디 뷰(레벨 쌍, 시간 오름차순 — 레벨 가격은 강한 단조 증가). */
@@ -69,7 +72,7 @@ export function levelViewOf(grid: PointGrid): LevelPair[] {
             }
             lowIdx = hi + 1;
         }
-        pairs.push({ high, low: pivots[lowIdx], highIndex: hi, lowIndex: lowIdx });
+        pairs.push({ high, low: pivots[lowIdx], highIndex: hi, lowIndex: lowIdx, endMin });
     }
     return pairs;
 }

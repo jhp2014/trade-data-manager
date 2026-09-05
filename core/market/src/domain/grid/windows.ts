@@ -4,8 +4,9 @@
 // 격자는 기록 봉마다 세션 누적 대금(`cum`, 그 봉 포함)만 굽고, 창은 여기서 두 기록 봉의 차로 낸다:
 //   포함 창 [a..b]      = b.cum − a.cum + a.tv   (a 는 창의 시작이 될 수 있는 봉 — GridBarMark·신고가 캔들)
 //   시작 배타 창 (a..b] = b.cum − a.cum           (a 는 피벗 — 직전 피벗 "다음 봉부터")
-// 옛 legAmount/renewalAmount 는 각각 `legAmountOf`/`renewalAmountOf` 로 재현되고, 불변식 0 < renewal ≤ leg 는
-// 이 파생값의 성질로 남는다(windows.test).
+// v8 legAmount(레벨 쌍 저점 기준)의 재현은 **`legAmountOfPair`** 다 — `legAmountOf`(피벗 색인 판)는 v9
+// 경로 뷰에선 국소 극값·선행 저점이 끼면 v8 값과 다르다(직전 피벗 = 국소 저점일 수 있음). 불변식
+// 0 < renewal ≤ leg 는 레벨 쌍 위(`legAmountOfPair`)의 성질로 남는다(invariants.ts·recon).
 //
 // 다리 고점(`legHighOf`) = 시그널 이후 첫 **레벨** 고점(마디 뷰). 없으면 꼬리(세션 끝까지 −2% 안 빠짐)
 // = 결손. 다리 창의 시작(`legStartOf`) = 시그널이 넘은 레벨의 크로싱: 돌파(레벨 0)는 기준선 터치 봉,
@@ -24,7 +25,8 @@ export function amountFrom(start: GridBarMark, endCum: string): string {
     return (BigInt(endCum) - BigInt(start.cum) + BigInt(start.tv)).toString();
 }
 
-/** 옛 legAmount 재현 — 직전 피벗 다음 봉부터 이 피벗 봉까지(첫 피벗은 세션 첫 봉부터). */
+/** 피벗 색인 leg — 직전 **피벗**(경로 뷰: 국소 극값 포함) 다음 봉부터 이 피벗 봉까지(첫 피벗은 세션
+ *  첫 봉부터). ⚠ v8 legAmount 의 재현이 아니다 — 그건 legAmountOfPair(레벨 쌍 판). */
 export function legAmountOf(grid: PointGrid, pivotIndex: number): string {
     const p = grid.pivots[pivotIndex];
     const prev = pivotIndex > 0 ? BigInt(grid.pivots[pivotIndex - 1].cum) : 0n;

@@ -70,15 +70,13 @@ export function checkGridInvariants(grid: PointGrid): GridInvariantReport {
         const pairs = levelViewOf(grid);
         for (let k = 0; k < pairs.length; k++) {
             const pair = pairs[k];
-            const nextCross = k + 1 < pairs.length ? pairs[k + 1].high.cross : null;
-            const degenerate = nextCross !== null && pair.low.min >= nextCross.min;
+            const degenerate = pair.low.min >= pair.endMin; // endMin = 구간 경계의 단일 출처(levelView.ts)
             if (degenerate) {
                 degeneratePairs++;
                 continue;
             }
             const prev = k > 0 ? pairs[k - 1] : null;
-            const prevCross = prev !== null ? pair.high.cross : null;
-            const prevDegenerate = prev !== null && prevCross !== null && prev.low.min >= prevCross.min;
+            const prevDegenerate = prev !== null && prev.low.min >= prev.endMin;
             if (prevDegenerate) continue; // 직전 쌍이 퇴화면 이 쌍의 leg 분모가 전제 밖 — 창 검사 제외
             const leg = BigInt(legAmountOfPair(pair, prev));
             if (leg <= 0n) v.push(`④ leg ≤ 0: 레벨 min=${pair.high.min}`);

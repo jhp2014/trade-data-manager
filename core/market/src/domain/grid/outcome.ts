@@ -9,6 +9,9 @@
 // **세션 최고가(격자 사실, 2026-09-04)가 하한(≥)을 없앤다**: T 이내로 끝까지 간 시그널·확정 고점이
 // 아예 없는 시그널의 연장 고점 = 세션 최고가(정확값). 회복 판정도 이걸로 닫힌다 —
 // 어떤 고점가를 넘은 봉이 있었다 ⟺ 세션 최고가 > 그 고점가(크로싱 = strict >, 볼륨 무관).
+// ⚠ 예외 하나(v9 밴드 Point): 시그널이 세션 최고가 봉 **뒤**면 연장 상한·품는 쌍의 연장 좌표(cap)는
+// p 이후 경로 뷰 고점(폴백 = 시그널 봉 고가)이라 **경로 뷰 해상도의 근사**다 — 피벗이 못 된 봉의 더
+// 높은 고가는 격자에 없다(2% 해상도 밖 = 결손 아님 원칙). 상단 돌파 Point 는 여전히 전부 정확.
 //
 // **breakpoint 압축의 증명**: T 초과 첫 저점의 색인은 T 에 대해 비감소다. 깊이 d_i 가 앞선 러닝 최대보다
 // 작으면 d_i ≥ T 인 어떤 T 에서도 더 앞의 더 깊은 저점이 먼저 걸린다 — 그러므로 깊이의 러닝-최대 접두만
@@ -26,12 +29,18 @@ import { levelViewOf } from "./levelView.js";
 export interface OutcomeBreak {
     /** (highPrice − lowPrice) / highPrice × 100 — 목록 안에서 강한 단조 증가. */
     depth: number;
-    /** 이 눌림 직전 고점(= 이 깊이가 걸리는 T 대의 연장 고점). */
+    /** 이 눌림의 기준 고점(트레일링 자 — 깊이·회복 판정의 분모). 품는 쌍(밴드 Point)에선 시그널
+     *  **이전**의 레벨 봉이다 — 연장 고점 역할은 cap 이 대신한다(두 역할이 갈리는 유일한 자리). */
     highMin: number;
     highPrice: number;
     /** 이 눌림의 저가(구간 봉 최저 — 크로싱이 없으면 세션 끝까지의 최저). */
     lowMin: number;
     lowPrice: number;
+    /** 연장 고점 좌표가 기준 고점과 갈릴 때만(품는 쌍 — 레벨 봉이 시그널 이전이라 그대로 쓰면 과거
+     *  고가가 연장 고점으로 샌다, §10.4): p 이후의 연장 좌표 = max(시그널 봉 고가, (p, 저가) 사이
+     *  경로 뷰 고점). 없으면 highMin/highPrice 가 곧 연장 고점(상단 돌파 Point — 옛 동작). */
+    capMin?: number;
+    capPrice?: number;
 }
 
 /** 시그널 하나의 T 무관 걷기 산출물 — 항상 존재한다(세션 최고가가 격자 사실이라). */
@@ -45,7 +54,7 @@ export interface OutcomeWalk {
     sessionHigh: { min: number; price: number };
 }
 
-/** 걷기의 시그널 좌표 — 시각과 자기 봉 고가(연장 상한 폴백에만 쓰인다). DerivedPoint 가 그대로 들어온다. */
+/** 걷기의 시그널 좌표 — 시각과 자기 봉 고가(연장 상한 폴백·품는 쌍 cap 의 재료). DerivedPoint 가 그대로 들어온다. */
 export interface OutcomeSignal {
     min: number;
     high: number;
@@ -64,28 +73,37 @@ export function walkOutcome(grid: PointGrid, point: OutcomeSignal): OutcomeWalk 
     const pairs = levelViewOf(grid);
     const breaks: OutcomeBreak[] = [];
     let maxDepth = 0;
-    const push = (highMin: number, highPrice: number, lowMin: number, lowPrice: number): void => {
+    const push = (highMin: number, highPrice: number, lowMin: number, lowPrice: number, cap?: { min: number; price: number }): void => {
         const depth = ((highPrice - lowPrice) / highPrice) * 100;
         if (depth > maxDepth) {
             maxDepth = depth;
-            breaks.push({ depth, highMin, highPrice, lowMin, lowPrice });
+            breaks.push({ depth, highMin, highPrice, lowMin, lowPrice, capMin: cap?.min, capPrice: cap?.price });
         }
     };
     // p 를 품는 레벨 쌍(최대 하나 — 다음 레벨 봉은 자기 크로싱 뒤라 p 를 못 품는다).
     for (let k = 0; k < pairs.length; k++) {
         const pair = pairs[k];
         if (!(pair.high.min < point.min)) break; // 시간순 — p 이전 레벨만 후보
-        const nextCross = k + 1 < pairs.length ? pairs[k + 1].high.cross : null;
-        const endMin = nextCross === null ? Infinity : nextCross.min;
-        if (!(point.min < endMin)) continue;
+        if (!(point.min < pair.endMin)) continue;
         let low: { min: number; price: number } | null = null;
         for (let i = pair.highIndex + 1; i < grid.pivots.length; i++) {
             const q = grid.pivots[i];
-            if (q.min >= endMin) break;
+            if (q.min >= pair.endMin) break;
             if (q.min <= point.min || q.kind !== "low") continue;
             if (low === null || q.price < low.price) low = { min: q.min, price: q.price };
         }
-        if (low !== null) push(pair.high.min, pair.high.price, low.min, low.price);
+        if (low !== null) {
+            // 깊이·회복 자 = 레벨(이미 선 러닝 최고가), 연장 좌표(cap) = p 이후만(§10.4 — 과거 고가 금지):
+            // 시그널 봉 자신과 (p, 저가) 사이 경로 뷰 고점의 max.
+            let cap = { min: point.min, price: point.high };
+            for (let i = pair.highIndex + 1; i < grid.pivots.length; i++) {
+                const q = grid.pivots[i];
+                if (q.min >= low.min) break;
+                if (q.min <= point.min || q.kind !== "high") continue;
+                if (q.price > cap.price) cap = { min: q.min, price: q.price };
+            }
+            push(pair.high.min, pair.high.price, low.min, low.price, cap);
+        }
         break;
     }
     for (const { high, low } of pairs) {
@@ -139,7 +157,12 @@ export function sliceOutcome(walk: OutcomeWalk, tolerancePct: number, close: num
     const cut = walk.breaks.find((b) => b.depth >= tolerancePct);
     // contained 의 보고 저가 = T 이내 최대 눌림 = 러닝-최대 접두의 마지막 항목.
     const at = cut ?? (walk.breaks.length > 0 ? walk.breaks[walk.breaks.length - 1] : null);
-    const ext = cut ? { min: cut.highMin, price: cut.highPrice } : walk.sessionHigh;
+    // 연장 고점 = cut 의 연장 좌표(cap 이 있으면 그것 — 품는 쌍의 기준 고점은 시그널 이전이라 §10.4 위반).
+    const ext = cut
+        ? cut.capMin !== undefined && cut.capPrice !== undefined
+            ? { min: cut.capMin, price: cut.capPrice }
+            : { min: cut.highMin, price: cut.highPrice }
+        : walk.sessionHigh;
     return {
         status: cut ? "exceeded" : at ? "contained" : "none",
         extHighMin: ext.min,

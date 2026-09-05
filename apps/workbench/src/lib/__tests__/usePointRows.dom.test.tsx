@@ -44,4 +44,17 @@ describe("usePointRows — 격자 파생 한 벌", () => {
         act(() => useWorkbench.getState().setPointDef({ baselineGateEok: 100 }));
         expect(screen.getByTestId("rows").textContent).toBe("0:-");
     });
+
+    it("근접(approachPct) 노브도 구독 배선을 탄다 — 0 으로 내리면 밴드 진입 캔들이 자격을 잃는다", () => {
+        // maxBefore(10,060) > 고가(10,050): 기본 0.5 에선 사건(10,050 > 10,060×0.995), 0 에선 무사건.
+        // usePointGrids 의 구조분해·deps 에서 approachPct 가 빠지면 노브를 돌려도 행이 안 변한다(침묵 버그 회귀선).
+        const bandGrid: PointGrid = { ...grid, newHighs: [{ ...grid.newHighs[0], maxBefore: 10060 }] };
+        renderWithProviders(
+            <Probe />,
+            { pointGrids: { version: 1, byDate: new Map([["2026-07-01", new Map([["A", bandGrid]])]]) } },
+        );
+        expect(screen.getByTestId("rows").textContent).toBe("1:09:20:00"); // 기본 0.5 — 밴드 진입 캔들이 Point
+        act(() => useWorkbench.getState().setPointDef({ approachPct: 0 }));
+        expect(screen.getByTestId("rows").textContent).toBe("0:-");
+    });
 });

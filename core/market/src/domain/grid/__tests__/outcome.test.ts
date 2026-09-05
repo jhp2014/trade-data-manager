@@ -5,7 +5,7 @@ import type { GridPivot, PointGrid } from "../grid.js";
 import { sliceOutcome, walkOutcome, type OutcomeSignal, type OutcomeWalk } from "../outcome.js";
 import { legHighOf } from "../windows.js";
 
-/** 시그널 좌표 — high 는 연장 상한 폴백(세션 최고가가 p 이전일 때)에만 쓰인다. */
+/** 시그널 좌표 — high 는 연장 상한 폴백과 품는 쌍의 연장 좌표(cap) 재료다(상단 돌파 위치에선 미사용). */
 const pt = (min: number, high = 0): OutcomeSignal => ({ min, high });
 
 // v9 경로 뷰 유효성: 레벨(첫 레벨 제외)엔 cross 를 채운다(불변식 ④ — levelViewOf 의 구간 경계).
@@ -60,16 +60,22 @@ describe("walkOutcome — breakpoint 러닝-최대 압축", () => {
         expect(w.sessionHigh.price).toBe(11800);
     });
 
-    it("밴드 Point 직후 깊은 눌림 — 품는 레벨 쌍의 p 이후 최저가 첫 breakpoint(기준 고점 = 그 레벨)", () => {
-        // p=582: 레벨 쌍2(580@10500, 크로싱 598) 구간 안. p 이후 저점 585(10250) → 깊이 2.381%.
-        const w = walkOutcome(grid, pt(582));
-        expect(w.breaks.map((b) => [Math.round(b.depth * 1000) / 1000, b.highMin, b.lowMin])).toEqual([
-            [2.381, 580, 585],
-            [5, 600, 605],
+    it("밴드 Point 직후 깊은 눌림 — 깊이·회복 자는 레벨, 연장 고점은 p 이후 좌표(cap)로 갈린다", () => {
+        // p=582(고가 10,460 — 밴드 접근 봉): 레벨 쌍2(580@10500, 크로싱 598) 구간 안. p 이후 저점
+        // 585(10250) → 깊이 2.381%(분모 = 레벨 10,500 — 트레일링은 이미 선 최고가 기준). 연장 고점은
+        // 레벨 봉(580, p 이전!)이 아니라 cap = 시그널 봉 자신(§10.4 — 과거 고가가 연장으로 새면 Δ 가 음수가 된다).
+        const w = walkOutcome(grid, pt(582, 10460));
+        expect(w.breaks.map((b) => [Math.round(b.depth * 1000) / 1000, b.highMin, b.lowMin, b.capMin ?? null])).toEqual([
+            [2.381, 580, 585, 582],
+            [5, 600, 605, null],
         ]);
         const s = sliceOutcome(w, 2.2, CLOSE);
-        expect(s).toMatchObject({ status: "exceeded", extHighMin: 580, extHighPrice: 10500, lowMin: 585 });
+        expect(s).toMatchObject({ status: "exceeded", extHighMin: 582, extHighPrice: 10460, lowMin: 585, dropFromHighPct: -((10500 - 10250) / 10500) * 100 });
         expect(sliceOutcome(w, 3, CLOSE)).toMatchObject({ extHighMin: 600, extHighPrice: 11000 });
+        // Δ 비단조 회귀선: T 를 올려도 연장 고점 %(extPct)가 줄지 않는다(cap ≤ 뒤 레벨 ≤ 세션 최고가).
+        const exts = [2.2, 3, 5.1].map((t) => sliceOutcome(w, t, CLOSE).extPct);
+        expect(exts[0]).toBeLessThanOrEqual(exts[1]);
+        expect(exts[1]).toBeLessThanOrEqual(exts[2]);
     });
 
     it("세션 최고가가 시그널 이전이면 연장 상한은 p 이후 경로 뷰 고점(없으면 시그널 봉 자신)으로 갈음한다", () => {

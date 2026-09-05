@@ -7,6 +7,8 @@
 //
 // 값은 **전부 정확하다**(2026-09-04 세션 최고가 굽기 이후 — 하한(≥)·표시/술어 분리 기계는 철거됐다).
 // 낙폭·회복은 무눌림(none)에서만 null = 무사건이지 결손이 아니다.
+// 예외 하나(v9 밴드 Point, approachPct>0): 시그널이 세션 최고가 봉 뒤일 때의 연장 고점은 p 이후
+// 경로 뷰 좌표라 격자 해상도(2%)의 근사다 — outcome.ts 머리 주석 참조. 깊이·회복·저가는 여전히 정확.
 import { useMemo } from "react";
 import { pointKeyOf, sliceOutcome, walkOutcome, type OutcomeSlice, type OutcomeWalk } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";

@@ -102,7 +102,9 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 // 세션 최고가 굽기 이후 걷기는 항상 선다 — 무눌림(옛 "고점 없음")도 연장 고점 = 세션 최고가.
                 const s = sliceOutcome(walkOutcome(grid, p), t1, p.close);
                 // 분모 = 레벨가(다리 상승폭) — 결과 패널·시트의 % 는 Point 봉 종가 분모라 값이 다르다. 기준을 라벨에 명시.
-                label += ` · 고점 ${minuteToHms(s.extHighMin).slice(0, 5)} (레벨+${(((s.extHighPrice - p.levelPrice) / p.levelPrice) * 100).toFixed(1)}%)`;
+                // 밴드 Point 는 연장 고점이 레벨가 아래일 수 있어(§10.4 cap) 부호를 값이 정한다 — "+-" 금지.
+                const legPct = ((s.extHighPrice - p.levelPrice) / p.levelPrice) * 100;
+                label += ` · 고점 ${minuteToHms(s.extHighMin).slice(0, 5)} (레벨${legPct >= 0 ? "+" : ""}${legPct.toFixed(1)}%)`;
                 const highUnix = kstToUnix(viewDate, minuteToHms(s.extHighMin));
                 legTimes.add(highUnix);
                 bySignal.set(signalUnix, highUnix);
