@@ -16,6 +16,7 @@
 // 다리 고점은 소비처(차트 표식·결과 걷기 outcome.ts)가 필요할 때 격자를 더 보고 얻는 파생이다.
 // 다리 고점 ≡ 결과 걷기의 T=2% 연장 고점(outcome.test 가 동치로 고정).
 import type { GridBarMark, GridPivot, PointGrid } from "./grid.js";
+import { levelViewOf, type LevelPair } from "./levelView.js";
 import type { DerivedPoint } from "./points.js";
 
 /** 포함 창 [start .. 끝 봉] 의 누적 대금(원, string). endCum = 끝 봉의 cum(그 봉 포함). */
@@ -30,11 +31,19 @@ export function legAmountOf(grid: PointGrid, pivotIndex: number): string {
     return (BigInt(p.cum) - prev).toString();
 }
 
-/** 옛 renewalAmount 재현 — 직전 확정 고점의 크로싱 봉(포함)부터 이 고점 봉까지. 첫 고점·저점은 null. */
+/** 옛 renewalAmount 재현 — 직전 레벨의 크로싱 봉(포함)부터 이 레벨 봉까지. 첫 레벨·국소 고점·저점은 null. */
 export function renewalAmountOf(grid: PointGrid, pivotIndex: number): string | null {
     const p = grid.pivots[pivotIndex];
     if (p.kind !== "high" || p.cross === null) return null;
     return amountFrom(p.cross, p.cum);
+}
+
+/** 레벨 쌍의 leg 창 — 직전 레벨 쌍의 저점 다음 봉부터 이 레벨 고점 봉까지(시작 배타, 첫 레벨은 세션
+ *  첫 봉부터). v8 의 `legAmountOf(고점 피벗)` 과 같은 값 — 피벗 색인 판(legAmountOf)은 경로 뷰 위의
+ *  도구로 남고, 마디 뷰의 불변식 `0 < renewal ≤ leg` 은 recon·테스트가 이 함수로 검사한다. */
+export function legAmountOfPair(pair: LevelPair, prevPair: LevelPair | null): string {
+    const prev = prevPair === null ? 0n : BigInt(prevPair.low.cum);
+    return (BigInt(pair.high.cum) - prev).toString();
 }
 
 /** 돌파 창 — 기준선 터치 봉(포함)부터 이 고점 봉까지. 미터치·터치가 고점보다 뒤면 null. */
@@ -44,26 +53,29 @@ export function breakoutAmountOf(grid: PointGrid, pivotIndex: number): string | 
     return amountFrom(grid.touch, p.cum);
 }
 
-/** 시그널(Point 봉 시각) 이후 첫 확정 고점 피벗 — 없으면 null(꼬리 = 결손). 시그널 봉 자신이 고점이면 그 봉. */
+/** 시그널(Point 봉 시각) 이후 첫 **레벨** 고점(마디 뷰) — 없으면 null(꼬리 = 결손). 시그널 봉 자신이
+ *  고점이면 그 봉. v9: 국소 고점 피벗은 다리 고점이 아니다 — 시그널 뒤 첫 확정 고점은 정리상 레벨이지만
+ *  마디 뷰를 거쳐 명시한다(index 는 grid.pivots 색인 그대로 — legAmountOf 등 피벗 색인 도구와 호환). */
 export function legHighOf(grid: PointGrid, pointMin: number): { pivot: GridPivot; index: number } | null {
-    for (let i = 0; i < grid.pivots.length; i++) {
-        const p = grid.pivots[i];
-        if (p.kind === "high" && p.min >= pointMin) return { pivot: p, index: i };
+    for (const pair of levelViewOf(grid)) {
+        if (pair.high.min >= pointMin) return { pivot: pair.high, index: pair.highIndex };
     }
     return null;
 }
 
 /**
- * 다리 창의 시작 봉 = 시그널이 넘은 레벨의 크로싱. 돌파는 터치 봉, 재돌파는 레벨 피벗 다음 확정 고점의 `cross`
- * (피벗은 high/low 교대라 레벨 피벗 i 의 다음 고점은 i+2). 다음 고점이 아직 없으면(꼬리) null.
+ * 다리 창의 시작 봉 = 시그널이 넘은 레벨의 크로싱. 돌파는 터치 봉, 재돌파는 **다음 레벨**의 `cross`
+ * (마디 뷰에서 레벨은 연속이라 다음 레벨의 cross = 이 레벨 가격을 처음 넘은 봉 — v8 의 pivots[i+2] 와
+ * 같은 값). 다음 레벨이 아직 없으면(꼬리) null.
  */
 export function legStartOf(grid: PointGrid, point: Pick<DerivedPoint, "levelIdx" | "levelMin">): GridBarMark | null {
     if (point.levelIdx === 0) return grid.touch;
     if (point.levelMin === null) return null;
-    const i = grid.pivots.findIndex((p) => p.kind === "high" && p.min === point.levelMin);
-    if (i < 0) return null;
-    const next = grid.pivots[i + 2];
-    return next && next.kind === "high" ? next.cross : null;
+    const pairs = levelViewOf(grid);
+    const k = pairs.findIndex((p) => p.high.min === point.levelMin);
+    if (k < 0) return null;
+    const next = pairs[k + 1];
+    return next ? next.high.cross : null;
 }
 
 /** 다리 = 크로싱(시작 봉) → 다리 고점. 시간은 봉 차(분), amount 는 포함 창 누적 대금(원, string). */

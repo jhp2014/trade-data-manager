@@ -5,8 +5,16 @@ import type { GridPivot, PointGrid } from "../grid.js";
 import { sliceOutcome, walkOutcome, type OutcomeWalk } from "../outcome.js";
 import { legHighOf } from "../windows.js";
 
-const hi = (min: number, price: number): GridPivot => ({ kind: "high", min, price, confirmedMin: min + 1, cum: "0", cross: null });
-const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: null, cum: "0", cross: null });
+// v9 경로 뷰 유효성: 레벨(첫 레벨 제외)엔 cross 를 채운다(불변식 ④ — levelViewOf 의 구간 경계).
+const hi = (min: number, price: number, cross: number | null = null): GridPivot => ({
+    kind: "high",
+    min,
+    price,
+    confirmedMin: min + 1,
+    cum: "0",
+    cross: cross === null ? null : { min: cross, tv: "0", cum: "0" },
+});
+const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: min + 1, cum: "0", cross: null });
 const gridOf = (pivots: GridPivot[], sessionHigh: { min: number; price: number }): PointGrid =>
     ({ base: null, touch: null, pivots, newHighs: [], prevBase: null, prevBaseKrx: null, sessionHigh });
 
@@ -16,7 +24,7 @@ const gridOf = (pivots: GridPivot[], sessionHigh: { min: number; price: number }
 //   H3 600 @11000 → L3 605 @10450 (깊이 5.0%)
 //   H4 620 @11500 → L4 625 @11270 (깊이 2.0% — 경계값, breakpoint 아님)
 //   꼬리: L4 회복 후 상승 마감 — 세션 최고가 11800(@630, 미확정이라 피벗엔 없음).
-const PIVOTS = [hi(560, 10000), lo(565, 9700), hi(580, 10500), lo(585, 10250), hi(600, 11000), lo(605, 10450), hi(620, 11500), lo(625, 11270)];
+const PIVOTS = [hi(560, 10000), lo(565, 9700), hi(580, 10500, 578), lo(585, 10250), hi(600, 11000, 598), lo(605, 10450), hi(620, 11500, 618), lo(625, 11270)];
 const grid = gridOf(PIVOTS, { min: 630, price: 11800 });
 const CLOSE = 9800;
 

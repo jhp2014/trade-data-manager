@@ -22,6 +22,7 @@
 // "유효"가 단서다 — mergeRisePct 로 병합된 마디는 구조적으로는 고가를 만들었어도 레벨이 아니라 그 위 캔들이
 // breakout 으로 선다(기본 0 이라 지금은 무사건). zigzag 2% 미만 눌림도 같은 이유로 훼손이 아니다.
 import type { GridNewHigh, PointGrid } from "./grid.js";
+import { levelViewOf } from "./levelView.js";
 
 /** Point 판정 정의 — 전부 읽기 시점 조절(격자 불변). SavedSet payload 에 실릴 물건. */
 export interface PointDefinition {
@@ -102,10 +103,12 @@ export interface PointLevel {
 }
 
 /**
- * 레벨 산정: 기준선 + "자기 시점 러닝 최고가였던 확정 고점"만(단조 증가 — 하락 중 낮은 고점은 넘어도
- * 러닝 최고가 갱신이 아니라 레벨이 아니다). 미확정 마지막 마디는 아직 넘을 대상이 아니다(보수).
- * mergeRisePct > 0 이면 직전 저점 대비 상승폭 미달 마디를 병합한다 — 병합된 마디는 maxKept 를 올리지
- * 않으므로, 그 위 캔들의 Point 는 다음 유효 레벨 몫으로 넘어간다(축약의 최소 형태 — 시간 조건 T 는 후속).
+ * 레벨 산정: 기준선 + 마디 뷰(`levelViewOf`)의 레벨 고점 — 경로 뷰(pivots)를 직접 순회하지 않는다(v9).
+ * 기준선 아래 레벨은 건너뛴다(maxKept 가 base 에서 시작 — Point 문법은 기준선 위에서만).
+ * 미확정 마지막 마디는 levelViewOf 가 이미 배제한다(아직 넘을 대상이 아님, 보수).
+ * mergeRisePct > 0 이면 직전 레벨 쌍의 저점(lastLow — v8 의 "직전 저점 피벗"과 같은 값) 대비 상승폭
+ * 미달 마디를 병합한다 — 병합된 마디는 maxKept 를 올리지 않으므로, 그 위 캔들의 Point 는 다음 유효
+ * 레벨 몫으로 넘어간다(축약의 최소 형태 — 시간 조건 T 는 후속).
  *
  * `pointsOf` 밖으로 뺀 이유는 recon(point-diff)이 **같은 레벨 정의** 위에서 옛/새 규칙을 대조해야 해서다 —
  * 사본을 두면 레벨 규칙이 바뀔 때 양쪽이 함께 틀어져 diff 가 조용히 무의미해진다. 기준선 없으면 빈 배열.
@@ -115,17 +118,16 @@ export function levelsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
     const levels: PointLevel[] = [{ price: grid.base, renewal: false, min: null }];
     let maxKept = grid.base;
     let lastLow: number | null = null;
-    for (const p of grid.pivots) {
-        if (p.kind === "low") {
-            lastLow = p.price;
-            continue;
+    for (const pair of levelViewOf(grid)) {
+        const p = pair.high;
+        if (
+            p.price > maxKept &&
+            !(def.mergeRisePct > 0 && lastLow !== null && ((p.price - lastLow) / lastLow) * 100 < def.mergeRisePct)
+        ) {
+            levels.push({ price: p.price, renewal: true, min: p.min });
+            maxKept = p.price;
         }
-        // 재정식화 격자에선 미확정 고점·비단조 고점이 애초에 안 실려 아래 두 가드는 도달 불가 — 방어로만 유지.
-        if (p.confirmedMin === null) continue;
-        if (p.price <= maxKept) continue;
-        if (def.mergeRisePct > 0 && lastLow !== null && ((p.price - lastLow) / lastLow) * 100 < def.mergeRisePct) continue;
-        levels.push({ price: p.price, renewal: true, min: p.min });
-        maxKept = p.price;
+        lastLow = pair.low.price; // 다음 레벨의 병합 분모 = 직전 레벨 쌍의 저점
     }
     return levels;
 }

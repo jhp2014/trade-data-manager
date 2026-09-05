@@ -48,8 +48,9 @@ export const GRID_AXIS_IDS: readonly string[] = BASE_SPECS.map((s) => computedAx
 /** Point 가 넘은 레벨(마디)에서 Point 캔들까지의 최저 저점 피벗 — 없으면 null(breakout 등, 결손은 결손).
  *  눌림 깊이·저점 위치 두 특징이 **같은 저점**을 봐야 해서 선정 규칙은 이 한 곳이다(두 벌이면 두 축이
  *  다른 저점을 말한다). 동가 tie 는 이른 봉(격자가 시간 오름차순이라 strict < 비교가 그 규칙).
- *  저점의 confirmedMin 은 안 본다(재정식화 격자에선 항상 null) — 가격 자체는 Point 시각 이전에 일어난
+ *  저점의 confirmedMin 은 안 본다 — 가격 자체는 Point 시각 이전에 일어난
  *  사실이라 미래 누출이 아니고, 묻는 것이 "그 구간을 지나며 실제로 어디까지 빠졌나"이기 때문.
+ *  v9 경로 뷰로 국소 저점 피벗이 더 들어와도 창 안 최솟값은 같다(§2.6 ② tie 클래스 제외) — 코드 무변경.
  *  저점 = 구간 **봉 최저**(피벗 최저가 아님)라 옛 격자보다 값이 조금 깊어질 수 있다(더 정확한 쪽). */
 function pullbackLowPivot(grid: PointGrid, levelMin: number | null, pointMin: number): { min: number; price: number } | null {
     if (levelMin === null) return null;

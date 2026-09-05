@@ -13,10 +13,17 @@ const nh = (min: number, high: number, eok: number, bull = true): GridNewHigh =>
     tv: String(eok * 100_000_000),
     cum: "0",
 });
-// 판정은 대금 창을 안 보므로 cum·cross 는 자리만 채운다(창 파생은 windows.test 몫).
-const hi = (min: number, price: number, confirmedMin: number | null): GridPivot => ({ kind: "high", min, price, confirmedMin, cum: "0", cross: null });
-// 재정식화 격자의 저점: confirmedMin·cross 항상 null — 헬퍼가 규칙을 증언한다.
-const lo = (min: number, price: number): GridPivot => ({ kind: "low", min, price, confirmedMin: null, cum: "0", cross: null });
+// 판정은 대금 창을 안 보므로 cum 은 자리만 채운다(창 파생은 windows.test 몫). v9 경로 뷰 유효성:
+// 레벨(첫 레벨 제외)엔 cross 를, 레벨마다 짝 저점을 채워야 levelViewOf 가 선다(불변식 ④·⑥).
+const hi = (min: number, price: number, confirmedMin: number | null, cross: number | null = null): GridPivot => ({
+    kind: "high",
+    min,
+    price,
+    confirmedMin,
+    cum: "0",
+    cross: cross === null ? null : { min: cross, tv: "0", cum: "0" },
+});
+const lo = (min: number, price: number, confirmedMin: number | null = null): GridPivot => ({ kind: "low", min, price, confirmedMin, cum: "0", cross: null });
 const touch = (min: number) => ({ min, tv: "0", cum: "0" });
 const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touch: touch(550), pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, sessionHigh: { min: 550, price: 10000 }, ...partial });
 
@@ -28,7 +35,7 @@ describe("pointsOf", () => {
 
     it("기본 흐름 — 기준선 돌파(50억 게이트) + 마디 갱신(30억 게이트)", () => {
         const g = grid({
-            pivots: [hi(575, 10300, 585)],
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
             newHighs: [nh(560, 10050, 60), nh(600, 10350, 35)],
         });
         const pts = pointsOf(g);
@@ -39,7 +46,7 @@ describe("pointsOf", () => {
 
     it("게이트 상향 시 그 레벨의 Point 는 같은 레벨의 뒤 캔들로 **이동**한다", () => {
         const g = grid({
-            pivots: [hi(575, 10300, 585)],
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
             newHighs: [nh(560, 10050, 60), nh(600, 10350, 35), nh(620, 10400, 60)],
         });
         const base = pointsOf(g).filter((p) => p.kind === "renewal");
@@ -69,7 +76,7 @@ describe("pointsOf", () => {
 
     it("한 캔들이 기준선+마디를 한 번에 넘으면 Point 는 하나 — **높은 레벨 몫**(갈리면 재돌파)", () => {
         const g = grid({
-            pivots: [hi(575, 10300, 585)],
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
             newHighs: [nh(600, 10500, 60)],
         });
         const pts = pointsOf(g);
@@ -121,7 +128,7 @@ describe("pointsOf", () => {
         // 10,350 캔들은 마디(10,300) 몫 — 재돌파 게이트를 50억으로 올리면 35억은 탈락이고,
         // 기준선(50억)으로 강등되지도 않는다. 같은 레벨의 다음 자격 캔들(60억)이 대신 선다.
         const g = grid({
-            pivots: [hi(575, 10300, 585)],
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
             newHighs: [nh(600, 10350, 35), nh(620, 10400, 60)],
         });
         const raised = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, renewalGateEok: 50 });
@@ -146,29 +153,39 @@ describe("pointsOf", () => {
         expect(pointsOf(g).filter((p) => p.kind === "renewal")).toHaveLength(0);
     });
 
-    it("mergeRisePct — 잔 마디를 병합하면 그 레벨의 Point 가 다음 유효 레벨로 넘어간다", () => {
+    it("mergeRisePct — 잔 마디를 병합하면 그 마디를 넘은 캔들의 귀속이 아래 레벨로 내려가 선점/탈락이 갈린다", () => {
+        // 레벨 3개: 10,250 / 10,280(직전 레벨 쌍 저점 10,180 대비 +0.98% — 병합 대상) / 10,600.
         const g = grid({
-            pivots: [lo(555, 10150), hi(570, 10250, 580), lo(585, 10180), hi(600, 10600, 610)],
-            newHighs: [nh(550, 10050, 60), nh(590, 10280, 35), nh(620, 10700, 35)],
+            pivots: [
+                hi(570, 10250, 578),
+                lo(578, 10180, 582),
+                hi(600, 10280, 608, 585), // 크로싱 585 = 10,250 을 처음 넘은 봉
+                lo(608, 10150, 612),
+                hi(620, 10600, 630, 615),
+                lo(630, 10400),
+            ],
+            newHighs: [nh(550, 10050, 60), nh(585, 10260, 35), nh(605, 10300, 35), nh(618, 10700, 35)],
         });
         const loose = pointsOf(g);
         expect(loose.map((p) => [p.min, p.levelPrice])).toEqual([
             [550, 10000],
-            [590, 10250],
-            [620, 10600],
+            [585, 10250],
+            [605, 10280],
+            [618, 10600],
         ]);
         const merged = pointsOf(g, { ...DEFAULT_POINT_DEFINITION, mergeRisePct: 3 });
-        // 10,250 마디(저점 10,150 대비 +0.99%)는 병합 — 10,280 캔들은 Point 가 못 되고 레벨은 10,600 뿐.
+        // 10,280 마디 병합 — 10,300 캔들의 귀속이 10,250(이미 선점)으로 내려가 탈락, Point 는 셋만.
         expect(merged.map((p) => [p.min, p.levelPrice])).toEqual([
             [550, 10000],
-            [620, 10600],
+            [585, 10250],
+            [618, 10600],
         ]);
     });
 
-    it("첫 마디는 선행 저점이 없어 mergeRisePct 병합이 안 걸린다(수용된 편향)", () => {
-        // 재정식화 격자엔 첫 확정 고점 이전 선행 저점이 없다 — lastLow 가 null 이라 병합 검사가 스킵.
+    it("첫 마디는 직전 레벨 쌍 저점이 없어 mergeRisePct 병합이 안 걸린다 — 선행 저점은 분모가 아니다(v8 동치)", () => {
+        // v9 경로 뷰엔 선행 저점이 있을 수 있지만 병합 분모는 **직전 레벨 쌍의 저점**뿐 — 첫 마디는 스킵.
         const g = grid({
-            pivots: [hi(570, 10250, 580)],
+            pivots: [lo(560, 10150, 570), hi(570, 10250, 580), lo(580, 10100)],
             newHighs: [nh(590, 10280, 35)],
         });
         expect(pointsOf(g, { ...DEFAULT_POINT_DEFINITION, mergeRisePct: 99 }).map((p) => p.min)).toEqual([590]);
