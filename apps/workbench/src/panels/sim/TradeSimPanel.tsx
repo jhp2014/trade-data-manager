@@ -121,7 +121,9 @@ export function TradeSimPanel(): JSX.Element {
                                 취소↑
                             </button>
                             {simParams.cancelRisePct !== null && (
-                                <NumField label="+" suffix="%" value={simParams.cancelRisePct} onCommit={(v) => setSim({ cancelRisePct: parseTradeSimParams({ cancelRisePct: v }).cancelRisePct })} />
+                                <NumField label="+" suffix="%" value={simParams.cancelRisePct} min={0.1}
+                                    onCommit={(v) => setSim({ cancelRisePct: v })}
+                                    normalize={(v) => parseTradeSimParams({ cancelRisePct: v }).cancelRisePct ?? 2} />
                             )}
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -133,7 +135,9 @@ export function TradeSimPanel(): JSX.Element {
                                 취소⏱
                             </button>
                             {simParams.cancelAfterMin !== null && (
-                                <NumField label="" suffix="분" value={simParams.cancelAfterMin} onCommit={(v) => setSim({ cancelAfterMin: parseTradeSimParams({ cancelAfterMin: v }).cancelAfterMin })} />
+                                <NumField label="" suffix="분" value={simParams.cancelAfterMin} min={0.1}
+                                    onCommit={(v) => setSim({ cancelAfterMin: v })}
+                                    normalize={(v) => parseTradeSimParams({ cancelAfterMin: v }).cancelAfterMin ?? 1} />
                             )}
                         </div>
                     </KnobGroup>

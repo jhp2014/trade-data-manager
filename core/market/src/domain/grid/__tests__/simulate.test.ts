@@ -33,7 +33,7 @@ const P = (over: Partial<TradeSimParams> = {}): TradeSimParams => ({
 const n = (pct: number): { entry: { anchor: "close"; pct: number } } => ({ entry: { anchor: "close", pct } });
 
 // 익절 시나리오 격자 — 시그널(min 500, 종가 10000) 후:
-//   hi 510@10300 → lo 520@9700(체결 후보, n=3 의 E=9700 딱) → hi 540@10600 → lo 550@10100(눌림 4.7%)
+//   hi 510@10300 → lo 520@9700(체결 후보, n=3 의 E=9700 딱) → hi 540@10600 → lo 550@10100(눌림 4.72%)
 //   → hi 570@11200 → lo 580@10900 → 꼬리 상승, 세션 최고가 590@11300.
 const TAKE_GRID = gridOf(
     [hi(510, 10300), lo(520, 9700), hi(540, 10600, 538), lo(550, 10100), hi(570, 11200, 568), lo(580, 10900)],
@@ -90,6 +90,29 @@ describe("simulate — 진입·취소(비관 원칙: 모호하면 미체결/취�
         expect(simulate(TAKE_GRID, SIGNAL, P({ cancelAfterMin: 19 })).status).toBe("expired");
     });
 
+    it("취소 2개 동시 — 분류는 주문 소멸 사유의 선착(체결 유무 무관, 이미 죽은 주문 뒤 사건은 사인이 아니다)", () => {
+        // 체결 없음(n=4): 취소선 첫 터치 540(x=5) vs 마감 510(m=10) — 마감이 먼저 → expired.
+        expect(simulate(TAKE_GRID, SIGNAL, P({ ...n(4), cancelRisePct: 5, cancelAfterMin: 10 })).status).toBe("expired");
+        // 마감 550(m=50)이면 취소선(540)이 먼저 → cancelled.
+        expect(simulate(TAKE_GRID, SIGNAL, P({ ...n(4), cancelRisePct: 5, cancelAfterMin: 50 })).status).toBe("cancelled");
+        // 체결 후보 있음(n=3, fill@520): 취소선 510(x=2.5) ≤ 체결, 마감 505(m=5) < 취소선 → expired.
+        expect(simulate(TAKE_GRID, SIGNAL, P({ cancelRisePct: 2.5, cancelAfterMin: 5 })).status).toBe("expired");
+    });
+
+    it("마감이 세션 관측 끝(마지막 피벗·세션 최고가) 뒤면 사인이 아니다 — 눌림 부족 유지", () => {
+        // n=4 무체결 + m=10000(마감이 장 밖): 만료가 세션 안에서 일어난 적 없음 → shallow(expired 아님).
+        expect(simulate(TAKE_GRID, SIGNAL, P({ ...n(4), cancelAfterMin: 10000 })).status).toBe("shallow");
+        // 취소선이 걸려 있으면 그쪽이 사인 — cancelled.
+        expect(simulate(TAKE_GRID, SIGNAL, P({ ...n(4), cancelRisePct: 5, cancelAfterMin: 10000 })).status).toBe("cancelled");
+    });
+
+    it("simFillBasis — 두 제약 동시: 이른 쪽이 관찰 창을 자른다", () => {
+        // 취소선 540(x=5) vs 마감 515 — 마감이 이르다 → 저점 520 제외(결손).
+        expect(simFillBasis(TAKE_GRID, SIGNAL, { cancelRisePct: 5, cancelAfterMin: 15 }).lowPrice).toBeNull();
+        // 마감 525 면 저점 520 포함, 취소선(540)이 그 뒤를 자른다.
+        expect(simFillBasis(TAKE_GRID, SIGNAL, { cancelRisePct: 5, cancelAfterMin: 25 }).lowPrice).toBe(9700);
+    });
+
     it("미체결의 놓친 상승 — 시그널 종가 분모, 같은 트레일↑ 규칙", () => {
         // shallow(n=4): hi 510@10300 → lo 520@9700 은 10300×0.96=9888 이하라 트레일 발동 — 놓친 상승 = 10300.
         const r = simulate(TAKE_GRID, SIGNAL, P(n(4)));
@@ -118,7 +141,7 @@ describe("simulate — 레이스·브랜치 걷기", () => {
     it("익절 브랜치 트레일 미발동 — peak = 잔여 세션 최고가(같은 값의 자연 연장), walkOutcome 상한과 일치", () => {
         const r = simulate(TAKE_GRID, SIGNAL, P({ trailUpPct: 8 }));
         expect(r.status).toBe("take");
-        // u=8: 550 눌림(4.0%)·580 눌림(2.7%) 다 못 끊음 → 러닝 11200 → 꼬리 11300.
+        // u=8: 550 눌림(4.72%)·580 눌림(2.7%) 다 못 끊음 → 러닝 11200 → 꼬리 11300.
         expect(r.peakPct).toBeCloseTo(((11300 - 9700) / 9700) * 100, 10);
         // outcome.ts 를 안 건드리고 재구현한 "시그널 이후 상한"의 회귀선.
         expect(walkOutcome(TAKE_GRID, { min: 520, high: 0 }).sessionHigh.price).toBe(11300);

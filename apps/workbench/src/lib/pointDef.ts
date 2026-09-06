@@ -28,10 +28,11 @@ export function parseTradeSimParams(raw: unknown): TradeSimParams {
     const pct = (v: unknown, d: number): number => Math.min(SIM_PCT_MAX, Math.max(SIM_PCT_MIN, num(v, d)));
     const entryRaw = r.entry && typeof r.entry === "object" ? (r.entry as { pct?: unknown }) : null;
     const entryPct = num(entryRaw?.pct, D.entry.pct);
-    const offOr = (v: unknown, min: number): number | null => {
+    const offOr = (v: unknown, min: number, max?: number): number | null => {
         if (v === null || v === undefined) return null;
         const x = num(v, Number.NaN);
-        return Number.isNaN(x) || x <= 0 ? null : Math.max(min, x);
+        if (Number.isNaN(x) || x <= 0) return null;
+        return Math.min(max ?? Infinity, Math.max(min, x));
     };
     const cancelAfter = offOr(r.cancelAfterMin, 1);
     return {
@@ -40,7 +41,7 @@ export function parseTradeSimParams(raw: unknown): TradeSimParams {
         takePct: pct(r.takePct, D.takePct),
         trailUpPct: pct(r.trailUpPct, D.trailUpPct),
         trailDownPct: pct(r.trailDownPct, D.trailDownPct),
-        cancelRisePct: offOr(r.cancelRisePct, SIM_PCT_MIN),
+        cancelRisePct: offOr(r.cancelRisePct, SIM_PCT_MIN, SIM_PCT_MAX),
         cancelAfterMin: cancelAfter === null ? null : Math.round(cancelAfter),
     };
 }

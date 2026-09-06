@@ -69,6 +69,8 @@ export interface SimSignal {
 /**
  * 분류 6 — 미체결 3(shallow 눌림 부족 / cancelled 상승 이탈 / expired 시간 만료) +
  * 체결 3(stop 손절 / take 익절 / open 미결 — 장마감까지 둘 다 미터치, 상태 라벨만·청산가 숫자 없음).
+ * 미체결 라벨 = **주문 소멸 사유의 선착**(체결·취소선·마감·세션 끝 중 먼저 온 것) — 이미 죽은 주문
+ * 뒤의 가격 사건은 사인이 아니다(같은 취소 타임라인에서 n 에 따라 라벨이 뒤집히지 않게).
  */
 export type SimStatus = "shallow" | "cancelled" | "expired" | "stop" | "take" | "open";
 
@@ -217,8 +219,17 @@ export function simulate(grid: PointGrid, signal: SimSignal, params: TradeSimPar
             }
         }
         if (fill === null) {
-            // E 이하 저점 피벗이 세션 끝까지 없다 — 상승 취소가 있었으면 이탈, 아니면 눌림 부족.
-            return unfilled(cancelMin !== null ? "cancelled" : "shallow");
+            // E 이하 저점 피벗이 세션 끝까지 없다 — 분류 = **주문 소멸 사유의 선착**(체결 분기와 같은
+            // 규칙): 취소선 터치·마감·세션 끝 중 이른 것이 사인이고, 어느 취소도 안 걸렸으면 눌림 부족.
+            // 마감이 이른데 이탈로 적으면 이미 죽은 주문 뒤의 상승이 사인을 바꾼다(리뷰 지적 —
+            // 같은 취소 타임라인에서 n 하나로 라벨이 뒤집히는 비일관).
+            // "세션 끝"의 좌표는 격자에 없어(관측 가능한 마지막 사건 = 마지막 피벗·세션 최고가) 그걸로
+            // 근사한다 — 마감이 그 뒤면 세션 안에서 만료가 일어난 적이 없으므로 사인이 아니다(늦은 오후
+            // 시그널 + 취소⏱ 60분이 전부 expired 로 쏠려 눌림 부족이 소멸하는 오분류 방지, 재확인 지적).
+            const sessionLast = Math.max(grid.pivots.length > 0 ? grid.pivots[grid.pivots.length - 1].min : -Infinity, grid.sessionHigh.min);
+            const deadlineInSession = deadline !== null && deadline <= sessionLast ? deadline : null;
+            if (cancelMin !== null && (deadlineInSession === null || cancelMin <= deadlineInSession)) return unfilled("cancelled");
+            return unfilled(deadlineInSession !== null ? "expired" : "shallow");
         }
         // 선착 비교 — 취소는 동시(≤)에도 이긴다, 마감은 체결 == 마감시각까지 인정(+1분부터 만료).
         if (cancelMin !== null && cancelMin <= fill.min) {
