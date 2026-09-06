@@ -44,6 +44,21 @@ export interface TradeSimParams {
     cancelAfterMin: number | null;
 }
 
+/** 시뮬 % 노브의 도메인 — 하한 2 = zigzag 해상도(이보다 잔 터치는 격자에 없다 — 비관 규칙상 전부
+ *  미체결이 되어 노브가 뜻을 잃는다). 진입 pct 만 0(즉시 체결)이 특례로 허용된다. */
+export const SIM_PCT_MIN = 2;
+export const SIM_PCT_MAX = 50;
+
+export const DEFAULT_TRADE_SIM_PARAMS: TradeSimParams = {
+    entry: { anchor: "close", pct: 3 },
+    stopPct: 3,
+    takePct: 5,
+    trailUpPct: 4,
+    trailDownPct: 4,
+    cancelRisePct: null,
+    cancelAfterMin: null,
+};
+
 /** 시그널 좌표 — DerivedPoint 가 그대로 들어온다(min·close 만 본다). ⚠ OutcomeSignal(high 필수)과
  *  다른 물건 — 시뮬의 % 분모는 체결가 E 고 E 의 앵커가 종가라 high 가 안 필요하다. */
 export interface SimSignal {

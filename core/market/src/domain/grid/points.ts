@@ -23,6 +23,7 @@
 // mergeRisePct 로 병합된 마디는 레벨이 아니라 그 위 캔들이 breakout 으로 선다(기본 0 이라 무사건).
 import type { GridNewHigh, GridPivot, PointGrid } from "./grid.js";
 import { levelViewOf } from "./levelView.js";
+import { DEFAULT_TRADE_SIM_PARAMS, type TradeSimParams } from "./simulate.js";
 
 /** Point 판정 정의 — 전부 읽기 시점 조절(격자 불변). SavedSet payload 에 실릴 물건. */
 export interface PointDefinition {
@@ -56,6 +57,13 @@ export interface PointDefinition {
      */
     toleranceT1Pct: number;
     toleranceT2Pct: number;
+    /**
+     * 트레이드 시뮬 노브 7(simulate.ts — 진입/손절/익절/트레일2/취소2). T1/T2 와 같은 사정으로 여기
+     * 동승한다: **판정 노브가 아니고**(PointJudgeDef 가 못 본다) 시뮬 결과 값·패널·시트 열을 바꾸는
+     * 정의 상태이며, 영속(wb.pointDef)·SavedSet payload·parsePointDef 한 채널을 그대로 탄다
+     * (집합마다 다른 시뮬 파라미터 비교 — 게이트 50/30 비교와 동일 문법).
+     */
+    sim: TradeSimParams;
 }
 
 /** Point 판정이 실제로 보는 노브 6개 — T 를 구독에서 배제하는 계약이 시그니처다(usePointGrids 헛재파생 방지). */
@@ -86,6 +94,7 @@ export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     approachPct: 0.5, // 기본 = 밴드 폭 전부(사용자 확정 — "전고점 −0.5% 안이면 갱신 영역")
     toleranceT1Pct: 2,
     toleranceT2Pct: 5,
+    sim: DEFAULT_TRADE_SIM_PARAMS,
 };
 
 /** 판정된 Point. 파생 특징(기준선 대비 %·저점 깊이 등)은 특징 층이 격자+이 목록에서 계산한다. */
