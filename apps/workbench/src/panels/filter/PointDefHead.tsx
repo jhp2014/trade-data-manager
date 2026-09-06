@@ -2,66 +2,17 @@
 // 조건 목록의 줄이 아니라 머리인 이유: 정의는 깔때기 단이 아니라 모수 선언이라(decisions.md), 돌리면
 // 전 레일 분포가 재계산된다 — 필터와 같은 줄에 섞으면 "조건 하나 만졌는데 다른 조건 숫자가 다 변하는"
 // 화면이 된다. SavedSet 저장/열기에 사본으로 실린다(집합 자립).
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { APPROACH_MAX_PCT, APPROACH_MIN_PCT } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../../store/workbench.js";
 import { useAutoPoints } from "../../lib/PointGridsContext.js";
 import { isDefaultPointDef } from "../../lib/pointDef.js";
 import { openAndFocus } from "../../lib/openPanel.js";
+import { NumField } from "../../components/NumField.js";
 import { POINT_DEF } from "../../styles/palette.js";
 import { OUTCOME_PANEL_ID } from "../outcome/outcomePanelIds.js";
+import { TRADE_SIM_PANEL_ID } from "../sim/simPanelIds.js";
 import { GateStrip } from "./GateStrip.js";
-
-function NumField({ label, suffix, value, min, onCommit, title, normalize }: {
-    label: string;
-    suffix: string;
-    value: number;
-    min?: number;
-    onCommit: (v: number) => void;
-    title?: string;
-    /** 커밋 전 값 정규화(게이트 = Math.round). 슬라이스 파서(parsePointDef)와 같은 규칙이어야 한다 —
-     *  없으면 "50.4" 커밋이 저장값을 안 바꿀 때(반올림 50 = 기존 50) 입력칸에 초안이 잔상으로 남는다. */
-    normalize?: (v: number) => number;
-}): JSX.Element {
-    // 커밋은 blur/Enter 에서만 — 정의는 모수 선언이라 한 번 바뀌면 전 파생(1만 Point·특징·깔때기)이
-    // 재계산된다. onChange 즉시 커밋이면 "150" 타이핑이 1→15→150 세 번 계산을 물고, 지운 순간의
-    // 빈 문자열이 Number("")===0 으로 게이트 0 을 커밋하는 함정까지 있다.
-    const [draft, setDraft] = useState(String(value));
-    useEffect(() => setDraft(String(value)), [value]);
-    const commit = (): void => {
-        const raw = Number(draft);
-        if (draft.trim() !== "" && Number.isFinite(raw) && raw >= (min ?? 0)) {
-            const v = normalize ? normalize(raw) : raw;
-            onCommit(v);
-            setDraft(String(v)); // 정규화가 저장값을 안 바꿔도(useEffect 미발화) 입력칸은 실값을 보인다
-        } else setDraft(String(value)); // 무효 입력은 되돌린다(조용한 0 커밋 금지)
-    };
-    return (
-        <label title={title} style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}>
-            <span>{label}</span>
-            <input
-                type="number"
-                min={min ?? 0}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onBlur={commit}
-                onKeyDown={(e) => {
-                    if (e.key === "Enter") commit();
-                }}
-                style={{
-                    width: 44,
-                    fontSize: 11,
-                    padding: "1px 3px",
-                    border: "1px solid var(--border-default)",
-                    borderRadius: 3,
-                    background: "var(--bg-primary)",
-                    color: "var(--text-primary)",
-                }}
-            />
-            <span style={{ color: "var(--text-tertiary)" }}>{suffix}</span>
-        </label>
-    );
-}
 
 const chipStyle = (on: boolean): React.CSSProperties => ({
     fontSize: 11,
@@ -141,6 +92,14 @@ export function PointDefHead(): JSX.Element {
                 style={chipStyle(false)}
             >
                 허용 T1 {def.toleranceT1Pct}% · Δ~{def.toleranceT2Pct}%
+            </button>
+            {/* 시뮬 노브 7 도 정의(payload 동승)다 — T 칩과 같은 사정으로 머리에 입구를 둔다(편집면은 시뮬 패널). */}
+            <button
+                onClick={() => openAndFocus(TRADE_SIM_PANEL_ID)}
+                title={`트레이드 시뮬 노브(진입/손절/익절/트레일/취소) — 정의의 일부(집합 payload 동승). 편집은 시뮬 패널에서. 현재: 타점 −${def.sim.entry.pct}% · 손절 ${def.sim.stopPct}% · 익절 ${def.sim.takePct}%`}
+                style={chipStyle(false)}
+            >
+                시뮬 −{def.sim.entry.pct}/{def.sim.stopPct}/{def.sim.takePct}%
             </button>
             {!isDefaultPointDef(def) && (
                 <button

@@ -25,6 +25,8 @@ import { LiveTapePanel } from "../panels/liveTape/LiveTapePanel.js";
 import { ThemeRankPanel } from "../panels/themeRank/ThemeRankPanel.js";
 import { OutcomePanel } from "../panels/outcome/OutcomePanel.js";
 import { OUTCOME_PANEL_ID } from "../panels/outcome/outcomePanelIds.js";
+import { TradeSimPanel } from "../panels/sim/TradeSimPanel.js";
+import { TRADE_SIM_PANEL_ID } from "../panels/sim/simPanelIds.js";
 import { AlertLogPanel } from "../panels/AlertLogPanel.js";
 import { UniverseRulesPanel } from "../panels/UniverseRulesPanel.js";
 
@@ -72,6 +74,9 @@ export const PANEL_CATALOG: PanelEntry[] = [
     // 결과 시트 패널(outcomeSheet)은 2026-09-04 폐지 — 결과 열이 기존 시트(rankSheet)의 열 프리셋으로 들어갔다.
     // 옛 배치에 남은 id 는 sanitizeLayout 자가치유가 걷어낸다(옛 map·rankSkeleton* 과 같은 길).
     { id: OUTCOME_PANEL_ID, component: "outcomeRails", title: "시그널 결과", plane: "eod", render: () => <OutcomePanel /> },
+    // 트레이드 시뮬 — 노브 7(정의 payload 동승) + 체결률 곡선·분류·도달 분포. 깔때기 거울이 아니라
+    // 모수(보는 집합)로만 이어진다(decisions.md 「시그널 결과」 트레이드 시뮬 항목).
+    { id: TRADE_SIM_PANEL_ID, component: "tradeSim", title: "트레이드 시뮬", plane: "eod", render: () => <TradeSimPanel /> },
     // 정규화 두 판 — 골격 패널의 후신(골격의 실가치 = 정규화, 2026-08-23 은퇴). 실물 캔들/종가선을 원점으로 접어 겹친다.
     // 옛 골격 컴포넌트("rankSkeleton"/"rankSkeletonMinute")는 저장 프리셋에서 sanitizeLayout 이 걷어낸다(맵 패널과 같은 길).
     { id: "norm-daily-1", component: "normDaily", title: "정규화 [일봉]", plane: "eod", render: () => <NormOverlayPanel grain="daily" /> },
