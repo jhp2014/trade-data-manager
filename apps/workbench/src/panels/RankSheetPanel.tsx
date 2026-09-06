@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePointRows } from "../lib/usePointRows.js";
-import { useAutoPoints, useOutcomes } from "../lib/PointGridsContext.js";
+import { useAutoPoints, useOutcomes, useTradeSim } from "../lib/PointGridsContext.js";
 import { useCandidateDays } from "../lib/useCandidateDays.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { buildDaySheetRows, buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
@@ -194,8 +194,11 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     //    day 행 키(2조각)는 byKey(타점 키, 3조각)에 없어 폴백 없이 그대로 undefined 가 맞다.
     const outcomes = useOutcomes();
     const outcomeOf = useMemo(() => (row: SheetRow) => outcomes.byKey.get(rowKey(row)), [outcomes]);
+    // 시뮬 열의 값 — 같은 사정(시트 전용 소스, useTradeSim). 노브 커밋마다 참조가 갈려 재계산.
+    const sim = useTradeSim();
+    const simOf = useMemo(() => (row: SheetRow) => sim.byKey.get(rowKey(row)), [sim]);
 
-    const sortCtx = useMemo<SortCtx>(() => ({ nameOf, outcomeOf }), [nameOf, outcomeOf]);
+    const sortCtx = useMemo<SortCtx>(() => ({ nameOf, outcomeOf, simOf }), [nameOf, outcomeOf, simOf]);
     const sorted = useMemo(() => sortSheetRows(rows, sort, sortCtx, cutKeys), [rows, sort, sortCtx, cutKeys]);
     const groups = useMemo(() => buildSheetGroups(sorted, sort, sortCtx, cutKeys), [sorted, sort, sortCtx, cutKeys]);
 
@@ -325,7 +328,7 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
             <SheetRowView key={key} row={row} cols={displayCols}
                 leftOf={leftOf} lastFrozenKey={lastFrozenKey} widthOf={widthOf}
                 name={nameOf(row.stockCode)}
-                mode={cellMode} valuedOf={valuedOf} outcomeOf={outcomeOf} sortAxisId={sortAxisId}
+                mode={cellMode} valuedOf={valuedOf} outcomeOf={outcomeOf} simOf={simOf} sortAxisId={sortAxisId}
                 focus={isSubjectRow(row)} pinned={isPinned}
                 dim={bandsActive && !interKeys.has(matchKeyOf(row)) && (isPinned || filterMode === "dim")}
                 inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} top={top} h={rowH} />

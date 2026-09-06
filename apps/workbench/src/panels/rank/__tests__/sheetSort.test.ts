@@ -22,7 +22,7 @@ const row = (code: string, over: Partial<SheetRow> & { ax?: RankCell | null } = 
 // 정렬은 slice.status/recovered 와 eval 만 읽으므로 그 부분 형태만 만들고 캐스팅한다.
 type OutcomeRecordLite = { slice: { status: "exceeded" | "contained" | "none"; recovered: boolean | null }; eval: Partial<Record<string, number>> };
 const OUTCOMES = new Map<string, OutcomeRecordLite>();
-const ctx: SortCtx = { nameOf: (c) => `${c}명`, outcomeOf: (r) => OUTCOMES.get(r.stockCode) as ReturnType<SortCtx["outcomeOf"]> };
+const ctx: SortCtx = { nameOf: (c) => `${c}명`, outcomeOf: (r) => OUTCOMES.get(r.stockCode) as ReturnType<SortCtx["outcomeOf"]>, simOf: () => undefined };
 const codes = (rows: SheetRow[]): string[] => rows.map((r) => r.stockCode);
 const AX: SortChain = [{ key: { kind: "axis", axisId: "A" }, dir: 1 }];
 

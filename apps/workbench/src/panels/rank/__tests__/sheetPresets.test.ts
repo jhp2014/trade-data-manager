@@ -39,11 +39,15 @@ describe("prunePresets — 죽은 축 키 청소(다른 넷과 같은 사정)", 
 });
 
 describe("붙박이 프리셋", () => {
-    it("point 모드 '결과' = 종목·날짜·시간 + 결과 열 6(옛 결과 시트 패널의 열 구성)", () => {
-        expect(BUILTIN_POINT_PRESETS).toHaveLength(1);
+    it("point 모드 '결과' = 결과 걷기 열 6(시뮬 무포함) · '시뮬' = 시뮬 열 4 — 사용자 확정 분리", () => {
+        expect(BUILTIN_POINT_PRESETS).toHaveLength(2);
         expect(BUILTIN_POINT_PRESETS[0]!.cols).toEqual([
             "name", "date", "time",
             "out:extHigh", "out:deltaExt", "out:dropFromHigh", "out:dropFromClose", "out:recovered", "out:status",
         ]);
+        expect(BUILTIN_POINT_PRESETS[1]!).toEqual({
+            name: "시뮬",
+            cols: ["name", "date", "time", "out:simStatus", "out:simRequired", "out:simPeak", "out:simTrough"],
+        });
     });
 });

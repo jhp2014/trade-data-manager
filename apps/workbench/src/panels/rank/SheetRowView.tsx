@@ -9,9 +9,11 @@
 //
 // 열을 붙이는 법은 그대로: CELLS 항목 하나 + sheetColumns 의 COL_META 한 줄.
 import { memo, type CSSProperties, type ReactNode } from "react";
+import type { SimResult } from "@trade-data-manager/market/domain";
 import { COL_META, colJustify, colKey, type Col, type ColKind } from "./sheetColumns.js";
-import { fmtOutcomePct, OUTCOME_COL_META, type OutcomeColId } from "./outcomeColumns.js";
+import { fmtOutcomePct, isSimColId, OUTCOME_COL_META, type OutcomeColId, type SimColId } from "./outcomeColumns.js";
 import { isComputedAxis } from "../../lib/computedAxis.js";
+import { SIM_STATUS_META } from "../sim/simStatusMeta.js";
 import type { OutcomeRecord } from "../../lib/useOutcomes.js";
 import { rowKey } from "../../lib/pointKey.js";
 import type { SheetRow } from "./rankSheet.js";
@@ -61,6 +63,8 @@ export interface SheetRowViewProps {
      * 패널이 **참조를 고정**해 넘긴다 — T(허용 폭)가 바뀌면 참조가 갈려 memo 가 새로 그린다.
      */
     outcomeOf: (row: SheetRow) => OutcomeRecord | undefined;
+    /** 시뮬 열의 레코드(useTradeSim) — outcomeOf 와 같은 계약(참조 고정, day 행은 undefined). */
+    simOf: (row: SheetRow) => SimResult | undefined;
     sortAxisId: string | null;
     focus: boolean;
     pinned: boolean;
@@ -77,7 +81,7 @@ export interface SheetRowViewProps {
 }
 
 function SheetRowViewImpl({
-    row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, outcomeOf, sortAxisId,
+    row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, outcomeOf, simOf, sortAxisId,
     focus, pinned, dim, inPinnedBlock = false, isLastPinned = false, top, h,
 }: SheetRowViewProps): JSX.Element {
     const key = rowKey(row);
@@ -159,8 +163,19 @@ function SheetRowViewImpl({
                 : <span style={{ color: "var(--text-tertiary)", opacity: 0.4 }}>·</span>,
         }),
         // 결과 열(point 행 전용, 시트 전용 소스) — 표기·색·툴팁은 옛 결과 시트(2026-09-04 폐지) 승계.
+        // 시뮬 4열도 같은 `out:` 이름공간·같은 셀 자리에 서되 소스만 갈린다(simOf — 트레이드 시뮬).
         out: (c) => {
             const metric = (c as { metric: OutcomeColId }).metric;
+            if (isSimColId(metric)) {
+                const rec = simOf(row);
+                return {
+                    onClick: () => h.onNav(row),
+                    // 체결가 E 는 열이 아니라 툴팁(사용자 확정 — 행마다 종가×(1−n)이라 비교 정보가 없다).
+                    title: rec?.entryPrice != null ? `${OUTCOME_COL_META[metric].help}\n체결가 E = ${rec.entryPrice.toLocaleString()}` : OUTCOME_COL_META[metric].help,
+                    style: { cursor: "pointer" },
+                    body: <SimCell metric={metric} rec={rec} />,
+                };
+            }
             const rec = outcomeOf(row);
             return {
                 onClick: () => h.onNav(row),
@@ -207,7 +222,7 @@ function SheetRowViewImpl({
 export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.row === b.row && a.cols === b.cols && a.leftOf === b.leftOf && a.lastFrozenKey === b.lastFrozenKey &&
     a.widthOf === b.widthOf && a.name === b.name && a.mode === b.mode && a.valuedOf === b.valuedOf &&
-    a.outcomeOf === b.outcomeOf && a.sortAxisId === b.sortAxisId && a.focus === b.focus &&
+    a.outcomeOf === b.outcomeOf && a.simOf === b.simOf && a.sortAxisId === b.sortAxisId && a.focus === b.focus &&
     a.pinned === b.pinned && a.dim === b.dim && a.top === b.top &&
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,
 );
@@ -218,7 +233,7 @@ const toneColor = (tone: "rise" | "fall" | null): string =>
 
 // ── 결과 셀 — 숫자 4종(부호색, Δ>0 은 옅은 배경) · 회복 ○/✕/— · 상태 배지.
 // — 표기는 값 없음(격자 미도착)과 무사건(무눌림의 낙폭·회복)이 같다: 상태 열이 그 사정을 말한다(옛 결과 시트 승계).
-function OutcomeCell({ metric, rec }: { metric: OutcomeColId; rec: OutcomeRecord | undefined }): JSX.Element {
+function OutcomeCell({ metric, rec }: { metric: Exclude<OutcomeColId, SimColId>; rec: OutcomeRecord | undefined }): JSX.Element {
     if (metric === "recovered") {
         const r = rec?.slice.recovered ?? null;
         return (
@@ -248,6 +263,22 @@ function OutcomeCell({ metric, rec }: { metric: OutcomeColId; rec: OutcomeRecord
             {v === undefined ? "—" : fmtOutcomePct(v)}
         </span>
     );
+}
+
+// ── 시뮬 셀 — 분류 배지(simStatusMeta 색·라벨 = 패널 띠와 같은 출처) · 숫자 3종(요구/도달↑/도달↓).
+function SimCell({ metric, rec }: { metric: SimColId; rec: SimResult | undefined }): JSX.Element {
+    if (rec === undefined) return <span style={{ color: "var(--text-tertiary)" }}>—</span>;
+    if (metric === "simStatus") {
+        const m = SIM_STATUS_META[rec.status];
+        return <span style={{ color: m.color, border: `1px solid ${m.color}`, borderRadius: 3, padding: "0 3px", fontSize: 10 }}>{m.label}</span>;
+    }
+    const v = metric === "simRequired" ? rec.requiredPct : metric === "simPeak" ? rec.peakPct : rec.troughPct;
+    if (v === null) return <span style={{ color: "var(--text-tertiary)" }}>—</span>;
+    // 도달↑/↓만 부호색(성과/진단의 결) — 요구 타점은 깊이 값이라 중립(음수 = 종가 아래로 안 옴만 흐리게).
+    const color = metric === "simPeak" && v > 0 ? "var(--rise)"
+        : metric === "simTrough" && v < 0 ? "var(--fall)"
+            : metric === "simRequired" && v < 0 ? "var(--text-tertiary)" : "var(--text-primary)";
+    return <span className="tabular" style={{ color }}>{metric === "simRequired" ? `${v.toFixed(1)}%` : fmtOutcomePct(v)}</span>;
 }
 
 // ── 순위 셀(숫자 `rank/total` 또는 위치 눈금 틱). 미배치 = 흐린 점. prominent(선택 행) = 불릿처럼 굵게.

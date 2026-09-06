@@ -18,17 +18,11 @@ import { useFunnel } from "../filter/FunnelContext.js";
 import { Note } from "../filter/grain.js";
 import { FillRateCurve } from "./FillRateCurve.js";
 import { medianOf, SimDistribution } from "./SimDistribution.js";
+import { SIM_STATUS_META, SIM_STATUS_ORDER } from "./simStatusMeta.js";
 
-// 분류 색 — 체결 3(익절 STRONG·손절 FAIL·미결 회색) + 미체결 3(눌림부족 연회색·이탈 앰버·시간 회색).
-// 이탈만 앰버인 이유: "움직임이 나 없이 떠났다"가 진짜 후회 케이스라 미체결 중 유일하게 눈에 서야 한다.
-const STATUS_META: readonly { status: SimStatus; label: string; color: string }[] = [
-    { status: "take", label: "익절", color: STRONG },
-    { status: "stop", label: "손절", color: FAIL },
-    { status: "open", label: "미결", color: "#8b95a1" },
-    { status: "cancelled", label: "이탈", color: LEG_HIGH },
-    { status: "shallow", label: "눌림부족", color: "#b4b2a9" },
-    { status: "expired", label: "시간", color: "#6b7280" },
-];
+// 분류 라벨·색 = 시트 상태 셀과 같은 출처(simStatusMeta) — 띠와 셀이 딴말을 하지 않게.
+const STATUS_META: readonly { status: SimStatus; label: string; color: string }[] =
+    SIM_STATUS_ORDER.map((status) => ({ status, ...SIM_STATUS_META[status] }));
 
 /** 노브 그룹 머리 — A안 왼쪽 열의 시각 언어(색 띠 = 상태기계의 단계). */
 function KnobGroup({ color, label, children }: { color: string; label: string; children: React.ReactNode }): JSX.Element {

@@ -6,17 +6,29 @@
 //
 // 정렬값과 셀 표기가 두 벌이 되면 "정렬은 X 순인데 칸은 Y" 침묵 사고가 난다 — 그래서 접근자
 // (outcomeSortValue)와 표기 재료가 **같은 파일**에 살고, 숫자 4종은 레일·술어와 같은 출처(eval)를 읽는다.
+import type { SimResult } from "@trade-data-manager/market/domain";
 import type { OutcomeRecord } from "../../lib/useOutcomes.js";
 import { OUTCOME_METRICS, type OutcomeMetric } from "../../lib/outcomeMetric.js";
+import { SIM_STATUS_META } from "../sim/simStatusMeta.js";
 
-/** 결과 열 id — 숫자 4(= OutcomeMetric) + 명목 2(회복·상태). colKey 는 `out:<id>`. */
-export type OutcomeColId = OutcomeMetric | "recovered" | "status";
+/** 시뮬 열 id — 분류·요구 타점·최고/최저 도달(2026-09-06, decisions.md 트레이드 시뮬 항목).
+ *  체결가 E 열은 기각(행마다 종가×(1−n)이라 비교 정보가 없다 — 요구 타점 % 하나가 정렬 척도, E 는 툴팁). */
+export type SimColId = "simStatus" | "simRequired" | "simPeak" | "simTrough";
+export const SIM_COL_IDS: readonly SimColId[] = ["simStatus", "simRequired", "simPeak", "simTrough"];
+export const isSimColId = (v: unknown): v is SimColId => SIM_COL_IDS.includes(v as SimColId);
 
-/** 시트에 서는 순서 그대로 — 고점@T1 · Δ · 낙폭 2종 · 회복 · 상태(@T2 열은 Δ로 충분해 기각). */
-export const OUTCOME_COL_IDS: readonly OutcomeColId[] = ["extHigh", "deltaExt", "dropFromHigh", "dropFromClose", "recovered", "status"];
+/** 결과 열 id — 결과 걷기 6(숫자 4 + 회복·상태) + 시뮬 4. colKey 는 `out:<id>`(같은 이름공간 —
+ *  둘 다 "시그널 이후" 시트 전용 소스라 유령 청소(`ax:` 만)와 프리셋 규칙을 공유한다). */
+export type OutcomeColId = OutcomeMetric | "recovered" | "status" | SimColId;
+
+/** 결과 걷기 열 6 — 붙박이 "결과" 프리셋의 구성(시뮬 4는 별도 "시뮬" 프리셋 — 사용자 확정). */
+export const OUTCOME_BASE_COL_IDS: readonly OutcomeColId[] = ["extHigh", "deltaExt", "dropFromHigh", "dropFromClose", "recovered", "status"];
+
+/** 시트에 서는 순서 그대로 — 결과 걷기 6 뒤에 시뮬 4(과거→미래→시뮬 읽기 순서). */
+export const OUTCOME_COL_IDS: readonly OutcomeColId[] = [...OUTCOME_BASE_COL_IDS, ...SIM_COL_IDS];
 
 export const isOutcomeColId = (v: unknown): v is OutcomeColId =>
-    OUTCOME_METRICS.includes(v as OutcomeMetric) || v === "recovered" || v === "status";
+    OUTCOME_METRICS.includes(v as OutcomeMetric) || v === "recovered" || v === "status" || isSimColId(v);
 
 interface OutcomeColMeta {
     label: string;
@@ -34,13 +46,24 @@ export const OUTCOME_COL_META: Record<OutcomeColId, OutcomeColMeta> = {
     dropFromClose: { label: "저가·종가比", width: 84, justify: "flex-end", help: "보고 저가의 Point 종가 대비 % — 무눌림이면 무사건(—)" },
     recovered: { label: "회복", width: 46, justify: "center", help: "보고 저가 이후 직전 고가 재돌파 여부(세션 최고가 판정) — 무눌림은 대상 아님(—)" },
     status: { label: "상태", width: 56, justify: "center", help: "T1 기준 상태 — 초과(더 깊은 눌림 발생) / 이내(전부 T1 이내) / 무눌림(2% 이상 눌림 없음)" },
+    simStatus: { label: "시뮬", width: 66, justify: "center", help: "트레이드 시뮬 분류 — 체결 3(익절/손절/미결) + 미체결 3(눌림부족/이탈/시간). 노브는 시뮬 패널에서" },
+    simRequired: { label: "요구 타점", width: 76, justify: "flex-end", help: "체결되려면 타점 n 이 얼마였어야 했나 — (종가 − 취소 전 최저 눌림가)/종가. 음수 = 종가 아래로 안 옴. 체결가 E 는 셀 툴팁" },
+    simPeak: { label: "도달↑", width: 70, justify: "flex-end", help: "익절 브랜치 최고 도달 %(체결가 분모) — 트레일↑ 발동 전 최고가(미발동 = 잔여 최고가)" },
+    simTrough: { label: "도달↓", width: 70, justify: "flex-end", help: "손절 브랜치 최저 도달 %(체결가 분모, 진단값) — 트레일↓ 반등 전 최저가" },
 };
 
 /**
- * 정렬값 — null = 값 없음(격자 미도착, 또는 무눌림의 무사건 낙폭·회복) → 방향 무관 바닥(sheetSort 규칙 2).
- * 숫자 4종은 셀 표기와 같은 출처(eval)를 읽는다. 상태 서수 = 초과 0 · 이내 1 · 무눌림 2(눌림이 얕아지는 방향).
+ * 정렬값 — null = 값 없음(격자 미도착, 또는 무눌림의 무사건 낙폭·회복 / 시뮬 미정의 브랜치) →
+ * 방향 무관 바닥(sheetSort 규칙 2). 숫자들은 셀 표기와 같은 출처(eval/SimResult)를 읽는다.
+ * 상태 서수 = 초과 0 · 이내 1 · 무눌림 2, 시뮬 서수 = SIM_STATUS_META.ord(비관→낙관).
  */
-export function outcomeSortValue(rec: OutcomeRecord | undefined, id: OutcomeColId): number | null {
+export function outcomeSortValue(rec: OutcomeRecord | undefined, sim: SimResult | undefined, id: OutcomeColId): number | null {
+    if (isSimColId(id)) {
+        if (sim === undefined) return null;
+        if (id === "simStatus") return SIM_STATUS_META[sim.status].ord;
+        if (id === "simRequired") return sim.requiredPct;
+        return id === "simPeak" ? sim.peakPct : sim.troughPct;
+    }
     if (rec === undefined) return null;
     if (id === "recovered") return rec.slice.recovered === null ? null : rec.slice.recovered ? 1 : 0;
     if (id === "status") return rec.slice.status === "exceeded" ? 0 : rec.slice.status === "contained" ? 1 : 2;

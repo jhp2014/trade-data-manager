@@ -10,6 +10,7 @@
 // 컷이 왜 정렬을 한 겹 더 꼬는가: 컷 그룹은 순위가 서로 다른 행들을 묶으므로, 그룹 안에서 2차 키가
 // 돌면 축 열이 더 이상 순위 순서가 아니다. 그래서 비교자 순서가 [그룹 → 2차… → 1차 원값]이 된다
 // (2차가 없으면 1차 원값만 남아 컷 없는 정렬과 완전히 같아진다 → 드래그 배치도 그대로 살아 있다).
+import type { SimResult } from "@trade-data-manager/market/domain";
 import type { SheetRow } from "./rankSheet.js";
 import type { OutcomeRecord } from "../../lib/useOutcomes.js";
 import { rowKeyToChartKey } from "../../lib/pointKey.js";
@@ -87,6 +88,8 @@ export interface SortCtx {
     nameOf: (code: string) => string;
     /** 결과 열의 레코드 — day 행·격자 미도착은 undefined(그 열 정렬에서 바닥). **필수**다: 옵셔널이면 공급 누락이 런타임 침묵으로 나온다. */
     outcomeOf: (row: SheetRow) => OutcomeRecord | undefined;
+    /** 시뮬 열의 레코드(useTradeSim) — outcomeOf 와 같은 사정으로 **필수**. */
+    simOf: (row: SheetRow) => SimResult | undefined;
 }
 
 /** 한 키에서 이 행의 값. **null = 값 없음**(미배치·미산정·미기입) → 방향 무관 바닥. */
@@ -98,7 +101,7 @@ export function sortValueOf(k: SortKey, row: SheetRow, ctx: SortCtx): string | n
         case "points": return row.pointCount ?? null;
         case "comment": return row.comment ? 1 : null;
         case "axis": return row.cells[k.axisId]?.rank ?? null;
-        case "out": return outcomeSortValue(ctx.outcomeOf(row), k.metric); // 셀 표기와 같은 출처(outcomeColumns)
+        case "out": return outcomeSortValue(ctx.outcomeOf(row), ctx.simOf(row), k.metric); // 셀 표기와 같은 출처(outcomeColumns)
     }
 }
 
