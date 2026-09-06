@@ -40,6 +40,7 @@ export * from "./grid/points.js";
 export * from "./grid/codec.js";
 export * from "./grid/windows.js";
 export * from "./grid/outcome.js";
+export * from "./grid/simulate.js";
 
 // rank — 축 어휘(계산 축의 메타·줄 항목) + 진입가 경로(rankPath). 옛 순위 배치(사람 편집)는 2026-08-25 폐지.
 export * from "./rank/index.js";
