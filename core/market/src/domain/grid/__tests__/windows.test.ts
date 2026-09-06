@@ -62,10 +62,10 @@ describe("windows — 시그널 → 다리 고점", () => {
         expect(legStartOf(grid, { min: 601, levelIdx: 3, levelMin: 600, levelPrice: 10900 })).toBeNull(); // 다음 고점 아직 없음(꼬리)
     });
 
-    it("legStartOf — 슬롯 2 재돌파(levelMin = 워터마크 봉)는 결손: 시각·가격이 레벨 쌍과 다 맞아야 창이 선다", () => {
-        // 워터마크 봉이 우연히 레벨 봉과 같은 시각이어도 가격이 다르면 다른 레벨의 창으로 새지 않는다.
-        expect(legStartOf(grid, { min: 583, levelIdx: 1, levelMin: 560, levelPrice: 10250 })).toBeNull(); // 시각 일치·가격 불일치(워터마크)
-        expect(legStartOf(grid, { min: 583, levelIdx: 0, levelMin: 562, levelPrice: 10250 })).toBeNull(); // 기준선 슬롯 2 — 쌍에 없는 봉
+    it("legStartOf — 슬롯 2 재돌파(levelMin = 확정 고점 피벗)는 결손: 시각·가격이 레벨 쌍과 다 맞아야 창이 선다", () => {
+        // 확정 고점 피벗이 우연히 레벨 봉과 같은 시각이어도 가격이 다르면 다른 레벨의 창으로 새지 않는다.
+        expect(legStartOf(grid, { min: 583, levelIdx: 1, levelMin: 560, levelPrice: 10250 })).toBeNull(); // 시각 일치·가격 불일치(비레벨 피벗)
+        expect(legStartOf(grid, { min: 583, levelIdx: 0, levelMin: 562, levelPrice: 10250 })).toBeNull(); // 기준선 슬롯 2 — 확정 결손
     });
 
     it("legWindowOf — 돌파 시그널 555 의 다리 = 터치 550 → H1 560", () => {

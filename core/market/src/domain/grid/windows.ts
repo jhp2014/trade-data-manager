@@ -11,8 +11,9 @@
 // 다리 고점(`legHighOf`) = 시그널 이후 첫 **레벨** 고점(마디 뷰). 없으면 꼬리(세션 끝까지 −2% 안 빠짐)
 // = 결손. 다리 창의 시작(`legStartOf`) = 시그널이 넘은 레벨의 크로싱: 돌파(기준선 슬롯 1)는 기준선 터치
 // 봉(터치가 Point 이전일 때만 — 접근 Point 는 결손), 마디 재돌파는 **다음 레벨**의 `cross`(= 그 레벨
-// 가격을 처음 넘은 봉), **슬롯 2 재돌파(워터마크)는 결손** — 워터마크는 레벨 쌍이 아니라 크로싱 기록이
-// 없다. 병합(mergeRisePct)으로 다리 고점이 더 뒤로 가도 크로싱 기록은 같은 자리다.
+// 가격을 처음 넘은 봉), **슬롯 2 재돌파(확정 고점)는 대체로 결손** — 자(W)가 레벨이 아닌 피벗이라
+// 크로싱 기록이 없다(예외는 legStartOf 주석). 병합(mergeRisePct)으로 다리 고점이 더 뒤로 가도 크로싱
+// 기록은 같은 자리다.
 // `DerivedPoint` 에 필드로 넣지 않는 이유: pointsOf 판정은 결과를 모른다(행 정체성·행 시각 계약) —
 // 다리 고점은 소비처(차트 표식·결과 걷기 outcome.ts)가 필요할 때 격자를 더 보고 얻는 파생이다.
 // 다리 고점 ≡ 결과 걷기의 T=2% 연장 고점 — **상단 돌파 Point 에 대해서만**(outcome.test 가 동치로 고정).
@@ -78,12 +79,14 @@ export function legStartOf(grid: PointGrid, point: Pick<DerivedPoint, "min" | "l
         return grid.touch !== null && grid.touch.min <= point.min ? grid.touch : null;
     }
     if (point.levelMin === null) return null;
-    // 기준선 슬롯 2(levelIdx 0 + levelMin ≠ null — 이 조합은 슬롯 2 뿐이다)는 확정 결손: 워터마크가
-    // 기준선 아래라 levelViewOf 의 sub-base 쌍과 **구조적으로 일치할 수 있어**(워터마크 봉이 나중에
-    // 피벗·레벨로 확정되는 경우) 시각·가격 매칭만으론 못 거른다.
+    // 기준선 슬롯 2(levelIdx 0 + levelMin ≠ null — 이 조합은 슬롯 2 뿐이다)는 확정 결손: 자(확정 고점
+    // 피벗)가 기준선 아래인데 levelViewOf 는 기준선을 몰라 sub-base 세션 최고가 피벗이 **쌍으로 설 수
+    // 있다** — 일치가 곧 의미 동치라는 보장을 여기서 검증하지 않는다(보수, 눌림 규칙 이후 재검토 여지).
     if (point.levelIdx === 0) return null;
-    // 마디 슬롯 2 는 워터마크 < 그 레벨 가격이라 prefix max 를 못 넘어 레벨 쌍과 일치할 수 없다 —
-    // 아래 시각·가격 매칭이 자연 결손을 준다(가격까지 맞추는 건 시각 우연 일치 차단).
+    // 마디 슬롯 2 의 자 W(확정 고점 피벗)는 귀속 레벨보다 앞선 더 높은 피벗(그 레벨 자신)이 있어 레벨
+    // 쌍이 아니다 — 아래 시각·가격 매칭이 자연 결손을 준다(가격까지 맞추는 건 시각 우연 일치 차단).
+    // 예외 하나: mergeRisePct 로 병합된 마디가 W 이면 매칭돼 다음 쌍의 cross(= W 를 처음 넘은 봉)가
+    // 선다 — 병합은 레벨 귀속만 접는 것이라 이 창은 의미 정합(재돌파 창 시작 = 넘은 고가의 크로싱).
     const pairs = levelViewOf(grid);
     const k = pairs.findIndex((p) => p.high.min === point.levelMin && p.high.price === point.levelPrice);
     if (k < 0) return null;

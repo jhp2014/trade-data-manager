@@ -83,8 +83,10 @@ function pointsOfV8(grid: OldGrid, def: PointDefinition): DerivedPoint[] {
  * 정의의 브루트포스 재진술 — 검출 구현(단조 커서 claimedLevel·입력 순서 신뢰)과 **다른 형태**라 전제
  * 위반을 잡는다: 레벨은 마디 뷰의 prefix max 로 재계산, 캔들은 min 으로 **정렬해서** 돌고, 사건은
  * `high > maxBefore×(1−m')`, 레벨당 슬롯은 커서가 아니라 **레벨별 슬롯 맵**으로 센다.
- * 슬롯 모델(2026-09-05 저녁): 슬롯 1 = 레벨 밴드 첫 자격 캔들, 슬롯 2(재돌파·게이트 30) = 슬롯 1 이
- * 상단 미달일 때만, 워터마크(슬롯 1 고가)를 실제로 넘는 다음 자격 캔들. touch 게이트 없음(폐지).
+ * 슬롯 모델(2026-09-05 저녁 신설 → 2026-09-06 눌림 확정 요건): 슬롯 1 = 레벨 밴드 첫 자격 캔들,
+ * 슬롯 2(재돌파·게이트 30) = 슬롯 1 이 상단 미달일 때만 — 눌림이 확정시킨 고점 W(슬롯 1 이후·그 고가
+ * 이상·캔들 이전 확정 고점 피벗의 최대)의 밴드 하단을 넘는 다음 자격 캔들. 눌림 미확정 재상승은 연장
+ * (Point 아님), 연장이 상단 관통하면 슬롯 2 영구 소멸. touch 게이트 없음(폐지).
  * 갈리면 귀속 단조성·목록 정렬성 위반(정지 신호).
  */
 function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
@@ -106,7 +108,7 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
 
     const gate = (renewal: boolean): bigint => BigInt(renewal ? def.renewalGateEok : def.baselineGateEok) * KRW_PER_EOK;
     const bandK = 1 - def.approachPct / 100; // m'=0 이면 1 — 옛 strict 판정과 동일
-    // 레벨별 슬롯 맵 — 커서(pointsOf)와 다른 형태. 값 = 슬롯 1 캔들(상단 미달이면 슬롯 2 후보의 워터마크).
+    // 레벨별 슬롯 맵 — 커서(pointsOf)와 다른 형태. 값 = 슬롯 1 캔들(상단 미달이면 슬롯 2 의 앵커).
     const slot1 = new Map<number, { high: number; min: number; crossedTop: boolean; slot2Done: boolean }>();
     const out: DerivedPoint[] = [];
     for (const e of [...grid.newHighs].sort((a, b) => a.min - b.min)) {
@@ -131,12 +133,22 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
             out.push({ kind: top.i === 0 ? "breakout" : "renewal", ordinal: out.length, min: e.min, high: e.high, close: e.close, tv: e.tv, levelPrice: top.l.price, levelIdx: top.i, levelMin: top.l.min });
             continue;
         }
-        // 슬롯 2 — 슬롯 1 상단 미달 + 워터마크 실초과 + 재돌파 게이트.
+        // 슬롯 2 — 슬롯 1 상단 미달 + 눌림 확정(W 존재) + W 밴드 하단 넘음 + 재돌파 게이트.
+        // W 는 구현(confirmedHighSince 헬퍼·최대 추적)과 다른 형태(filter + reduce)로 재계산한다.
         if (s.crossedTop || s.slot2Done) continue;
-        if (!(e.high > s.high)) continue;
+        const ws = grid.pivots.filter(
+            (p) => p.kind === "high" && p.confirmedMin !== null && p.confirmedMin < e.min && p.min >= s.min && p.price >= s.high,
+        );
+        if (ws.length === 0) {
+            // 눌림 미확정 — 연장. 상단까지 관통하면 그 돌파가 레벨을 완결(슬롯 2 영구 소멸).
+            if (top.l.renewal ? e.high > top.l.price : e.high >= top.l.price) s.slot2Done = true;
+            continue;
+        }
+        const w = ws.reduce((a, b) => (b.price > a.price ? b : a));
+        if (!(e.high > w.price * bandK)) continue;
         if (BigInt(e.tv) < gate(true)) continue;
         s.slot2Done = true;
-        out.push({ kind: "renewal", ordinal: out.length, min: e.min, high: e.high, close: e.close, tv: e.tv, levelPrice: s.high, levelIdx: top.i, levelMin: s.min });
+        out.push({ kind: "renewal", ordinal: out.length, min: e.min, high: e.high, close: e.close, tv: e.tv, levelPrice: w.price, levelIdx: top.i, levelMin: w.min });
     }
     return out;
 }
@@ -231,7 +243,7 @@ async function main(): Promise<void> {
             for (const p of now) (p.kind === "breakout" ? kinds.nowBreakout++ : kinds.nowRenewal++);
 
             // ── 슬롯 2·touch 완화 계측(2026-09-05 저녁 규칙) ──
-            // 슬롯 2 식별 = **같은 levelIdx 의 두 번째 항목**(정의상 exact — levelPrice 비교는 워터마크가
+            // 슬롯 2 식별 = **같은 levelIdx 의 두 번째 항목**(정의상 exact — levelPrice 비교는 자(W)가
             // 정확히 레벨 가격과 같은 미달 케이스(마디 high == L)를 놓친다).
             const lvls = levelsOf(entry.grid, def);
             const seenLevel = new Set<number>();
@@ -313,8 +325,8 @@ async function main(): Promise<void> {
     console.log(`동일 ${counts.equal} · 재라벨 ${counts.relabeled} · 이동 ${counts.moved} · 신설 ${counts.added} · 소멸 ${counts.removed} ${isRegressionMode ? (cleanDiff > 0 ? "⚠ 정지 신호" : "— 통과") : ""}`);
     console.log(`클래스① 차트의 행 갈림(예고된 것 — 게이트 아님): ${counts.class1Rows}`);
     const gapDist = distributionOf(slot2Stats.gapMinutes);
-    console.log(`\n── 슬롯 2(워터마크 재돌파)·touch 완화 계측 ──`);
-    console.log(`슬롯 2 Point ${slot2Stats.count}(상단까지 관통 ${slot2Stats.topCrossed} = ${slot2Stats.count > 0 ? ((slot2Stats.topCrossed / slot2Stats.count) * 100).toFixed(1) : 0}%) · 훼손→재돌파 간격(분) p50 ${gapDist.p50} / p90 ${gapDist.p90} / max ${gapDist.max} · 1분(연속 상승 코너) ${slot2Stats.gapMinutes.filter((g) => g <= 1).length}`);
+    console.log(`\n── 슬롯 2(확정 고점 재돌파)·touch 완화 계측 ──`);
+    console.log(`슬롯 2 Point ${slot2Stats.count}(상단까지 관통 ${slot2Stats.topCrossed} = ${slot2Stats.count > 0 ? ((slot2Stats.topCrossed / slot2Stats.count) * 100).toFixed(1) : 0}%) · 확정 고점→재돌파 간격(분) p50 ${gapDist.p50} / p90 ${gapDist.p90} / max ${gapDist.max} · ≤1분 ${slot2Stats.gapMinutes.filter((g) => g <= 1).length}(눌림 요건상 0 이어야 — 트립와이어)`);
     console.log(`무터치 날의 Point ${touchRelax.noTouchPoints}(${touchRelax.noTouchDays}일 — touch 게이트 폐지로 신설) · 터치 이전 접근 Point ${touchRelax.preTouchPoints}`);
     console.log(`\n── 독립 재계산 대조(전 차트) ──`);
     console.log(`일치 ${naive.ok}(그중 Point 있는 차트 ${naive.okWithPoints}) / 불일치 ${naive.bad.length} ${naive.bad.length > 0 ? "⚠ 정지 신호" : "— 통과"}`);
