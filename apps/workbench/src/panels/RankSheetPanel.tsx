@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { usePointRows } from "../lib/usePointRows.js";
 import { useAutoPoints, useOutcomes, useTradeSim } from "../lib/PointGridsContext.js";
 import { useCandidateDays } from "../lib/useCandidateDays.js";
@@ -12,7 +12,8 @@ import {
 import { buildAxisIndex, orderKeyByPoint, type AxisIndex } from "../lib/rankIndex.js";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { GROUP_H, ROW_H, SheetRowView, type SheetRowHandlers } from "./rank/SheetRowView.js";
-import { flatIndexOfRow, flattenSheetGroups } from "./rank/sheetFlatRows.js";
+import { flatIndexOfRow, flattenSheetGroups, stepFlatRow } from "./rank/sheetFlatRows.js";
+import { usePublishRowNav } from "../lib/rowNav.js";
 import { SheetHeaderRow } from "./rank/SheetHeaderRow.js";
 import { SheetMenusHost, useSheetMenus } from "./rank/SheetMenusHost.js";
 import { SheetPresetMenu } from "./rank/SheetPresetMenu.js";
@@ -67,10 +68,16 @@ export function RankSheetPanel(): JSX.Element {
     // 행 모드 — 타점(분석의 기본) / 하루(후보 하루 × day 축). day 는 열·정렬의 저장 주머니가 달라
     // **모드째 리마운트**한다(usePersistedState 가 키 변경을 안 따라가므로 — 옛 상태가 새 키를 덮는 사고 방지).
     const [rowMode, setRowMode] = usePersistedState<RowMode>(ROWMODE_KEY, parseRowMode, "point");
-    return <SheetBody key={rowMode} rowMode={rowMode} setRowMode={setRowMode} />;
+    // w/s 행 순회 — **publish 는 바깥(여기)에서** 한다: 안쪽은 `key={rowMode}` 로 리마운트되므로
+    // 거기서 얹으면 모드를 바꾸는 순간 순회 함수가 잠깐 사라진다(바깥은 안 리마운트된다).
+    // 키 등록·소유권(시트 우선·작업셋 폴백)은 App 한 곳이 진다 — lib/rowNav 머리 주석.
+    const navRef = usePublishRowNav("rank-sheet");
+    return <SheetBody key={rowMode} rowMode={rowMode} setRowMode={setRowMode} navRef={navRef} />;
 }
 
-function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: RowMode) => void }): JSX.Element {
+function SheetBody({ rowMode, setRowMode, navRef }: {
+    rowMode: RowMode; setRowMode: (m: RowMode) => void; navRef: MutableRefObject<(dir: 1 | -1) => void>;
+}): JSX.Element {
     const dayMode = rowMode === "day";
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const goToDay = useWorkbench((s) => s.goToDay);
@@ -262,9 +269,13 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
         if (followedRef.current === null) { followedRef.current = subjectRowKey ?? ""; return; }
         if (subjectRowKey === null || subjectRowKey === followedRef.current) { followedRef.current = subjectRowKey ?? ""; return; }
         followedRef.current = subjectRowKey;
-        if (useWorkbench.getState().lastFocusOrigin === "rank-sheet") return;
+        const origin = useWorkbench.getState().lastFocusOrigin;
+        if (origin === "rank-sheet") return; // 클릭 — 누른 자리가 그대로여야 한다
         const i = flatIndexOfRow(flatRef.current, subjectRowKey);
-        if (i >= 0) virt.scrollToIndex(i, { align: "center" });
+        // 내 키 순회(w/s)는 **가장자리에서만 최소 이동**(auto) — 한 칸마다 화면이 가운데로 튀면 멀미난다.
+        // auto 는 "위로 벗어남" 판정에 scrollPaddingStart 를 쓰므로(virtual-core getOffsetForIndex)
+        // 머리 블록(헤더+핀 행) 밑에 숨은 행은 그 바로 아래로 나온다. 남이 옮긴 선택은 종전대로 가운데.
+        if (i >= 0) virt.scrollToIndex(i, { align: origin === "rank-sheet-nav" ? "auto" : "center" });
     }, [subjectRowKey, virt]);
 
     const clickHeader = (key: SortKey, shift: boolean): void => setSort((s) => (shift ? pushSort(s, key) : resetSort(s, key)));
@@ -305,9 +316,18 @@ function SheetBody({ rowMode, setRowMode }: { rowMode: RowMode; setRowMode: (m: 
     // 열 프리셋 판 — 컨트롤 줄의 액션이 누른 자리에 띄운다(택1 순환이 아니다: 값이 동적이고 저장·삭제가 붙는다).
     const [presetMenuAt, setPresetMenuAt] = useState<{ x: number; y: number } | null>(null);
 
-    const navRow = (row: SheetRow): void => {
-        if (row.time === undefined) goToDay({ date: row.date, code: row.stockCode }, "rank-sheet");
-        else goToPoint({ date: row.date, code: row.stockCode, time: row.time }, "rank-sheet");
+    // 행으로 이동 — origin 을 **클릭과 키 순회로 가른다**: 클릭은 화면이 안 튀어야 하고(누른 자리가
+    // 그대로), 키 순회는 따라가야 한다(안 그러면 커서가 화면 밖으로 나간다). 판정은 따라가기 effect 에.
+    const navRow = (row: SheetRow, origin = "rank-sheet"): void => {
+        if (row.time === undefined) goToDay({ date: row.date, code: row.stockCode }, origin);
+        else goToPoint({ date: row.date, code: row.stockCode, time: row.time }, origin);
+    };
+    // w/s 한 칸 — 모수는 화면에 그려지는 그 배열(flat)이고 규칙은 stepFlatRow(순수·테스트).
+    // 상단 핀 블록은 flat 에 없어 자동으로 빠진다(본문에 같은 행이 또 있다) — 핀을 flat 에 합치려는
+    // 사람은 여기서 걸릴 것. 흐리게 모드의 흐린 행은 **걷는다**(보이는 것을 걷는다 — 좁히기면 애초에 없다).
+    navRef.current = (dir) => {
+        const r = stepFlatRow(flatRef.current, subjectRowKey, dir);
+        if (r) navRow(r, "rank-sheet-nav");
     };
 
     // 행 핸들러 묶음 — SheetRowView(memo)가 얕은 비교로 재사용하도록 **참조를 고정**한다(useRef 경유,

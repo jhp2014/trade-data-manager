@@ -55,7 +55,7 @@ const dockCommands: Command[] = [
     { id: "dock.tab.next", title: "다음 창(순환 링)", category: "레이아웃", keys: "tab", run: () => cycleWindow(1) },
     { id: "dock.tab.prev", title: "이전 창(순환 링)", category: "레이아웃", keys: "shift+tab", run: () => cycleWindow(-1) },
 ];
-// 최근 탐색 순환 — back/forward 커서 모델(stepHistory). 워크셋 w/s 와 대칭이되 Alt(예약 아님)로.
+// 최근 탐색 순환 — back/forward 커서 모델(stepHistory). 행 순회 w/s(시트 우선·작업셋 폴백)와 대칭이되 Alt(예약 아님)로.
 const historyCommands: Command[] = [
     { id: "history.nav.newer", title: "위로·더 최근(최근 탐색)", category: "탐색", keys: "alt+w", run: () => useWorkbench.getState().stepHistory(-1) },
     { id: "history.nav.older", title: "아래로·더 과거(최근 탐색)", category: "탐색", keys: "alt+s", run: () => useWorkbench.getState().stepHistory(1) },
@@ -71,6 +71,9 @@ export function allCommands(): Command[] {
 
 // chord → 발동 커맨드. 모든 커맨드는 전역 — 등록 순(정적→동적)의 첫 매치(run 있는 것만).
 // (scope 우선순위 기계는 활성화된 적 없이 삭제됨 — 패널별 덧씌우기가 필요해지면 그때 다시.)
+// **그래서 같은 키를 두 패널이 등록하지 않는다** — 승자가 마운트 순서에 매이고, 패널 제거 전이에선
+// 찰나의 중복 등록까지 남는다. 순회 키(w/s)의 처방이 본보기: 등록은 App 한 곳(lib/rowNav), 패널은
+// 순회 함수만 얹고, 누가 걷는지는 명시적 소유자 규칙이 정한다.
 export function resolveCommand(chord: string): Command | undefined {
     return allCommands().find((c) => c.run && c.keys === chord);
 }

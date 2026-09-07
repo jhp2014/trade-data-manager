@@ -34,3 +34,20 @@ export function flattenSheetGroups(groups: readonly SheetGroup[]): SheetFlatRow[
 export function flatIndexOfRow(flat: readonly SheetFlatRow[], key: string): number {
     return flat.findIndex((f) => f.kind === "row" && f.key === key);
 }
+
+/**
+ * w/s 한 칸 — **화면 순서 그대로** 걷는다(정렬 체인·컷 그룹·깔때기를 이미 통과한 배열이므로).
+ * 그룹 머리 줄은 건너뛰고, 상단 핀 블록은 애초에 이 배열에 없다(본문에 같은 행이 또 있으므로
+ * 핀은 따로 렌더된다 — 나중에 핀을 flat 에 합치면 같은 행을 두 번 걷게 되니 여기서 걸릴 것).
+ *
+ * 커서(`currentKey`)가 없거나 목록 밖(필터로 빠짐)이면 방향의 **끝에서 시작**한다(아래=첫 행, 위=마지막 행).
+ * 양 끝에서는 **클램프**(랩 없음) — 대체하는 작업셋 순회와 같은 손맛.
+ * 걸을 곳이 없으면 null.
+ */
+export function stepFlatRow(flat: readonly SheetFlatRow[], currentKey: string | null, dir: 1 | -1): SheetRow | null {
+    const rows = flat.filter((f): f is Extract<SheetFlatRow, { kind: "row" }> => f.kind === "row");
+    if (rows.length === 0) return null;
+    const idx = currentKey === null ? -1 : rows.findIndex((f) => f.key === currentKey);
+    if (idx < 0) return (dir > 0 ? rows[0] : rows[rows.length - 1]).row;
+    return rows[Math.max(0, Math.min(rows.length - 1, idx + dir))].row;
+}

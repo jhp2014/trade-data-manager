@@ -27,6 +27,7 @@ import { OutcomePanel } from "../panels/outcome/OutcomePanel.js";
 import { OUTCOME_PANEL_ID } from "../panels/outcome/outcomePanelIds.js";
 import { TradeSimPanel } from "../panels/sim/TradeSimPanel.js";
 import { TRADE_SIM_PANEL_ID } from "../panels/sim/simPanelIds.js";
+import { RANK_SHEET_PANEL_ID } from "../panels/rank/rankSheetPanelIds.js";
 import { AlertLogPanel } from "../panels/AlertLogPanel.js";
 import { UniverseRulesPanel } from "../panels/UniverseRulesPanel.js";
 
@@ -63,7 +64,7 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "chart-2", component: "chart", title: "차트", plane: "eod", render: (id) => <ChartPanel panelId={id} /> },
     { id: "workset-1", component: "workset", title: "작업 대상", plane: "eod", render: () => <WorksetPanel /> },
     { id: "history-1", component: "recentHistory", title: "최근 탐색", plane: "eod", render: () => <RecentHistoryPanel /> },
-    { id: "rank-sheet-1", component: "rankSheet", title: "시트", plane: "eod", render: () => <RankSheetPanel /> },
+    { id: RANK_SHEET_PANEL_ID, component: "rankSheet", title: "시트", plane: "eod", render: () => <RankSheetPanel /> },
     // 집합 편성 — 조건을 걸어 집합을 만드는 자리(다른 패널은 그 집합을 구독만 한다).
     // component 키는 "filterFunnel" 그대로 — 저장 프리셋에 박히는 값이라 이름이 바뀌어도 못 건드린다.
     { id: "filter-funnel-1", component: "filterFunnel", title: "집합 편성", plane: "eod", render: (id) => <FilterFunnelPanel panelId={id} /> },

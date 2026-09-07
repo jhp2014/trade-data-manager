@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkbench } from "../store/workbench.js";
-import { useKeymapDynamic } from "../keymap/dynamic.js";
+import { usePublishRowNav } from "../lib/rowNav.js";
 
 import { usePointRows } from "../lib/usePointRows.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
@@ -187,31 +187,26 @@ export function WorksetPanel(): JSX.Element {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focusCode, focusDate, focusTime]);
 
-    // ── w/s 타점 순회 — 보이는 타점(필터·좁히기 통과분)만 걷는다. 전역 동적 커맨드(차트 a/d 선례).
+    // ── w/s 타점 순회 — 보이는 타점(필터·좁히기 통과분)만 걷는다.
+    //    **시트가 없을 때의 폴백**이다: 키 등록은 App 한 곳(lib/rowNav)이고, 시트 패널이 배치에 있으면
+    //    시트가 제 행을 걷는다(정렬·컷·깔때기를 통과한 "지금 보는 순서"라 그쪽이 뜻이 크다).
+    //    여기선 순회 함수만 얹는다 — 등록/해제 타이밍은 소유권 규칙이 진다.
     type NavPoint = { code: string; date: string; time: string };
     const flatPoints = useMemo<NavPoint[]>(() => {
         const out: NavPoint[] = [];
         for (const g of groups) for (const e of g.stocks) for (const p of e.points) out.push({ code: p.stockCode, date: p.date, time: p.time });
         return out;
     }, [groups]);
-    const navRef = useRef<{ points: NavPoint[]; current: NavPoint | null; run: (dir: number) => void }>({ points: [], current: null, run: () => {} });
-    navRef.current.points = flatPoints;
     // 순회 커서 = 지금 고른 타점(subject) — 없으면(하루 선택) 목록 끝에서 시작한다.
-    navRef.current.current = subject && subject.time !== null ? { code: subject.code, date: subject.date, time: subject.time } : null;
-    navRef.current.run = (dir): void => {
-        const { points, current } = navRef.current;
-        if (points.length === 0) return;
-        const idx = current ? points.findIndex((p) => p.code === current.code && p.date === current.date && p.time === current.time) : -1;
-        const ni = idx < 0 ? (dir > 0 ? 0 : points.length - 1) : Math.max(0, Math.min(points.length - 1, idx + dir));
-        const t = points[ni];
+    const navRef = usePublishRowNav("workset");
+    navRef.current = (dir): void => {
+        if (flatPoints.length === 0) return;
+        const cur = subject && subject.time !== null ? { code: subject.code, date: subject.date, time: subject.time } : null;
+        const idx = cur ? flatPoints.findIndex((p) => p.code === cur.code && p.date === cur.date && p.time === cur.time) : -1;
+        const ni = idx < 0 ? (dir > 0 ? 0 : flatPoints.length - 1) : Math.max(0, Math.min(flatPoints.length - 1, idx + dir));
+        const t = flatPoints[ni];
         useWorkbench.getState().goToPoint({ date: t.date, code: t.code, time: t.time }, "workset");
     };
-    useEffect(() => {
-        const { register, unregister } = useKeymapDynamic.getState();
-        register({ id: "workset.nav.prevPoint", title: "이전 타점(작업셋)", category: "작업셋", keys: "w", run: () => navRef.current.run(-1) });
-        register({ id: "workset.nav.nextPoint", title: "다음 타점(작업셋)", category: "작업셋", keys: "s", run: () => navRef.current.run(1) });
-        return () => { unregister("workset.nav.prevPoint"); unregister("workset.nav.nextPoint"); };
-    }, []);
 
     // ── 헤더 컨트롤(레지스트리) — 좁히기는 렌즈가 설 때만 의미가 있어 그때만 나타난다.
     const controls = useMemo<ControlSpec[]>(() => [
