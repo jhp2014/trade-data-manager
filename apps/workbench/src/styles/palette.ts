@@ -75,6 +75,9 @@ const SERIES_COLORS = ["#7c9c3f", "#b8792e", "#3f8f8a", "#8b5cf6", "#c0567e", "#
 /** 순번 → 계열 색. 무리가 팔레트보다 크면 돌려쓴다(좁은 자리에 모인 것들이라 혼동이 적다). */
 export const seriesColor = (i: number): string => SERIES_COLORS[((i % SERIES_COLORS.length) + SERIES_COLORS.length) % SERIES_COLORS.length];
 
+/** 계열 색 가짓수 — 이름에서 색을 뽑는 소비자가 **충돌을 피하려면** 정의역 크기를 알아야 한다. */
+export const SERIES_COLOR_COUNT = SERIES_COLORS.length;
+
 // ── 차트
 export const DRIFT = "#e07b1a"; // 검색날짜 드리프트(기준일과 다른 날을 보는 중)
 export const MARKER_NOW = "#111827"; // 분봉 시간선 ▼ — "지금 여기" 표식. 저장 타점 ▼(흰/회색)와 색으로 갈린다
@@ -89,7 +92,8 @@ export const IGNORED_CANDLE = "#6b7280"; // 무시 캔들 마커 — 회색이 �
 // 모양으로도 갈린다 — 색만으로 가르면 작은 크기에서 결국 섞인다.
 
 // ── 테마 순위 패널(순위 평면)
-export const THEME_PEER = "#16796f"; // 테마 동료 점 — PRICE_LINE 과 지금 같은 teal 이지만 뜻이 다르다(머리 규칙: 이름을 가른다)
+export const ZONE_TENURE = "#16796f"; // 시선 종목의 존 재적 띠(테마 순위 타임라인) — PRICE_LINE 과 지금 같은 teal 이지만 뜻이 다르다(머리 규칙: 이름을 가른다).
+//   옛 이름 THEME_PEER(동료 점)는 2026-09-07 폐기 — 동료 점은 이제 테마마다 다른 색이다(themeColor.ts).
 
 export const AUTO_POINT = "#16796f"; // 자동 Point(격자 파생) 마커 ◇ — PRICE_LINE 과 지금 같은 teal 이지만 뜻이 다르다(머리 규칙: 이름을 가른다)
 

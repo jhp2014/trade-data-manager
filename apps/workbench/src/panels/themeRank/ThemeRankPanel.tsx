@@ -10,7 +10,11 @@
 //
 // 산점은 **항상 /day-replay 재계산 단면**을 그린다(scrubSection 머리 주석 — 서수 출처 단일화).
 // 구운 번들은 헤더의 라이브 통과 카운트(모수 전체) 전용이다.
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+//
+// 다중 테마(2026-09-07): 칩 줄 오른쪽 = 시선 종목의 테마(ThemeLensStrip) — 렌즈(택1 갈라 보기)와
+// 진단(✓/✗ = 그 테마 단독 통과, themeVerdicts)을 겸한다. 둘 다 **시선 도구다**(깔때기·카운트 불변).
+// 산점의 점은 클릭 = 그 종목으로 이동(동료·회색 무관)이고, 떠난 자리는 헤더 브레드크럼이 기억한다.
+import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import { minuteOfDayOf } from "@trade-data-manager/market/domain";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { SubjectBadge } from "../../components/SubjectBadge.js";
@@ -18,30 +22,49 @@ import { CanvasLayers } from "../canvas/CanvasPainter.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { themeStrengthLabel } from "../filter/label.js";
 import { themeParamsOf, useLinkedThemeStage } from "../filter/themeLink.js";
-import { useSubject, subjectStatus } from "../../lib/subject.js";
+import { useSubject, subjectStatus, subjectKeyOf, isAutoPointTime } from "../../lib/subject.js";
+import { autoPointsOfChart, useAutoPoints } from "../../lib/PointGridsContext.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useChartPoints } from "../../lib/useChartPoints.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { useThemeStrengthStats } from "../../lib/useThemeStrengthStats.js";
-import { anyConditionOn, DEFAULT_THEME_STRENGTH, type ThemeStrengthParams } from "../../lib/themeStrength.js";
+import { anyConditionOn, DEFAULT_THEME_STRENGTH, themeProjectionOf, themeVerdicts, type ThemeStrengthParams, type ThemeVerdict } from "../../lib/themeStrength.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { scatterLayer } from "./scatterLayer.js";
+import { themeColorMap } from "./themeColor.js";
+import { ThemeLensStrip } from "./ThemeLensStrip.js";
 import { ThemeParamControls } from "./ThemeParamControls.js";
 import { TimelineBar } from "./TimelineBar.js";
 import { tooltipBoxOf } from "./tooltipBox.js";
 import { bandSegmentsOf, subjectOrdinalTrack } from "./zoneTrack.js";
 import { FILTER } from "../../styles/palette.js";
 
-const PAD = { left: 44, top: 14, right: 14, bottom: 30 };
-/** 컷선 잡기 판정 폭(px). */
-const GRAB = 7;
+// 오른쪽 여백이 넓은 이유: 등락 컷 **손잡이 배지가 그림 밖에 앉기 때문**이다(안에 두면 그 자리 동료
+// 점의 클릭을 먹고, 바닥으로 클램프되면 x 눈금 글자를 덮는다). 손잡이는 그림 밖에만 산다.
+const PAD = { left: 44, top: 14, right: 60, bottom: 30 };
+/** 컷선 라벨 배지 크기(px) — **이게 손잡이다**(선 자체는 안 잡힌다, 아래 cutLabels 주석). */
+const LBL_W = 52;
+const LBL_H = 14;
+/** 라벨 잡기 여유(px) — 배지가 작아서 가장자리를 조금 넉넉히 준다. */
+const LBL_PAD = 3;
+/** 점 집기 반경(px) — 호버 툴팁과 클릭 이동이 같이 쓴다. */
+const HIT_R = 8;
+/** 이만큼 넘게 끌렸으면 클릭이 아니다(px). */
+const CLICK_SLOP = 4;
 
 const fmtMin = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
 export function ThemeRankPanel(): JSX.Element {
     const subject = useSubject();
     const { nameOf } = useStockNamesDict();
+    // 동료 클릭 이동(아래 navigate)이 쓰는 것들 — 시선 갈아끼우기 · 되돌아가기 · 옮겨갈 종목의 타점 판정.
+    const setCode = useWorkbench((s) => s.setCode);
+    const setFocus = useWorkbench((s) => s.setFocus);
+    const focusTime = useWorkbench((s) => s.focus.time);
+    const lastFocusOrigin = useWorkbench((s) => s.lastFocusOrigin);
+    const originId = useId(); // 시선 변경 출처 태그 — 브레드크럼이 "내가 옮긴 것"만 기억하게 한다
+    const auto = useAutoPoints();
 
     // ── 연동 행 — 보드와 같은 상태 하나(펼침 ≡ 연동). 이 행의 params 가 존·카운트의 유일한 재료다.
     const { themeStages, linkedId, setLinked } = useLinkedThemeStage();
@@ -54,7 +77,7 @@ export function ThemeRankPanel(): JSX.Element {
     const stocks = snapQ.data?.stocks;
 
     // ── 스크럽 분 — 세션 수명(프리셋 전환엔 살고 새로고침엔 리셋). subject 가 바뀌면 따라가기(null)로 되돌린다.
-    const subjectKey = subject ? `${subject.code}|${subject.date}|${subject.time ?? ""}` : "";
+    const subjectKey = subject ? subjectKeyOf(subject) : "";
     const scrub = useWorkbench((s) => s.sessionUi["themeRank"]?.[subjectKey]) as number | undefined;
     const setSessionUi = useWorkbench((s) => s.setSessionUi);
 
@@ -87,17 +110,36 @@ export function ThemeRankPanel(): JSX.Element {
         return scrubSectionOf(stocks, subject.date, fmtMin(minute));
     }, [stocks, subject, minute]);
 
-    // ── 테마 동료 — 읽기 시점 인덱스(멤버십은 굽지 않는다). 소속 전 테마 멤버의 **합집합**(자신 제외).
-    // ⚠ 시선은 합집합이지만 카운트의 묶음 판정은 테마 단위 AND 다 — teal 점 3개를 세어도 서로 다른
-    // 테마면 "동료 ≥ 3" 은 불통과일 수 있다(분해 금지). 테마 갈라 보기는 후속 과제.
+    // ── 테마 동료 — 읽기 시점 인덱스(멤버십은 굽지 않는다).
+    // 기본은 소속 전 테마의 **합집합**인데, 그러면 teal 점 3개를 세어도 서로 다른 테마라 "동료 ≥ 3" 이
+    // 불통과일 수 있다(판정은 테마 단위 AND · 테마 사이 ∃ — 분해 금지). 그 눈-숫자 어긋남을 **렌즈**가
+    // 푼다: 칩 줄에서 테마 하나를 고르면 그 테마 멤버만 동료로 남는다(= 판정 단위와 화면이 같아진다).
     const themesView = useThemeIndex();
-    const peers = useMemo(() => {
-        const out = new Set<string>();
+    const subjectThemes = useMemo(() => (subject ? themesView.index.themesOf(subject.code) : []), [themesView.index, subject]);
+    // 렌즈 — 세션 수명(sessionUi). **소속 아니면 전체로 접는 건 순수 파생**이다: 시선이 바뀔 때마다
+    // 저장값을 지우는 effect 를 두면 "돌아왔는데 렌즈가 없다"가 되고, 지우는 시점 경쟁도 생긴다.
+    // 저장값은 남기고 읽을 때만 거르므로, 그 테마에 속한 종목으로 돌아오면 렌즈도 같이 살아난다.
+    const rawLens = useWorkbench((s) => s.sessionUi["themeRank"]?.["lens"]) as string | undefined;
+    const lens = rawLens !== undefined && subjectThemes.includes(rawLens) ? rawLens : null;
+    // 동료 → 시선과 **공유하는 테마들**(칩 줄 순서). 색·겹침·클릭 대상이 전부 이 맵 하나에서 나온다.
+    // 렌즈는 여기서 거르지 않는다 — 강조만 바꾸므로(scatterLayer), 옅게 남은 다른 테마 동료도 집힌다.
+    const peerThemes = useMemo(() => {
+        const out = new Map<string, string[]>();
         if (!subject) return out;
-        for (const t of themesView.index.themesOf(subject.code)) for (const c of themesView.index.codesOf(t)) out.add(c);
-        out.delete(subject.code);
+        for (const t of subjectThemes)
+            for (const c of themesView.index.codesOf(t)) {
+                if (c === subject.code) continue;
+                const list = out.get(c);
+                if (list) list.push(t);
+                else out.set(c, [t]);
+            }
         return out;
-    }, [themesView.index, subject]);
+    }, [themesView.index, subject, subjectThemes]);
+    // 테마 색 — 이름 해시(결정론) + 이 시선 안에서만 충돌 회피. 산점 점과 칩 스와치의 단일 출처.
+    const themeColors = useMemo(() => themeColorMap(subjectThemes), [subjectThemes]);
+    // 멤버십 재료가 아직/영영 없을 수 있다 — 빈 인덱스는 "동료 0"이 아니라 **모름**이다. 회색 층이 있던
+    // 시절엔 화면이 살아 있는 게 보였지만, 지금은 점 하나짜리 빈 평면이라 말해주지 않으면 오독한다.
+    const themesStatus = themesView.error ? "error" : themesView.ready ? "ready" : "loading";
 
     // ── 컷선 드래그 — 미리보기는 로컬, 커밋은 손 뗄 때 한 번(Rail 규약) **연동 행의 술어로**.
     const [preview, setPreview] = useState<Partial<ThemeStrengthParams> | null>(null);
@@ -108,6 +150,16 @@ export function ThemeRankPanel(): JSX.Element {
     // 카운트만 한 프레임 뒤로 — 존 틴트·점은 즉시 따라와야 손이 안 끌린다.
     const countParams = useDeferredValue(eff);
     const count = useThemeStrengthStats(countParams);
+
+    // ── 테마별 진단 — 시선 종목의 테마마다 "그 테마 **단독으로** 활성 조건을 다 만족하나"(∃ 를 접기 전 재료).
+    // 헤더 카운트(모수 전체 ∃)와 층이 다르다: 저건 "몇 개가 통과하나", 이건 "지금 이 종목을 어느 테마가
+    // 통과시키나". eff(컷선 미리보기 포함)를 쓴다 — 끌면 ✓/✗ 가 그 자리에서 따라와야 손이 맥락을 잃지 않는다.
+    // 활성 조건이 없으면 전부 참이라 표식이 소음이 된다 → null(칩은 이름만).
+    const proj = useMemo(() => themeProjectionOf(themesView.index), [themesView.index]);
+    const verdicts = useMemo((): ReadonlyMap<string, ThemeVerdict> | null => {
+        if (!subject || !section || linkedParams === null || !anyConditionOn(eff)) return null;
+        return new Map(themeVerdicts(subject.code, section, eff, proj).map((v) => [v.theme, v] as const));
+    }, [subject, section, linkedParams, eff, proj]);
 
     // ── 그림 상자 — **안정 콜백 ref**. 이 div 는 subject && section 일 때만 마운트되는데, 1회성 effect 로
     // 관찰을 붙이면 최초 렌더(시선 없음)에서 ref 가 null 이라 영영 안 붙는다(실측: 캔버스 0×0 고정).
@@ -152,24 +204,100 @@ export function ThemeRankPanel(): JSX.Element {
         return out;
     }, [section]);
 
-    // 존은 연동 행이 있을 때만 — 없으면 동료 전부 채운 점(존 안/밖 구분 자체가 없다).
+    // 존(틴트·컷선·타임라인 띠)은 연동 행이 있을 때만. 산점의 점은 존을 **표시하지 않는다** — 자리와
+    // 칩 숫자가 이미 말한다(scatterLayer 머리 주석).
     const zone = linkedParams === null ? null : { rateN: eff.zoneRateN, amountN: eff.zoneAmountN };
     const layers = useMemo(
-        () => [scatterLayer({ points: participants, subject: subject?.code ?? null, peers, zone, scales })],
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [participants, subject, peers, zone?.rateN, zone?.amountN, linkedParams === null, scales],
+        () => [scatterLayer({ points: participants, subject: subject?.code ?? null, peerThemes, colorOf: themeColors, lens, scales })],
+        [participants, subject, peerThemes, themeColors, lens, scales],
     );
+    // 집기 대상 = **그려진 것**뿐(시선 + 동료). 안 그린 점에 툴팁이 뜨면 유령을 짚는 셈이다.
+    const hitPoints = useMemo(
+        () => participants.filter((p) => p.code === subject?.code || peerThemes.has(p.code)),
+        [participants, peerThemes, subject],
+    );
+    // 축 눈금 — 배경 점이 하던 좌표 감각을 대신한다(균등 4~5개, 정확한 컷 값은 컷선 라벨이 말한다).
+    const ticks = useMemo(
+        () => [...new Set([1, Math.round(maxRank * 0.25), Math.round(maxRank * 0.5), Math.round(maxRank * 0.75), maxRank])].filter((t) => t >= 1 && t <= maxRank),
+        [maxRank],
+    );
+
+    /** 그 자리에서 가장 가까운 점(HIT_R 안). 호버 툴팁과 클릭 이동이 **같은 판정**을 쓴다. */
+    const nearestAt = (x: number, y: number): { code: string; rate: number; amount: number } | null => {
+        let best: { code: string; rate: number; amount: number } | null = null;
+        let bestD = HIT_R * HIT_R;
+        for (const p of hitPoints) {
+            const dx = scales.x(p.amount) - x;
+            const dy = scales.y(p.rate) - y;
+            const d = dx * dx + dy * dy;
+            if (d < bestD) { bestD = d; best = p; }
+        }
+        return best;
+    };
+
+    // ── 되돌아가기 앵커 — 이 패널에서 **점을 눌러 떠나기 전** 시선. 세션 수명(sessionUi).
+    // 돌아왔으면 앵커는 없는 것이다 — 읽기 시점 파생이라 지우는 손이 따로 없다.
+    const rawAnchor = useWorkbench((s) => s.sessionUi["themeRank"]?.["origin"]) as { code: string; date: string; time: string | null } | undefined;
+    const anchor = rawAnchor !== undefined && subject && rawAnchor.code !== subject.code ? rawAnchor : null;
+    // 남이 시선을 옮겼으면 앵커는 유령이다(내가 떠난 자리가 아니다) — 종목이 실제로 바뀐 순간에만 지운다
+    // (마운트에서 지우면 프리셋 전환에 앵커가 날아간다 — sessionUi 를 쓴 이유가 그거다).
+    const prevCode = useRef(subject?.code ?? null);
+    useEffect(() => {
+        const c = subject?.code ?? null;
+        if (prevCode.current === c) return;
+        prevCode.current = c;
+        if (lastFocusOrigin !== originId) setSessionUi("themeRank", "origin", undefined);
+    }, [subject?.code, lastFocusOrigin, originId, setSessionUi]);
+
+    /**
+     * 점 클릭 = 그 종목으로 이동. **동료(teal)만 집힌다** — 회색 점까지 열었더니 오클릭이 잦았다
+     * (2026-09-07 실사용). 규칙은 "보이는 대로": 렌즈가 켜져 있으면 그 테마 멤버만 동료라, 회색으로
+     * 내려앉은 다른 테마 동료도 안 집힌다(집으려면 렌즈를 끄면 된다 — 화면과 손이 어긋나지 않게).
+     * 날짜·시각(전역 focus)은 그대로 두고 종목만 갈아끼운다.
+     * ⚠ 스크럽 분 **이월**이 이 이동의 전부다 — subjectKey 가 종목을 품고 있어서, 이월하지 않으면 새
+     * 종목의 기본 분(첫 타점·마지막 봉)으로 시각이 튄다. "같은 시각의 순위 평면에서 옆 종목으로" 가 깨진다.
+     */
+    const navigate = (code: string): void => {
+        if (!subject || code === subject.code || !peerThemes.has(code)) return;
+        if (minute !== null) {
+            const time = isAutoPointTime(focusTime, autoPointsOfChart(auto, code, subject.date)) ? focusTime : null;
+            setSessionUi("themeRank", subjectKeyOf({ code, date: subject.date, time }), minute);
+        }
+        // 앵커는 처음 떠날 때만 찍는다 — 연쇄로 몇 다리를 건너도 출발점은 하나.
+        if (!anchor) setSessionUi("themeRank", "origin", { code: subject.code, date: subject.date, time: focusTime });
+        setHover(null); // 옮겨간 평면에 옛 종목 툴팁이 남지 않게(마우스가 멈춰 있으면 정정될 기회가 없다)
+        setCode(code, originId);
+    };
 
     // ── 컷선 드래그(위 SVG 층이 포인터 소유 — 캔버스는 포인터를 안 받는다). 연동 행 없으면 손짓도 없다.
     const dragRef = useRef<"rate" | "amount" | null>(null);
+    const downRef = useRef<{ x: number; y: number } | null>(null); // 클릭 판정용 누른 자리(끌렸으면 클릭이 아니다)
     const cutX = scales.x(eff.zoneAmountN); // 세로선(거래대금 컷)
     const cutY = scales.y(eff.zoneRateN); // 가로선(등락률 컷)
+    /**
+     * 컷선의 **손잡이 = 라벨 배지**(2026-09-07 사용자 확정). 선 전체를 잡던 옛 판정(선에서 7px)은
+     * 산점 위를 가로지르는 띠 두 개를 클릭 불가 지대로 만들어, 그 위의 점을 못 집었다.
+     * 배지는 그림 밖(아래·오른쪽 끝)에 있어 점과 겹치지 않는다 — 손짓 둘이 자리를 안 다툰다.
+     * 이 자리 셈이 **판정과 렌더의 단일 출처**다: 아래 JSX 가 같은 값으로 배지를 그린다.
+     */
+    // 배지는 그림 **밖**(아래·오른쪽 여백)에 앉는다 — 점과 자리를 다투지 않게. 다만 축 방향으로는
+    // 상자 범위 안에 머물러야 잡힌다(컷이 끝으로 가면 여백 밖으로 나가 손이 안 닿는다).
+    const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(v, hi));
+    const cutLabels = {
+        amount: { x: clamp(cutX - LBL_W / 2, box.left, box.left + box.width - LBL_W), y: box.top + box.height + 3 },
+        rate: { x: box.left + box.width + 4, y: clamp(cutY - LBL_H / 2, box.top, box.top + box.height - LBL_H) },
+    };
+    const inLabel = (x: number, y: number, l: { x: number; y: number }): boolean =>
+        x >= l.x - LBL_PAD && x <= l.x + LBL_W + LBL_PAD && y >= l.y - LBL_PAD && y <= l.y + LBL_H + LBL_PAD;
     const onPointerDown = (e: React.PointerEvent<SVGSVGElement>): void => {
-        if (e.button !== 0 || linkedParams === null) return; // 우클릭·휠클릭·비연동이 드래그를 시작시키지 않게
+        if (e.button !== 0) { downRef.current = null; return; } // 우클릭·휠클릭은 드래그도 클릭도 아니다
+        // (버리지 않으면 SVG 밖에서 뗀 좌클릭의 자리가 남아 다음 우클릭이 그 자리 클릭으로 오인된다)
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        const target = Math.abs(x - cutX) <= GRAB ? "amount" : Math.abs(y - cutY) <= GRAB ? "rate" : null;
+        downRef.current = { x, y };
+        if (linkedParams === null) return; // 컷선 없는 순수 산점 — 점 클릭만 받는다
+        const target = inLabel(x, y, cutLabels.amount) ? "amount" : inLabel(x, y, cutLabels.rate) ? "rate" : null;
         if (!target) return;
         dragRef.current = target;
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -181,8 +309,7 @@ export function ThemeRankPanel(): JSX.Element {
         if (drag === "amount") setPreview((p) => ({ ...p, zoneAmountN: ordAtX(e.clientX - rect.left) }));
         else setPreview((p) => ({ ...p, zoneRateN: ordAtY(e.clientY - rect.top) }));
     };
-    const onPointerUp = (e: React.PointerEvent<SVGSVGElement>): void => {
-        if (!dragRef.current) return;
+    const commitDrag = (e: React.PointerEvent<SVGSVGElement>): void => {
         dragRef.current = null;
         e.currentTarget.releasePointerCapture(e.pointerId);
         setPreview((p) => {
@@ -192,6 +319,27 @@ export function ThemeRankPanel(): JSX.Element {
             }
             return null;
         });
+    };
+    // 손 뗄 때 = 컷선 커밋 **또는** 점 클릭(둘은 배타다 — 컷선을 잡았으면 그 손은 클릭이 아니다).
+    const onPointerUp = (e: React.PointerEvent<SVGSVGElement>): void => {
+        const down = downRef.current;
+        downRef.current = null;
+        if (dragRef.current) {
+            commitDrag(e);
+            return;
+        }
+        if (!down) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        if (Math.abs(x - down.x) > CLICK_SLOP || Math.abs(y - down.y) > CLICK_SLOP) return; // 끌린 손은 클릭이 아니다
+        const hit = nearestAt(x, y);
+        if (hit) navigate(hit.code); // 동료가 아니면 navigate 가 스스로 접는다(집기 판정은 한 곳)
+    };
+    // 터치·제스처 가로채기로 up 이 안 올 때 — 드래그는 접어 커밋하고(Rail 규약), 클릭으로는 오인하지 않는다.
+    const onPointerCancel = (e: React.PointerEvent<SVGSVGElement>): void => {
+        downRef.current = null;
+        if (dragRef.current) commitDrag(e);
     };
 
     // ── 타임라인 재료 — 트랙(분당 서수, 시선/날짜당 한 번)과 띠 필터(컷 드래그마다 O(분))를 가른다.
@@ -223,15 +371,8 @@ export function ThemeRankPanel(): JSX.Element {
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
-        let best: typeof hover = null;
-        let bestD = 8 * 8;
-        for (const p of participants) {
-            const dx = scales.x(p.amount) - x;
-            const dy = scales.y(p.rate) - y;
-            const d = dx * dx + dy * dy;
-            if (d < bestD) { bestD = d; best = { x, y, code: p.code, rate: p.rate, amount: p.amount }; }
-        }
-        setHover(best);
+        const hit = nearestAt(x, y);
+        setHover(hit ? { x, y, ...hit } : null);
     };
 
     return (
@@ -259,6 +400,14 @@ export function ThemeRankPanel(): JSX.Element {
                         {nameOf(subject.code)} · {subject.date}{minute !== null && ` ${fmtMin(minute)}`}
                     </span>
                 )}
+                {/* 되돌아가기 — 산점에서 점을 눌러 떠난 출발점. 방문기록(Alt+W/S)과 달리 몇 다리를 건너도 한 번에 온다. */}
+                {anchor && (
+                    <button onClick={() => setFocus({ date: anchor.date, code: anchor.code, time: anchor.time }, originId)}
+                        title="이 패널에서 점을 눌러 떠나기 전 종목으로 돌아간다"
+                        style={backBtn}>
+                        ← {nameOf(anchor.code)}
+                    </button>
+                )}
                 {/* 단면이 아예 없을 땐 빈 화면 문구가 말한다 — 배지는 "단면은 있는데 시선이 안 그려진" 경우만. */}
                 <SubjectBadge subject={subject} name={subject ? nameOf(subject.code) : undefined} absentLabel="그 분 순위 없음"
                     status={section
@@ -276,7 +425,7 @@ export function ThemeRankPanel(): JSX.Element {
             )}
 
             {/* 칩 스트립 — 테마 행 목록의 파생 뷰(별도 저장물 없음). 클릭 = 연동 전환(보드 요약 줄도 같은 상태를 본다). */}
-            {themeStages.length > 0 && (
+            {(themeStages.length > 0 || subjectThemes.length > 0 || (subject !== null && themesStatus !== "ready")) && (
                 <div style={chipsRow}>
                     {themeStages.map((s) => {
                         const p = themeParamsOf(s);
@@ -294,6 +443,12 @@ export function ThemeRankPanel(): JSX.Element {
                             </button>
                         );
                     })}
+                    {/* 오른쪽 = 시선 종목의 테마(렌즈·진단). 왼쪽 조건 칩과 뜻이 다르다 — 저긴 '무엇을 편집 중',
+                        여긴 '무엇을 보는 중'. 조건 행이 없어도 이 줄은 선다(갈라 보기는 조건과 무관하다). */}
+                    {(subjectThemes.length > 0 || (subject !== null && themesStatus !== "ready")) && (
+                        <ThemeLensStrip themes={subjectThemes} lens={lens} verdicts={verdicts} colorOf={themeColors} status={themesStatus}
+                            onPick={(t) => setSessionUi("themeRank", "lens", t ?? undefined)} />
+                    )}
                 </div>
             )}
 
@@ -309,13 +464,20 @@ export function ThemeRankPanel(): JSX.Element {
                         {linkedParams !== null && (
                             <rect x={box.left} y={box.top} width={Math.max(0, cutX - box.left)} height={Math.max(0, cutY - box.top)} fill="var(--accent-soft)" opacity={0.7} />
                         )}
+                        {/* 눈금·격자 — 무관 종목 회색 층을 지운 자리(2026-09-07). 점이 성길 때 좌표를 읽을 유일한 근거다.
+                            x 눈금 글자는 상자 **안** 바닥에 붙인다 — 축 아래는 컷선 라벨(손잡이)이 이미 쓰고 있다. */}
+                        {ticks.map((t) => (
+                            <g key={t}>
+                                <line x1={scales.x(t)} y1={box.top} x2={scales.x(t)} y2={box.top + box.height} stroke="var(--border-subtle)" />
+                                <line x1={box.left} y1={scales.y(t)} x2={box.left + box.width} y2={scales.y(t)} stroke="var(--border-subtle)" />
+                                <text x={box.left - 6} y={scales.y(t) + 3} textAnchor="end" style={axisText}>{t}</text>
+                                <text x={scales.x(t)} y={box.top + box.height - 4} textAnchor="middle" style={axisText}>{t}</text>
+                            </g>
+                        ))}
                         <line x1={box.left} y1={box.top} x2={box.left} y2={box.top + box.height} stroke="var(--border-strong)" />
                         <line x1={box.left} y1={box.top + box.height} x2={box.left + box.width} y2={box.top + box.height} stroke="var(--border-strong)" />
-                        <text x={box.left - 6} y={box.top + 10} textAnchor="end" style={axisText}>1위</text>
-                        <text x={box.left - 6} y={box.top + box.height} textAnchor="end" style={axisText}>{maxRank}</text>
                         <text x={box.left - 28} y={box.top + box.height / 2} textAnchor="middle" style={axisText} transform={`rotate(-90 ${box.left - 28} ${box.top + box.height / 2})`}>등락률 순위 ↓</text>
                         <text x={box.left + box.width / 2} y={size.h - 8} textAnchor="middle" style={axisText}>거래대금 순위 →</text>
-                        <text x={box.left + box.width} y={box.top + box.height + 14} textAnchor="end" style={axisText}>{maxRank}</text>
                     </svg>
 
                     <div style={{ position: "absolute", inset: 0 }}>
@@ -323,27 +485,36 @@ export function ThemeRankPanel(): JSX.Element {
                     </div>
 
                     {/* 위 SVG — 컷선·손잡이·호버(포인터 소유). 컷선은 연동 행이 있을 때만. */}
-                    <svg width={size.w} height={size.h} style={overSvg}
+                    <svg width={size.w} height={size.h} style={{ ...overSvg, cursor: hover && peerThemes.has(hover.code) ? "pointer" : undefined }}
                         onPointerDown={onPointerDown}
                         onPointerMove={(e) => { onPointerMove(e); onHoverMove(e); }}
                         onPointerUp={onPointerUp}
-                        onPointerCancel={onPointerUp} // 터치·제스처 가로채기로 up 이 안 올 때 드래그가 끼지 않게(Rail 규약)
+                        onPointerCancel={onPointerCancel}
                         onPointerLeave={() => setHover(null)}>
                         {linkedParams !== null && (
                             <>
-                                <line x1={cutX} y1={box.top} x2={cutX} y2={box.top + box.height} stroke={FILTER} strokeWidth={1.5} strokeDasharray="5 3" style={{ cursor: "ew-resize" }} />
-                                <line x1={box.left} y1={cutY} x2={box.left + box.width} y2={cutY} stroke={FILTER} strokeWidth={1.5} strokeDasharray="5 3" style={{ cursor: "ns-resize" }} />
+                                {/* 선은 표시만 — 잡는 곳은 아래 배지다(선을 잡게 두면 그 띠 위의 점을 못 집는다). */}
+                                <line x1={cutX} y1={box.top} x2={cutX} y2={box.top + box.height} stroke={FILTER} strokeWidth={1.5} strokeDasharray="5 3" />
+                                <line x1={box.left} y1={cutY} x2={box.left + box.width} y2={cutY} stroke={FILTER} strokeWidth={1.5} strokeDasharray="5 3" />
                                 <g style={{ fontSize: 10, fill: "#fff", fontVariantNumeric: "tabular-nums" }}>
-                                    <rect x={cutX - 26} y={box.top + box.height + 3} width={52} height={14} rx={3} fill={FILTER} />
-                                    <text x={cutX} y={box.top + box.height + 14} textAnchor="middle">대금 {eff.zoneAmountN}</text>
-                                    <rect x={box.left + box.width - 54} y={cutY - 16} width={52} height={14} rx={3} fill={FILTER} />
-                                    <text x={box.left + box.width - 28} y={cutY - 5} textAnchor="middle">등락 {eff.zoneRateN}</text>
+                                    <g style={{ cursor: "ew-resize" }}>
+                                        <title>끌어서 거래대금 컷 옮기기(한 위씩은 위 손잡이 줄의 ±)</title>
+                                        <rect x={cutLabels.amount.x} y={cutLabels.amount.y} width={LBL_W} height={LBL_H} rx={3} fill={FILTER} />
+                                        <text x={cutLabels.amount.x + LBL_W / 2} y={cutLabels.amount.y + 11} textAnchor="middle">대금 {eff.zoneAmountN}</text>
+                                    </g>
+                                    <g style={{ cursor: "ns-resize" }}>
+                                        <title>끌어서 등락률 컷 옮기기(한 위씩은 위 손잡이 줄의 ±)</title>
+                                        <rect x={cutLabels.rate.x} y={cutLabels.rate.y} width={LBL_W} height={LBL_H} rx={3} fill={FILTER} />
+                                        <text x={cutLabels.rate.x + LBL_W / 2} y={cutLabels.rate.y + 11} textAnchor="middle">등락 {eff.zoneRateN}</text>
+                                    </g>
                                 </g>
                             </>
                         )}
                         {hover && (() => {
                             // 자리는 순수 셈(tooltipBox) — 경계에서 플립·클램프, 폭은 글자에서.
-                            const text = `${nameOf(hover.code)} · 등락 ${hover.rate}위 · 대금 ${hover.amount}위`;
+                            // 겹친 동료는 링 하나로 둘째 테마까지만 말한다 — 나머지는 여기서 전부 편다.
+                            const ts = peerThemes.get(hover.code);
+                            const text = `${nameOf(hover.code)} · 등락 ${hover.rate}위 · 대금 ${hover.amount}위${ts ? ` · ${ts.join("·")} · 클릭 = 이동` : ""}`;
                             const tb = tooltipBoxOf(hover, text, { w: size.w, h: size.h });
                             return (
                                 <g style={{ pointerEvents: "none" }}>
@@ -377,6 +548,7 @@ const underSvg: CSSProperties = { position: "absolute", inset: 0, pointerEvents:
 const overSvg: CSSProperties = { position: "absolute", inset: 0, touchAction: "none", userSelect: "none" };
 const axisText: CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
 const footer: CSSProperties = { display: "flex", alignItems: "center", gap: 12, padding: "4px 10px", borderTop: "1px solid var(--border-default)", fontSize: 11, color: "var(--text-secondary)", flexWrap: "wrap" };
+const backBtn: CSSProperties = { fontSize: 11, color: "var(--accent-primary)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--accent-primary)", borderRadius: 8, padding: "0 6px", background: "var(--accent-soft)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 };
 const chipsRow: CSSProperties = { display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderBottom: "1px solid var(--border-subtle)", overflowX: "auto", flexShrink: 0 };
 // border 는 낱개 속성으로 — 활성 칩이 borderColor 만 덮는데, 축약(border)과 섞이면 React 가 경고한다.
 const chipBtn: CSSProperties = { fontSize: 10.5, color: "var(--text-secondary)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--border-default)", borderRadius: 8, padding: "1px 8px", background: "transparent", cursor: "pointer", whiteSpace: "nowrap" };

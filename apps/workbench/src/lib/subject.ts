@@ -41,12 +41,24 @@ export function useSubject(): Subject | null {
     const derived = autoPointsOfChart(auto, code, date);
     return useMemo(() => {
         if (!code) return null;
-        // **분 절단으로 비교**한다 — 단면 조회(useRankSections)와 같은 자를 써야 초가 붙은 setTime
-        // 호출자(뉴스 점프 등)의 시각이 조용히 "타점 아님"으로 떨어지지 않는다.
-        const isPoint = time !== null && derived.some((p) => minuteToHms(p.min).slice(0, 5) === time.slice(0, 5));
-        return { code, date, time: isPoint ? time : null };
+        return { code, date, time: isAutoPointTime(time, derived) ? time : null };
     }, [code, date, time, derived]);
 }
+
+/**
+ * 그 시각이 이 차트의 자동 타점인가 — **분 절단으로 비교**한다(단면 조회 useRankSections 와 같은 자를
+ * 써야 초가 붙은 setTime 호출자(뉴스 점프 등)의 시각이 조용히 "타점 아님"으로 떨어지지 않는다).
+ * 훅 밖으로 낸 이유: 다른 (종목,날짜)의 subject 를 **미리 셈해야 하는** 자리가 있어서다(테마 순위
+ * 패널의 동료 클릭 이동 — 옮겨갈 종목의 subjectKey 를 알아야 스크럽 분을 이월한다). 이 판정을
+ * 호출부가 재현하면 "무엇이 선택인가"의 답이 다시 둘이 된다.
+ */
+export function isAutoPointTime(time: string | null, points: readonly { min: number }[]): boolean {
+    return time !== null && points.some((p) => minuteToHms(p.min).slice(0, 5) === time.slice(0, 5));
+}
+
+/** subject 의 세션 상태 키(패널이 "지금 보고 있는 것"에 매인 값을 걸어두는 자리 — sessionUiSlice). */
+export const subjectKeyOf = (s: { code: string; date: string; time: string | null }): string =>
+    `${s.code}|${s.date}|${s.time ?? ""}`;
 
 export type SubjectStatus = "shown" | "filtered" | "absent";
 

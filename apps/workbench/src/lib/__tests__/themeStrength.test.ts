@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildThemeIndex } from "@trade-data-manager/market/domain";
 import {
-    DEFAULT_THEME_STRENGTH, countPassing, parseThemeStrengthParams, passesPoint,
+    DEFAULT_THEME_STRENGTH, countPassing, parseThemeStrengthParams, passesPoint, themeVerdicts,
     themeProjectionOf, type SectionRanks, type ThemeStrengthParams,
 } from "../themeStrength.js";
 
@@ -104,5 +104,50 @@ describe("countPassing — 3항(통과/판정가능/결손)", () => {
         ];
         const out = countPassing(points, (d) => (d === "2026-08-14" ? section : null), P({ countOn: true, countMin: 2 }), proj);
         expect(out).toEqual({ passed: 1, evaluable: 1, missing: 1 });
+    });
+});
+
+describe("themeVerdicts — 표시용 진단(∃ 접기 전)", () => {
+    // 판정과 표시가 갈리면 화면이 거짓말을 한다 — 불변식을 테스트가 진다(활성 조건이 있을 때).
+    it("some(pass) 가 passesPoint 와 항상 같다", () => {
+        const proj = projOf({ A: ["s", "a1", "a2"], B: ["s", "b1"] });
+        const section = sectionOf({ s: [10, 10], a1: [5, 5], a2: [3, 3], b1: [50, 50] });
+        const cases: ThemeStrengthParams[] = [
+            P({ countOn: true, countMin: 3, baseRankOn: true, baseRankMax: 1 }), // 나눠 만족 = 불통과
+            P({ countOn: true, countMin: 3, baseRankOn: false }),
+            P({ countOn: false, baseRankOn: true, baseRankMax: 1 }),
+            P({ countOn: false, baseRankOn: false, zoneRankOn: true, zoneRankMax: 1 }),
+            P({ countOn: true, countMin: 99 }),
+        ];
+        for (const params of cases) {
+            const verdicts = themeVerdicts("s", section, params, proj);
+            expect(verdicts.some((v) => v.pass)).toBe(passesPoint("s", section, params, proj));
+        }
+    });
+
+    it("어느 테마가 통과시키는지 그 테마의 셈과 함께 말한다", () => {
+        const proj = projOf({ A: ["s", "a1", "a2"], B: ["s", "b1"] });
+        const section = sectionOf({ s: [10, 10], a1: [5, 5], a2: [3, 3], b1: [50, 50] });
+        const v = themeVerdicts("s", section, P({ countOn: true, countMin: 3, baseRankOn: false }), proj);
+        expect(v.map((x) => [x.theme, x.pass])).toEqual([["A", true], ["B", false]]);
+        expect(v[0]).toMatchObject({ zoneCount: 3, baseRank: 3, zoneRank: 3 }); // A: 존 3명, s 는 꼴찌
+        expect(v[1]).toMatchObject({ zoneCount: 1, baseRank: 1, zoneRank: 1 }); // B: b1 은 존 밖
+    });
+
+    it("자신이 존 밖이면 존 순위는 null(결손) — 그 조건이 켜져 있으면 불통과", () => {
+        const proj = projOf({ T: ["s", "m1"] });
+        const section = sectionOf({ s: [99, 99], m1: [1, 1] });
+        const v = themeVerdicts("s", section, P({ countOn: false, zoneRankOn: true, zoneRankMax: 5 }), proj)[0];
+        expect(v.zoneRank).toBeNull();
+        expect(v.baseRank).toBe(2);
+        expect(v.pass).toBe(false);
+    });
+
+    it("테마가 없으면 빈 목록 — 조건이 있는데 만족할 무리가 없다(passesPoint 와 같은 답)", () => {
+        const proj = projOf({ T: ["other"] });
+        const section = sectionOf({ s: [1, 1], other: [2, 2] });
+        const params = P({ countOn: true, countMin: 1 });
+        expect(themeVerdicts("s", section, params, proj)).toEqual([]);
+        expect(passesPoint("s", section, params, proj)).toBe(false);
     });
 });

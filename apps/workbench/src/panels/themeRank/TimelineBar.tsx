@@ -5,7 +5,7 @@
 // 좌표는 전부 %(프랙션) — 픽셀 측정(ResizeObserver)이 필요 없다. 포인터 → 분 변환만 이벤트 시점의
 // getBoundingClientRect 로 한다.
 import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { ACTIVE, FILTER, THEME_PEER } from "../../styles/palette.js";
+import { ACTIVE, FILTER, ZONE_TENURE } from "../../styles/palette.js";
 import type { BandSegment } from "./zoneTrack.js";
 
 /** 트랙 좌우 여백(px) — 끝 분의 표식·라벨이 잘리지 않을 만큼(Rail 의 RAIL_PAD 와 같은 역할). */
@@ -61,7 +61,7 @@ export function TimelineBar({ lo, hi, minute, pointMinutes, segments, onScrub }:
             {/* 존 재적 띠 — 끊김이 이탈이다. */}
             {segments?.map((s, i) => (
                 <div key={i} aria-hidden style={{
-                    position: "absolute", top: TRACK_TOP, height: 4, background: THEME_PEER, pointerEvents: "none",
+                    position: "absolute", top: TRACK_TOP, height: 4, background: ZONE_TENURE, pointerEvents: "none",
                     left: at(s.from), width: `calc(${Math.max(fracOf(s.to) - fracOf(s.from), 0.002)} * (100% - ${2 * PAD_X}px))`,
                 }} />
             ))}

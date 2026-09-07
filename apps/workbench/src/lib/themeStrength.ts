@@ -5,6 +5,8 @@
 // (테마 단위 AND · 테마 간 ∃). 하위 조건을 독립 평가해 조합하면 서로 다른 테마로 나눠 만족해도
 // 통과해 버린다 — 그래서 판정이 두 층이다: passesTheme(테마 하나의 AND) → passesPoint(∃).
 // **passesTheme 를 단독 소비하는 코드를 만들지 말 것** — 그 순간 분해 금지가 무너진다.
+// 화면이 "어느 테마가 통과시키나"를 말해야 할 때는 `themeVerdicts`(∃ 를 접기 전 재료)를 쓴다 —
+// 판정 경로는 여전히 `passesPoint` 하나이고, 둘의 일치는 불변식으로 테스트가 잡는다.
 // 활성 조건이 하나도 없으면 조건 없음 = 전부 통과(존 N/M 은 그때 순수 시선 도구다 — 사용자 확정).
 //
 // ## 왜 투영(ThemeProjection)을 받나
@@ -111,19 +113,28 @@ export type ZoneParams = Pick<ThemeStrengthParams, "zoneRateN" | "zoneAmountN" |
 const inZone = (r: { rate: number | null; amount: number | null }, p: ZoneParams): boolean =>
     r.rate !== null && r.amount !== null && r.rate <= p.zoneRateN && r.amount <= p.zoneAmountN;
 
-/**
- * 테마 하나가 활성 하위 조건 **전부**를 만족하는가(AND). 순위 셈은 core 경쟁 순위(1,1,3)와 같은 결 —
- * "자기보다 엄격히 좋은(작은) 서수의 멤버 수 + 1" 이라 동점끼리는 서로를 밀지 않는다.
- */
-export function passesTheme(code: string, theme: string, section: SectionRanks, params: ThemeStrengthParams, proj: ThemeProjection): boolean {
-    const members = proj.codesByTheme.get(theme);
-    if (!members || members.length === 0) return false;
-    const self = section.ranksOf(code);
-    const selfBasis = self === null ? null : params.basis === "rate" ? self.rate : self.amount;
-    const selfInZone = self !== null && inZone(self, params);
+/** 테마 하나의 셈 결과 — **임계값을 안 본 숫자만**. 판정(passesTheme)과 표시(themeVerdicts)가 같은 셈을 본다. */
+export interface ThemeStats {
+    /** 존(등락 ≤ N ∧ 대금 ≤ M)에 든 멤버 수 — 자신 포함. */
+    zoneCount: number;
+    /** 테마 전 멤버 중 기본 순위(존 무관). 자기 서수가 결손이면 null. */
+    baseRank: number | null;
+    /** 존에 든 멤버 중 순위. 자신이 존 밖이거나 서수 결손이면 null(결손은 결손). */
+    zoneRank: number | null;
+}
 
-    if (params.zoneRankOn && !selfInZone) return false; // ③은 자신이 존 밖이면 즉시 불만족(결손은 결손)
-    if (params.baseRankOn && selfBasis === null) return false;
+/**
+ * 테마 하나의 셈 — 순위는 core 경쟁 순위(1,1,3)와 같은 결로 "자기보다 엄격히 좋은(작은) 서수의 멤버
+ * 수 + 1" 이라 동점끼리는 서로를 밀지 않는다. 멤버가 없으면 null(= 만족할 무리가 없다).
+ * 임계값을 안 받는 이유: 이 셈이 판정과 화면 진단의 **공통 재료**여서다 — 임계값을 여기 들이면
+ * 표시가 "임계값에 따라 달라지는 숫자"를 말하게 되고, 왜 떨어졌는지 못 읽는다.
+ */
+export function themeStatsOf(code: string, theme: string, section: SectionRanks, zoneParams: ZoneParams, proj: ThemeProjection): ThemeStats | null {
+    const members = proj.codesByTheme.get(theme);
+    if (!members || members.length === 0) return null;
+    const self = section.ranksOf(code);
+    const selfBasis = self === null ? null : zoneParams.basis === "rate" ? self.rate : self.amount;
+    const selfInZone = self !== null && inZone(self, zoneParams);
 
     let zoneCount = 0;
     let baseBetter = 0; // 존 무관, 기준 서수가 자신보다 좋은 멤버 수
@@ -131,8 +142,8 @@ export function passesTheme(code: string, theme: string, section: SectionRanks, 
     for (const m of members) {
         const r = m === code ? self : section.ranksOf(m);
         if (r === null) continue; // 유니버스 밖·결손 — 분모에서 빠진다
-        const b = params.basis === "rate" ? r.rate : r.amount;
-        const z = inZone(r, params);
+        const b = zoneParams.basis === "rate" ? r.rate : r.amount;
+        const z = inZone(r, zoneParams);
         if (z) zoneCount++;
         if (m === code) continue; // 자신은 "자기보다 좋은" 셈의 대상이 아니다
         if (b !== null && selfBasis !== null && b < selfBasis) {
@@ -140,11 +151,56 @@ export function passesTheme(code: string, theme: string, section: SectionRanks, 
             if (z && selfInZone) zoneBetter++;
         }
     }
+    return {
+        zoneCount,
+        baseRank: selfBasis === null ? null : baseBetter + 1,
+        zoneRank: selfInZone && selfBasis !== null ? zoneBetter + 1 : null,
+    };
+}
 
-    if (params.countOn && zoneCount < params.countMin) return false;
-    if (params.baseRankOn && baseBetter + 1 > params.baseRankMax) return false;
-    if (params.zoneRankOn && zoneBetter + 1 > params.zoneRankMax) return false;
+/** 셈 → 활성 조건 AND 판정. **임계값을 보는 유일한 자리**(결손 순위는 그 조건이 켜져 있으면 불만족). */
+export function statsPass(stats: ThemeStats | null, params: ThemeStrengthParams): boolean {
+    if (stats === null) return false;
+    if (params.countOn && stats.zoneCount < params.countMin) return false;
+    if (params.baseRankOn && (stats.baseRank === null || stats.baseRank > params.baseRankMax)) return false;
+    if (params.zoneRankOn && (stats.zoneRank === null || stats.zoneRank > params.zoneRankMax)) return false;
     return true;
+}
+
+/**
+ * 테마 하나가 활성 하위 조건 **전부**를 만족하는가(AND).
+ * 앞의 두 줄은 **뜨거운 경로(countPassing: 모수 × 테마 × 멤버)의 조기 탈락**이다 — 자기 결손만으로
+ * 갈리는 둘을 멤버 루프 전에 잘라낸다(결과는 statsPass 와 같다: 존 밖 → zoneRank null · 서수 결손 →
+ * baseRank null). 표시 경로(themeVerdicts)는 이 지름길을 타지 않는다 — 왜 떨어졌는지 읽히려면
+ * 셈이 다 나와야 한다.
+ */
+export function passesTheme(code: string, theme: string, section: SectionRanks, params: ThemeStrengthParams, proj: ThemeProjection): boolean {
+    if (params.zoneRankOn || params.baseRankOn) {
+        const self = section.ranksOf(code);
+        if (params.zoneRankOn && !(self !== null && inZone(self, params))) return false;
+        if (params.baseRankOn && (self === null || (params.basis === "rate" ? self.rate : self.amount) === null)) return false;
+    }
+    return statsPass(themeStatsOf(code, theme, section, params, proj), params);
+}
+
+/** 테마별 진단 한 줄 — 셈 + 그 테마 단독 판정. */
+export interface ThemeVerdict extends ThemeStats {
+    theme: string;
+    pass: boolean;
+}
+
+/**
+ * 시선 한 종목의 **테마별 진단**(표시 전용) — ∃ 를 접기 전의 재료를 그대로 낸다. 화면이 "어느 테마가
+ * 통과시키나"를 말할 수 있게 하는 유일한 정문이다(그래서 `passesTheme` 를 화면이 직접 부를 일이 없다).
+ * 불변식: 활성 조건이 하나라도 있으면 `verdicts.some(v => v.pass) === passesPoint(...)` — 테스트가 잡는다.
+ * ⚠ 모수 루프에서 부르지 말 것 — 시선 1개용이다(테마당 객체를 만든다).
+ */
+export function themeVerdicts(code: string, section: SectionRanks, params: ThemeStrengthParams, proj: ThemeProjection): ThemeVerdict[] {
+    const themes = proj.themesByCode.get(code) ?? [];
+    return themes.map((theme) => {
+        const stats = themeStatsOf(code, theme, section, params, proj);
+        return { theme, pass: statsPass(stats, params), zoneCount: stats?.zoneCount ?? 0, baseRank: stats?.baseRank ?? null, zoneRank: stats?.zoneRank ?? null };
+    });
 }
 
 /** 타점(종목) 하나의 통과 — ∃테마. 활성 조건이 없으면 무조건 통과(조건 없음 = 필터 없음). */
