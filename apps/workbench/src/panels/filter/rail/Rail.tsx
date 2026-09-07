@@ -62,6 +62,24 @@ const HIST_BAR_H = 44;
 export interface RailProps<V> {
     /** 이 레일이 무엇인가(축 이름·"날짜"·"시간"). */
     label: string;
+    /**
+     * 경계·구간·기준선의 색. 기본은 조건의 색(`FILTER` 빨강)이고, **정의층 레일만** 갈아 끼운다
+     * (`POINT_DEF` teal — 자격 시각처럼 손짓은 같고 층이 다른 줄. 2026-09-07 자격 시각이 여러 구간이
+     * 되면서 DefRail 을 떠나 이 컴포넌트로 왔다: 대수(railModel)를 두 벌로 만들지 않으려고).
+     */
+    accent?: string;
+    /** 이름 아래 한 줄 — 그 레일의 정산("창 안 N / 밖 M"). 정의층 레일이 자기 자를 말하는 자리. */
+    note?: string;
+    /** 그 정산이 **무엇을 센 수인지**(모수) 말하는 툴팁 — 숫자만 있고 자가 없으면 딴 숫자로 읽힌다. */
+    noteTitle?: string;
+    /** 분포 스트립을 처음부터 펼친 채로 — 그림을 보며 정하는 게 목적인 판(정의)에서만. */
+    defaultDistOpen?: boolean;
+    /**
+     * "이건 드래그가 아니라 탭이다" 판정의 폭(프랙션). 기본 `railModel` 기본값(0.008)은 필터 레일의
+     * 실측 값인데, 도메인이 좁은 레일에선 그게 실제 조건을 삼킨다 — 자격 시각(720분)에선 5.8분이라
+     * "시초 몇 분" 창이 조용히 버려졌다(2026-09-07). 그런 레일만 작게 준다.
+     */
+    tapEps?: number;
     ranges: readonly RailRange<V>[];
     /** 구간이 하나뿐인 레일(판단 축 밴드) — 새로 그으면 갈아탄다. */
     single?: boolean;
@@ -126,7 +144,8 @@ export interface RailProps<V> {
 }
 
 export function Rail<V>({
-    label, ranges, single = false, cut = false, removable = true, toFrac, fromFrac, fmt, minLabel, maxLabel,
+    label, accent = FILTER, note, noteTitle, defaultDistOpen = false, tapEps, ranges, single = false, cut = false, removable = true,
+    toFrac, fromFrac, fmt, minLabel, maxLabel,
     ticks, memberTicks, dist, marker, disabledNote, dragHandle, stow, onType, onChange,
 }: RailProps<V>): JSX.Element {
     const trackRef = useRef<HTMLDivElement | null>(null);
@@ -160,6 +179,12 @@ export function Rail<V>({
         setPreview(applyDrag(ranges, drag, fracAt(e.clientX), fromFrac, { single, cut }));
     };
 
+    // 취소(브라우저가 포인터를 회수 — 창 밖 이탈·터치 제스처)는 **커밋이 아니다**: 확정하지 않은 조건이
+    // 들어가면 유니버스×필터 정산(정의 레일이면 1만 시그널 파생까지)이 통째로 다시 돈다.
+    const onCancel = (): void => {
+        dragRef.current = null;
+        setPreview(null);
+    };
     const onUp = (): void => {
         const drag = dragRef.current;
         const next = preview;
@@ -171,7 +196,7 @@ export function Rail<V>({
         // 왼쪽 끝만 손이 안 닿는 자리가 된다).
         if (drag.kind === "new" && !cut) {
             const fresh = next[next.length - 1];
-            if (!fresh || isTapRange(fresh, toFrac)) return;
+            if (!fresh || isTapRange(fresh, toFrac, tapEps)) return;
         }
         onChange(orderRanges(next, toFrac));
     };
@@ -190,7 +215,7 @@ export function Rail<V>({
     // 펼친 분포 — **읽는 행위**라 컴포넌트 수명이다(영속 키를 새로 만들면 단일 소유 규칙에 걸린다).
     // 알파 층이 못 하는 일을 높이가 한다: 알파는 천장이 있어 몰린 자리가 전부 같은 색이 된다.
     const canDist = !disabledNote && dist !== undefined && dist.ticks.length > 0;
-    const [distOpen, setDistOpen] = useState(false);
+    const [distOpen, setDistOpen] = useState(defaultDistOpen);
     const hist = useMemo(
         () => (distOpen && canDist ? histogramOf(dist?.ticks ?? [], dist?.member) : null),
         // deps 는 **배열 신원**이다(감싼 객체가 아니라) — 어댑터가 인라인 객체로 넘기면 렌더마다
@@ -199,6 +224,8 @@ export function Rail<V>({
         [distOpen, canDist, dist?.ticks, dist?.member],
     );
     // 컷 구간(정렬된 프랙션 쌍) — 칸마다 다시 재면 칸 × 구간만큼 toFrac(계산 축에선 resolveBound)이 돈다.
+    // 통과 칸 색 — 필터 레일은 무채색(강조는 멤버 층이 진다), 정의층은 자기 색으로 칠한다(멤버 층이 없다).
+    const passBar = accent === FILTER ? "var(--text-tertiary)" : accent;
     const cuts = hist
         ? shown.map((r) => {
             const a = toFrac(r.from), z = toFrac(r.to);
@@ -220,6 +247,9 @@ export function Rail<V>({
                 <div title={dragHandle ? `${label} — 끌어서 순서 바꾸기` : label} style={{ fontSize: 12, fontWeight: 700, color: empty ? "var(--text-secondary)" : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {label}
                 </div>
+                {note !== undefined && (
+                    <div title={noteTitle} style={{ fontSize: 9, lineHeight: 1.3, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{note}</div>
+                )}
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     {onType && (
                         <button onClick={(e) => onType(e.clientX, e.clientY)} title="값을 직접 입력(드래그로 못 맞추는 자리)"
@@ -258,12 +288,12 @@ export function Rail<V>({
                     onPointerDown={onTrackDown}
                     onPointerMove={onMove}
                     onPointerUp={onUp}
-                    onPointerCancel={onUp}
+                    onPointerCancel={onCancel}
                     title={cut ? "누르거나 끌어서 컷 이동" : "빈 곳을 끌면 새 구간 · 경계 값을 끌면 조정"}
                     style={{ position: "relative", flex: 1, minWidth: 0, height: "100%", cursor: "crosshair", userSelect: "none", WebkitUserSelect: "none", touchAction: "none" }}
                 >
                     {/* 기준선 — 조건이 없으면 전체가 걸린 색(전부 통과라는 뜻). */}
-                    <div style={{ position: "absolute", left: RAIL_PAD, right: RAIL_PAD, top: "50%", height: 2, transform: "translateY(-50%)", background: empty ? `${FILTER}66` : "var(--border-default)", pointerEvents: "none" }} />
+                    <div style={{ position: "absolute", left: RAIL_PAD, right: RAIL_PAD, top: "50%", height: 2, transform: "translateY(-50%)", background: empty ? `${accent}66` : "var(--border-default)", pointerEvents: "none" }} />
 
                     {/* 도메인 끝 라벨 — 이 레일의 척도가 어디서 어디까지인지. */}
                     <span style={endLabel(true)}>{minLabel}</span>
@@ -284,24 +314,24 @@ export function Rail<V>({
                         const lo = Math.min(a, b), hi = Math.max(a, b);
                         return (
                             <div key={i}>
-                                <div style={{ position: "absolute", top: "50%", height: 3, transform: "translateY(-50%)", left: at(lo), width: `calc(${clamp01(hi) - clamp01(lo)} * (100% - ${2 * RAIL_PAD}px))`, background: FILTER, boxShadow: `0 0 7px 1px ${FILTER}66`, pointerEvents: "none", zIndex: 1 }} />
+                                <div style={{ position: "absolute", top: "50%", height: 3, transform: "translateY(-50%)", left: at(lo), width: `calc(${clamp01(hi) - clamp01(lo)} * (100% - ${2 * RAIL_PAD}px))`, background: accent, boxShadow: `0 0 7px 1px ${accent}66`, pointerEvents: "none", zIndex: 1 }} />
                                 {(cut ? (["to"] as const) : (["from", "to"] as const)).map((edge) => {
                                     const f = edge === "from" ? a : b;
                                     return (
                                         <div key={edge}>
-                                            <span aria-hidden style={{ position: "absolute", top: "50%", left: at(f), transform: "translate(-50%,-50%)", width: 3, height: 14, borderRadius: 1.5, background: FILTER, pointerEvents: "none", zIndex: 3 }} />
+                                            <span aria-hidden style={{ position: "absolute", top: "50%", left: at(f), transform: "translate(-50%,-50%)", width: 3, height: 14, borderRadius: 1.5, background: accent, pointerEvents: "none", zIndex: 3 }} />
                                             {/* 포인터는 트랙이 캡처한다 — 라벨에 move/up 을 또 달면 같은 드래그가 두 번 접수된다. */}
                                             <span
                                                 onPointerDown={(e) => { e.stopPropagation(); beginDrag(e, { kind: "edge", index: i, edge }); }}
                                                 title="끌어서 이 경계 조정"
-                                                style={{ position: "absolute", top: "calc(50% + 8px)", left: at(f), transform: "translateX(-50%)", fontSize: 9.5, fontWeight: 700, color: FILTER, cursor: "ew-resize", whiteSpace: "nowrap", touchAction: "none", zIndex: 5 }}
+                                                style={{ position: "absolute", top: "calc(50% + 8px)", left: at(f), transform: "translateX(-50%)", fontSize: 9.5, fontWeight: 700, color: accent, cursor: "ew-resize", whiteSpace: "nowrap", touchAction: "none", zIndex: 5 }}
                                             >{fmt(r[edge])}</span>
                                         </div>
                                     );
                                 })}
                                 {removable && preview === null && (
                                     <button onClick={() => onChange(removeAt(ranges, i))} title="이 구간 삭제"
-                                        style={{ position: "absolute", top: "calc(50% - 19px)", left: at((lo + hi) / 2), transform: "translateX(-50%)", border: "none", background: "transparent", color: FILTER, cursor: "pointer", fontSize: 11, lineHeight: 1, padding: 0, zIndex: 5 }}>✕</button>
+                                        style={{ position: "absolute", top: "calc(50% - 19px)", left: at((lo + hi) / 2), transform: "translateX(-50%)", border: "none", background: "transparent", color: accent, cursor: "pointer", fontSize: 11, lineHeight: 1, padding: 0, zIndex: 5 }}>✕</button>
                                 )}
                             </div>
                         );
@@ -347,7 +377,7 @@ export function Rail<V>({
                                         title={`${fmt(fromFrac(binCenter(i, HIST_BINS)))} · ${b.count.toLocaleString()}건${b.member > 0 ? ` (멤버 ${b.member.toLocaleString()})` : ""}`}
                                         style={{ flex: 1, position: "relative", height: "100%", overflow: "hidden" }}>
                                         {b.count > 0 && (
-                                            <span aria-hidden style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: h, background: passed ? "var(--text-tertiary)" : "var(--border-default)" }}>
+                                            <span aria-hidden style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: h, background: passed ? passBar : "var(--border-default)" }}>
                                                 {/* 멤버 층 — **모수의 최댓값**으로 정규화한다(각자 정규화하면 5건이 118건과 같은 키로 선다). */}
                                                 {b.member > 0 && (
                                                     <span aria-hidden style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: logHeight(b.member, hist.max) * HIST_BAR_H, background: ACTIVE }} />
@@ -362,7 +392,7 @@ export function Rail<V>({
                         {shown.map((r, i) => (cut ? (["to"] as const) : (["from", "to"] as const)).map((edge) => (
                             // translateX(-50%) 필수 — 위 손잡이(width 3)가 중심을 at(f) 에 두므로, 여기서
                             // 빼면 선의 **왼쪽 모서리**가 at(f) 가 되어 반 픽셀 어긋난다(실측 확인).
-                            <span key={`${i}-${edge}`} aria-hidden style={{ position: "absolute", left: at(toFrac(r[edge])), transform: "translateX(-50%)", top: 0, bottom: 5, width: 1, background: FILTER, opacity: 0.55, pointerEvents: "none" }} />
+                            <span key={`${i}-${edge}`} aria-hidden style={{ position: "absolute", left: at(toFrac(r[edge])), transform: "translateX(-50%)", top: 0, bottom: 5, width: 1, background: accent, opacity: 0.55, pointerEvents: "none" }} />
                         )))}
                     </div>
                 </div>

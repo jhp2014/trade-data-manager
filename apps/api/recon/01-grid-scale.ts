@@ -5,10 +5,10 @@
 //   pnpm --filter @trade-data-manager/api recon:grid-scale
 // A/B(검출 파라미터·별도 캐시 루트 — 실캐시 오염 없음):
 //   pnpm --filter @trade-data-manager/api recon:grid-scale -- --dir .cache/point-grid-ab --sessionStart 540
-// 플래그: --dir · --zigzag(%) · --floor(억) · --sessionStart/--sessionEnd(분) · --gateBase/--gateRenewal(억) · --exclude(분) · --merge(%) · --bull(1|0)
+// 플래그: --dir · --zigzag(%) · --floor(억) · --sessionStart/--sessionEnd(분) · --gateBase/--gateRenewal(억) · --from/--to(자격 시각 창, 분) · --merge(%) · --bull(1|0)
 import { gzipSync } from "node:zlib";
 import { createPoolFromEnv } from "@trade-data-manager/persistence";
-import { DEFAULT_GRID_OPTIONS, DEFAULT_POINT_DEFINITION, pointsOf } from "@trade-data-manager/market";
+import { DEFAULT_GRID_OPTIONS, DEFAULT_POINT_DEFINITION, QUALIFY_MAX_MIN, QUALIFY_MIN_MIN, pointsOf } from "@trade-data-manager/market";
 import { axisDepsOf } from "../src/market/rank/axisDeps.js";
 import { fileGridStore } from "../src/market/grid/gridStore.js";
 import { PointGrids } from "../src/market/grid/pointGrids.js";
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
         ...DEFAULT_POINT_DEFINITION,
         baselineGateEok: numFlag("gateBase", DEFAULT_POINT_DEFINITION.baselineGateEok),
         renewalGateEok: numFlag("gateRenewal", DEFAULT_POINT_DEFINITION.renewalGateEok),
-        excludeUptoMin: numFlag("exclude", DEFAULT_POINT_DEFINITION.excludeUptoMin),
+        qualifyWindows: [{ from: numFlag("from", QUALIFY_MIN_MIN), to: numFlag("to", QUALIFY_MAX_MIN) }],
         mergeRisePct: numFlag("merge", DEFAULT_POINT_DEFINITION.mergeRisePct),
         bullOnly: numFlag("bull", DEFAULT_POINT_DEFINITION.bullOnly ? 1 : 0) !== 0,
         approachPct: numFlag("approach", DEFAULT_POINT_DEFINITION.approachPct),

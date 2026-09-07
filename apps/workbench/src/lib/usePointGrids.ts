@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { chartKeyOf, minuteToHms, pointsOf, type DerivedPoint, type PointGrid, type PointJudgeDef, type ReviewPointKey } from "@trade-data-manager/market/domain";
 import { pointGridsQuery } from "../api/queries.js";
 import { useWorkbench } from "../store/workbench.js";
+import { qualifyKeyOf } from "./pointDef.js";
 
 export interface PointGridsView {
     isLoading: boolean;
@@ -67,10 +68,14 @@ export function useAutoPointsValue(): AutoPointsView {
     // 판정 노브만 구독한다 — 허용 폭 T 는 `PointJudgeDef` 가 원리적으로 못 보는 필드라(행·행 시각 불변 계약)
     // 통째 의존하면 T 드래그가 1만 Point 를 헛재파생하고 `points` 참조까지 갈아 하류 memo 를 무효화한다.
     // ⚠ 판정 노브를 늘리면 여기 구조분해·deps **둘 다** 늘린다 — 빠뜨리면 노브를 돌려도 화면이 안 변한다.
-    const { baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly, approachPct } = useWorkbench((s) => s.pointDef);
+    const { baselineGateEok, renewalGateEok, qualifyWindows, mergeRisePct, bullOnly, approachPct } = useWorkbench((s) => s.pointDef);
+    // ⚠ 자격 창은 **배열**이라 deps 에 그대로 물리면 안 된다 — 파서가 매 커밋 새 배열을 만들어,
+    // 무관한 노브(T·시뮬)를 만질 때마다 1만 시그널 파생이 헛돈다. 내용을 문자열 키로 대신 문다.
+    const qualifyKey = qualifyKeyOf(qualifyWindows);
     const def = useMemo<PointJudgeDef>(
-        () => ({ baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly, approachPct }),
-        [baselineGateEok, renewalGateEok, excludeUptoMin, mergeRisePct, bullOnly, approachPct],
+        () => ({ baselineGateEok, renewalGateEok, qualifyWindows, mergeRisePct, bullOnly, approachPct }),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [baselineGateEok, renewalGateEok, qualifyKey, mergeRisePct, bullOnly, approachPct],
     );
     return useMemo<AutoPointsView>(() => {
         const data = q.data ?? null;

@@ -45,7 +45,7 @@ export function parseRangeRow(
     return { from, to, valid: readable && enough && ordered, touched };
 }
 
-export function RangeTextEditor({ anchor, title, hint, rows: initial, placeholders, parse, allowOpen = false, onCommit, onClose }: {
+export function RangeTextEditor({ anchor, title, hint, rows: initial, placeholders, parse, allowOpen = false, allowEmptyCommit = false, onCommit, onClose }: {
     anchor: { x: number; y: number };
     title: string;
     hint?: string;
@@ -56,6 +56,12 @@ export function RangeTextEditor({ anchor, title, hint, rows: initial, placeholde
     parse: (raw: string) => string | null;
     /** 한쪽이 비어도 되나(반열림). 날짜·시간은 양끝 필수, 계산 축 값은 허용. */
     allowOpen?: boolean;
+    /**
+     * **다 비우고 적용 = 조건 없음**을 허용하나. 기본은 막는다(필터 쪽 입구는 조건을 만들러 온 자리라,
+     * 빈 커밋이 "실수로 조건이 사라졌다"가 된다 — 지우는 손짓은 줄의 ✕ 다). 정의층 자격 시각처럼
+     * "비움"이 정상 상태(= 세션 전부)인 필드만 켠다.
+     */
+    allowEmptyCommit?: boolean;
     onCommit: (ranges: { from: string | null; to: string | null }[]) => void;
     onClose: () => void;
 }): JSX.Element {
@@ -64,7 +70,9 @@ export function RangeTextEditor({ anchor, title, hint, rows: initial, placeholde
     );
 
     const parsed: ParsedRow[] = rows.map((r) => parseRangeRow(r, parse, allowOpen));
-    const canCommit = parsed.some((p) => p.valid);
+    // 빈 커밋 허용 레일은 "아무 줄도 안 건드린 상태"에서도 적용이 산다 — 그게 곧 조건 없음이다.
+    // 단 **읽다 만 줄(오타)이 있으면 막는다**: 그건 비움이 아니라 실수라, 조용히 조건을 지우면 안 된다.
+    const canCommit = parsed.some((p) => p.valid) || (allowEmptyCommit && parsed.every((p) => !p.touched));
 
     const setCell = (i: number, edge: "from" | "to", value: string): void =>
         setRows((rs) => rs.map((x, j) => (j === i ? { ...x, [edge]: value } : x)));

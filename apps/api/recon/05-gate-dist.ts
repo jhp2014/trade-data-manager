@@ -10,12 +10,14 @@
 // DB 를 안 본다 — 격자 파일만으로 완결(04 와 같은 성질). 읽기 전용이라 개발 워크트리 금지 규칙 무관.
 //
 // 실행(CWD = apps/api): pnpm --filter @trade-data-manager/api recon:gate-dist
-// 플래그: --dir(캐시 루트) · 비게이트 노브(--exclude/--merge/--bull/--approach) · --gates "20,30,50,80,150"
+// 플래그: --dir(캐시 루트) · 비게이트 노브(--from/--to/--merge/--bull/--approach) · --gates "20,30,50,80,150"
 import {
     DEFAULT_POINT_DEFINITION,
     levelMaxTvOf,
     pointsOf,
     type PointDefinition,
+    QUALIFY_MAX_MIN,
+    QUALIFY_MIN_MIN,
 } from "@trade-data-manager/market";
 import { fileGridStore } from "../src/market/grid/gridStore.js";
 import { distributionOf, numFlag, saveReport, strFlag } from "./_shared.js";
@@ -25,7 +27,7 @@ const EOK = 100_000_000;
 async function main(): Promise<void> {
     const def: PointDefinition = {
         ...DEFAULT_POINT_DEFINITION,
-        excludeUptoMin: numFlag("exclude", DEFAULT_POINT_DEFINITION.excludeUptoMin),
+        qualifyWindows: [{ from: numFlag("from", QUALIFY_MIN_MIN), to: numFlag("to", QUALIFY_MAX_MIN) }],
         mergeRisePct: numFlag("merge", DEFAULT_POINT_DEFINITION.mergeRisePct),
         bullOnly: numFlag("bull", DEFAULT_POINT_DEFINITION.bullOnly ? 1 : 0) !== 0,
         approachPct: numFlag("approach", DEFAULT_POINT_DEFINITION.approachPct),
@@ -38,7 +40,7 @@ async function main(): Promise<void> {
     const store = fileGridStore(strFlag("dir"));
     const dates = await store.listDates();
     if (dates.length === 0) throw new Error("격자 캐시가 비어 있다 — 서버 대사(또는 recon:grid-scale)를 먼저 돌릴 것");
-    console.log(`${dates.length}일 · 비게이트 노브: 제외 ${def.excludeUptoMin}분 · 병합 ${def.mergeRisePct}% · bullOnly ${def.bullOnly} · 근접 ${def.approachPct}%`);
+    console.log(`${dates.length}일 · 비게이트 노브: 자격 창 ${def.qualifyWindows.map((w) => `${w.from}~${w.to}`).join(",")}분 · 병합 ${def.mergeRisePct}% · bullOnly ${def.bullOnly} · 근접 ${def.approachPct}%`);
 
     // 분위수 재료 — 게이트별 maxTv(억원 환산). 등가 대조 — 게이트 사다리 × (예측, 실행) 교차표.
     const baselineTvs: number[] = [];

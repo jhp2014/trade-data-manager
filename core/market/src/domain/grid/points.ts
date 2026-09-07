@@ -1,10 +1,10 @@
 // core/market/domain/grid/points — 격자 → Point 판정(읽기 층, 순수). 규칙: .claude/decisions.md "자동 타점 격자" 절.
 //
 // 격자(PointGrid)만 보고 계산한다 — 분봉을 다시 보지 않는 것이 격자 스키마 충분성의 증명이다.
-// 여기 파라미터(게이트·제외 창·병합)는 전부 읽기 시점 조절이고, 격자의 floor(20억) **위에서만** 움직인다.
+// 여기 파라미터(게이트·자격 시각 창·병합)는 전부 읽기 시점 조절이고, 격자의 floor(20억) **위에서만** 움직인다.
 // 서버(recon)·클라(깔때기/시트)가 같은 함수를 쓴다 — rankSectionOf 와 같은 공유 방식.
 //
-// Point = 레벨 **밴드**를 넘는 자격 캔들(사건·게이트·제외 창 밖·bullOnly 시 양봉) — 레벨당 슬롯 최대 2개
+// Point = 레벨 **밴드**를 넘는 자격 캔들(사건·게이트·자격 시각 창 안·bullOnly 시 양봉) — 레벨당 슬롯 최대 2개
 // (슬롯 1 = 첫 자격 사건, 슬롯 2 = 눌림으로 **확정된 고점**의 재돌파 — pointsOf JSDoc). 게이트를 올리면
 // 그 슬롯의 Point 가 **같은 레벨의** 뒤 캔들로 이동한다 — 격자에 floor 이상 사건 캔들이 전부 실려 있어
 // 가능한 의미론. ⚠ "사라지지 않는다"는 이제 **참이 아니다**: 뒤 캔들이 그 사이 확정된 마디를 넘어
@@ -21,7 +21,7 @@
 // 후보의 고가가 (1−m') 마진으로 자기 시점까지의 전 확정 레벨을 넘으므로, 구현이 claimedLevel 커서
 // 하나로 끝나는 근거. kind 는 슬롯의 함수: 기준선 슬롯 1 = breakout, 그 밖 전부 = renewal.
 // mergeRisePct 로 병합된 마디는 레벨이 아니라 그 위 캔들이 breakout 으로 선다(기본 0 이라 무사건).
-import type { GridNewHigh, GridPivot, PointGrid } from "./grid.js";
+import { DEFAULT_GRID_OPTIONS, type GridNewHigh, type GridPivot, type PointGrid } from "./grid.js";
 import { levelViewOf } from "./levelView.js";
 import { DEFAULT_TRADE_SIM_PARAMS, type TradeSimParams } from "./simulate.js";
 
@@ -31,10 +31,17 @@ export interface PointDefinition {
     baselineGateEok: number;
     /** 재돌파(마디 갱신) 게이트(억원). 기본 30. */
     renewalGateEok: number;
-    /** 이 분(자정기준) **이하**의 캔들은 Point 자격 없음(구조에는 참여). 기본 0 = 제외 없음 —
-     *  프리마켓·시초도 정규장과 동일 취급(2026-08-31 사용자 확정: 손 타점 85건 중 12건이 실제로 그 시간대,
-     *  재현율 67→80% 차이의 원인이 이 기본값이었다). 노브는 유지 — 필요하면 읽기 시점에 올린다. */
-    excludeUptoMin: number;
+    /**
+     * 자격 시각 창 목록(자정기준 분, 양 끝 포함, **합집합** — 어느 구간에든 들면 자격). 밖의 캔들은
+     * Point 자격이 없다(구조에는 참여). **빈 목록 = 전부 통과**(필터 레일과 같은 어휘: 조건이 없으면
+     * 안 거른다) — "세션 전부"를 구간 하나로 들고 있지 않는다.
+     * 기본 = 빈 목록 = 제외 없음: 프리마켓·시초도 정규장과 동일 취급(2026-08-31 사용자 확정 — 손 타점
+     * 85건 중 12건이 그 시간대, 재현율 67→80% 차이의 원인이 이 기본값).
+     * 2026-09-07 옛 스칼라 `excludeUptoMin`(이하 제외) → 창 하나 → **목록**으로 두 번 확장됐다:
+     * 오전 시초 + 오후 재료처럼 **떨어진 구간 둘**은 창 하나로 원리적으로 못 만든다. 옛 값들의 승계와
+     * 정규화(클램프·정렬·겹침 병합)는 입력 층 `parsePointDef` 한 곳이다.
+     */
+    qualifyWindows: readonly QualifyWindow[];
     /** 유효 마디 하한(%) — 직전 저점 대비 상승폭이 이보다 작은 마디는 레벨에서 병합(잔 갱신 무시). 기본 0 = 병합 없음.
      *  ⚠ "직전 저점" = 인접 확정 고점 사이 구간의 **봉 최저**(재정식화 격자), 첫 마디는 선행 저점이
      *  없어 병합이 안 걸린다 — 잔 눌림 기준보다 병합이 덜 걸리는 쪽으로 편향된다(수용, 2026-08-31). */
@@ -69,7 +76,7 @@ export interface PointDefinition {
 /** Point 판정이 실제로 보는 노브 6개 — T 를 구독에서 배제하는 계약이 시그니처다(usePointGrids 헛재파생 방지). */
 export type PointJudgeDef = Pick<
     PointDefinition,
-    "baselineGateEok" | "renewalGateEok" | "excludeUptoMin" | "mergeRisePct" | "bullOnly" | "approachPct"
+    "baselineGateEok" | "renewalGateEok" | "qualifyWindows" | "mergeRisePct" | "bullOnly" | "approachPct"
 >;
 
 /** 게이트 2필드를 타입상 못 보는 판정 부분집합 — 게이트 분포(`levelMaxTvOf`)가 게이트 불변임을
@@ -85,10 +92,21 @@ export const TOLERANCE_MAX_PCT = 30;
 export const APPROACH_MIN_PCT = 0;
 export const APPROACH_MAX_PCT = 0.5;
 
+/** 자격 시각 구간 하나(자정기준 분, 양 끝 포함). */
+export interface QualifyWindow {
+    from: number;
+    to: number;
+}
+
+/** 자격 시각 창의 도메인(자정기준 분) = 격자의 세션 창 — 이 밖의 캔들은 격자에 애초에 없다.
+ *  레일 트랙의 양 끝이 이 값이라, 창을 전부 열면 "제외 없음"이 된다. */
+export const QUALIFY_MIN_MIN = DEFAULT_GRID_OPTIONS.sessionStartMin;
+export const QUALIFY_MAX_MIN = DEFAULT_GRID_OPTIONS.sessionEndMin;
+
 export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     baselineGateEok: 50,
     renewalGateEok: 30,
-    excludeUptoMin: 0,
+    qualifyWindows: [],
     mergeRisePct: 0,
     bullOnly: true,
     approachPct: 0.5, // 기본 = 밴드 폭 전부(사용자 확정 — "전고점 −0.5% 안이면 갱신 영역")
@@ -166,15 +184,55 @@ export function levelsOf(grid: PointGrid, def: PointCandidateDef = DEFAULT_POINT
     return levels;
 }
 
+/** 자격 시각 창만 보는 부분집합 — 창 안인지 묻는 자리가 셋(판정·근접 분포·recon)이라 자를 하나로 둔다. */
+export type QualifyWindowDef = Pick<PointCandidateDef, "qualifyWindows" | "bullOnly">;
+
+/** 자격 시각 창 안인가 — **빈 목록은 전부 통과**, 그 밖은 구간 합집합(양 끝 포함).
+ *  뒤집힌 구간(from > to)이 오면 그 구간은 아무것도 안 통과시킨다 — 정규화는 입력 층(parsePointDef)의
+ *  몫이고, 여기서 조용히 뒤집어 고치면 "빈 창"이라는 정직한 결과가 사라진다.
+ *  ⚠ **사본 금지** — 이 규칙(특히 "빈 목록 = 전부 통과")을 밖에서 다시 쓰면 조용히 반대로 판정한다
+ *  (2026-09-07 recon 이 실제로 그랬다: 빈 목록이 전부 차단이 돼 회귀 도구가 "전부 소멸"을 보고했다).
+ *  구간 수는 한 자릿수라 선형 스캔이 답이다(정렬 가정도 두지 않는다 — 입력 층이 정렬하지만 판정이
+ *  그 불변식에 기대면 손으로 만든 def 하나가 조용히 틀린 답을 준다). */
+export const inQualifyWindow = (min: number, def: QualifyWindowDef): boolean =>
+    def.qualifyWindows.length === 0 || def.qualifyWindows.some((w) => min >= w.from && min <= w.to);
+
 /**
- * 자격 캔들인가 — 사건 재구성(밴드 마진) + 제외 창 + 양봉 요건. **게이트는 여기 없다**(슬롯·레벨별이라
+ * 근접 밴드 분포의 모수 — **밴드 진입** 사건 봉(상단 미돌파)의 깊이 d = (M − high)/M × 100
+ * (%, [0, 굽는 하한 0.5) — 굽는 조건이 열린 끝이라 0.5 는 목록에 없고, **0 은 있다**: 전고점과
+ * 같은 값의 고가는 상단 돌파(high > M)가 아니라 깊이 0 의 진입이다).
+ * 읽기 노브 m' 의 후보 조건도 열린 끝(`high > M×(1−m'/100)` ⟺ **d < m'**)이라, m'=0 이면 이 목록은
+ * 통째로 후보가 아니다 — 레일 정산이 그 열린 끝을 그대로 쓴다(PointDefPanel apprInside).
+ *
+ * ⚠ `approachPct` 를 **타입상 못 본다**(`QualifyWindowDef` — 게이트 분포의 `PointCandidateDef` 계약과
+ * 같은 처방): 근접 컷을 끌어도 막대가 안 움직여야 "드래그 전에 보인다"가 성립한다.
+ * 상단 돌파 봉(high > M)은 m'=0 에서도 후보라 목록이 아니라 `strict` 로 따로 센다 — 레일 왼끝이
+ * "정확 돌파 N 은 항상 후보"를 말한다. 게이트·병합은 후보 낟알과 무관해 여기 없다(레벨 층의 일).
+ */
+export function bandDepthsOf(grid: PointGrid, def: QualifyWindowDef): { depths: number[]; strict: number } {
+    const depths: number[] = [];
+    let strict = 0;
+    for (const e of grid.newHighs) {
+        if (!inQualifyWindow(e.min, def)) continue;
+        if (def.bullOnly && !(e.close > e.open)) continue;
+        if (e.maxBefore <= 0 || e.high > e.maxBefore) {
+            strict += 1; // 세션 첫 봉(M=0)도 상단 돌파와 같은 자리 — m' 와 무관하게 후보다
+            continue;
+        }
+        depths.push(((e.maxBefore - e.high) / e.maxBefore) * 100);
+    }
+    return { depths, strict };
+}
+
+/**
+ * 자격 캔들인가 — 사건 재구성(밴드 마진) + 자격 시각 창 + 양봉 요건. **게이트는 여기 없다**(슬롯·레벨별이라
  * 호출부 몫). `pointsOf` 밖으로 뺀 이유는 levelsOf 와 같다 — 게이트 분포(`levelMaxTvOf`)가 같은 자격
  * 정의 위에 서야 "max tv ≥ gate ⟺ Point 존재" 등가가 성립한다(사본이면 조용히 갈린다).
  */
-function isQualifiedEvent(e: GridNewHigh, bandK: number, def: Pick<PointCandidateDef, "excludeUptoMin" | "bullOnly">): boolean {
+function isQualifiedEvent(e: GridNewHigh, bandK: number, def: QualifyWindowDef): boolean {
     // 사건 재구성 — m'=0: 상단 돌파만(v8 동치) / m'>0: 그 마진의 밴드 사건까지(§10.3 증명).
     if (!(e.high > e.maxBefore * bandK)) return false;
-    if (e.min <= def.excludeUptoMin) return false;
+    if (!inQualifyWindow(e.min, def)) return false;
     if (def.bullOnly && !(e.close > e.open)) return false; // 양봉 여부는 격자 OHLC 에서 파생(사실만 굽는 원칙)
     return true;
 }

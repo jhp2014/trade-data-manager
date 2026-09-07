@@ -1,7 +1,7 @@
 // pointsOf — 격자 리터럴로 읽기 층 Point 판정을 못 박는다(분봉·DB 0 — 격자 스키마 충분성의 증거).
 import { describe, expect, it } from "vitest";
 import type { GridNewHigh, GridPivot, PointGrid } from "../grid.js";
-import { DEFAULT_POINT_DEFINITION, levelMaxTvOf, pointsOf, type PointDefinition } from "../points.js";
+import { bandDepthsOf, DEFAULT_POINT_DEFINITION, levelMaxTvOf, pointsOf, type PointDefinition } from "../points.js";
 
 /** v8 동치 모드(근접 0 — 정확 돌파만). 기존 기대값 전부의 회귀선(§10.5) — 밴드(0.5)는 전용 describe 몫. */
 const DEF0: PointDefinition = { ...DEFAULT_POINT_DEFINITION, approachPct: 0 };
@@ -68,11 +68,29 @@ describe("pointsOf", () => {
         expect(raised[0].min).toBe(620);
     });
 
-    it("제외 창 — 기본은 꺼짐(프리마켓도 Point 자격), 올리면 다음 자격 캔들로 이동", () => {
+    it("자격 시각 창 — 기본은 세션 전부(프리마켓도 Point 자격), 좁히면 다음 자격 캔들로 이동", () => {
         const g = grid({ touch: touch(500), newHighs: [nh(505, 10100, 60), nh(560, 10150, 60)] });
         expect(pointsOf(g, DEF0)[0]).toMatchObject({ kind: "breakout", min: 505 }); // 08:25 프리마켓 캔들이 그대로 Point
-        const excluded = pointsOf(g, { ...DEF0, excludeUptoMin: 9 * 60 + 5 });
+        const excluded = pointsOf(g, { ...DEF0, qualifyWindows: [{ from: 9 * 60 + 6, to: 1200 }] });
         expect(excluded[0]).toMatchObject({ kind: "breakout", min: 560 });
+    });
+
+    it("자격 시각 창 오른끝 — 창 뒤 캔들은 시그널이 아니다(구조에는 참여, 2026-09-07 창 확장)", () => {
+        const g = grid({ touch: touch(500), newHighs: [nh(505, 10100, 60), nh(560, 10150, 60)] });
+        // 창을 505 까지만 열면 뒤 캔들(560)이 통째로 밖 — 옛 스칼라 노브로는 만들 수 없던 컷이다.
+        expect(pointsOf(g, { ...DEF0, qualifyWindows: [{ from: 480, to: 505 }] }).map((p) => p.min)).toEqual([505]);
+        expect(pointsOf(g, { ...DEF0, qualifyWindows: [{ from: 480, to: 500 }] })).toEqual([]);
+        // 뒤집힌 창은 조용히 고치지 않는다 — 아무것도 통과 못 하는 게 정직한 결과다.
+        expect(pointsOf(g, { ...DEF0, qualifyWindows: [{ from: 600, to: 500 }] })).toEqual([]);
+    });
+
+    it("자격 시각 창은 **여러 구간의 합집합**이다 — 떨어진 창 둘(오전·오후)이 한 조건", () => {
+        const g = grid({ touch: touch(500), pivots: [hi(575, 10300, 585, 570), lo(585, 10100)], newHighs: [nh(505, 10100, 60), nh(700, 10400, 60)] });
+        const both = pointsOf(g, { ...DEF0, qualifyWindows: [{ from: 500, to: 510 }, { from: 690, to: 710 }] });
+        expect(both.map((p) => p.min)).toEqual([505, 700]);
+        // 사이 시각만 남기면 둘 다 밖 — 합집합이지 범위 하나가 아니다.
+        expect(pointsOf(g, { ...DEF0, qualifyWindows: [{ from: 600, to: 650 }] })).toEqual([]);
+        expect(pointsOf(g, { ...DEF0, qualifyWindows: [] }).map((p) => p.min)).toEqual([505, 700]); // 빈 목록 = 전부 통과
     });
 
     it("음봉은 게이트를 넘어도 Point 가 아니다(기본 bullOnly)", () => {
@@ -398,10 +416,10 @@ describe("levelMaxTvOf — 게이트 분포의 재료(레벨당 최대 자격 �
         const g = grid({ newHighs: [nh(560, 10050, 90, false), nh(570, 10100, 60)] });
         expect(levelMaxTvOf(g, DEF0)).toEqual([{ levelIdx: 0, gate: "baseline", maxTv: 60 * EOK }]);
         expect(levelMaxTvOf(g, { ...DEF0, bullOnly: false })).toEqual([{ levelIdx: 0, gate: "baseline", maxTv: 90 * EOK }]);
-        // 제외 창은 **양봉** 90억 캔들로 검증한다 — 음봉이면 bullOnly 가 먼저 먹어 assertion 이 트리비얼해진다.
+        // 자격 창은 **양봉** 90억 캔들로 검증한다 — 음봉이면 bullOnly 가 먼저 먹어 assertion 이 트리비얼해진다.
         const g2 = grid({ newHighs: [nh(560, 10050, 90), nh(570, 10100, 60)] });
         expect(levelMaxTvOf(g2, DEF0)).toEqual([{ levelIdx: 0, gate: "baseline", maxTv: 90 * EOK }]);
-        expect(levelMaxTvOf(g2, { ...DEF0, excludeUptoMin: 565 })).toEqual([{ levelIdx: 0, gate: "baseline", maxTv: 60 * EOK }]);
+        expect(levelMaxTvOf(g2, { ...DEF0, qualifyWindows: [{ from: 566, to: 1200 }] })).toEqual([{ levelIdx: 0, gate: "baseline", maxTv: 60 * EOK }]);
     });
 
     it("게이트 불변 — 게이트만 다른 정의에서 산출이 동일하다(타입이 못 보게 하지만 런타임 회귀선)", () => {
@@ -434,5 +452,36 @@ describe("levelMaxTvOf — 게이트 분포의 재료(레벨당 최대 자격 �
 
     it("기준선 없음 → 빈 배열", () => {
         expect(levelMaxTvOf(grid({ base: null, newHighs: [nh(560, 10050, 60)] }), DEF0)).toEqual([]);
+    });
+});
+
+describe("bandDepthsOf — 근접 레일의 모수", () => {
+    const W = { qualifyWindows: [{ from: 480, to: 1200 }], bullOnly: true };
+
+    it("밴드 진입 봉만 깊이로 세고, 정확 돌파는 strict 로 따로 센다", () => {
+        const g = grid({
+            newHighs: [
+                nh(560, 10000, 60, true, 10020), // 진입 — 깊이 (10020−10000)/10020×100
+                nh(570, 10100, 60, true, 0), // 세션 첫 봉(M=0) = 상단 돌파와 같은 자리
+                nh(580, 10300, 60, true, 10200), // 상단 돌파(high > M)
+            ],
+        });
+        const d = bandDepthsOf(g, W);
+        expect(d.strict).toBe(2);
+        expect(d.depths).toHaveLength(1);
+        expect(d.depths[0]).toBeCloseTo((20 / 10020) * 100, 10);
+    });
+
+    it("창 밖·음봉은 먼저 걸러진다 — 근접 컷과 무관하게 후보가 아닌 봉들", () => {
+        const g = grid({
+            newHighs: [
+                nh(470, 10000, 60, true, 10020), // 창(08:00~) 밖
+                nh(600, 10000, 60, false, 10020), // 음봉
+                nh(610, 10000, 60, true, 10020),
+            ],
+        });
+        expect(bandDepthsOf(g, W).depths).toHaveLength(1);
+        expect(bandDepthsOf(g, { ...W, bullOnly: false }).depths).toHaveLength(2);
+        expect(bandDepthsOf(g, { ...W, qualifyWindows: [{ from: 460, to: 1200 }] }).depths).toHaveLength(2);
     });
 });

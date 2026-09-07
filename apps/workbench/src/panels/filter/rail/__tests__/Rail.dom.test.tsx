@@ -113,12 +113,14 @@ describe("커밋 시점 — 손을 뗄 때 한 번", () => {
         expect(r.to.toFixed(2)).toBe("0.75");
     });
 
-    it("포인터가 취소돼도(창 밖 등) 미리보기가 안 남는다", () => {
-        const { track, container } = setup();
+    it("포인터가 취소돼도(창 밖 등) 미리보기가 안 남고 **커밋도 안 된다**", () => {
+        const { track, container, onChange } = setup();
         fireEvent.pointerDown(track(), { button: 0, clientX: xAt(0.2), pointerId: 1 });
         fireEvent.pointerMove(track(), { clientX: xAt(0.6), pointerId: 1 });
         fireEvent.pointerCancel(track(), { pointerId: 1 });
         expect(container.textContent).not.toContain("0.60");
+        // 확정 안 한 조건이 들어가면 유니버스×필터 정산(정의 레일이면 1만 시그널 파생)이 헛돈다.
+        expect(onChange).not.toHaveBeenCalled();
     });
 });
 

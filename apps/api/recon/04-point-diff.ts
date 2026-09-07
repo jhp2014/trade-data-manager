@@ -12,7 +12,7 @@
 // DB 를 안 본다 — 격자 파일만으로 완결된다(격자 스키마 충분성이 여기서도 증명된다).
 //
 // 실행(CWD = apps/api): pnpm --filter @trade-data-manager/api recon:point-diff -- --old .cache/point-grid-v8
-// 플래그: --old(v8 사본, 필수) · --dir(현재 캐시 루트) · 판정 노브(--gateBase/--gateRenewal/--exclude/--merge/--bull) · --samples
+// 플래그: --old(v8 사본, 필수) · --dir(현재 캐시 루트) · 판정 노브(--gateBase/--gateRenewal/--from/--to/--merge/--bull) · --samples
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import {
@@ -24,6 +24,9 @@ import {
     type GridNewHigh,
     type PointDefinition,
     type PointGrid,
+    QUALIFY_MAX_MIN,
+    QUALIFY_MIN_MIN,
+    inQualifyWindow,
 } from "@trade-data-manager/market";
 import { fileGridStore } from "../src/market/grid/gridStore.js";
 import { distributionOf, numFlag, saveReport, strFlag } from "./_shared.js";
@@ -51,7 +54,7 @@ function pointsOfV8(grid: OldGrid, def: PointDefinition): DerivedPoint[] {
     const out: DerivedPoint[] = [];
     let usedLevel = -1;
     for (const e of grid.newHighs) {
-        if (e.min <= def.excludeUptoMin) continue;
+        if (!inQualifyWindow(e.min, def)) continue;
         if (def.bullOnly && !(e.close > e.open)) continue;
         let li = -1;
         for (let i = levels.length - 1; i >= 0; i--) {
@@ -113,7 +116,7 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
     const out: DerivedPoint[] = [];
     for (const e of [...grid.newHighs].sort((a, b) => a.min - b.min)) {
         if (!(e.high > e.maxBefore * bandK)) continue; // 후보 = m' 밴드의 사건 봉(§10.3 재구성)
-        if (e.min <= def.excludeUptoMin) continue;
+        if (!inQualifyWindow(e.min, def)) continue;
         if (def.bullOnly && !(e.close > e.open)) continue;
         // 캔들 이전에 확정된 레벨만(strict) — 밴드 마진의 미래 마디 관통(미래 누출) 차단, pointsOf 와 같은 규칙 재진술.
         const crossed = levels
@@ -193,7 +196,7 @@ async function main(): Promise<void> {
         ...DEFAULT_POINT_DEFINITION,
         baselineGateEok: numFlag("gateBase", DEFAULT_POINT_DEFINITION.baselineGateEok),
         renewalGateEok: numFlag("gateRenewal", DEFAULT_POINT_DEFINITION.renewalGateEok),
-        excludeUptoMin: numFlag("exclude", DEFAULT_POINT_DEFINITION.excludeUptoMin),
+        qualifyWindows: [{ from: numFlag("from", QUALIFY_MIN_MIN), to: numFlag("to", QUALIFY_MAX_MIN) }],
         mergeRisePct: numFlag("merge", DEFAULT_POINT_DEFINITION.mergeRisePct),
         bullOnly: numFlag("bull", DEFAULT_POINT_DEFINITION.bullOnly ? 1 : 0) !== 0,
         // v8 회귀 증명은 --approach 0(정확 돌파만 = v8 동치), 밴드 변화 계측은 0.5(기본).
@@ -206,7 +209,7 @@ async function main(): Promise<void> {
     const dates = await store.listDates();
     if (dates.length === 0) throw new Error("격자 캐시가 비어 있다 — 서버 대사(또는 recon:grid-scale)를 먼저 돌릴 것");
     const oldFiles = await readOldDir(oldRoot);
-    console.log(`현재 ${dates.length}일 / 옛 ${oldFiles.size}일 · 정의 게이트 ${def.baselineGateEok}/${def.renewalGateEok}억 · 제외 ${def.excludeUptoMin}분 · 병합 ${def.mergeRisePct}% · bullOnly ${def.bullOnly}`);
+    console.log(`현재 ${dates.length}일 / 옛 ${oldFiles.size}일 · 정의 게이트 ${def.baselineGateEok}/${def.renewalGateEok}억 · 자격 창 ${def.qualifyWindows.map((w) => `${w.from}~${w.to}`).join(",")}분 · 병합 ${def.mergeRisePct}% · bullOnly ${def.bullOnly}`);
 
     const counts = { charts: 0, presence: 0, class1Charts: 0, gridsWithPoints: 0, equal: 0, relabeled: 0, moved: 0, added: 0, removed: 0, class1Rows: 0 };
     const kinds = { oldBreakout: 0, oldRenewal: 0, nowBreakout: 0, nowRenewal: 0 };

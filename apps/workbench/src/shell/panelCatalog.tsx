@@ -25,6 +25,8 @@ import { LiveTapePanel } from "../panels/liveTape/LiveTapePanel.js";
 import { ThemeRankPanel } from "../panels/themeRank/ThemeRankPanel.js";
 import { OutcomePanel } from "../panels/outcome/OutcomePanel.js";
 import { OUTCOME_PANEL_ID } from "../panels/outcome/outcomePanelIds.js";
+import { PointDefPanel } from "../panels/pointdef/PointDefPanel.js";
+import { POINT_DEF_PANEL_ID } from "../panels/pointdef/pointDefPanelIds.js";
 import { TradeSimPanel } from "../panels/sim/TradeSimPanel.js";
 import { TRADE_SIM_PANEL_ID } from "../panels/sim/simPanelIds.js";
 import { RANK_SHEET_PANEL_ID } from "../panels/rank/rankSheetPanelIds.js";
@@ -78,6 +80,9 @@ export const PANEL_CATALOG: PanelEntry[] = [
     // 트레이드 시뮬 — 노브 7(정의 payload 동승) + 체결률 곡선·분류·도달 분포. 깔때기 거울이 아니라
     // 모수(보는 집합)로만 이어진다(decisions.md 「시그널 결과」 트레이드 시뮬 항목).
     { id: TRADE_SIM_PANEL_ID, component: "tradeSim", title: "트레이드 시뮬", plane: "eod", render: () => <TradeSimPanel /> },
+    // 타점 정의 — 판정 노브를 분포 보며 긋는 자리(모수 선언층, POINT_DEF teal). 필터 레일의 형제이되
+    // 깔때기 단이 아니다: 여기 컷은 행을 지우는 게 아니라 시그널의 존재·위치를 바꾼다.
+    { id: POINT_DEF_PANEL_ID, component: "pointDef", title: "타점 정의", plane: "eod", render: () => <PointDefPanel /> },
     // 정규화 두 판 — 골격 패널의 후신(골격의 실가치 = 정규화, 2026-08-23 은퇴). 실물 캔들/종가선을 원점으로 접어 겹친다.
     // 옛 골격 컴포넌트("rankSkeleton"/"rankSkeletonMinute")는 저장 프리셋에서 sanitizeLayout 이 걷어낸다(맵 패널과 같은 길).
     { id: "norm-daily-1", component: "normDaily", title: "정규화 [일봉]", plane: "eod", render: () => <NormOverlayPanel grain="daily" /> },

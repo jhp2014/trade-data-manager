@@ -6,6 +6,9 @@ import {
     APPROACH_MIN_PCT,
     DEFAULT_POINT_DEFINITION,
     DEFAULT_TRADE_SIM_PARAMS,
+    QUALIFY_MAX_MIN,
+    QUALIFY_MIN_MIN,
+    type QualifyWindow,
     SIM_PCT_MAX,
     SIM_PCT_MIN,
     TOLERANCE_MAX_PCT,
@@ -46,6 +49,71 @@ export function parseTradeSimParams(raw: unknown): TradeSimParams {
     };
 }
 
+/**
+ * 자격 시각 창 목록 정규화 — 세션 창 클램프 · 정수 분 · 역전 정리 · 정렬 · **겹침(맞닿음 포함) 병합**.
+ * 분이 정수라 `[540,600]`과 `[601,660]`은 같은 뜻이므로 맞닿은 구간도 합친다(안 합치면 같은 조건이
+ * 두 줄로 저장돼 "구간 3개"가 화면마다 다르게 세어진다).
+ * **세션 전부를 덮으면 빈 목록으로 접는다** — 빈 목록 = 전부 통과가 이 필드의 어휘라, 접지 않으면
+ * "기본값인가" 판정과 요약 칩이 같은 상태를 두 가지로 말한다.
+ * **세션 밖에 통째로 있는 구간은 버린다**(클램프하지 않는다) — `05:00~07:00` 을 양 끝으로 눌러 붙이면
+ * `08:00~08:00` 이라는 1분짜리 퇴화 창이 서서 시그널이 사실상 전멸하는데, 화면엔 그 이유가 안 보인다.
+ */
+export function normalizeQualifyWindows(raw: readonly { from: number; to: number }[]): QualifyWindow[] {
+    const clamp = (v: number): number => Math.round(Math.min(QUALIFY_MAX_MIN, Math.max(QUALIFY_MIN_MIN, v)));
+    const spans = raw
+        .filter((w) => Number.isFinite(w.from) && Number.isFinite(w.to))
+        .map((w) => ({ from: Math.min(w.from, w.to), to: Math.max(w.from, w.to) }))
+        .filter((w) => w.to >= QUALIFY_MIN_MIN && w.from <= QUALIFY_MAX_MIN) // 세션과 안 겹치면 조건이 아니다
+        .map((w) => ({ from: clamp(w.from), to: clamp(w.to) }))
+        .sort((a, b) => a.from - b.from);
+    const out: QualifyWindow[] = [];
+    for (const w of spans) {
+        const last = out[out.length - 1];
+        if (last && w.from <= last.to + 1) last.to = Math.max(last.to, w.to);
+        else out.push({ ...w });
+    }
+    if (out.length === 1 && out[0]!.from <= QUALIFY_MIN_MIN && out[0]!.to >= QUALIFY_MAX_MIN) return [];
+    return out;
+}
+
+/** 두 목록이 같은 조건인가 — 정규화된 목록끼리의 비교(기본값 판정·memo 키의 자). */
+export const sameQualifyWindows = (a: readonly QualifyWindow[], b: readonly QualifyWindow[]): boolean =>
+    a.length === b.length && a.every((w, i) => w.from === b[i]!.from && w.to === b[i]!.to);
+
+/**
+ * 자격 시각 목록의 **안정 키** — 배열은 파서를 지날 때마다 새 신원이라, memo deps 에 배열을 물리면
+ * 무관한 노브(T 드래그)를 만질 때마다 1만 시그널 파생이 헛돈다. 문자열 하나로 내용을 대신 문다.
+ */
+export const qualifyKeyOf = (windows: readonly QualifyWindow[]): string => windows.map((w) => `${w.from}-${w.to}`).join(",");
+
+/**
+ * 옛 저장물 승계 — 이 필드는 두 번 확장됐다(스칼라 → 창 하나 → 목록). 새 채널이 있으면 그쪽이 이긴다:
+ * 두 채널이 함께 실린 저장물에서 옛 값이 새 편집을 되돌리면 안 된다.
+ *  · `qualifyWindows`(현행) → 정규화만. 한쪽이 결손인 항목은 그 방향을 세션 끝으로 채운다(중간 형태
+ *    채널과 같은 취급 — 같은 반열림 정보가 채널마다 다르게 읽히면 안 된다). 배열이 아닌 오염이면
+ *    **채널이 없는 것으로 보고 다음 채널로 내려간다**(관대 병합 — 통째 폐기 금지 원칙).
+ *  · `qualifyFromMin`/`qualifyToMin`(2026-09-07 반나절짜리 중간 형태) → 구간 하나
+ *  · `excludeUptoMin`(그 분 **이하** 실격) → `[E+1, 세션 끝]`(같은 뜻). E 가 세션 끝 이상이면 "전량 제외"인데
+ *    합집합 어휘로는 표현할 수 없어 **세션 끝 1분만 자격**으로 읽는다 — 조건 없음(전부 통과)으로 뒤집는 것보다
+ *    원래 뜻(거의 전부 제외)에 가깝다. UI 로 그런 값을 만들 길은 없었다(옛 숫자칸의 상한 미설정 잔재).
+ */
+function qualifyWindowsOf(r: Partial<Record<keyof PointDefinition | "excludeUptoMin" | "qualifyFromMin" | "qualifyToMin", unknown>>): QualifyWindow[] {
+    const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+    if (Array.isArray(r.qualifyWindows)) {
+        const spans = (r.qualifyWindows as unknown[])
+            .map((w) => (w && typeof w === "object" ? { from: num((w as QualifyWindow).from), to: num((w as QualifyWindow).to) } : null))
+            .filter((w): w is { from: number | null; to: number | null } => w !== null && (w.from !== null || w.to !== null))
+            .map((w) => ({ from: w.from ?? QUALIFY_MIN_MIN, to: w.to ?? QUALIFY_MAX_MIN }));
+        return normalizeQualifyWindows(spans);
+    }
+    const from = num(r.qualifyFromMin);
+    const to = num(r.qualifyToMin);
+    if (from !== null || to !== null) return normalizeQualifyWindows([{ from: from ?? QUALIFY_MIN_MIN, to: to ?? QUALIFY_MAX_MIN }]);
+    const legacy = num(r.excludeUptoMin);
+    if (legacy !== null && legacy >= 0) return normalizeQualifyWindows([{ from: Math.min(legacy + 1, QUALIFY_MAX_MIN), to: QUALIFY_MAX_MIN }]);
+    return [];
+}
+
 export function parsePointDef(raw: unknown): PointDefinition | null {
     if (!raw || typeof raw !== "object") return null;
     const r = raw as Partial<Record<keyof PointDefinition, unknown>>;
@@ -62,7 +130,7 @@ export function parsePointDef(raw: unknown): PointDefinition | null {
         // 스트립 칸 클릭·SavedSet payload·영속 복원)의 유일한 가드다.
         baselineGateEok: Math.round(num(r.baselineGateEok, DEFAULT_POINT_DEFINITION.baselineGateEok)),
         renewalGateEok: Math.round(num(r.renewalGateEok, DEFAULT_POINT_DEFINITION.renewalGateEok)),
-        excludeUptoMin: num(r.excludeUptoMin, DEFAULT_POINT_DEFINITION.excludeUptoMin),
+        qualifyWindows: qualifyWindowsOf(r),
         mergeRisePct: num(r.mergeRisePct, DEFAULT_POINT_DEFINITION.mergeRisePct),
         bullOnly: bool(r.bullOnly, DEFAULT_POINT_DEFINITION.bullOnly), // 2026-08-31 추가 — 옛 저장물엔 없어 기본 true 로 채워진다
         // 2026-09-05 추가(격자 v9 기준 밴드) — 옛 저장물엔 없어 기본 0.5, 도메인 [0, 0.5] 클램프(상한 = 굽는 하한).
@@ -91,6 +159,10 @@ export function sameTradeSimParams(a: TradeSimParams, b: TradeSimParams): boolea
  *  (참조 비교면 파서가 매번 새 객체를 만들어 "기본값" 배지가 영영 안 뜬다). */
 export function isDefaultPointDef(def: PointDefinition): boolean {
     return (Object.keys(DEFAULT_POINT_DEFINITION) as (keyof PointDefinition)[]).every((k) =>
-        k === "sim" ? sameTradeSimParams(def.sim, DEFAULT_POINT_DEFINITION.sim) : def[k] === DEFAULT_POINT_DEFINITION[k],
+        k === "sim"
+            ? sameTradeSimParams(def.sim, DEFAULT_POINT_DEFINITION.sim)
+            : k === "qualifyWindows"
+              ? sameQualifyWindows(def.qualifyWindows, DEFAULT_POINT_DEFINITION.qualifyWindows) // 배열은 참조 비교가 늘 거짓
+              : def[k] === DEFAULT_POINT_DEFINITION[k],
     );
 }
