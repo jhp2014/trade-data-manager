@@ -65,6 +65,7 @@ const ctx: SetResolveCtx = {
     hasGroup: (n) => knownGroups.has(n),
     activeStages,
     savedSetOf: (id) => savedSets.get(id),
+    assemblyOf: () => undefined,
     evalLook,
     grainLook: { hasGroup: (n) => knownGroups.has(n), axisScope: () => undefined },
 };
@@ -216,6 +217,49 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
         expect(codesOf(resolveSetRef({ kind: "survivors" }, base))).toEqual(["1", "2"]);
         const edited: SetResolveCtx = { ...base, activeStages: [] };
         expect(codesOf(resolveSetRef({ kind: "survivors" }, edited))).toEqual(["1", "2", "3"]); // 편집이 즉시 반영
+    });
+});
+
+describe("조립 — 켠 부품들의 합집합", () => {
+    const timeStage = (id: string, from: string, to: string): FilterStage =>
+        stage(id, [{ kind: "time", ranges: [{ from, to }] }]);
+    const sets2 = new Map(savedSets);
+    sets2.set("fs4", { id: "fs4", name: "오전 타점", stages: [timeStage("t1", "09:00", "09:59")], part: { kind: "survivors" } });
+    const assemblies = new Map([
+        ["as1", { id: "as1", name: "합", members: [{ setId: "fs1", enabled: true }, { setId: "fs2", enabled: true }] }],
+        ["as2", { id: "as2", name: "한쪽 꺼짐", members: [{ setId: "fs1", enabled: true }, { setId: "fs2", enabled: false }] }],
+        ["as3", { id: "as3", name: "죽은 부품", members: [{ setId: "없는집합", enabled: true }, { setId: "fs2", enabled: true }] }],
+        ["as4", { id: "as4", name: "혼합 층위", members: [{ setId: "fs1", enabled: true }, { setId: "fs4", enabled: true }] }],
+        ["as5", { id: "as5", name: "빈 조립", members: [] }],
+    ]);
+    const actx: SetResolveCtx = { ...ctx, savedSetOf: (id) => sets2.get(id), assemblyOf: (id) => assemblies.get(id) };
+
+    it("합집합 — 부품 둘의 생존/칸이 겹침 없이 합쳐진다", () => {
+        const r = resolveSetRef({ kind: "assembly", id: "as1" }, actx);
+        expect(r).toMatchObject({ broken: false, grain: "day" });
+        expect(codesOf(r).sort()).toEqual(["1", "2", "3"]);
+    });
+
+    it("끈 부품(enabled=false)은 평가에서 빠진다 — 지우지 않고 빼보는 손짓", () => {
+        expect(codesOf(resolveSetRef({ kind: "assembly", id: "as2" }, actx))).toEqual(["1", "2"]);
+    });
+
+    it("죽은 부품은 그 부품만 빠진다 — 조립은 나머지로 성립(broken 아님)", () => {
+        const r = resolveSetRef({ kind: "assembly", id: "as3" }, actx);
+        expect(r.broken).toBe(false);
+        expect(codesOf(r)).toEqual(["3"]);
+    });
+
+    it("층위 혼합 — 하나라도 point 면 point 로 내리고, day 부품은 전개(∀)된다", () => {
+        const r = resolveSetRef({ kind: "assembly", id: "as4" }, actx);
+        expect(r.grain).toBe("point");
+        // fs1(day: A·B) 전개 = A 타점 둘(B 는 타점 0 — 대표 없음) ∪ fs4(point: A@09:30, 중복 접힘)
+        expect(codesOf(r)).toEqual(["1@09:30", "1@10:00"]);
+    });
+
+    it("빈 조립 = 빈 집합(broken 아님) · 지워진 조립 = 깨진 참조", () => {
+        expect(resolveSetRef({ kind: "assembly", id: "as5" }, actx)).toMatchObject({ broken: false, items: [] });
+        expect(resolveSetRef({ kind: "assembly", id: "없는조립" }, actx).broken).toBe(true);
     });
 });
 

@@ -1,9 +1,9 @@
 // 집합 참조(SetRef) — 패널이 바인딩하고 연동 슬롯에 오르는 **단 하나의 타입**.
 //
 // 집합 공장 재편(2026-08-20) 이후의 산지:
-//   · 영속 3종 : 유니버스(전체) / 최종 생존(작업 깔때기) / 저장 집합 — 패널 바인딩으로 저장할 수 있다.
-//     저장 집합만이 이름 있는 저장물이고, 그룹·필터를 직접 가리키는 영속 참조는 폐지됐다
-//     (그룹은 깔때기의 재료지 바인딩 대상이 아니다 — 잠깐 탐색은 연동 모드가 담당한다).
+//   · 영속 4종 : 유니버스(전체) / 최종 생존(작업 깔때기) / 저장 집합 / 조립(부품 합집합 — 2026-09-08)
+//     — 패널 바인딩으로 저장할 수 있다. 저장 집합·조립만이 이름 있는 저장물이고, 그룹·필터를 직접
+//     가리키는 영속 참조는 폐지됐다(그룹은 깔때기의 재료지 바인딩 대상이 아니다 — 잠깐 탐색은 연동 모드가 담당한다).
 //   · 세션 3종 : 짚은 칸(작업 깔때기) / 그룹 체인(교집합) / 항목 목록(시트 밴드 등) — 짚음 채널·내부
 //     리졸빙에만 쓰이고 저장되지 않는다. (집합 난립 방지: 이름을 붙일 때만 저장물이 된다.)
 //   · 잔해 1종 : orphan — **파서만 만든다.** 폐지된 옛 바인딩(그룹 직접·칸 직접)이 저장소에 남아 있으면
@@ -18,6 +18,7 @@ export type SetRef =
     | { kind: "universe" }
     | { kind: "survivors" }
     | { kind: "saved"; setId: string }
+    | { kind: "assembly"; id: string }
     | { kind: "orphan"; label: string }
     | { kind: "cell"; stageId: string; cells: FunnelCell[] }
     | { kind: "groupChain"; names: string[] }
@@ -25,7 +26,7 @@ export type SetRef =
 
 /** 패널 바인딩으로 저장해도 되는 참조인가 — 세션 3종은 정의가 세션 밖에 없어 저장하면 즉시 깨진 참조다. */
 export const isPersistableSetRef = (r: SetRef): boolean =>
-    r.kind === "universe" || r.kind === "survivors" || r.kind === "saved";
+    r.kind === "universe" || r.kind === "survivors" || r.kind === "saved" || r.kind === "assembly";
 
 const CELLS: readonly FunnelCell[] = ["survive", "nearMiss", "upstreamPending", "fail", "pending"];
 const isCell = (v: unknown): v is FunnelCell => typeof v === "string" && (CELLS as readonly string[]).includes(v);
@@ -45,6 +46,7 @@ export function setRefKey(r: SetRef): string {
         case "universe": return "u";
         case "survivors": return "sv";
         case "saved": return `s${JSON.stringify([r.setId])}`;
+        case "assembly": return `a${JSON.stringify([r.id])}`;
         case "orphan": return `o${JSON.stringify([r.label])}`;
         case "cell": return `c${JSON.stringify([r.stageId, [...r.cells].sort()])}`;
         case "groupChain": return `gc${JSON.stringify([...r.names].sort())}`;
@@ -53,7 +55,7 @@ export function setRefKey(r: SetRef): string {
 }
 
 /**
- * 영속본 파서 — **영속 3종 + orphan** 만 내놓는다. 옛 형식은 여기서 변환된다:
+ * 영속본 파서 — **영속 4종 + orphan** 만 내놓는다. 옛 형식은 여기서 변환된다:
  *   · `filter(null)`      → 최종 생존 (뜻이 같다 — 무손실)
  *   · `filter("fs…")`     → 저장 집합 (옛 저장 필터가 같은 id 의 집합으로 자동 전환되므로 — 무손실)
  *   · `group` / `cell`    → orphan (직접 바인딩 폐지 — 화면이 "깨진 참조 + 다시 고르기"로 받는다)
@@ -70,6 +72,8 @@ export function parseSetRef(o: unknown): SetRef | null {
             return { kind: "survivors" };
         case "saved":
             return typeof r.setId === "string" && r.setId !== "" ? { kind: "saved", setId: r.setId } : null;
+        case "assembly":
+            return typeof r.id === "string" && r.id !== "" ? { kind: "assembly", id: r.id } : null;
         case "orphan":
             return typeof r.label === "string" && r.label !== "" ? { kind: "orphan", label: r.label } : null;
         // ── 옛 형식(집합 공장 이전) — usePersistedState 는 다시 고를 때까지 옛 값을 그대로 두므로,

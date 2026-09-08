@@ -60,6 +60,7 @@ export function WorksetPanel(): JSX.Element {
     const goToDay = useWorkbench((s) => s.goToDay);
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const savedSets = useWorkbench((s) => s.savedSets);
+    const assemblies = useWorkbench((s) => s.assemblies);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const funnelSelection = useWorkbench((s) => s.funnelSelection);
     const gazeMonths = useWorkbench((s) => s.gazeMonths);
@@ -107,7 +108,7 @@ export function WorksetPanel(): JSX.Element {
     // (닫혀 있으면 연다) — 고르는 손은 거기 하나뿐이라 여기는 길만 낸다.
     const setLabel = selectedSetRef === null
         ? linkedTargetLabel(funnelSelection !== null, funnel.active.length)
-        : setRefLabel(selectedSetRef, savedSets);
+        : setRefLabel(selectedSetRef, savedSets, assemblies);
     const goToFunnelPanel = (): void => openAndFocus("filter-funnel-1");
     const linkedView = funnel.viewOf(null);
     const view = isUniverse ? null : linkedView;

@@ -90,6 +90,7 @@ const hasOutcomePredicate = (stages: readonly FilterStage[]): boolean =>
 export function useFilterFunnel(): FunnelView {
     const stages = useWorkbench(selectFilterStages);
     const savedSets = useWorkbench((s) => s.savedSets);
+    const assemblies = useWorkbench((s) => s.assemblies);
 
     const gv = useGroups();
     const ax = useRankAxes();
@@ -243,12 +244,13 @@ export function useFilterFunnel(): FunnelView {
             hasGroup: (n) => gv.groupByName.has(n),
             activeStages: stages,
             savedSetOf: (id) => savedSets.find((f) => f.id === id),
+            assemblyOf: (id) => assemblies.find((a) => a.id === id),
             ...(result !== null ? { activeFilter: { grain, active, tally: result } } : {}),
             materialsEpoch,
             evalLook,
             grainLook,
         }),
-        [cand.candidates, timesByChart, gv, evalLook, grainLook, stages, savedSets, grain, active, result, materialsEpoch],
+        [cand.candidates, timesByChart, gv, evalLook, grainLook, stages, savedSets, assemblies, grain, active, result, materialsEpoch],
     );
 
     const { resolveSet, viewOf } = useSetViews(result, setCtx);

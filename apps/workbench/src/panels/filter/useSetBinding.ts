@@ -7,6 +7,7 @@
 // 옛 고정 바인딩의 영속(wb.setBinding.*)은 읽지 않는다 — 새 키가 아니라 개념이 사라진 것이라
 // 변환할 대상이 없고, 안 읽으면 자연히 죽는다(옛 저장 필터 키의 선례).
 import type { SavedSet } from "../../store/savedSetsSlice.js";
+import type { Assembly } from "../../store/assembliesSlice.js";
 import { useWorkbench } from "../../store/workbench.js";
 import type { SetRef } from "../../lib/setRef.js";
 import { useFunnel } from "./FunnelContext.js";
@@ -19,12 +20,16 @@ export interface LinkedSet {
     label: string;
 }
 
-/** 집합 참조의 이름 — 저장 집합은 저장 사전에서 찾는다(지워졌으면 그렇게 말한다). */
-export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[]): string {
+/** 집합 참조의 이름 — 저장 집합·조립은 저장 사전에서 찾는다(지워졌으면 그렇게 말한다). ∪ 접두는 여기 한 곳. */
+export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[], assemblies: readonly Assembly[]): string {
     switch (ref.kind) {
         case "universe": return "전체";
         case "survivors": return "최종 생존";
         case "saved": return savedSets.find((f) => f.id === ref.setId)?.name ?? "(지워진 집합)";
+        case "assembly": {
+            const a = assemblies.find((x) => x.id === ref.id);
+            return a ? `∪ ${a.name}` : "(지워진 조립)";
+        }
         case "orphan": return `${ref.label} (폐지된 바인딩)`;
         case "cell": return "짚은 칸";
         case "groupChain": return ref.names.join(" & ");
@@ -43,12 +48,13 @@ export function linkedTargetLabel(hasSelection: boolean, activeCount: number): s
 export function useLinkedSet(): LinkedSet {
     const funnel = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
+    const assemblies = useWorkbench((s) => s.assemblies);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const selection = useWorkbench((s) => s.funnelSelection);
     const view = funnel.viewOf(null);
     // 라벨은 **지금 따라가는 곳**을 말한다 — 어휘는 작업셋·집합 편성의 칩 줄과 같다(전체/연동/저장 집합).
     const label = selectedSetRef === null
         ? linkedTargetLabel(selection !== null, funnel.active.length)
-        : setRefLabel(selectedSetRef, savedSets);
+        : setRefLabel(selectedSetRef, savedSets, assemblies);
     return { view, label };
 }

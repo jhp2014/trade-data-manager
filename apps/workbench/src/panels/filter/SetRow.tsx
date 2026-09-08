@@ -50,6 +50,7 @@ const smallBtn = (tone: "normal" | "accent" | "danger" = "normal", on = false): 
 export function SetRow(): JSX.Element {
     const v = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
+    const assemblies = useWorkbench((s) => s.assemblies);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const selectSet = useWorkbench((s) => s.selectSet);
     const selection = useWorkbench((s) => s.funnelSelection);
@@ -86,7 +87,7 @@ export function SetRow(): JSX.Element {
     return (
         <WorksetRowShell label="집합"
             title={savedSets.length === 0 ? "조건을 걸고 집합 관리에서 저장하면 여기 칩으로 섭니다" : "칩 클릭 = 이 집합 보기 · 줄 끝 ⋯ = 집합 관리(저장·고정·열기·삭제)"}>
-            <GazeChip label={setRefLabel(universeRef, savedSets)} active={isOn(universeRef)} color={PIN}
+            <GazeChip label={setRefLabel(universeRef, savedSets, assemblies)} active={isOn(universeRef)} color={PIN}
                 onClick={() => toggle(universeRef)}
                 title={`유니버스 — 손이 닿은 흔적(앵커·그룹·타점)이 하나라도 있는 (종목·날짜). 조건과 무관 · ${countOf(universeRef)}`} />
             <GazeChip label="연동" active={selectedSetRef === null} color={PIN}

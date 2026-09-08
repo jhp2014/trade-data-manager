@@ -17,6 +17,8 @@ import {
 } from "@trade-data-manager/market/domain";
 import type { SetRef } from "../../lib/setRef.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
+import type { Assembly } from "../../store/assembliesSlice.js";
+import { unionOf, type UnionPart } from "./assembly.js";
 import { toFunnelStages, type EvalLookup } from "./evaluate.js";
 import { activeStages, funnelOrder, resolveAutoGrain, type FilterStage, type GrainLookup } from "./stage.js";
 
@@ -34,6 +36,8 @@ export interface SetResolveCtx {
     activeStages: readonly FilterStage[];
     /** 저장 집합 사전. undefined 반환 = 지워진 집합(깨진 참조). */
     savedSetOf: (id: string) => SavedSet | undefined;
+    /** 조립 사전. undefined 반환 = 지워진 조립(깨진 참조). */
+    assemblyOf: (id: string) => Assembly | undefined;
     /**
      * 작업 깔때기의 **이미 끝난 정산** — 깔때기 훅이 방금 만든 것을 그대로 꽂는다.
      * 없으면 여기서 새로 정산하는데, 그러면 같은 조건을 두 번 평가할 뿐 아니라 **grain 이 갈릴 수 있다**:
@@ -84,12 +88,24 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
             return cellItems(r, ref.stageId, ref.cells);
         }
 
-        case "saved": {
-            const s = ctx.savedSetOf(ref.setId);
-            if (s === undefined) return BROKEN;
-            const r = resolveDef(ref.setId, ctx);
-            if (s.part.kind === "survivors") return { broken: false, grain: r.grain, items: r.tally.survivors };
-            return cellItems(r, s.part.stageId, s.part.cells);
+        case "saved":
+            return resolveSaved(ref.setId, ctx);
+
+        case "assembly": {
+            // 조립 = 켠 부품들의 합집합(순수 규칙은 assembly.ts). **죽은 부품은 그 부품만 빠진다** —
+            // 조립 전체를 BROKEN 으로 접지 않는 건 진단이 부품 단위라서다(UI 가 부품 줄에 깨짐을 표시한다).
+            // groupChain 의 "하나라도 죽으면 통째"와 다른 규칙(사용자 확정).
+            const a = ctx.assemblyOf(ref.id);
+            if (a === undefined) return BROKEN;
+            const parts: UnionPart[] = [];
+            for (const m of a.members) {
+                if (!m.enabled) continue;
+                const r = resolveSaved(m.setId, ctx);
+                if (r.broken) continue;
+                parts.push({ grain: r.grain, items: r.items, timesOf: ctx.timesOf });
+            }
+            const u = unionOf(parts);
+            return { broken: false, grain: u.grain, items: u.items };
         }
 
         case "groupChain": {
@@ -114,6 +130,15 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
             // 폐지된 옛 바인딩의 잔해 — 항상 깨진 참조. 화면이 라벨과 "다시 고르기"로 받는다.
             return BROKEN;
     }
+}
+
+/** 저장 집합 한 벌 — saved 참조와 조립의 부품이 같은 경로를 쓴다(두 벌이면 언젠가 다른 답을 낸다). */
+function resolveSaved(setId: string, ctx: SetResolveCtx): ResolvedSet {
+    const s = ctx.savedSetOf(setId);
+    if (s === undefined) return BROKEN;
+    const r = resolveDef(setId, ctx);
+    if (s.part.kind === "survivors") return { broken: false, grain: r.grain, items: r.tally.survivors };
+    return cellItems(r, s.part.stageId, s.part.cells);
 }
 
 /** 부위 추출 — 정산에서 한 단계의 칸들을 꺼낸다. 한 단계의 칸들은 서로소라 합집합에 dedupe 가 필요 없다. */
