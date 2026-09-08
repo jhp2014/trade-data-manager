@@ -108,29 +108,29 @@ describe("결과 패널", () => {
         expect(stages()).toHaveLength(0);
     });
 
-    it("T 레일 빈 트랙 드래그 = T1 이동 — Δ폭(T2−T1)은 유지되고 stages 는 안 생긴다(필터가 아니다)", () => {
+    it("T 레일 빈 트랙 드래그 = 컷 하나 이동 — stages 는 안 생긴다(필터가 아니다)", () => {
         const { container } = renderPanelUnder();
-        drag(trackOf(container, "허용 폭 T"), 0.1, 0.5); // 2~30% 도메인에서 T1 → 16
-        const def = useWorkbench.getState().pointDef;
-        expect(def.toleranceT1Pct).toBe(16);
-        expect(def.toleranceT2Pct - def.toleranceT1Pct).toBe(3); // 기본 Δ = 5−2 유지
+        drag(trackOf(container, "허용 폭 T"), 0.1, 0.5); // 2~30% 도메인에서 T → 16
+        expect(useWorkbench.getState().pointDef.toleranceT1Pct).toBe(16);
         expect(stages()).toHaveLength(0);
     });
 
-    it("T2 라벨 드래그 = Δ 관찰 폭만 조절 — T1 불변, 하한은 T1", () => {
+    it("T 라벨 드래그 = 같은 컷 이동(핸들 경로) — 0.5%p 스냅", () => {
         const { container } = renderPanelUnder();
         const track = trackOf(container, "허용 폭 T");
-        const t2Label = container.querySelector('[title^="Δ 관찰 폭"]')!;
-        expect(t2Label).not.toBeNull();
-        fireEvent.pointerDown(t2Label, { button: 0, clientX: xAt(toFracOf(5)), pointerId: 1 });
-        fireEvent.pointerMove(track, { clientX: xAt(toFracOf(12)), pointerId: 1 });
+        const label = container.querySelector('[title^="허용 폭 T —"]')!;
+        expect(label).not.toBeNull();
+        fireEvent.pointerDown(label, { button: 0, clientX: xAt(toFracOf(2)), pointerId: 1 });
+        fireEvent.pointerMove(track, { clientX: xAt(toFracOf(9)), pointerId: 1 });
         fireEvent.pointerUp(track, { pointerId: 1 });
-        expect(useWorkbench.getState().pointDef).toMatchObject({ toleranceT1Pct: 2, toleranceT2Pct: 12 });
-        // T1 왼쪽까지 끌어도 T2 는 T1 아래로 못 내려간다.
-        fireEvent.pointerDown(container.querySelector('[title^="Δ 관찰 폭"]')!, { button: 0, clientX: xAt(toFracOf(12)), pointerId: 1 });
-        fireEvent.pointerMove(track, { clientX: xAt(0), pointerId: 1 });
-        fireEvent.pointerUp(track, { pointerId: 1 });
-        expect(useWorkbench.getState().pointDef).toMatchObject({ toleranceT1Pct: 2, toleranceT2Pct: 2 });
+        expect(useWorkbench.getState().pointDef.toleranceT1Pct).toBe(9);
+    });
+
+    it("T 레일에 보조 핸들이 없다 — T2·Δ 문법은 폐지됐다(2026-09-09 인스턴스화)", () => {
+        const { container } = renderPanelUnder();
+        expect(container.querySelector('[title^="Δ 관찰 폭"]')).toBeNull();
+        expect(container.textContent).not.toContain("T2");
+        expect(container.textContent).not.toContain("Δ");
     });
 
     it("연장 고점 % 레일 — 그으면 outcome 술어 stage 가 생기고, ✕ 로 지우면 stage 째 사라진다", () => {
@@ -149,8 +149,8 @@ describe("결과 패널", () => {
         expect(stages()).toHaveLength(0);
     });
 
-    it("기본 허용 T1 을 10% 로 올리면 전부 '이내' — 깊이 최대 8.33% 라 T1 을 못 넘는다", () => {
-        useWorkbench.getState().setPointDef({ toleranceT1Pct: 10, toleranceT2Pct: 12 });
+    it("허용 폭 T 를 10% 로 올리면 전부 '이내' — 깊이 최대 8.33% 라 T 를 못 넘는다", () => {
+        useWorkbench.getState().setPointDef({ toleranceT1Pct: 10 });
         const { container } = renderPanelUnder();
         expect(container.textContent).toContain("초과 0");
         expect(container.textContent).toContain("이내 3");

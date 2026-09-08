@@ -266,14 +266,11 @@ function OutcomeCell({ metric, rec }: { metric: Exclude<OutcomeColId, SimColId>;
                 : <span style={{ color: "var(--text-tertiary)" }}>무눌림</span>;
     }
     const v = rec?.eval[metric]; // 정렬(outcomeSortValue)과 같은 출처 — 두 벌이면 "정렬은 X 순, 칸은 Y" 사고
-    const highlight = metric === "deltaExt" && v !== undefined && v > 0;
-    // +를 빨갛게 칠하는 건 연장 쪽 둘만(옛 결과 시트의 plusRed) — 낙폭 2종의 양수는 "종가 위 저가"라 성질이 다르다.
-    const plusRed = metric === "extHigh" || metric === "deltaExt";
-    const tone = v === undefined ? null : plusRed && v > 0 ? "rise" : v < 0 ? "fall" : null;
+    // +를 빨갛게 칠하는 건 연장 고점만(옛 결과 시트의 plusRed) — 낙폭 2종의 양수는 "종가 위 저가"라 성질이 다르다.
+    const tone = v === undefined ? null : metric === "extHigh" && v > 0 ? "rise" : v < 0 ? "fall" : null;
     return (
         <span className="tabular" style={{
             color: v === undefined ? "var(--text-tertiary)" : toneColor(tone),
-            background: highlight ? "var(--warning-soft)" : undefined, borderRadius: highlight ? 3 : undefined, padding: highlight ? "0 3px" : undefined,
         }}>
             {v === undefined ? "—" : fmtOutcomePct(v)}
         </span>

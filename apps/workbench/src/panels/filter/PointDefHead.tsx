@@ -59,7 +59,7 @@ export function PointDefHead(): JSX.Element {
             </span>
             <button
                 onClick={() => openAndFocus(POINT_DEF_PANEL_ID)}
-                title={`정의 판 열기 — 게이트·자격 시각·근접을 분포 보며 조절. 현재: 돌파 ${def.baselineGateEok}억 · 재돌파 ${def.renewalGateEok}억 · 자격 시각 ${def.qualifyWindows.length === 0 ? "전체" : def.qualifyWindows.map((w) => `${timeOfMinutes(w.from)}~${timeOfMinutes(w.to)}`).join(", ")} · 근접 ${def.approachPct}% · 병합 ${def.mergeRisePct}% · ${def.bullOnly ? "양봉만" : "양봉 무관"} · 허용 T1 ${def.toleranceT1Pct}%/Δ~${def.toleranceT2Pct}% · 시뮬 −${def.sim.entry.pct}/${def.sim.stopPct}/${def.sim.takePct}%`}
+                title={`정의 판 열기 — 게이트·자격 시각·근접을 분포 보며 조절. 현재: 돌파 ${def.baselineGateEok}억 · 재돌파 ${def.renewalGateEok}억 · 자격 시각 ${def.qualifyWindows.length === 0 ? "전체" : def.qualifyWindows.map((w) => `${timeOfMinutes(w.from)}~${timeOfMinutes(w.to)}`).join(", ")} · 근접 ${def.approachPct}% · 병합 ${def.mergeRisePct}% · ${def.bullOnly ? "양봉만" : "양봉 무관"} · 시뮬 −${def.sim.entry.pct}/${def.sim.stopPct}/${def.sim.takePct}%`}
                 style={chipStyle}
             >
                 {def.baselineGateEok}/{def.renewalGateEok}억 · {windowLabel} · 근접 {def.approachPct}%{def.bullOnly ? " · 양봉만" : ""}

@@ -266,7 +266,7 @@ export function PointDefPanel(): JSX.Element {
                     title="결과 걷기 허용 폭 — 편집은 결과 패널의 T 레일에서(분포를 보며 정하는 값이라 그 판이 편집면)"
                     style={chipStyle(false)}
                 >
-                    허용 T1 {def.toleranceT1Pct}% · Δ~{def.toleranceT2Pct}%
+                    허용 T {def.toleranceT1Pct}%
                 </button>
                 <button
                     onClick={() => openAndFocus(TRADE_SIM_PANEL_ID)}

@@ -58,11 +58,11 @@ describe("matchPresetCols — 결과 열 키는 부품 유무를 넘나들며 me
 });
 
 describe("붙박이 프리셋", () => {
-    it("point 모드 '결과' = 결과 걷기 열 6(시뮬 무포함) · '시뮬' = 시뮬 열 4 — 사용자 확정 분리", () => {
+    it("point 모드 '결과' = 결과 걷기 열 5(시뮬 무포함) · '시뮬' = 시뮬 열 4 — 사용자 확정 분리", () => {
         expect(BUILTIN_POINT_PRESETS).toHaveLength(2);
         expect(BUILTIN_POINT_PRESETS[0]!.cols).toEqual([
             "name", "date", "time",
-            "out:extHigh", "out:deltaExt", "out:dropFromHigh", "out:dropFromClose", "out:recovered", "out:status",
+            "out:extHigh", "out:dropFromHigh", "out:dropFromClose", "out:recovered", "out:status",
         ]);
         expect(BUILTIN_POINT_PRESETS[1]!).toEqual({
             name: "시뮬",

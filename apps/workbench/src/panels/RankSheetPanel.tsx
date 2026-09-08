@@ -239,7 +239,7 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
         for (const p of outParts) {
             const def = savedSets.find((s) => s.id === p.setId)?.pointDef ?? pointDefCur;
             const d = defDerivedFor(grids.byDate, def);
-            m.set(p.setId, { oc: d.outcomes(def.toleranceT1Pct, def.toleranceT2Pct), sim: d.sim(def.sim), has: d.hasPoint });
+            m.set(p.setId, { oc: d.outcomes(def.toleranceT1Pct), sim: d.sim(def.sim), has: d.hasPoint });
         }
         return m;
     }, [outParts, grids.byDate, savedSets, pointDefCur]);

@@ -1,17 +1,18 @@
-// 허용 폭 T 레일 — **구간 필터가 아니라 값 하나(T1) + Δ 관찰 폭(T2)** 이라 Rail 을 안 쓰고 따로 그린다
-// (2026-09-04 A안 확정: 옛 "양끝 대칭 구간" UI 를 뒤집음). 범용 Rail/railModel 은 대칭 구간의 손짓
-// 대수인데 여기 손짓은 비대칭이다 — 왼끝 2% 는 zigzag 해상도라 못 움직이는 고정점이고, 두 핸들의
-// 격도 다르다: **T1 = 주 핸들(기본 허용 — 여기까지의 눌림은 연속 상승으로 흡수, 술어·레일·차트의 기준)**,
-// T2 = 보조 핸들(Δ 관찰 구간의 오른끝). 빈 트랙 탭/드래그도 T1 이동이다(컷 레일의 탭 의미론).
+// 허용 폭 T 레일 — **구간 필터가 아니라 값 하나(컷)** 라 범용 Rail 을 안 쓰고 따로 그린다.
+// 왼끝 2% 는 zigzag 해상도라 못 움직이는 고정점이고, 오른쪽으로 컷 하나가 다닌다: **T 까지의 눌림은
+// 연속 상승으로 흡수**(그 조건의 결과 값·상태의 기준). 빈 트랙 탭/드래그도 컷 이동이다.
 //
-// 드래그 규칙: **T1 을 끌면 T2 가 Δ폭을 유지한 채 따라온다**(B안의 "상대 폭" 성질을 손짓으로 흡수),
-// T2 핸들만 Δ폭을 바꾼다(하한 = T1). 커밋은 손 뗄 때 한 번(Rail 규약 — 드래그 중 store 갱신이면
-// 단면 재계산이 프레임마다 돈다). 시각 문법(이름 열 폭·행 높이·스트립 로그 y)은 Rail 과 맞춘다 —
-// 같은 패널에 서는 줄들이라 격자가 갈리면 목록으로 안 읽힌다.
+// ⚠ 2026-09-09 개정: 옛 T1/T2 **두 핸들 비대칭 문법**(채움+빗금 두 구간·"T1 을 끌면 T2 가 Δ폭 유지한
+// 채 따라옴")은 폐지됐다. T 가 정의에서 결과 술어로 내려가 **인스턴스마다 T 하나**이고, T 비교는
+// 인스턴스 둘 + 시트 차이 열이 진다(decisions.md 「허용 폭 T 의 인스턴스화」).
+//
+// 값의 출처를 **prop 으로 받는다** — 연동 인스턴스의 T 이거나, 인스턴스가 없을 때의 탐색 T 다.
+// 커밋은 손 뗄 때 한 번(Rail 규약 — 드래그 중 store 갱신이면 단면 재계산이 프레임마다 돈다).
+// 시각 문법(이름 열 폭·행 높이·스트립 로그 y)은 Rail 과 맞춘다 — 같은 패널에 서는 줄들이라
+// 격자가 갈리면 목록으로 안 읽힌다. 색은 앰버(LEG_HIGH) 유지: 여전히 행을 안 지우므로 필터색이 아니다.
 import { useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { TOLERANCE_MAX_PCT, TOLERANCE_MIN_PCT } from "@trade-data-manager/market/domain";
 import { clamp01 } from "../../lib/num.js";
-import { useWorkbench } from "../../store/workbench.js";
 import { LEG_HIGH } from "../../styles/palette.js";
 import { RAIL_LABEL_W, RAIL_PAD, RAIL_ROW_H } from "../filter/rail/Rail.js";
 import { binCenter, HIST_BINS, histogramOf, logHeight } from "../filter/rail/railHistogram.js";
@@ -24,24 +25,24 @@ const fromFrac = (f: number): number => Math.round((TOLERANCE_MIN_PCT + clamp01(
 const HIST_ROW_H = 58;
 const HIST_BAR_H = 44;
 
-type TDrag = { kind: "t1"; deltaPct: number } | { kind: "t2" };
-
-export function ToleranceRail({ breakDepths }: {
+export function ToleranceRail({ t, onCommit, breakDepths, note }: {
+    /** 지금 그릴 허용 폭(%) — 연동 인스턴스의 T 또는 탐색 T. */
+    t: number;
+    /** 손 뗄 때 한 번 부른다(드래그 중엔 로컬 미리보기만 그린다). */
+    onCommit: (t: number) => void;
     /**
-     * 모든 breakpoint 깊이(%, 시그널당 여러 개 — 연장 **사건**당 하나, useOutcomes.breakDepths).
+     * 모든 breakpoint 깊이(%, 시그널당 여러 개 — 연장 **사건**당 하나, `OutcomeWalksView.breakDepths`).
      * T 와 무관한 고정 분포라 스트립·누적 곡선을 미리 그려 둔다. 30% 초과는 오른끝에 접힌다(도메인 클램프).
      */
     breakDepths: readonly number[];
+    /** 이름 아래 한 줄(연동 인스턴스 이름 또는 "탐색") — 이 값이 어디에 쓰이는지 말한다. */
+    note?: string;
 }): JSX.Element {
-    const t1 = useWorkbench((s) => s.pointDef.toleranceT1Pct);
-    const t2 = useWorkbench((s) => s.pointDef.toleranceT2Pct);
-    const setDef = useWorkbench((s) => s.setPointDef);
-
     const trackRef = useRef<HTMLDivElement | null>(null);
-    const dragRef = useRef<TDrag | null>(null);
-    // 미리보기 — 커밋(setDef)은 손 뗄 때 한 번. 드래그 중엔 이 로컬 값만 그린다.
-    const [preview, setPreview] = useState<{ t1: number; t2: number } | null>(null);
-    const shown = preview ?? { t1, t2 };
+    const draggingRef = useRef(false);
+    // 미리보기 — 커밋은 손 뗄 때 한 번. 드래그 중엔 이 로컬 값만 그린다.
+    const [preview, setPreview] = useState<number | null>(null);
+    const shown = preview ?? t;
 
     const fracAt = (clientX: number): number => {
         const el = trackRef.current;
@@ -50,49 +51,37 @@ export function ToleranceRail({ breakDepths }: {
         return clamp01((clientX - rect.left - RAIL_PAD) / Math.max(1, rect.width - 2 * RAIL_PAD));
     };
 
-    const applyDrag = (drag: TDrag, frac: number): { t1: number; t2: number } => {
-        if (drag.kind === "t2") {
-            const cur = preview ?? { t1, t2 };
-            return { t1: cur.t1, t2: Math.max(cur.t1, fromFrac(frac)) };
-        }
-        // T1 이동 — Δ폭(잡은 순간의 t2−t1)을 유지한 채 따라온다. 오른끝에 닿으면 Δ 가 줄어드는 쪽으로 클램프.
-        const nt1 = fromFrac(frac);
-        return { t1: nt1, t2: Math.min(TOLERANCE_MAX_PCT, nt1 + drag.deltaPct) };
-    };
-
-    const beginDrag = (e: ReactPointerEvent, drag: TDrag): void => {
+    const beginDrag = (e: ReactPointerEvent): void => {
         if (e.button !== 0) return;
-        dragRef.current = drag;
-        setPreview(applyDrag(drag, fracAt(e.clientX)));
+        draggingRef.current = true;
+        setPreview(fromFrac(fracAt(e.clientX)));
         trackRef.current?.setPointerCapture(e.pointerId);
     };
-    // 빈 트랙 = T1 이동(주 값의 탭 의미론). 핸들 라벨은 stopPropagation 으로 제 드래그를 시작한다.
+    // 빈 트랙 = 컷 이동(탭 의미론). 핸들 라벨은 stopPropagation 으로 제 드래그를 시작한다.
     const onTrackDown = (e: ReactPointerEvent): void => {
         if (e.target !== e.currentTarget) return;
-        beginDrag(e, { kind: "t1", deltaPct: t2 - t1 });
+        beginDrag(e);
     };
     const onMove = (e: ReactPointerEvent): void => {
-        const drag = dragRef.current;
-        if (!drag) return;
-        setPreview(applyDrag(drag, fracAt(e.clientX)));
+        if (!draggingRef.current) return;
+        setPreview(fromFrac(fracAt(e.clientX)));
     };
     const onUp = (): void => {
-        const drag = dragRef.current;
+        const was = draggingRef.current;
         const next = preview;
-        dragRef.current = null;
+        draggingRef.current = false;
         setPreview(null);
-        if (!drag || !next) return;
-        setDef({ toleranceT1Pct: next.t1, toleranceT2Pct: next.t2 });
+        if (!was || next === null || next === t) return;
+        onCommit(next);
     };
 
     const at = (f: number): string => `calc(${RAIL_PAD}px + ${clamp01(f)} * (100% - ${2 * RAIL_PAD}px))`;
     const widthOf = (a: number, b: number): string => `calc(${clamp01(b) - clamp01(a)} * (100% - ${2 * RAIL_PAD}px))`;
-    const f1 = toFrac(shown.t1);
-    const f2 = toFrac(shown.t2);
+    const f1 = toFrac(shown);
 
-    // 펼친 분포 — Rail 과 같은 규약(컴포넌트 수명·로그 y). 칸 색이 세 구간을 가르고, 그 위에
+    // 펼친 분포 — Rail 과 같은 규약(컴포넌트 수명·로그 y). 칸 색이 두 구간을 가르고, 그 위에
     // **누적 곡선**(연장 사건 수 — 막대의 누적합, 선형 척도)을 겹친다. 둘 다 T 무관 고정 그림이라
-    // T 를 문질러도 안 움직인다 — 세로 마커(T1/T2)만 그 위를 다닌다.
+    // T 를 문질러도 안 움직인다 — 세로 마커만 그 위를 다닌다.
     const [distOpen, setDistOpen] = useState(false);
     const depthFracs = useMemo(() => breakDepths.map(toFrac), [breakDepths]);
     const hist = useMemo(() => (distOpen && depthFracs.length > 0 ? histogramOf(depthFracs, undefined) : null), [distOpen, depthFracs]);
@@ -111,12 +100,15 @@ export function ToleranceRail({ breakDepths }: {
 
     return (
         <div style={{ borderBottom: "1px solid var(--border-subtle)" }}
-            title="결과 걷기의 허용 폭 — 필터가 아니라 정의(아래 레일·시트·차트 표식의 값이 전부 따라 움직임). 기본 허용 T1: 여기까지의 눌림은 연속 상승으로 흡수(술어·표식의 기준). T1~T2: Δ 비교 관찰 구간. 빈 트랙을 끌면 T1 이동(Δ폭 유지), T2 라벨을 끌면 관찰 폭만 조절">
+            title="결과 걷기의 허용 폭 T — 여기까지의 눌림은 연속 상승으로 흡수한다(이 조건의 결과 값·상태·차트 표식의 기준). 필터가 아니라 조건의 전제라 앰버다. T 비교는 결과 조건을 둘 만들어서 한다">
             <div style={{ display: "flex", alignItems: "center", height: RAIL_ROW_H }}>
                 <div style={{ width: RAIL_LABEL_W, flexShrink: 0, padding: "0 6px 0 8px", minWidth: 0 }}>
                     <div title="허용 폭 T" style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         허용 폭 T
                     </div>
+                    {note !== undefined && (
+                        <div title={note} style={{ fontSize: 9, color: "var(--text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{note}</div>
+                    )}
                     {depthFracs.length > 0 && (
                         <button onClick={(e) => { e.stopPropagation(); setDistOpen((v) => !v); }}
                             title={distOpen ? "분포 접기" : "깊이별 연장 사건 분포 + 누적 곡선 펼치기(막대 = 로그 척도)"}
@@ -131,37 +123,27 @@ export function ToleranceRail({ breakDepths }: {
                     onPointerMove={onMove}
                     onPointerUp={onUp}
                     onPointerCancel={onUp}
-                    title="빈 곳을 끌면 T1 이동(Δ폭 유지) · T1/T2 라벨을 끌면 각각 조정"
+                    title="빈 곳을 끌면 허용 폭 이동 · 라벨을 끌어도 같다"
                     style={{ position: "relative", flex: 1, minWidth: 0, height: "100%", cursor: "crosshair", userSelect: "none", WebkitUserSelect: "none", touchAction: "none" }}
                 >
                     <span style={endLabel(true)}>{TOLERANCE_MIN_PCT}%(고정)</span>
                     <span style={endLabel(false)}>{TOLERANCE_MAX_PCT}%</span>
-                    {/* 기준선 + 두 구간: [2, T1] 채움 = 기본 허용 · [T1, T2] 빗금 = Δ 관찰. */}
+                    {/* 기준선 + 한 구간: [2, T] 채움 = 흡수되는 눌림 깊이. */}
                     <div aria-hidden style={{ position: "absolute", left: RAIL_PAD, right: RAIL_PAD, top: "50%", height: 2, transform: "translateY(-50%)", background: "var(--border-default)", pointerEvents: "none" }} />
                     <div aria-hidden style={{ position: "absolute", top: "50%", height: 5, transform: "translateY(-50%)", left: RAIL_PAD, width: widthOf(0, f1), background: LEG_HIGH, pointerEvents: "none", zIndex: 1 }} />
-                    <div aria-hidden style={{ position: "absolute", top: "50%", height: 5, transform: "translateY(-50%)", left: at(f1), width: widthOf(f1, f2), background: `repeating-linear-gradient(45deg, ${LEG_HIGH} 0 3px, ${LEG_HIGH}40 3px 6px)`, opacity: 0.55, pointerEvents: "none", zIndex: 1 }} />
 
-                    {/* T1 — 주 핸들(굵은 실선 바). 라벨 드래그 = T1 이동(Δ폭 유지). */}
+                    {/* 컷 핸들(굵은 실선 바) + 라벨 드래그. */}
                     <span aria-hidden style={{ position: "absolute", top: "50%", left: at(f1), transform: "translate(-50%,-50%)", width: 4, height: 16, borderRadius: 2, background: LEG_HIGH, pointerEvents: "none", zIndex: 3 }} />
                     <span
-                        onPointerDown={(e) => { e.stopPropagation(); beginDrag(e, { kind: "t1", deltaPct: shown.t2 - shown.t1 }); }}
-                        title="기본 허용 T1 — 끌면 T2 가 Δ폭을 유지한 채 따라옵니다"
+                        onPointerDown={(e) => { e.stopPropagation(); beginDrag(e); }}
+                        title="허용 폭 T — 여기까지의 눌림은 흡수된다"
                         style={{ position: "absolute", top: "calc(50% + 8px)", left: at(f1), transform: "translateX(-50%)", fontSize: 9.5, fontWeight: 700, color: LEG_HIGH, cursor: "ew-resize", whiteSpace: "nowrap", touchAction: "none", zIndex: 5 }}
-                    >T1 {shown.t1}%</span>
-
-                    {/* T2 — 보조 핸들(속 빈 점선 바). 라벨 드래그 = Δ 관찰 폭만 조절(하한 = T1). */}
-                    <span aria-hidden style={{ position: "absolute", top: "50%", left: at(f2), transform: "translate(-50%,-50%)", width: 2, height: 13, border: `1px dashed ${LEG_HIGH}`, background: "var(--bg-primary)", pointerEvents: "none", zIndex: 3 }} />
-                    <span
-                        onPointerDown={(e) => { e.stopPropagation(); beginDrag(e, { kind: "t2" }); }}
-                        title="Δ 관찰 폭의 오른끝 T2 — 기본 허용은 그대로 두고 비교 구간만 조절합니다"
-                        style={{ position: "absolute", top: "calc(50% - 21px)", left: at(f2), transform: "translateX(-50%)", fontSize: 9.5, color: LEG_HIGH, opacity: 0.85, cursor: "ew-resize", whiteSpace: "nowrap", touchAction: "none", zIndex: 5 }}
-                    >T2 {shown.t2}%</span>
+                    >T {shown}%</span>
                 </div>
             </div>
 
             {/* 펼친 분포 — 막대 = 깊이별 연장 **사건** 수(로그, 시그널당 다회), 곡선 = 그 누적(선형 —
-                "T 를 x 로 두면 일어나는 연장 사건 수"). 칸 색 = 세 구간(≤T1 흡수됨 · T1~T2 이번 비교 · 밖).
-                헤더의 "연장 N"은 **종목** 수(중복 제거)라 곡선 증분과 다를 수 있다 — 사건 ≥ 종목. */}
+                "T 를 x 로 두면 일어나는 연장 사건 수"). 칸 색 = 두 구간(≤T 흡수됨 · 밖). */}
             {hist && (
                 <div style={{ display: "flex", height: HIST_ROW_H, background: "var(--bg-secondary)" }}>
                     <div style={{ width: RAIL_LABEL_W, flexShrink: 0, padding: "4px 6px 7px 8px", display: "flex", flexDirection: "column", justifyContent: "space-between", fontSize: 9, lineHeight: 1.3, color: "var(--text-tertiary)", whiteSpace: "nowrap", overflow: "hidden" }}>
@@ -172,17 +154,16 @@ export function ToleranceRail({ breakDepths }: {
                         <div style={{ position: "absolute", left: RAIL_PAD, right: RAIL_PAD, bottom: 7, height: HIST_BAR_H, display: "flex", alignItems: "flex-end" }}>
                             {hist.bins.map((b, i) => {
                                 const c = binCenter(i, HIST_BINS);
-                                const zone = c <= f1 ? "base" : c <= f2 ? "delta" : "out";
+                                const inBase = c <= f1;
                                 const h = logHeight(b.count, hist.max) * HIST_BAR_H;
                                 return (
                                     <div key={i} data-bin={i}
-                                        title={`~${fromFrac(c)}% · 연장 사건 ${b.count.toLocaleString()}건${zone === "base" ? " (기본 허용에 흡수됨)" : zone === "delta" ? " (Δ 구간 — 이번 비교에서 연장)" : ""}`}
+                                        title={`~${fromFrac(c)}% · 연장 사건 ${b.count.toLocaleString()}건${inBase ? " (허용 폭에 흡수됨)" : ""}`}
                                         style={{ flex: 1, position: "relative", height: "100%", overflow: "hidden" }}>
                                         {b.count > 0 && (
                                             <span aria-hidden style={{
                                                 position: "absolute", left: 0, right: 0, bottom: 0, height: h,
-                                                background: zone === "out" ? "var(--border-default)" : LEG_HIGH,
-                                                opacity: zone === "delta" ? 0.45 : 1,
+                                                background: inBase ? LEG_HIGH : "var(--border-default)",
                                             }} />
                                         )}
                                     </div>
@@ -203,7 +184,6 @@ export function ToleranceRail({ breakDepths }: {
                             </span>
                         )}
                         <span aria-hidden style={{ position: "absolute", left: at(f1), transform: "translateX(-50%)", top: 0, bottom: 5, width: 1, background: LEG_HIGH, opacity: 0.7, pointerEvents: "none" }} />
-                        <span aria-hidden style={{ position: "absolute", left: at(f2), transform: "translateX(-50%)", top: 0, bottom: 5, width: 1, background: LEG_HIGH, opacity: 0.35, pointerEvents: "none" }} />
                     </div>
                 </div>
             )}

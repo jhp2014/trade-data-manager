@@ -57,15 +57,14 @@ export interface PointDefinition {
      */
     approachPct: number;
     /**
-     * 결과 걷기의 허용 폭 T 쌍(%, 도메인 [2,30] — 하한 2 는 zigzag 해상도, decisions.md "시그널 결과").
+     * 결과 걷기의 허용 폭 T(%, 도메인 [2,30] — 하한 2 는 zigzag 해상도, decisions.md "시그널 결과").
      * ⚠ **판정 노브가 아니다** — `pointsOf`/`levelsOf` 는 `PointJudgeDef` 로 좁혀 받아 원리적으로 못 본다.
-     * 결과 값(연장 고점·낙폭)·차트 다리 표식(T2 연동)을 바꾸는 정의 상태이고, 한 타입에 두는 이유는
+     * 결과 값(연장 고점·낙폭)·차트 다리 표식을 바꾸는 정의 상태이고, 한 타입에 두는 이유는
      * 영속(wb.pointDef)·SavedSet payload·parsePointDef 가 전부 이 타입 하나를 지나기 때문(렌즈 노브의 후임).
      */
     toleranceT1Pct: number;
-    toleranceT2Pct: number;
     /**
-     * 트레이드 시뮬 노브 7(simulate.ts — 진입/손절/익절/트레일2/취소2). T1/T2 와 같은 사정으로 여기
+     * 트레이드 시뮬 노브 7(simulate.ts — 진입/손절/익절/트레일2/취소2). T 와 같은 사정으로 여기
      * 동승한다: **판정 노브가 아니고**(PointJudgeDef 가 못 본다) 시뮬 결과 값·패널·시트 열을 바꾸는
      * 정의 상태이며, 영속(wb.pointDef)·SavedSet payload·parsePointDef 한 채널을 그대로 탄다
      * (집합마다 다른 시뮬 파라미터 비교 — 게이트 50/30 비교와 동일 문법).
@@ -111,7 +110,6 @@ export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     bullOnly: true,
     approachPct: 0.5, // 기본 = 밴드 폭 전부(사용자 확정 — "전고점 −0.5% 안이면 갱신 영역")
     toleranceT1Pct: 2,
-    toleranceT2Pct: 5,
     sim: DEFAULT_TRADE_SIM_PARAMS,
 };
 

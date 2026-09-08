@@ -56,8 +56,8 @@ describe("defDerivedFor — 신원 계약", () => {
     it("게으른 층 — walks·outcomes·sim 단면은 같은 키면 같은 객체", () => {
         const d = defDerivedFor(bundle(), def(50));
         expect(d.walks()).toBe(d.walks());
-        expect(d.outcomes(5, 10)).toBe(d.outcomes(5, 10));
-        expect(d.outcomes(5, 10)).not.toBe(d.outcomes(6, 10));
+        expect(d.outcomes(5)).toBe(d.outcomes(5));
+        expect(d.outcomes(5)).not.toBe(d.outcomes(6));
         const cancel = { cancelRisePct: null, cancelAfterMin: null };
         expect(d.simBasis(cancel)).toBe(d.simBasis({ ...cancel }));
     });

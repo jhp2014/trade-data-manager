@@ -7,18 +7,19 @@
 // ⚠ 이 Provider 는 RankAxesProvider **바깥**에 선다 — 축 합성이 자동 Point 를 재료로 쓴다.
 import { createContext, useContext, type ReactNode } from "react";
 import { useAutoPointsValue, usePointGridsValue, type AutoPointsView, type PointGridsView } from "./usePointGrids.js";
-import { useOutcomesValue, useOutcomeWalksValue, type OutcomesView } from "./useOutcomes.js";
+import { useOutcomesValue, useOutcomeWalksValue, type OutcomesView, type OutcomeWalksView } from "./useOutcomes.js";
 import { useSimBasisValue, useTradeSimValue, type SimBasisView, type SimView } from "./useTradeSim.js";
 
 // 소비자는 이 파일 하나만 보면 되게 — 훅과 그 모양을 다른 곳에서 가져오게 하지 않는다.
 export type { AutoPoint, AutoPointsView, PointGridsView } from "./usePointGrids.js";
 export { autoPointsOfChart } from "./usePointGrids.js";
-export type { OutcomeMetric, OutcomeRecord, OutcomesView } from "./useOutcomes.js";
+export type { OutcomeMetric, OutcomeRecord, OutcomesView, OutcomeWalksView } from "./useOutcomes.js";
 export type { SimBasisView, SimView } from "./useTradeSim.js";
 
 const GridsCtx = createContext<PointGridsView | null>(null);
 const AutoCtx = createContext<AutoPointsView | null>(null);
 const OutcomesCtx = createContext<OutcomesView | null>(null);
+const WalksCtx = createContext<OutcomeWalksView | null>(null);
 const SimBasisCtx = createContext<SimBasisView | null>(null);
 const SimCtx = createContext<SimView | null>(null);
 
@@ -35,11 +36,13 @@ export function PointGridsProvider({ children }: { children: ReactNode }): JSX.E
     return (
         <GridsCtx.Provider value={grids}>
             <AutoCtx.Provider value={auto}>
-                <OutcomesCtx.Provider value={outcomes}>
-                    <SimBasisCtx.Provider value={simBasis}>
-                        <SimCtx.Provider value={sim}>{children}</SimCtx.Provider>
-                    </SimBasisCtx.Provider>
-                </OutcomesCtx.Provider>
+                <WalksCtx.Provider value={walks}>
+                    <OutcomesCtx.Provider value={outcomes}>
+                        <SimBasisCtx.Provider value={simBasis}>
+                            <SimCtx.Provider value={sim}>{children}</SimCtx.Provider>
+                        </SimBasisCtx.Provider>
+                    </OutcomesCtx.Provider>
+                </WalksCtx.Provider>
             </AutoCtx.Provider>
         </GridsCtx.Provider>
     );
@@ -56,6 +59,13 @@ export function useSimBasis(): SimBasisView {
 export function useTradeSim(): SimView {
     const v = useContext(SimCtx);
     if (!v) throw new Error("PointGridsProvider 밖에서 useTradeSim — main 배선을 확인하세요");
+    return v;
+}
+
+/** 결과 걷기 한 벌(T 무관) — 분포 스트립(breakDepths)처럼 T 에 안 매인 재료의 출처. */
+export function useOutcomeWalks(): OutcomeWalksView {
+    const v = useContext(WalksCtx);
+    if (!v) throw new Error("PointGridsProvider 밖에서 useOutcomeWalks — main 배선을 확인하세요");
     return v;
 }
 

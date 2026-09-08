@@ -345,8 +345,8 @@ describe("outcome 술어 — 저장 왕복·검증", () => {
     });
 
     it("빈 범위 = 빈 술어 · grain 은 point 고정(걷기 앵커가 시그널)", () => {
-        expect(isPredicateEmpty({ kind: "outcome", metric: "deltaExt", ranges: [] })).toBe(true);
-        expect(predicateGrain({ kind: "outcome", metric: "deltaExt", ranges: [{ from: { kind: "value", value: 0 } }] },
+        expect(isPredicateEmpty({ kind: "outcome", metric: "dropFromClose", ranges: [] })).toBe(true);
+        expect(predicateGrain({ kind: "outcome", metric: "dropFromClose", ranges: [{ from: { kind: "value", value: 0 } }] },
             { hasGroup: () => false, axisScope: () => undefined })).toBe("point");
     });
 

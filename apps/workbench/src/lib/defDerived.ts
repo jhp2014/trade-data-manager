@@ -4,7 +4,7 @@
 // 층 3개 — 키가 곧 층의 의존성 계약이다(키 생성은 lib/pointDef.ts 한 곳):
 //   · judge(판정 6노브) : 자동 Point + 격자 특징 축 + 모수 키 집합 + 걷기 — T·시뮬을 원리적으로 못 본다
 //     ("T 드래그가 1만 시그널을 안 헛돌린다"는 기존 계약이 키 구조로 보존된다).
-//   · +T(t1·t2)        : 결과 단면(OutcomesView)
+//   · +T               : 결과 단면(OutcomesView) — 결과 조건 인스턴스마다 자기 T
 //   · +시뮬 7노브       : 체결 basis(취소 둘만) · 시뮬 결과
 // 걷기 이하는 **게으르다** — 부품이 결과 술어를 안 쓰면 걷기 비용 0(outcomeInUse 게이트의 부품별 일반화).
 //
@@ -33,8 +33,8 @@ export interface DefDerived {
     hasPoint: (pointKey: string) => boolean;
     /** 결과 걷기(T 무관) — 게으름. */
     walks: () => OutcomeWalksView;
-    /** T 단면 — (t1, t2) 별 LRU. */
-    outcomes: (t1: number, t2: number) => OutcomesView;
+    /** T 단면 — 허용 폭별 LRU(결과 조건 인스턴스마다 자기 T 를 든다). */
+    outcomes: (t: number) => OutcomesView;
     /** 체결 basis — 취소 노브 둘 별 LRU. */
     simBasis: (cancel: Pick<TradeSimParams, "cancelRisePct" | "cancelAfterMin">) => SimBasisView;
     /** 시뮬 결과 — 노브 7 별 LRU. */
@@ -45,6 +45,8 @@ export interface DefDerived {
 const CAP_DEFS = 4;
 /** 정의 하나 안의 단면(T·시뮬) 상한 — 드래그 왕복이 무한히 쌓이지 않게. */
 const CAP_SLICES = 4;
+/** 결과 단면(T)만 더 넉넉히 — **인스턴스 수의 함수**다(동시 필요 = 결과 조건 수 + 표시 T + 드래그 전이값). */
+const CAP_OUTCOME_SLICES = 8;
 
 const cacheByBundle = new WeakMap<ByDate, Map<string, DefDerived>>();
 /** 파생 산출물(auto) → 그 정의의 묶음 — 소비자(useRankAxes 등)가 auto 참조만 들고 묶음에 닿는 길. */
@@ -71,7 +73,7 @@ export function defDerivedFor(byDate: ByDate, def: PointJudgeDef): DefDerived {
 }
 
 /** LRU 한 칸 — 접근이 곧 갱신, 넘치면 가장 오래된 것부터. */
-function lru<V>(m: Map<string, V>, k: string, make: () => V): V {
+function lru<V>(m: Map<string, V>, k: string, make: () => V, cap = CAP_SLICES): V {
     const hit = m.get(k);
     if (hit !== undefined) {
         m.delete(k);
@@ -80,7 +82,7 @@ function lru<V>(m: Map<string, V>, k: string, make: () => V): V {
     }
     const v = make();
     m.set(k, v);
-    if (m.size > CAP_SLICES) m.delete(m.keys().next().value!);
+    if (m.size > cap) m.delete(m.keys().next().value!);
     return v;
 }
 
@@ -101,7 +103,7 @@ function makeDerived(byDate: ByDate, def: PointJudgeDef): DefDerived {
         feeds: () => (feeds ??= gridFeatureFeeds(auto, gridOf)),
         hasPoint: (k) => (pointKeys ??= new Set(auto.points.map((a) => pointKeyOf(a)))).has(k),
         walks: walksOf,
-        outcomes: (t1, t2) => lru(outcomes, `${t1}|${t2}`, () => buildOutcomesView(walksOf(), t1, t2)),
+        outcomes: (t) => lru(outcomes, `${t}`, () => buildOutcomesView(walksOf(), t), CAP_OUTCOME_SLICES),
         simBasis: (cancel) => lru(basis, cancelKeyOf(cancel), () => buildSimBasisView(auto, gridsView, cancel)),
         sim: (params) => lru(sims, simKeyOf(params), () => buildSimView(auto, gridsView, params)),
     };

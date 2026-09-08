@@ -10,7 +10,7 @@
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { OUTCOME_METRIC_NAME, type OutcomeMetric } from "../../lib/outcomeMetric.js";
-import { useOutcomes } from "../../lib/PointGridsContext.js";
+import { useOutcomes, useOutcomeWalks } from "../../lib/PointGridsContext.js";
 import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
 import { useSubject } from "../../lib/subject.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
@@ -25,14 +25,15 @@ import { ToleranceRail } from "./ToleranceRail.js";
 
 /** 레일 방향 — 전부 "큰 값 = 오른쪽"(연장은 크게, 낙폭은 얕게가 오른쪽). 값 기준은 전부 T1(기본 허용) 단면·정확값. */
 const METRIC_ROWS: readonly { metric: OutcomeMetric; hint: string }[] = [
-    { metric: "extHigh", hint: "기본 허용 T1 로 이어 읽은 연장 고점(Point 봉 종가 대비 %) — 이내·무눌림은 세션 최고가라 전부 정확값입니다" },
-    { metric: "dropFromHigh", hint: "보고 저가의 낙폭(직전 고점 대비 %) — 초과: T1 을 처음 넘은 눌림 · 이내: T1 이내 최대 눌림. 무눌림은 값 없음(무사건)" },
+    { metric: "extHigh", hint: "허용 폭 T 로 이어 읽은 연장 고점(Point 봉 종가 대비 %) — 이내·무눌림은 세션 최고가라 전부 정확값입니다" },
+    { metric: "dropFromHigh", hint: "보고 저가의 낙폭(직전 고점 대비 %) — 초과: T 를 처음 넘은 눌림 · 이내: T 이내 최대 눌림. 무눌림은 값 없음(무사건)" },
     { metric: "dropFromClose", hint: "그 저가의 Point 봉 종가 대비 % — 진입가 관점의 깊이. 무눌림은 값 없음" },
-    { metric: "deltaExt", hint: "연장 고점 %(T2) − 연장 고점 %(T1) — 양수면 T1→T2 에서 눌림이 흡수돼 고점이 연장된 시그널" },
 ];
 
 export function OutcomePanel(): JSX.Element {
     const outcomes = useOutcomes();
+    const walks = useOutcomeWalks(); // 분포 스트립 재료(T 무관 — 걷기 층 소유)
+    const setDef = useWorkbench((s) => s.setPointDef);
     const v = useFunnel();
     const stages = useWorkbench(selectFilterStages);
     const applyRail = useWorkbench((s) => s.applyFilterRail);
@@ -86,20 +87,17 @@ export function OutcomePanel(): JSX.Element {
         if (!recoveryStage.enabled) toggleStage(recoveryStage.id);
     };
 
-    const { counts, recovery, extendedCount, t1, t2 } = outcomes;
+    const { counts, recovery } = outcomes;
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
             <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>
                 <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>시그널 결과</span>
-                <span title="모수 = 시그널 전부, 기준 = 기본 허용 T1(전부 정확값). 초과 = T1 보다 깊은 눌림 발생 · 이내 = 눌림 전부 T1 이내 · 무눌림 = 2% 이상 눌림 자체가 없음(연장 고점 = 세션 최고가)"
+                <span title="모수 = 시그널 전부, 기준 = 지금 보는 허용 폭 T(전부 정확값). 초과 = T 보다 깊은 눌림 발생 · 이내 = 눌림 전부 T 이내 · 무눌림 = 2% 이상 눌림 자체가 없음(연장 고점 = 세션 최고가)"
                     style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }} className="tabular">
                     {counts.total.toLocaleString()} · 초과 {counts.exceeded.toLocaleString()}
                     {" · "}이내 {counts.contained.toLocaleString()}
                     {" · "}무눌림 {counts.none.toLocaleString()}
-                </span>
-                <span title={`T1→T2 (${t1}→${t2}%) 에서 연장 고점이 커진 시그널(종목 수)`} style={{ fontSize: 10, color: LEG_HIGH, flexShrink: 0 }} className="tabular">
-                    연장 {extendedCount.toLocaleString()}
                 </span>
                 {/* 회복 = 보고 저가 이후 직전 고가 재돌파(세션 최고가 판정, 볼륨 무관). 칩 클릭 = 깔때기 조건 토글. */}
                 <span style={{ display: "inline-flex", gap: 3, flexShrink: 0 }} className="tabular">
@@ -121,7 +119,7 @@ export function OutcomePanel(): JSX.Element {
 
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }}>
                 {counts.total === 0 && <Note>자동 시그널이 아직 없습니다 — 격자 로딩 중이거나 정의 게이트가 전부 걸렀습니다</Note>}
-                <ToleranceRail breakDepths={outcomes.breakDepths} />
+                <ToleranceRail t={outcomes.t} onCommit={(t) => setDef({ toleranceT1Pct: t })} breakDepths={walks.breakDepths} />
                 {METRIC_ROWS.map(({ metric, hint }) => {
                     const key: RailKey = { kind: "outcome", metric };
                     const stage: FilterStage | undefined = stagesFor(stages, key)[0];

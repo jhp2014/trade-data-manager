@@ -13,7 +13,7 @@ const simOf = (over: Partial<SimResult>): SimResult =>
 
 describe("결과 열 어휘", () => {
     it("결과 걷기 6 + 시뮬 4 — @T2 열은 없다(Δ로 충분)·전부 메타가 있다", () => {
-        expect(OUTCOME_BASE_COL_IDS).toEqual(["extHigh", "deltaExt", "dropFromHigh", "dropFromClose", "recovered", "status"]);
+        expect(OUTCOME_BASE_COL_IDS).toEqual(["extHigh", "dropFromHigh", "dropFromClose", "recovered", "status"]);
         expect(OUTCOME_COL_IDS).toEqual([...OUTCOME_BASE_COL_IDS, ...SIM_COL_IDS]);
         for (const id of OUTCOME_COL_IDS) expect(OUTCOME_COL_META[id].label).not.toBe("");
     });
@@ -30,9 +30,9 @@ describe("outcomeSortValue — null = 값 없음(방향 무관 바닥)", () => {
         for (const id of OUTCOME_COL_IDS) expect(outcomeSortValue(undefined, undefined, id)).toBeNull();
     });
     it("숫자 4종 = eval 그대로(셀 표기와 같은 출처) · 무사건 낙폭은 null", () => {
-        const rec = recOf({ eval: { extHigh: 12.3, deltaExt: 0 } });
+        const rec = recOf({ eval: { extHigh: 12.3, dropFromClose: 0 } });
         expect(outcomeSortValue(rec, undefined, "extHigh")).toBe(12.3);
-        expect(outcomeSortValue(rec, undefined, "deltaExt")).toBe(0);
+        expect(outcomeSortValue(rec, undefined, "dropFromClose")).toBe(0);
         expect(outcomeSortValue(rec, undefined, "dropFromHigh")).toBeNull(); // 무눌림의 무사건
     });
     it("상태 서수 = 초과 0 < 이내 1 < 무눌림 2(눌림이 얕아지는 방향)", () => {

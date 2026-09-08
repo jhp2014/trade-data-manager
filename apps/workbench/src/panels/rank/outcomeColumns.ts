@@ -17,14 +17,15 @@ export type SimColId = "simStatus" | "simRequired" | "simPeak" | "simTrough";
 export const SIM_COL_IDS: readonly SimColId[] = ["simStatus", "simRequired", "simPeak", "simTrough"];
 export const isSimColId = (v: unknown): v is SimColId => SIM_COL_IDS.includes(v as SimColId);
 
-/** 결과 열 id — 결과 걷기 6(숫자 4 + 회복·상태) + 시뮬 4. colKey 는 `out:<id>`(같은 이름공간 —
+/** 결과 열 id — 결과 걷기 5(숫자 3 + 회복·상태) + 시뮬 4. colKey 는 `out:<id>`(같은 이름공간 —
  *  둘 다 "시그널 이후" 시트 전용 소스라 유령 청소(`ax:` 만)와 프리셋 규칙을 공유한다). */
 export type OutcomeColId = OutcomeMetric | "recovered" | "status" | SimColId;
 
-/** 결과 걷기 열 6 — 붙박이 "결과" 프리셋의 구성(시뮬 4는 별도 "시뮬" 프리셋 — 사용자 확정). */
-export const OUTCOME_BASE_COL_IDS: readonly OutcomeColId[] = ["extHigh", "deltaExt", "dropFromHigh", "dropFromClose", "recovered", "status"];
+/** 결과 걷기 열 5 — 붙박이 "결과" 프리셋의 구성(시뮬 4는 별도 "시뮬" 프리셋 — 사용자 확정).
+ *  옛 `deltaExt`(Δ 연장폭)는 2026-09-09 폐지 — T 비교는 결과 조건 인스턴스 둘 + 시트 차이 열이 진다. */
+export const OUTCOME_BASE_COL_IDS: readonly OutcomeColId[] = ["extHigh", "dropFromHigh", "dropFromClose", "recovered", "status"];
 
-/** 시트에 서는 순서 그대로 — 결과 걷기 6 뒤에 시뮬 4(과거→미래→시뮬 읽기 순서). */
+/** 시트에 서는 순서 그대로 — 결과 걷기 5 뒤에 시뮬 4(과거→미래→시뮬 읽기 순서). */
 export const OUTCOME_COL_IDS: readonly OutcomeColId[] = [...OUTCOME_BASE_COL_IDS, ...SIM_COL_IDS];
 
 export const isOutcomeColId = (v: unknown): v is OutcomeColId =>
@@ -40,12 +41,11 @@ interface OutcomeColMeta {
 }
 
 export const OUTCOME_COL_META: Record<OutcomeColId, OutcomeColMeta> = {
-    extHigh: { label: "고점@T1", width: 76, justify: "flex-end", help: "기본 허용 T1 의 연장 고점 %(Point 종가 대비) — 술어·차트 표식과 같은 기준" },
-    deltaExt: { label: "Δ연장", width: 70, justify: "flex-end", help: "Δ 연장폭(T1→T2) — T2 관찰 폭까지 허용을 넓히면 더 가는 만큼" },
+    extHigh: { label: "고점", width: 76, justify: "flex-end", help: "허용 폭 T 의 연장 고점 %(Point 종가 대비) — 술어·차트 표식과 같은 기준" },
     dropFromHigh: { label: "저가·고점比", width: 84, justify: "flex-end", help: "보고 저가의 직전 고점 대비 % — 무눌림이면 무사건(—)" },
     dropFromClose: { label: "저가·종가比", width: 84, justify: "flex-end", help: "보고 저가의 Point 종가 대비 % — 무눌림이면 무사건(—)" },
     recovered: { label: "회복", width: 46, justify: "center", help: "보고 저가 이후 직전 고가 재돌파 여부(세션 최고가 판정) — 무눌림은 대상 아님(—)" },
-    status: { label: "상태", width: 56, justify: "center", help: "T1 기준 상태 — 초과(더 깊은 눌림 발생) / 이내(전부 T1 이내) / 무눌림(2% 이상 눌림 없음)" },
+    status: { label: "상태", width: 56, justify: "center", help: "허용 폭 T 기준 상태 — 초과(더 깊은 눌림 발생) / 이내(전부 T 이내) / 무눌림(2% 이상 눌림 없음)" },
     simStatus: { label: "시뮬", width: 66, justify: "center", help: "트레이드 시뮬 분류 — 체결 3(익절/손절/미결) + 미체결 3(눌림부족/이탈/시간). 노브는 시뮬 패널에서" },
     simRequired: { label: "요구 타점", width: 76, justify: "flex-end", help: "체결되려면 타점 n 이 얼마였어야 했나 — (종가 − 취소 전 최저 눌림가)/종가. 음수 = 종가 아래로 안 옴. 체결가 E 는 셀 툴팁" },
     simPeak: { label: "도달↑", width: 70, justify: "flex-end", help: "익절 브랜치 최고 도달 %(체결가 분모) — 트레일↑ 발동 전 최고가(미발동 = 잔여 최고가)" },

@@ -296,7 +296,7 @@ export function useFilterFunnel(): FunnelView {
             const oPlace = new Map(views.map((v) => [v.axis.key, buildAxisOrderIndex(v.line)]));
             const oValues = new Map(views.map((v) => [v.axis.key, v.values]));
             let oc: OutcomesView | null = null;
-            const outcomesOf = (): OutcomesView => (oc ??= derived.outcomes(def.toleranceT1Pct, def.toleranceT2Pct));
+            const outcomesOf = (): OutcomesView => (oc ??= derived.outcomes(def.toleranceT1Pct));
             const made: DefMaterials = {
                 timesOf: (c) => times.get(chartKey(c)) ?? [],
                 grainLook, // 층위 사전은 정의 무관(그룹 scope·축 scope 는 정의가 안 바꾼다)
