@@ -139,7 +139,10 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     // 결과 열이 갈라지는 자리 — **배타 3갈래**(decisions.md 「허용 폭 T 의 인스턴스화」):
     //   조립 뷰면 부품(모수가 다름) / 아니고 결과 조건이 있으면 인스턴스(T 가 다름) / 그 외 붙박이.
     // 이 배타성이 "부품 × 인스턴스" 곱셈을 막는다.
-    const outcomeStages = useWorkbench((s) => selectFilterStages(s).filter((st) => st.predicates.some((pr) => pr.kind === "outcome")));
+    // ⚠ 셀렉터 안에서 filter 하지 않는다 — 매번 새 배열이라 **스토어의 모든 갱신**이 이 컴포넌트를
+    //   깨우고 시트 전량 재정렬로 번진다(zustand 는 얕은 비교). stages 를 그대로 구독하고 여기서 접는다.
+    const allStages = useWorkbench(selectFilterStages);
+    const outcomeStages = useMemo(() => allStages.filter((st) => st.predicates.some((pr) => pr.kind === "outcome")), [allStages]);
     const outScopes = useMemo<OutScope[] | undefined>(() => {
         if (dayMode) return undefined;
         if (viewingAssembly) {
@@ -289,7 +292,9 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     }, [partAccess]);
     /** 차이 열 값 — 피연산자 열의 **같은 접근자**를 두 번 부른다(값 정의가 한 곳이라 정렬·칸이 못 갈린다). */
     const difOf = useMemo(() => {
-        const byCol = new Map(cols.displayCols.filter((c) => c.key === "out").map((c) => [colKey(c), c]));
+        // ⚠ 재료는 **숨김 이전 목록**(cols.baseOutCols)이다 — displayCols 를 물면 피연산자 열을 숨기는
+        //   순간 차이 열이 조용히 전부 "—" 가 된다(열은 살아 있고 청소 기준도 숨김과 무관하다).
+        const byCol = new Map(cols.baseOutCols.map((c) => [colKey(c), c]));
         const valueAt = (row: SheetRow, key: string): number | null => {
             const c = byCol.get(key);
             if (!c || c.key !== "out") return null;
@@ -303,7 +308,7 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
             const b = valueAt(row, d.b);
             return a === null || b === null ? null : a - b;
         };
-    }, [cols.displayCols, cols.difs, outcomeOf, simOf]);
+    }, [cols.baseOutCols, cols.difs, outcomeOf, simOf]);
 
     const sortCtx = useMemo<SortCtx>(() => ({ nameOf, outcomeOf, simOf, difOf }), [nameOf, outcomeOf, simOf, difOf]);
     const sorted = useMemo(() => sortSheetRows(rows, sort, sortCtx, cutKeys), [rows, sort, sortCtx, cutKeys]);

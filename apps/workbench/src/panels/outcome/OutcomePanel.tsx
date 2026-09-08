@@ -38,7 +38,7 @@ export function OutcomePanel(): JSX.Element {
     const sliceAt = useOutcomeSlices();
     const walks = useOutcomeWalks(); // 분포 스트립 재료(T 무관 — 걷기 층 소유)
     // 표시 T 와 연동 행 — 이 판의 모든 값이 이 T 단면에서 나온다(단일 출처는 outcomeLink).
-    const { outcomeStages, linkedId, setLinked, displayT, setDisplayT } = useLinkedOutcome();
+    const { outcomeStages, linkedId, setLinked, displayT, setDisplayT, conflictAt } = useLinkedOutcome();
     const outcomes = sliceAt(displayT);
     const v = useFunnel();
     const stages = useWorkbench(selectFilterStages);
@@ -149,7 +149,8 @@ export function OutcomePanel(): JSX.Element {
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }}>
                 {counts.total === 0 && <Note>자동 시그널이 아직 없습니다 — 격자 로딩 중이거나 정의 게이트가 전부 걸렀습니다</Note>}
                 <ToleranceRail t={displayT} onCommit={setDisplayT} breakDepths={walks.breakDepths}
-                    note={linkedId === null ? "탐색(조건 아님)" : "연동 조건의 T"} />
+                    note={conflictAt !== null ? `T ${conflictAt}% 에 같은 조건이 이미 있습니다`
+                        : linkedId === null ? "탐색(조건 아님)" : "연동 조건의 T"} />
                 {METRIC_ROWS.map(({ metric, hint }) => {
                     const key: RailKey = { kind: "outcome", metric, t: displayT };
                     const stage: FilterStage | undefined = stagesFor(stages, key)[0];

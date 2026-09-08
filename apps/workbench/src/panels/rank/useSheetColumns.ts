@@ -12,8 +12,8 @@ import { isComputedAxis } from "../../lib/computedAxis.js";
 import type { AxisRef } from "../../lib/computedAxis.js";
 import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import { usePersistedState } from "../../store/persist.js";
-import { useWorkbench } from "../../store/workbench.js";
-import { OUTCOME_COL_IDS } from "./outcomeColumns.js";
+import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { OUTCOME_BASE_COL_IDS, OUTCOME_COL_IDS } from "./outcomeColumns.js";
 import { layoutColumns, colKey, pruneAxisKeys, pruneDifKeys, pruneOutKeys, reorderFrozenCols, type Col, type OutScope } from "./sheetColumns.js";
 import { matchPresetCols, parseSheetPresets, presetHidden, prunePresets, type SheetPreset } from "./sheetPresets.js";
 
@@ -83,6 +83,8 @@ export interface SheetColumns {
 
     /** 차이 열들(A − B) — 피연산자는 결과 열 colKey. */
     difs: DifCol[];
+    /** 숨김 이전의 결과 열 전부 — **차이 열 값의 재료**다(숨김은 표시의 일이지 값의 일이 아니다). */
+    baseOutCols: Col[];
     /** 차이 열 만들기 — 같은 쌍이 이미 있으면 안 만든다(중복 열은 정보가 없다). */
     addDif: (a: string, b: string) => void;
     removeDif: (id: string) => void;
@@ -136,10 +138,16 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     // 아직 목록에 없다). 죽은 게 아니라 보호 목록을 합쳐 넘긴다(레일 서랍과 같은 처방).
     // 부품 열(`out:<setId>:<metric>`)의 생사 기준 = 저장 집합 목록 — 스토어 생성 때 동기 로드라
     // 축과 달리 로딩 가드가 필요 없다(savedSetsSlice.loadSavedSets).
-    // 인스턴스 열(`out:i:<stageId>:…`)의 생사 기준 = 지금 서 있는 자리 목록(패널이 넘긴 outScopes).
+    // 유령 청소의 생사 기준 — **저장물 자체**를 본다(지금 화면에 서 있는 목록이 아니라).
+    // ⚠ outScopes 를 기준으로 쓰면 조립 뷰로 잠깐 옮기는 것만으로 인스턴스 열의 고정·숨김·폭·프리셋이
+    //   영구 삭제된다(그때 outScopes 는 부품뿐이다). 부품이 savedSets 를 보는 것과 대칭이어야 한다.
     const savedSets = useWorkbench((s) => s.savedSets);
     const liveSetIds = useMemo(() => savedSets.map((s) => s.id), [savedSets]);
-    const liveStageIds = useMemo(() => (outScopes ?? []).filter((sc) => sc.kind === "inst").map((sc) => sc.id), [outScopes]);
+    const allStages = useWorkbench(selectFilterStages);
+    const liveStageIds = useMemo(
+        () => allStages.filter((st) => st.predicates.some((p) => p.kind === "outcome")).map((st) => st.id),
+        [allStages],
+    );
     useEffect(() => {
         if (axesLoading || axes.length === 0) return;
         const ids = [...(pruneAxisIds ?? axes.map((a) => a.key)), ...GRID_AXIS_IDS];
@@ -193,7 +201,16 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
             ? [{ key: "points" } as Col, { key: "comment" } as Col]
             // 갈라진 자리가 있으면 자리 순서 × 열 순서(같은 자리의 열들이 붙어 선다) — 없으면 붙박이 열.
             : outScopes && outScopes.length > 0
-                ? outScopes.flatMap((sc) => OUTCOME_COL_IDS.map((id): Col => ({ key: "out", metric: id, scope: sc })))
+                // 인스턴스 자리는 **결과 걷기 열만** 복제한다 — 시뮬은 T 무관이라 인스턴스로 갈리면
+                // 같은 값의 열이 조건 수만큼 늘 뿐이다(부품은 정의가 달라 시뮬도 갈린다).
+                ? [
+                    ...outScopes.flatMap((sc) => (sc.kind === "part" ? OUTCOME_COL_IDS : OUTCOME_BASE_COL_IDS)
+                        .map((id): Col => ({ key: "out", metric: id, scope: sc }))),
+                    // 인스턴스 갈래에선 시뮬 열이 자리 없이 한 벌만 선다(값이 자리와 무관하므로).
+                    ...(outScopes.every((sc) => sc.kind === "inst")
+                        ? OUTCOME_COL_IDS.filter((id) => !OUTCOME_BASE_COL_IDS.includes(id)).map((id): Col => ({ key: "out", metric: id }))
+                        : []),
+                ]
                 : OUTCOME_COL_IDS.map((id): Col => ({ key: "out", metric: id }))),
         // 차이 열은 언제나 맨 뒤(피연산자 열보다 오른쪽이라 "빼는 순서"가 눈으로 읽힌다).
         ...(day ? [] : difs.map((d): Col => ({ key: "dif", id: d.id, a: d.a, b: d.b }))),
@@ -206,6 +223,8 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     // 지금 서 있는 열 키들 — 차이 열의 피연산자 생존 판정 기준(자기 자신은 뺀다).
     const baseKeysRef = useRef<string[]>([]);
     baseKeysRef.current = baseCols.filter((c) => c.key !== "dif").map(colKey);
+    /** 결과 열만(숨김 이전) — 차이 열 값이 무는 재료. */
+    const baseOutCols = useMemo(() => baseCols.filter((c) => c.key === "out"), [baseCols]);
 
     const layout = useMemo(
         () => layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths: effectiveWidths, containerW, axisMin }),
@@ -235,6 +254,7 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         }),
         deletePreset: (name) => setPresets((ps) => ps.filter((p) => p.name !== name)),
         difs,
+        baseOutCols,
         addDif: (a, b) => setDifs((ds) => (a === b || ds.some((d) => d.a === a && d.b === b) ? ds
             : [...ds, { id: `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, a, b }])),
         removeDif: (id) => setDifs((ds) => ds.filter((d) => d.id !== id)),
