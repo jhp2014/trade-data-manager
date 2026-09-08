@@ -31,7 +31,7 @@ import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
 import { buildAxisOrderIndex, buildAxisOrderIndexes } from "./axisLookup.js";
 import { resolveBound, toFunnelStages, type EvalLookup } from "./evaluate.js";
 import type { LabelLookup } from "./label.js";
-import type { DefMaterials, ResolvedSet, SetResolveCtx } from "./resolveSet.js";
+import { assemblyDiagOf, type AssemblyDiag, type DefMaterials, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
 import { useSetViews, type ViewedSet } from "./useSetViews.js";
 import {
     activeStages, funnelOrder, isPredicateDead, resolveAutoGrain,
@@ -77,6 +77,11 @@ export interface FunnelView {
      * 소비 패널은 viewOf(자기 바인딩) 하나만 읽으면 되고, 바인딩이 없던 시절의 코드와 같은 필드를 쓴다.
      */
     viewOf: (ref: SetRef | null) => ViewedSet;
+    /**
+     * 조립 진단(부품별 건수·고유 기여·미배치 + 합집합 크기) — **펼친 판에서만 부를 것**(부품 수 × 정산 비용.
+     * 정산 자체는 세션 캐시가 받지만 전개·고유 집계는 호출마다 돈다). 로딩 중·지워진 조립은 null.
+     */
+    assemblyDiag: (id: string) => AssemblyDiag | null;
 }
 
 /** 재료 세대 일련번호 — 값 자체엔 뜻이 없고 "바뀌었다"만 말한다(발급은 아래 materialsEpoch). */
@@ -336,6 +341,11 @@ export function useFilterFunnel(): FunnelView {
 
     const { resolveSet, viewOf } = useSetViews(result, setCtx);
 
+    const assemblyDiag = useCallback(
+        (id: string): AssemblyDiag | null => (result === null ? null : assemblyDiagOf(id, setCtx)),
+        [result, setCtx],
+    );
+
     const deadStageIds = useMemo(
         () => (isLoading ? [] : stages.filter((s) => s.predicates.some((p) => isPredicateDead(p, grainLook))).map((s) => s.id)),
         [isLoading, stages, grainLook],
@@ -365,7 +375,8 @@ export function useFilterFunnel(): FunnelView {
             labelLook,
             resolveSet,
             viewOf,
+            assemblyDiag,
         }),
-        [isLoading, grain, universe, stagesOrdered, active, result, deadStageIds, labelLook, resolveSet, viewOf],
+        [isLoading, grain, universe, stagesOrdered, active, result, deadStageIds, labelLook, resolveSet, viewOf, assemblyDiag],
     );
 }

@@ -143,6 +143,8 @@ export interface FunnelResult {
     stages: StageTally[];
     /** 전 단계 3치 AND 통과 — **순서와 무관**. 미배치는 여기 못 든다. */
     survivors: FunnelItem[];
+    /** 전 단계 AND 가 미배치(undefined)로 남은 항목 수 — 생존도 탈락도 아닌 결손의 총량(조용히 사라지면 안 된다). */
+    pendingCount: number;
 }
 
 const emptyCells = (): Record<FunnelCell, FunnelItem[]> =>
@@ -166,6 +168,7 @@ export function tallyFunnel(items: readonly FunnelItem[], stages: readonly Funne
     }));
 
     const survivors: FunnelItem[] = [];
+    let pendingCount = 0;
     for (const item of items) {
         let upstream: Verdict = true; // 앞이 없으면 막힌 적도 없다(공허참 — and3([]) 와 같은 값)
         for (let s = 0; s < stages.length; s++) {
@@ -179,8 +182,9 @@ export function tallyFunnel(items: readonly FunnelItem[], stages: readonly Funne
         }
         // 다 접은 upstream = 전 단계 AND — 생존 판정에 한 바퀴 더 돌 필요가 없다(순서와 무관한 값).
         if (upstream === true) survivors.push(item);
+        else if (upstream === undefined) pendingCount++;
     }
-    return { universe: items.length, stages: tallies, survivors };
+    return { universe: items.length, stages: tallies, survivors, pendingCount };
 }
 
 /**

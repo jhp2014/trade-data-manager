@@ -12,14 +12,15 @@
 // **넓어지는** 방향이라, 집합 하나 지웠는데 어느 패널이 전체를 보며 틀린 분모로 계속 읽게 된다.
 // "결손은 결손"(축 규칙 3)이 참조에도 적용되는 것.
 import {
-    expandUniverse, tallyFunnel,
+    expandUniverse, funnelKey, tallyFunnel,
     type ChartRef, type FunnelCell, type FunnelItem, type FunnelResult, type Grain, type PointDefinition,
 } from "@trade-data-manager/market/domain";
+import { expandToPointItems } from "../../lib/grainView.js";
 import { evalDefKeyOf } from "../../lib/pointDef.js";
 import type { SetRef } from "../../lib/setRef.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import type { Assembly } from "../../store/assembliesSlice.js";
-import { unionOf, type UnionPart } from "./assembly.js";
+import { unionGrain, unionOf, uniqueCounts, type UnionPart } from "./assembly.js";
 import { toFunnelStages, type EvalLookup } from "./evaluate.js";
 import { activeStages, funnelOrder, resolveAutoGrain, type FilterStage, type GrainLookup } from "./stage.js";
 
@@ -85,6 +86,8 @@ export interface ResolvedSet {
     /** 고유 층위 — 판정이 일어난 알갱이. 표시 변환(전개/투영)은 소비 패널의 일이다. */
     grain: Grain;
     items: FunnelItem[];
+    /** 저장 집합만: 전 단계 AND 미배치 수(그 정의 유니버스 기준) — 조립 부품 줄이 병기해 결손이 조용히 안 사라진다. */
+    pending?: number;
 }
 
 const BROKEN: ResolvedSet = { broken: true, grain: "day", items: [] };
@@ -155,8 +158,57 @@ function resolveSaved(setId: string, ctx: SetResolveCtx): ResolvedSet {
     const s = ctx.savedSetOf(setId);
     if (s === undefined) return BROKEN;
     const r = resolveDef(setId, ctx);
-    if (s.part.kind === "survivors") return { broken: false, grain: r.grain, items: r.tally.survivors };
-    return cellItems(r, s.part.stageId, s.part.cells);
+    if (s.part.kind === "survivors") return { broken: false, grain: r.grain, items: r.tally.survivors, pending: r.tally.pendingCount };
+    const c = cellItems(r, s.part.stageId, s.part.cells);
+    return c.broken ? c : { ...c, pending: r.tally.pendingCount };
+}
+
+/** 조립 진단 — 부품별 (건수 · 고유 기여 · 미배치 · 깨짐) + 합집합 크기. SetManager 펼침이 소비한다.
+ *  고유 기여의 키는 **합집합과 같은 층위**로 만든다(층위가 갈리면 같은 항목이 다른 키가 되어 전부 고유로 부푼다). */
+export interface AssemblyPartDiag {
+    setId: string;
+    enabled: boolean;
+    broken: boolean;
+    /** 부품 고유 층위의 건수(칩 툴팁과 같은 자). */
+    count: number;
+    /** 합집합 층위에서 이 부품만 든 항목 수 — "이 부품을 빼면 합집합이 얼마나 주나". 꺼짐·깨짐은 0. */
+    unique: number;
+    /** 그 부품 정의 유니버스의 전 단계 AND 미배치 — 생존도 탈락도 아닌 결손(조용히 안 사라진다). */
+    pending: number;
+}
+export interface AssemblyDiag {
+    grain: Grain;
+    /** 합집합 크기(켠 부품들, 중복 접힘). */
+    total: number;
+    parts: AssemblyPartDiag[];
+}
+
+export function assemblyDiagOf(id: string, ctx: SetResolveCtx): AssemblyDiag | null {
+    const a = ctx.assemblyOf(id);
+    if (a === undefined) return null;
+    const resolved = a.members.map((m) => ({ m, set: ctx.savedSetOf(m.setId), r: resolveSaved(m.setId, ctx) }));
+    const live = resolved.filter((p) => p.m.enabled && !p.r.broken);
+    const grain = unionGrain(live.map((p) => p.r));
+    // 켠 부품들의 합집합-층위 키 집합 — day 부품의 전개는 그 부품 정의의 시각으로(리졸버의 규칙 그대로).
+    const keySets = live.map((p) => {
+        const items = grain === "point" ? expandToPointItems(p.r.items, ctx.materialsFor(p.set?.pointDef).timesOf) : p.r.items;
+        return new Set(items.map(funnelKey));
+    });
+    const uniques = uniqueCounts(keySets);
+    const union = new Set<string>();
+    for (const s of keySets) for (const k of s) union.add(k);
+    const parts: AssemblyPartDiag[] = resolved.map(({ m, r }) => {
+        const li = live.findIndex((p) => p.m.setId === m.setId);
+        return {
+            setId: m.setId,
+            enabled: m.enabled,
+            broken: r.broken,
+            count: r.items.length,
+            unique: li >= 0 ? uniques[li]! : 0,
+            pending: r.pending ?? 0,
+        };
+    });
+    return { grain, total: union.size, parts };
 }
 
 /** 부위 추출 — 정산에서 한 단계의 칸들을 꺼낸다. 한 단계의 칸들은 서로소라 합집합에 dedupe 가 필요 없다. */

@@ -170,7 +170,7 @@ describe("작업 깔때기의 칸 — 짚은 칸의 유일한 합집합 구현",
             activeFilter: {
                 grain: "point",
                 active: [],
-                tally: { universe: 1, stages: [], survivors: [{ stockCode: "000003", date: "2026-07-03", time: "11:00:00" }] },
+                tally: { universe: 1, stages: [], survivors: [{ stockCode: "000003", date: "2026-07-03", time: "11:00:00" }], pendingCount: 0 },
             },
         };
         const r = resolveSetRef({ kind: "survivors" }, injected);
