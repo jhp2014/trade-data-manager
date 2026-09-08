@@ -14,6 +14,7 @@ import {
     TOLERANCE_MAX_PCT,
     TOLERANCE_MIN_PCT,
     type PointDefinition,
+    type PointJudgeDef,
     type TradeSimParams,
 } from "@trade-data-manager/market/domain";
 
@@ -85,6 +86,21 @@ export const sameQualifyWindows = (a: readonly QualifyWindow[], b: readonly Qual
  * 무관한 노브(T 드래그)를 만질 때마다 1만 시그널 파생이 헛돈다. 문자열 하나로 내용을 대신 문다.
  */
 export const qualifyKeyOf = (windows: readonly QualifyWindow[]): string => windows.map((w) => `${w.from}-${w.to}`).join(",");
+
+// ── 정의별 파생 캐시(defDerived)의 키들 — 키 생성은 이 파일 한 곳이다(qualifyKeyOf 와 같은 이유:
+//    두 벌이면 언젠가 다른 자로 재서 같은 정의가 다른 칸에 쌓인다).
+
+/** 판정 노브 6개의 내용 키 — 자동 Point 파생·격자 특징·걷기가 전부 이 키에 좌우된다(T·시뮬은 안 본다). */
+export const judgeKeyOf = (d: PointJudgeDef): string =>
+    [d.baselineGateEok, d.renewalGateEok, qualifyKeyOf(d.qualifyWindows), d.mergeRisePct, d.bullOnly, d.approachPct].join("|");
+
+/** 시뮬 노브 7개의 내용 키(취소 둘 포함) — null(off)은 "-" 로 굳혀 0 과 갈린다. */
+export const simKeyOf = (p: TradeSimParams): string =>
+    [p.entry.anchor, p.entry.pct, p.stopPct, p.takePct, p.trailUpPct, p.trailDownPct, p.cancelRisePct ?? "-", p.cancelAfterMin ?? "-"].join("|");
+
+/** 체결 basis 는 취소 노브 둘에만 의존한다(useTradeSim 층 분리 계약) — 키도 그 둘만. */
+export const cancelKeyOf = (p: Pick<TradeSimParams, "cancelRisePct" | "cancelAfterMin">): string =>
+    `${p.cancelRisePct ?? "-"}|${p.cancelAfterMin ?? "-"}`;
 
 /**
  * 옛 저장물 승계 — 이 필드는 두 번 확장됐다(스칼라 → 창 하나 → 목록). 새 채널이 있으면 그쪽이 이긴다:

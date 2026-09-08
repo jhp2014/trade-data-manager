@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 import { computedAxesQuery } from "../api/queries.js";
 import { computedAxisView, type AxisRef } from "./computedAxis.js";
+import { derivedOfAuto } from "./defDerived.js";
 import { gridFeatureFeeds, GRID_AXIS_IDS } from "./gridFeatures.js";
 import { useAutoPoints, usePointGrids } from "./PointGridsContext.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -61,7 +62,10 @@ export function useRankAxesValue(): RankAxesView {
     const gridsView = usePointGrids();
     const computed = useMemo(() => {
         const server = computedQ.data ?? [];
-        const synth = autoView.points.length > 0 ? gridFeatureFeeds(autoView, gridsView.gridOf) : [];
+        // 정의별 캐시 산출물이면 피드도 캐시(정의를 오가도 재계산 없음) — 아니면(테스트 주입 등) 직접 계산.
+        const synth = autoView.points.length > 0
+            ? (derivedOfAuto(autoView)?.feeds() ?? gridFeatureFeeds(autoView, gridsView.gridOf))
+            : [];
         // 키 충돌 가드 — 서버가 승계 키를 다시 서빙하면 `axes` 엔 둘, `linesByAxis`(Map)엔 하나가 되어
         // **시트 열이 겹치고 그중 하나는 값이 어긋난다**(조용한 사고). 타입은 못 잡으니 여기서 짖는다.
         if (import.meta.env.DEV) {

@@ -29,17 +29,20 @@ export interface OutcomeWalksView {
     total: number;
 }
 
+/** 걷기 조립(순수) — 시그널·격자에만 의존한다(T 무관 계약의 실물). 호출자는 아래 훅과 defDerived 캐시. */
+export function buildWalksView(auto: AutoPointsView, grids: PointGridsView): OutcomeWalksView {
+    const byKey = new Map<string, OutcomeWalkRec>();
+    for (const a of auto.points) {
+        const grid = grids.gridOf(a.stockCode, a.date);
+        if (!grid) continue;
+        byKey.set(pointKeyOf({ stockCode: a.stockCode, date: a.date, time: a.time }), { walk: walkOutcome(grid, a.point), close: a.point.close });
+    }
+    return { byKey, total: auto.points.length };
+}
+
 /** ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(걷기가 인스턴스마다 복제된다). */
 export function useOutcomeWalksValue(auto: AutoPointsView, grids: PointGridsView): OutcomeWalksView {
-    return useMemo<OutcomeWalksView>(() => {
-        const byKey = new Map<string, OutcomeWalkRec>();
-        for (const a of auto.points) {
-            const grid = grids.gridOf(a.stockCode, a.date);
-            if (!grid) continue;
-            byKey.set(pointKeyOf({ stockCode: a.stockCode, date: a.date, time: a.time }), { walk: walkOutcome(grid, a.point), close: a.point.close });
-        }
-        return { byKey, total: auto.points.length };
-    }, [auto, grids]);
+    return useMemo<OutcomeWalksView>(() => buildWalksView(auto, grids), [auto, grids]);
 }
 
 /** 시그널 하나의 결과 레코드 — 기준은 전부 T1(기본 허용) 단면(2026-09-04 T2→T1 뒤집음). */

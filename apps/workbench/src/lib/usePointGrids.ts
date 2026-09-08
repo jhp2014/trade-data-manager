@@ -1,13 +1,15 @@
-// 자동 타점 격자 — **읽기 포트**(번들 통째 + O(1) 조회) + 자동 Point 파생의 **유일한 계산 자리**.
+// 자동 타점 격자 — **읽기 포트**(번들 통째 + O(1) 조회) + 자동 Point 파생 뷰의 훅.
 //
-// 격자는 서버 파일 캐시의 압축물(구조·신고가 목록)이고, Point 는 여기서 정의(pointDefSlice) 한 벌로
-// 즉석 파생한다 — 계산 주체는 core pointsOf(서버 recon 과 같은 함수). 파생을 이 훅 밖에서 또 돌리면
+// 격자는 서버 파일 캐시의 압축물(구조·신고가 목록)이고, Point 는 정의(pointDefSlice) 한 벌로 즉석
+// 파생한다 — 계산 주체는 core pointsOf(서버 recon 과 같은 함수), 계산 자리는 **정의별 캐시 한 곳**
+// (defDerived — 정의를 오가도 같은 판정 키면 재파생이 없다). 파생을 그 캐시 밖에서 또 돌리면
 // 1만 객체가 화면 수만큼 복제되므로, 소비자(시트·깔때기·차트 마커)는 전부 이 훅의 산출물을 본다.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { chartKeyOf, minuteToHms, pointsOf, type DerivedPoint, type PointGrid, type PointJudgeDef, type ReviewPointKey } from "@trade-data-manager/market/domain";
+import { chartKeyOf, type DerivedPoint, type PointGrid, type PointJudgeDef, type ReviewPointKey } from "@trade-data-manager/market/domain";
 import { pointGridsQuery } from "../api/queries.js";
 import { useWorkbench } from "../store/workbench.js";
+import { defDerivedFor } from "./defDerived.js";
 import { qualifyKeyOf } from "./pointDef.js";
 
 export interface PointGridsView {
@@ -78,23 +80,12 @@ export function useAutoPointsValue(): AutoPointsView {
         [baselineGateEok, renewalGateEok, qualifyKey, mergeRisePct, bullOnly, approachPct],
     );
     return useMemo<AutoPointsView>(() => {
-        const data = q.data ?? null;
-        const points: AutoPoint[] = [];
-        const byChart = new Map<string, DerivedPoint[]>();
-        if (data) {
-            for (const [date, byCode] of data.byDate) {
-                for (const [stockCode, grid] of byCode) {
-                    const derived = pointsOf(grid, def);
-                    if (derived.length === 0) continue;
-                    byChart.set(chartKeyOf({ stockCode, date }), derived);
-                    for (const p of derived) points.push({ stockCode, date, time: minuteToHms(p.min), point: p });
-                }
-            }
-        }
-        const rows: ReviewPointKey[] = points
-            .map((a) => ({ stockCode: a.stockCode, date: a.date, time: a.time }))
-            .sort((x, y) => (x.date !== y.date ? (x.date < y.date ? 1 : -1) : x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
-        return { isLoading: q.isLoading, error: (q.error as Error | null) ?? null, points, byChart, rows };
+        if (!q.data) return { isLoading: q.isLoading, error: (q.error as Error | null) ?? null, points: [], byChart: new Map(), rows: [] };
+        // 파생은 정의별 캐시 한 곳(defDerived) — 정의를 오가도(집합 열기 A↔B) 같은 판정 키면 재파생이 없다.
+        const v = defDerivedFor(q.data.byDate, def).auto;
+        // 드문 갈래: 번들은 있는데 refetch 가 실패한 상태 — 캐시 산출물에 오류만 실어 낸다(참조가 갈리지만 오류 상태 자체가 드묾).
+        const err = (q.error as Error | null) ?? null;
+        return err ? { ...v, error: err } : v;
     }, [q.data, q.isLoading, q.error, def]);
 }
 
