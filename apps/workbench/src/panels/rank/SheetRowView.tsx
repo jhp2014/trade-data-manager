@@ -62,9 +62,14 @@ export interface SheetRowViewProps {
      * 결과 열의 레코드(시트 전용 소스 — useOutcomes). day 행은 언제나 undefined(결과는 타점의 개념).
      * 패널이 **참조를 고정**해 넘긴다 — T(허용 폭)가 바뀌면 참조가 갈려 memo 가 새로 그린다.
      */
-    outcomeOf: (row: SheetRow) => OutcomeRecord | undefined;
+    outcomeOf: (row: SheetRow, setId?: string) => OutcomeRecord | undefined;
     /** 시뮬 열의 레코드(useTradeSim) — outcomeOf 와 같은 계약(참조 고정, day 행은 undefined). */
-    simOf: (row: SheetRow) => SimResult | undefined;
+    simOf: (row: SheetRow, setId?: string) => SimResult | undefined;
+    /**
+     * 조립 뷰의 부품 열 전용 — 이 행(타점)이 그 부품 정의의 **모수 밖**인가(그 정의엔 이 시그널이 없다).
+     * 빈 칸(미계산·무사건 —)과 구분해야 하는 정보라 셀이 회색 "밖"으로 말한다. 참조 고정 계약 동일.
+     */
+    outsideOf: (row: SheetRow, setId: string) => boolean;
     sortAxisId: string | null;
     focus: boolean;
     pinned: boolean;
@@ -81,7 +86,7 @@ export interface SheetRowViewProps {
 }
 
 function SheetRowViewImpl({
-    row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, outcomeOf, simOf, sortAxisId,
+    row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, outcomeOf, simOf, outsideOf, sortAxisId,
     focus, pinned, dim, inPinnedBlock = false, isLastPinned = false, top, h,
 }: SheetRowViewProps): JSX.Element {
     const key = rowKey(row);
@@ -165,9 +170,19 @@ function SheetRowViewImpl({
         // 결과 열(point 행 전용, 시트 전용 소스) — 표기·색·툴팁은 옛 결과 시트(2026-09-04 폐지) 승계.
         // 시뮬 4열도 같은 `out:` 이름공간·같은 셀 자리에 서되 소스만 갈린다(simOf — 트레이드 시뮬).
         out: (c) => {
-            const metric = (c as { metric: OutcomeColId }).metric;
+            const { metric, part } = c as { metric: OutcomeColId; part?: { setId: string; name: string } };
+            // 부품 열의 "밖" — 그 부품 정의엔 이 시그널이 없다(빈 칸 = 미계산·무사건과 다른 정보다:
+            // 정의가 다르면 시그널이 다르다는 걸 눈으로 보는 자리 — decisions.md 「집합 조립 (OR)」).
+            if (part && outsideOf(row, part.setId)) {
+                return {
+                    onClick: () => h.onNav(row),
+                    title: `부품 「${part.name}」 의 모수 밖 — 그 정의(게이트·자격 시각 등)로는 이 타점이 존재하지 않습니다`,
+                    style: { cursor: "pointer" },
+                    body: <span style={{ color: "var(--text-tertiary)", fontSize: 10 }}>밖</span>,
+                };
+            }
             if (isSimColId(metric)) {
-                const rec = simOf(row);
+                const rec = simOf(row, part?.setId);
                 return {
                     onClick: () => h.onNav(row),
                     // 체결가 E 는 열이 아니라 툴팁(사용자 확정 — 행마다 종가×(1−n)이라 비교 정보가 없다).
@@ -176,7 +191,7 @@ function SheetRowViewImpl({
                     body: <SimCell metric={metric} rec={rec} />,
                 };
             }
-            const rec = outcomeOf(row);
+            const rec = outcomeOf(row, part?.setId);
             return {
                 onClick: () => h.onNav(row),
                 title: OUTCOME_COL_META[metric].help,
@@ -222,7 +237,7 @@ function SheetRowViewImpl({
 export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.row === b.row && a.cols === b.cols && a.leftOf === b.leftOf && a.lastFrozenKey === b.lastFrozenKey &&
     a.widthOf === b.widthOf && a.name === b.name && a.mode === b.mode && a.valuedOf === b.valuedOf &&
-    a.outcomeOf === b.outcomeOf && a.simOf === b.simOf && a.sortAxisId === b.sortAxisId && a.focus === b.focus &&
+    a.outcomeOf === b.outcomeOf && a.simOf === b.simOf && a.outsideOf === b.outsideOf && a.sortAxisId === b.sortAxisId && a.focus === b.focus &&
     a.pinned === b.pinned && a.dim === b.dim && a.top === b.top &&
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,
 );

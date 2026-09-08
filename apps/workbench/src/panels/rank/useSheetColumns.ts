@@ -14,7 +14,7 @@ import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { OUTCOME_COL_IDS } from "./outcomeColumns.js";
-import { layoutColumns, colKey, pruneAxisKeys, reorderFrozenCols, type Col } from "./sheetColumns.js";
+import { layoutColumns, colKey, pruneAxisKeys, pruneOutKeys, reorderFrozenCols, type Col, type OutPart } from "./sheetColumns.js";
 import { parseSheetPresets, presetHidden, prunePresets, type SheetPreset } from "./sheetPresets.js";
 
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
@@ -73,9 +73,14 @@ export interface SheetColumns {
     flashCol: string | null;
 }
 
-export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode = "point", pruneAxisIds }: {
+export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode = "point", pruneAxisIds, outParts }: {
     axes: AxisRef[];
     axesLoading: boolean;
+    /**
+     * 조립 뷰의 부품들 — 실리면 결과 열(`out:`)이 **부품별로 갈라진다**(공용 결과 열은 그동안 안 선다:
+     * 현재 정의 값이 조립 옆에 서면 어느 정의의 숫자인지 눈으로 못 가른다). point 행 모드에만 뜻이 있다.
+     */
+    outParts?: readonly OutPart[];
     /**
      * 유령 키 청소의 기준 축 목록 — **전체 축**(모드 필터 전). day 모드는 axes 를 day 축으로 좁혀
      * 넘기는데, 그 목록으로 프룬하면 공유 주머니(컷)의 point 축 키를 유령으로 오인해 지운다.
@@ -103,16 +108,20 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     // 축을 지우면 그 축 키가 넷 모두에 유령으로 남는다 → 축 목록이 로드된 뒤 한 번 청소(위 ⚠ 참고).
     // 격자 축은 **잠깐 숨을 수 있다** — 격자 로딩 전(서버 축이 먼저 와서 이 청소가 도는 순간 격자 축은
     // 아직 목록에 없다). 죽은 게 아니라 보호 목록을 합쳐 넘긴다(레일 서랍과 같은 처방).
+    // 부품 열(`out:<setId>:<metric>`)의 생사 기준 = 저장 집합 목록 — 스토어 생성 때 동기 로드라
+    // 축과 달리 로딩 가드가 필요 없다(savedSetsSlice.loadSavedSets).
+    const savedSets = useWorkbench((s) => s.savedSets);
+    const liveSetIds = useMemo(() => savedSets.map((s) => s.id), [savedSets]);
     useEffect(() => {
         if (axesLoading || axes.length === 0) return;
         const ids = [...(pruneAxisIds ?? axes.map((a) => a.key)), ...GRID_AXIS_IDS];
-        setFrozenCols((f) => pruneAxisKeys(f, ids));
-        setHiddenCols((h) => pruneAxisKeys(h, ids));
-        setColWidths((w) => pruneAxisKeys(w, ids));
-        setCuts((c) => pruneAxisKeys(c, ids));
-        setPresets((p) => prunePresets(p, ids));
+        setFrozenCols((f) => pruneOutKeys(pruneAxisKeys(f, ids), liveSetIds));
+        setHiddenCols((h) => pruneOutKeys(pruneAxisKeys(h, ids), liveSetIds));
+        setColWidths((w) => pruneOutKeys(pruneAxisKeys(w, ids), liveSetIds));
+        setCuts((c) => pruneAxisKeys(c, ids)); // 컷 키는 축뿐 — 부품 열엔 컷이 없다
+        setPresets((p) => prunePresets(p, ids, liveSetIds));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [axes, axesLoading, pruneAxisIds]);
+    }, [axes, axesLoading, pruneAxisIds, liveSetIds]);
 
     // ── "저 축 보여줘"(타점 정보 → 여기) — 그 축 **열**로 가로 스크롤하고 잠깐 강조한다.
     //    시트에서는 열이 곧 축이고 축이 많으면 가로로 넘치므로 찾아 주는 일이 필요하다.
@@ -144,8 +153,13 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         { key: "name" }, { key: "date" },
         ...(day ? [] : [{ key: "time" } as Col]),
         ...axes.map((a): Col => ({ key: "axis", axisId: a.key, name: a.name, computed: isComputedAxis(a.key) })),
-        ...(day ? [{ key: "points" } as Col, { key: "comment" } as Col] : OUTCOME_COL_IDS.map((id): Col => ({ key: "out", metric: id }))),
-    ], [axes, day]);
+        ...(day
+            ? [{ key: "points" } as Col, { key: "comment" } as Col]
+            // 조립 뷰(outParts)는 결과 열이 부품별로 — 부품 순서 × 열 순서(같은 부품의 열들이 붙어 선다).
+            : outParts && outParts.length > 0
+                ? outParts.flatMap((p) => OUTCOME_COL_IDS.map((id): Col => ({ key: "out", metric: id, part: p })))
+                : OUTCOME_COL_IDS.map((id): Col => ({ key: "out", metric: id }))),
+    ], [axes, day, outParts]);
     // 미리보기 층이 영속 폭을 덮는다 — 드래그 중에도 열이 실시간으로 넓어져 보이되 저장은 안 된다.
     const effectiveWidths = useMemo(
         () => (Object.keys(previewWidths).length ? { ...colWidths, ...previewWidths } : colWidths),

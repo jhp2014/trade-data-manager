@@ -27,14 +27,18 @@ describe("presetHidden — 적용 = 전체 − cols", () => {
     });
 });
 
-describe("prunePresets — 죽은 축 키 청소(다른 넷과 같은 사정)", () => {
-    it("`ax:` 죽은 키만 버리고 `out:`·기본 열은 남긴다", () => {
+describe("prunePresets — 죽은 축·부품 키 청소(다른 넷과 같은 사정)", () => {
+    it("`ax:` 죽은 키만 버리고 붙박이 `out:`·기본 열은 남긴다", () => {
         const ps = [{ name: "p", cols: ["name", "ax:살", "ax:죽", "out:extHigh"] }];
-        expect(prunePresets(ps, ["살"])).toEqual([{ name: "p", cols: ["name", "ax:살", "out:extHigh"] }]);
+        expect(prunePresets(ps, ["살"], [])).toEqual([{ name: "p", cols: ["name", "ax:살", "out:extHigh"] }]);
+    });
+    it("지워진 부품의 3조각 `out:<setId>:<id>` 만 버린다 — 붙박이 2조각은 부품 무관이라 무접촉", () => {
+        const ps = [{ name: "p", cols: ["out:extHigh", "out:fs살:extHigh", "out:fs죽:extHigh"] }];
+        expect(prunePresets(ps, [], ["fs살"])).toEqual([{ name: "p", cols: ["out:extHigh", "out:fs살:extHigh"] }]);
     });
     it("바뀐 게 없으면 **같은 참조** — usePersistedState 저장 effect 가 헛돌지 않게", () => {
-        const ps = [{ name: "p", cols: ["name", "ax:살"] }];
-        expect(prunePresets(ps, ["살"])).toBe(ps);
+        const ps = [{ name: "p", cols: ["name", "ax:살", "out:fs살:extHigh"] }];
+        expect(prunePresets(ps, ["살"], ["fs살"])).toBe(ps);
     });
 });
 

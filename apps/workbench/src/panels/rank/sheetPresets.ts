@@ -1,7 +1,7 @@
 // 열 프리셋(순수) — **보이는 열 스냅샷뿐**이다(순서·고정·폭·행 모드는 안 담는다 — 사용자 확정 "보기만").
 // 적용 = hiddenCols 를 "전체 − cols" 로 교체 · 행 모드별 딴 주머니(wb.rankSheetPresets / .day).
 // 프리셋의 `ax:` 키도 유령 청소에 합류한다(고정·숨김·폭·컷과 같은 사정 — 로딩 중 청소 금지 가드 동일).
-import { pruneAxisKeys } from "./sheetColumns.js";
+import { pruneAxisKeys, pruneOutKeys } from "./sheetColumns.js";
 import { OUTCOME_BASE_COL_IDS, SIM_COL_IDS } from "./outcomeColumns.js";
 
 export interface SheetPreset {
@@ -24,13 +24,14 @@ export function parseSheetPresets(o: unknown): SheetPreset[] | null {
 }
 
 /**
- * 죽은 축 키 청소 — 각 프리셋의 cols 에 pruneAxisKeys(같은 사망 판정: `ax:` 접두만, `out:` 무접촉).
+ * 죽은 키 청소 — 각 프리셋의 cols 에 pruneAxisKeys(`ax:` 접두, 붙박이 `out:<id>` 무접촉) +
+ * pruneOutKeys(지워진 부품의 3조각 `out:<setId>:<id>` — 나머지 주머니 넷과 같은 사정).
  * **바뀐 게 없으면 같은 배열 참조**를 돌려준다 — usePersistedState 의 저장 effect 가 헛돌지 않게(기존 넷의 규약).
  */
-export function prunePresets(presets: SheetPreset[], liveAxisIds: string[]): SheetPreset[] {
+export function prunePresets(presets: SheetPreset[], liveAxisIds: string[], liveSetIds: readonly string[]): SheetPreset[] {
     let changed = false;
     const next = presets.map((p) => {
-        const cols = pruneAxisKeys(p.cols, liveAxisIds);
+        const cols = pruneOutKeys(pruneAxisKeys(p.cols, liveAxisIds), liveSetIds);
         if (cols === p.cols) return p;
         changed = true;
         return { ...p, cols };

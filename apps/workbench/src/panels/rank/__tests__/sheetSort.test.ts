@@ -96,6 +96,30 @@ describe("정렬 체인", () => {
     });
 });
 
+describe("부품 열 정렬(out + setId) — 조립 뷰", () => {
+    it("영속 왕복 보존 · 오염된 setId 는 필드만 벗겨 공용 결과 열로 읽는다(관대)", () => {
+        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh", setId: "fs1" }, dir: -1 }];
+        expect(parseSortChain(JSON.parse(JSON.stringify(chain)))).toEqual(chain);
+        expect(parseSortChain([{ key: { kind: "out", metric: "extHigh", setId: 3 }, dir: -1 }]))
+            .toEqual([{ key: { kind: "out", metric: "extHigh" }, dir: -1 }]);
+    });
+
+    it("setId 가 ctx 접근자까지 흐른다 — 부품 정의의 값으로 정렬된다", () => {
+        const perPart: SortCtx = {
+            nameOf: (c) => c,
+            outcomeOf: (r, setId) => (setId === "fs1"
+                ? ({ slice: { status: "exceeded", recovered: null }, eval: { extHigh: r.stockCode === "A" ? 1 : 9 } } as ReturnType<SortCtx["outcomeOf"]>)
+                : undefined),
+            simOf: () => undefined,
+        };
+        const rows = [row("A"), row("B")];
+        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh", setId: "fs1" }, dir: -1 }];
+        expect(codes(sortSheetRows(rows, chain, perPart))).toEqual(["B", "A"]);
+        // setId 없는 공용 열은 그 ctx 에서 전 행 바닥 — 폴백(날짜·종목)순.
+        expect(codes(sortSheetRows(rows, [{ key: { kind: "out", metric: "extHigh" }, dir: -1 }], perPart))).toEqual(["A", "B"]);
+    });
+});
+
 describe("결과 열 정렬(out) — 값의 출처는 ctx.outcomeOf(시트 전용 소스)", () => {
     const recOf = (extHigh: number | undefined, status: OutcomeRecordLite["slice"]["status"], recovered: boolean | null): OutcomeRecordLite =>
         ({ slice: { status, recovered }, eval: extHigh === undefined ? {} : { extHigh } });

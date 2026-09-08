@@ -1,7 +1,7 @@
 // 시트의 열 헤더 한 줄 — 정렬(클릭/Shift+클릭) · 열 드래그 재정렬 두 종류 · 폭 손잡이 · 우클릭 메뉴 열기.
 // 그리기만 한다: 정렬 상태·열 구성은 본체가 주고, 우클릭은 payload 를 만들어 올려보낸다(메뉴는 SheetMenusHost 가).
 import type { CSSProperties } from "react";
-import { colHelp, colJustify, colKey, colLabel, type Col } from "./sheetColumns.js";
+import { colHelp, colJustify, colKey, colLabel, colPart, type Col } from "./sheetColumns.js";
 import { sortKeyOf, sortStepNo, type SortChain, type SortKey } from "./sheetSort.js";
 import { ResizeHandle } from "./SheetMenus.js";
 import { ROW_H } from "./SheetRowView.js";
@@ -65,6 +65,8 @@ export function SheetHeaderRow({ displayCols, cols, sort, reorderAxis, onSort, o
                             {active && <span style={{ flexShrink: 0 }}>{sort[step - 1].dir === 1 ? "▲" : "▼"}</span>}
                             {/* 단 번호는 체인이 2단 이상일 때만 — 기본 화면(1단)은 지금과 똑같이 보인다. */}
                             {active && sort.length > 1 && <span style={{ flexShrink: 0, fontSize: 8.5, opacity: 0.8, marginRight: 1 }}>{step}</span>}
+                            {/* 부품 열 색점 — 라벨의 부품 이름과 함께 "어느 정의의 값인가"를 말한다(SetManager 색점과 같은 출처). */}
+                            {colPart(c) && <span style={{ flexShrink: 0, width: 6, height: 6, borderRadius: "50%", background: colPart(c)!.color }} />}
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colLabel(c)}</span>
                         </span>
                         <ResizeHandle width={widthOf(c)} onResize={(w) => cols.previewWidth(colKey(c), w)} onCommit={(w) => cols.commitWidth(colKey(c), w)} />

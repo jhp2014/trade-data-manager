@@ -21,6 +21,18 @@ const AXIS_VALUE_W = 84;
 /** 수동 리사이즈 하한 — 더 좁아지면 헤더 손잡이조차 못 잡는다. */
 export const MIN_COL_W = 32;
 
+/**
+ * 조립 뷰의 부품 열 표식 — 결과 열이 **부품(저장 집합)별로 갈라질 때** 싣는다. 열 주소(colKey)는
+ * **부품 id** 다: 정의 지문으로 하면 부품의 T1 을 만질 때마다 주소가 바뀌어 열 설정(폭·고정·숨김·정렬)이
+ * 리셋된다("축 키는 뜻의 주소" 규칙 — decisions.md 「집합 조립 (OR)」). 색은 조립 안 순번(seriesColor) —
+ * SetManager 부품 색점과 같은 출처.
+ */
+export interface OutPart {
+    setId: string;
+    name: string;
+    color: string;
+}
+
 export type Col =
     | { key: "name" }
     | { key: "date" }
@@ -34,9 +46,13 @@ export type Col =
      * 결과 열(point 행 모드 전용) — 값은 축 피드가 아니라 **시트 전용 소스**(useOutcomes)에서 온다.
      * 과거/미래 경계(decisions.md 「시그널 결과」): 결과는 레일/서랍의 특징이 아니고, 시트는 읽기 면이라
      * 여기서만 합류한다. 폭·라벨·정렬(가로)이 열마다 갈려 axis 처럼 런타임 override 를 탄다.
+     * part 가 실리면 조립 뷰의 **부품별 열**이다 — 값도 그 부품 정의의 파생에서 온다.
      */
-    | { key: "out"; metric: OutcomeColId };
+    | { key: "out"; metric: OutcomeColId; part?: OutPart };
 export type ColKind = Col["key"];
+
+/** 부품 열이면 그 표식 — 헤더 색점·셀 "밖" 판정이 읽는다. */
+export const colPart = (c: Col): OutPart | null => (c.key === "out" ? (c.part ?? null) : null);
 
 // td 기본 스타일 3종 — COL_META 가 참조하므로 먼저 선언한다.
 const td: CSSProperties = { padding: "5px 8px", color: "var(--text-primary)" };
@@ -61,14 +77,18 @@ export const COL_META: Record<ColKind, ColMeta> = {
     out: { width: 56, label: "", justify: "flex-end", td: tdCell }, // 라벨·폭·정렬은 열별 override(아래 셋)
 };
 
-export const colKey = (c: Col): string => (c.key === "axis" ? `ax:${c.axisId}` : c.key === "out" ? `out:${c.metric}` : c.key);
+// 부품 열 키 = `out:<setId>:<metric>`(3조각 — metric id 에 `:` 가 없어 조각 수가 판정 자다).
+export const colKey = (c: Col): string =>
+    (c.key === "axis" ? `ax:${c.axisId}` : c.key === "out" ? (c.part ? `out:${c.part.setId}:${c.metric}` : `out:${c.metric}`) : c.key);
 export const colWidth = (c: Col): number =>
     c.key === "axis" && c.computed ? AXIS_VALUE_W : c.key === "out" ? OUTCOME_COL_META[c.metric].width : COL_META[c.key].width;
-export const colLabel = (c: Col): string => (c.key === "axis" ? c.name : c.key === "out" ? OUTCOME_COL_META[c.metric].label : COL_META[c.key].label);
+export const colLabel = (c: Col): string =>
+    (c.key === "axis" ? c.name : c.key === "out" ? (c.part ? `${c.part.name}·${OUTCOME_COL_META[c.metric].label}` : OUTCOME_COL_META[c.metric].label) : COL_META[c.key].label);
 /** 가로 정렬 — out 은 열마다 갈린다(숫자=우측, 회복/상태=중앙). COL_META.justify 직접 읽기를 대체. */
 export const colJustify = (c: Col): ColMeta["justify"] => (c.key === "out" ? OUTCOME_COL_META[c.metric].justify : COL_META[c.key].justify);
-/** 헤더 툴팁의 열 설명 — 결과 열만 든다(축·기본 열은 라벨이 곧 설명). */
-export const colHelp = (c: Col): string | null => (c.key === "out" ? OUTCOME_COL_META[c.metric].help : null);
+/** 헤더 툴팁의 열 설명 — 결과 열만 든다(축·기본 열은 라벨이 곧 설명). 부품 열은 그 부품 정의 기준임을 앞세운다. */
+export const colHelp = (c: Col): string | null =>
+    (c.key === "out" ? (c.part ? `부품 「${c.part.name}」 의 정의(T·게이트 등) 기준 — ${OUTCOME_COL_META[c.metric].help}` : OUTCOME_COL_META[c.metric].help) : null);
 
 export interface SheetLayout {
     /** 그릴 순서 그대로 — [고정 스택…, 비고정…]. */
@@ -146,6 +166,24 @@ export function reorderFrozenCols(cols: string[], dragged: string, target: strin
 export function pruneAxisKeys<T extends string[] | Record<string, unknown>>(cur: T, liveAxisIds: string[]): T {
     const live = new Set(liveAxisIds.map((id) => `ax:${id}`));
     const dead = (k: string): boolean => k.startsWith("ax:") && !live.has(k);
+    return pruneBy(cur, dead);
+}
+
+/**
+ * 지워진 부품(저장 집합)의 유령 열 키 제거 — `out:<setId>:<metric>`(**3조각**)만 대상이다.
+ * 붙박이 2조각(`out:extHigh`)은 부품 무관이라 절대 안 건드린다 — 여길 잘못 물면 결과 열 설정이 통째 증발한다.
+ */
+export function pruneOutKeys<T extends string[] | Record<string, unknown>>(cur: T, liveSetIds: readonly string[]): T {
+    const live = new Set(liveSetIds);
+    const dead = (k: string): boolean => {
+        if (!k.startsWith("out:")) return false;
+        const parts = k.split(":");
+        return parts.length === 3 && !live.has(parts[1]!);
+    };
+    return pruneBy(cur, dead);
+}
+
+function pruneBy<T extends string[] | Record<string, unknown>>(cur: T, dead: (k: string) => boolean): T {
     if (Array.isArray(cur)) return (cur.some(dead) ? cur.filter((k) => !dead(k)) : cur) as T;
     const keys = Object.keys(cur);
     return (keys.some(dead) ? Object.fromEntries(Object.entries(cur).filter(([k]) => !dead(k))) : cur) as T;

@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { usePointRows } from "../lib/usePointRows.js";
-import { useAutoPoints, useOutcomes, useTradeSim } from "../lib/PointGridsContext.js";
+import { useAutoPoints, useOutcomes, usePointGrids, useTradeSim, type OutcomesView, type SimView } from "../lib/PointGridsContext.js";
+import { defDerivedFor } from "../lib/defDerived.js";
+import { seriesColor } from "../styles/palette.js";
+import type { OutPart } from "./rank/sheetColumns.js";
 import { useCandidateDays } from "../lib/useCandidateDays.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { buildDaySheetRows, buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
@@ -120,10 +123,34 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     }, []);
     const axisMin = cellMode === "number" ? 56 : 76; // 눈금 모드는 그릴 폭이 필요하다
 
+    // ── 조립 뷰 판정 — 보는 집합이 조립이면 결과 열이 **부품별**로 갈라지고(부품 정의의 값), 필터 방식은
+    //    좁히기로 고정된다(흐리게의 행 원천이 현재 정의라 조립 멤버가 행째 안 보인다 — decisions.md 「집합 조립」).
+    const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
+    const assemblies = useWorkbench((s) => s.assemblies);
+    const savedSets = useWorkbench((s) => s.savedSets);
+    const pointDefCur = useWorkbench((s) => s.pointDef);
+    const grids = usePointGrids();
+    const viewingAssembly = useMemo(
+        () => (selectedSetRef?.kind === "assembly" ? (assemblies.find((a) => a.id === selectedSetRef.id) ?? null) : null),
+        [selectedSetRef, assemblies],
+    );
+    const outParts = useMemo<OutPart[] | undefined>(() => {
+        if (!viewingAssembly || dayMode) return undefined;
+        const out: OutPart[] = [];
+        // 색 = 조립 안 순번(끔·죽은 부품 포함 인덱스) — SetManager 부품 색점과 같은 규칙이라 눈이 잇는다.
+        viewingAssembly.members.forEach((m, i) => {
+            if (!m.enabled) return;
+            const set = savedSets.find((s) => s.id === m.setId);
+            if (!set) return;
+            out.push({ setId: m.setId, name: set.name, color: seriesColor(i) });
+        });
+        return out.length > 0 ? out : undefined;
+    }, [viewingAssembly, dayMode, savedSets]);
+
     // ── 열 구성(고정·숨김·폭·컷 + 되짚기) — 넷 다 축 키를 들어 청소 규칙이 같으므로 한 훅이 소유한다.
     // 유령 키 청소 기준은 전체 축 — day 모드의 좁힌 목록으로 프룬하면 공유 컷의 point 축 키가 지워진다.
     const pruneAxisIds = useMemo(() => allAxes.map((a) => a.key), [allAxes]);
-    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode, pruneAxisIds });
+    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode, pruneAxisIds, outParts });
     const { displayCols, leftOf, tableW, lastFrozenKey, widthOf } = cols;
 
     // ── 전체 타점(행 원천) + 기간. day 모드는 후보 하루(존재 지도 파생)가 행 원천이다.
@@ -161,24 +188,26 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
 
     // 필터 표시 모드 — narrow(교집합만) / dim(전체 유지, 밴드 밖 흐리게). 영속.
     const [filterMode, setFilterMode] = usePersistedState<"narrow" | "dim">(FILTERMODE_KEY, (o) => (o === "dim" ? "dim" : o === "narrow" ? "narrow" : null), "narrow");
+    // 조립 뷰는 좁히기 고정 — 흐리게의 행 원천(allPoints)이 현재 정의라 부품 정의의 타점이 행째 안 선다.
+    const filterModeEff = viewingAssembly ? "narrow" : filterMode;
 
     // 행 집합: narrow + 필터 활성 → 매칭 집합만. dim 또는 무필터 → 전체(밴드 밖은 렌더에서 흐리게).
     const rowPoints = useMemo<readonly ReviewPointKey[]>(() => {
         if (dayMode) return [];
-        if (bandsActive && filterMode === "narrow") {
-            const out: ReviewPointKey[] = [];
-            for (const k of interKeys) { const it = allByKey.get(k); if (it) out.push(it); }
-            return out;
+        if (bandsActive && filterModeEff === "narrow") {
+            // 보는 집합의 타점 **그대로** — 현재 정의 사전(allByKey)으로 되짚으면 부품 정의에만 있는
+            // 타점이 행째 소멸한다(빈 칸도 아니고 없음). 사전에 있으면 그 참조를 재사용(행 신원 보존).
+            return linked.view.viewedPointRefs.map((r) => allByKey.get(pointKey(r)) ?? r);
         }
         return allPoints;
-    }, [dayMode, bandsActive, filterMode, interKeys, allByKey, allPoints]);
+    }, [dayMode, bandsActive, filterModeEff, linked.view.viewedPointRefs, allByKey, allPoints]);
 
     const rows = useMemo(() => {
         if (!dayMode) return buildSheetRows(rowPoints, axisIds, indexByAxis);
         // day 행 = 후보 하루 전부(빈 셀 = 진도 정보). narrow 필터는 차트 키로 좁힌다.
-        const base = bandsActive && filterMode === "narrow" ? candidates.filter((c) => interKeys.has(chartKey(c))) : candidates;
+        const base = bandsActive && filterModeEff === "narrow" ? candidates.filter((c) => interKeys.has(chartKey(c))) : candidates;
         return buildDaySheetRows(base, axisIds, indexByAxis, (c) => presenceIdx.get(chartKey(c)), (c) => autoPoints.byChart.get(chartKey(c))?.length ?? 0);
-    }, [dayMode, rowPoints, axisIds, indexByAxis, bandsActive, filterMode, candidates, interKeys, presenceIdx, autoPoints]);
+    }, [dayMode, rowPoints, axisIds, indexByAxis, bandsActive, filterModeEff, candidates, interKeys, presenceIdx, autoPoints]);
 
     // ── 정렬 체인(n차). 평클릭=리셋 · Shift+클릭=단 추가. 규칙 전부는 sheetSort(순수·테스트) 에.
     //    축 정렬 = 강(rank↑) 먼저, 값 없음(미배치·미산정)은 방향 무관 바닥. localStorage 영속(옛 단일 정렬도 읽는다).
@@ -200,10 +229,30 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     //    T(허용 폭) 커밋마다 참조가 갈려 정렬·행이 재계산된다(드래그 중엔 안 돈다 — setPointDef 는 pointerup 1회).
     //    day 행 키(2조각)는 byKey(타점 키, 3조각)에 없어 폴백 없이 그대로 undefined 가 맞다.
     const outcomes = useOutcomes();
-    const outcomeOf = useMemo(() => (row: SheetRow) => outcomes.byKey.get(rowKey(row)), [outcomes]);
     // 시뮬 열의 값 — 같은 사정(시트 전용 소스, useTradeSim). 노브 커밋마다 참조가 갈려 재계산.
     const sim = useTradeSim();
-    const simOf = useMemo(() => (row: SheetRow) => sim.byKey.get(rowKey(row)), [sim]);
+    // 부품별 파생(조립 뷰) — 부품 정의(사본 없으면 현재 정의)의 결과 단면·시뮬·모수 키. defDerived 캐시라
+    // 같은 정의를 깔때기 평가(materialsFor)와 공유한다(두 벌 안 돈다).
+    const partAccess = useMemo(() => {
+        if (!outParts || grids.byDate === null) return null;
+        const m = new Map<string, { oc: OutcomesView; sim: SimView; has: (k: string) => boolean }>();
+        for (const p of outParts) {
+            const def = savedSets.find((s) => s.id === p.setId)?.pointDef ?? pointDefCur;
+            const d = defDerivedFor(grids.byDate, def);
+            m.set(p.setId, { oc: d.outcomes(def.toleranceT1Pct, def.toleranceT2Pct), sim: d.sim(def.sim), has: d.hasPoint });
+        }
+        return m;
+    }, [outParts, grids.byDate, savedSets, pointDefCur]);
+    // setId 가 오면 부품 열(그 부품 정의의 값) — 없으면 공용 결과 열(현재 정의). 정렬·셀이 같은 접근자를 문다.
+    const outcomeOf = useMemo(() => (row: SheetRow, setId?: string) =>
+        (setId !== undefined ? partAccess?.get(setId)?.oc.byKey.get(rowKey(row)) : outcomes.byKey.get(rowKey(row))), [outcomes, partAccess]);
+    const simOf = useMemo(() => (row: SheetRow, setId?: string) =>
+        (setId !== undefined ? partAccess?.get(setId)?.sim.byKey.get(rowKey(row)) : sim.byKey.get(rowKey(row))), [sim, partAccess]);
+    // 부품 모수 밖 판정 — "그 정의엔 이 시그널이 없다"(빈 칸과 다른 정보). 부품 파생이 아직 없으면 밖이 아니다.
+    const outsideOf = useMemo(() => (row: SheetRow, setId: string): boolean => {
+        const p = partAccess?.get(setId);
+        return p !== undefined && !p.has(rowKey(row));
+    }, [partAccess]);
 
     const sortCtx = useMemo<SortCtx>(() => ({ nameOf, outcomeOf, simOf }), [nameOf, outcomeOf, simOf]);
     const sorted = useMemo(() => sortSheetRows(rows, sort, sortCtx, cutKeys), [rows, sort, sortCtx, cutKeys]);
@@ -348,9 +397,9 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
             <SheetRowView key={key} row={row} cols={displayCols}
                 leftOf={leftOf} lastFrozenKey={lastFrozenKey} widthOf={widthOf}
                 name={nameOf(row.stockCode)}
-                mode={cellMode} valuedOf={valuedOf} outcomeOf={outcomeOf} simOf={simOf} sortAxisId={sortAxisId}
+                mode={cellMode} valuedOf={valuedOf} outcomeOf={outcomeOf} simOf={simOf} outsideOf={outsideOf} sortAxisId={sortAxisId}
                 focus={isSubjectRow(row)} pinned={isPinned}
-                dim={bandsActive && !interKeys.has(matchKeyOf(row)) && (isPinned || filterMode === "dim")}
+                dim={bandsActive && !interKeys.has(matchKeyOf(row)) && (isPinned || filterModeEff === "dim")}
                 inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} top={top} h={rowH} />
         );
     };
@@ -379,7 +428,8 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
             value: cellMode, set: (v) => setCellMode(parseCellMode(v) ?? "number"),
         },
         {
-            kind: "choice", id: "filterMode", name: "필터 방식", available: bandsActive,
+            // 조립 뷰에서는 감춘다(좁히기 고정) — 흐리게의 행 원천이 현재 정의라 조립 멤버가 행째 안 보인다.
+            kind: "choice", id: "filterMode", name: "필터 방식", available: bandsActive && !viewingAssembly,
             help: "매칭만 남길까, 전체를 두고 밖을 흐리게 할까",
             values: [{ v: "narrow", label: "좁히기" }, { v: "dim", label: "흐리게" }],
             value: filterMode, set: (v) => setFilterMode(v === "dim" ? "dim" : "narrow"),
