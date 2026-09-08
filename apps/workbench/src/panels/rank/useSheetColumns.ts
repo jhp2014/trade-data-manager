@@ -7,7 +7,7 @@
 // ⚠ **로딩 중엔 절대 청소하지 않는다.** 판단 축과 계산 축은 별도 요청이라, 판단 축만 도착한 순간에
 // 청소가 돌면 아직 안 온 계산 축 열의 고정·숨김·폭을 유령으로 오인해 지운다. 사용자 설정이 조용히
 // 사라지는 종류의 사고라 가드가 필수다.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isComputedAxis } from "../../lib/computedAxis.js";
 import type { AxisRef } from "../../lib/computedAxis.js";
 import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
@@ -148,6 +148,19 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         () => allStages.filter((st) => st.predicates.some((p) => p.kind === "outcome")).map((st) => st.id),
         [allStages],
     );
+    /**
+     * 차이 열 피연산자가 살아 있나 — **저장물 기준**(뷰 갈래 무관). 결과 열 키의 네 갈래를 그대로 읽는다:
+     * 붙박이는 언제나 살아 있고, 부품은 저장 집합이, 인스턴스는 결과 조건이 생사를 정한다.
+     */
+    const operandAlive = useCallback((key: string): boolean => {
+        if (!key.startsWith("out:")) return false; // 피연산자는 결과 열만(차이 열 중첩은 범위 밖)
+        const parts = key.split(":");
+        if (parts.length === 2) return true;
+        if (parts.length !== 4) return false;
+        const [, tag, id] = parts as [string, string, string, string];
+        return tag === "p" ? liveSetIds.includes(id) : tag === "i" ? liveStageIds.includes(id) : false;
+    }, [liveSetIds, liveStageIds]);
+
     useEffect(() => {
         if (axesLoading || axes.length === 0) return;
         const ids = [...(pruneAxisIds ?? axes.map((a) => a.key)), ...GRID_AXIS_IDS];
@@ -158,10 +171,10 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         setColWidths(prune);
         setCuts((c) => pruneAxisKeys(c, ids)); // 컷 키는 축뿐 — 갈라진 결과 열엔 컷이 없다
         setPresets((p) => prunePresets(p, ids, liveSetIds, liveStageIds));
-        // 차이 열은 **피연산자가 지금 서 있어야** 뜻이 있다 — 한쪽이 사라지면 그 항목을 버린다.
+        // 차이 열도 **저장물 기준**으로 판정한다 — "지금 화면에 선 열"로 재면 조립↔일반 뷰를 오가는
+        // 것만으로 소멸한다(위 ⚠ 와 같은 사고. 인스턴스 열은 조립 뷰에서 안 서고, 부품 열은 그 반대다).
         setDifs((ds) => {
-            const live = new Set(baseKeysRef.current);
-            const next = ds.filter((d) => live.has(d.a) && live.has(d.b));
+            const next = ds.filter((d) => operandAlive(d.a) && operandAlive(d.b));
             return next.length === ds.length ? ds : next;
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -220,9 +233,6 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         () => (Object.keys(previewWidths).length ? { ...colWidths, ...previewWidths } : colWidths),
         [colWidths, previewWidths],
     );
-    // 지금 서 있는 열 키들 — 차이 열의 피연산자 생존 판정 기준(자기 자신은 뺀다).
-    const baseKeysRef = useRef<string[]>([]);
-    baseKeysRef.current = baseCols.filter((c) => c.key !== "dif").map(colKey);
     /** 결과 열만(숨김 이전) — 차이 열 값이 무는 재료. */
     const baseOutCols = useMemo(() => baseCols.filter((c) => c.key === "out"), [baseCols]);
 
