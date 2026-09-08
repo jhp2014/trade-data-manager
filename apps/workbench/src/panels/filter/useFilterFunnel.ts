@@ -8,25 +8,30 @@
 // ⚠ **사전이 오기 전에는 아무것도 정하지 않는다.** 알갱이 판정이 사전을 보는데, 로딩 중의 "모름"은
 // "없음"이 아니라 "곧 옴"이다. 그때 해상도를 확정하면 사전이 도착하는 순간 화면이 통째로 다시 그려지고,
 // 더 나쁘게는 그 사이의 5칸 숫자가 전부 미배치로 부풀어 사용자가 그걸 사실로 읽는다.
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import {
-    expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult,
+    expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult, type PointDefinition,
 } from "@trade-data-manager/market/domain";
 import { usePointRows } from "../../lib/usePointRows.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
-import { useOutcomes } from "../../lib/PointGridsContext.js";
+import { useOutcomes, usePointGrids } from "../../lib/PointGridsContext.js";
+import { defDerivedFor } from "../../lib/defDerived.js";
+import { evalDefKeyOf } from "../../lib/pointDef.js";
+import { computedAxisView } from "../../lib/computedAxis.js";
+import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
+import type { OutcomesView } from "../../lib/useOutcomes.js";
 import { useRankSections } from "../../lib/useRankSections.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { themeProjectionOf } from "../../lib/themeStrength.js";
 import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import type { SetRef } from "../../lib/setRef.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
-import { buildAxisOrderIndexes } from "./axisLookup.js";
+import { buildAxisOrderIndex, buildAxisOrderIndexes } from "./axisLookup.js";
 import { resolveBound, toFunnelStages, type EvalLookup } from "./evaluate.js";
 import type { LabelLookup } from "./label.js";
-import type { ResolvedSet, SetResolveCtx } from "./resolveSet.js";
+import type { DefMaterials, ResolvedSet, SetResolveCtx } from "./resolveSet.js";
 import { useSetViews, type ViewedSet } from "./useSetViews.js";
 import {
     activeStages, funnelOrder, isPredicateDead, resolveAutoGrain,
@@ -96,6 +101,9 @@ export function useFilterFunnel(): FunnelView {
     const ax = useRankAxes();
     const cand = useCandidateDays(); // 복제본 파생 — 서버 왕복 없음(candidateDaysOf)
     const pts = usePointRows(); // point 행 원천(격자 파생 한 벌) — 깔때기 모수가 여기서 온다
+    const grids = usePointGrids(); // 격자 번들 — 부품(저장 집합)의 자기-정의 파생(defDerived)의 재료
+    // 현재 정의의 **평가 키**(판정 6노브 + T 둘, 시뮬 제외) — 문자열이라 값이 같으면 리렌더가 없다.
+    const curEvalKey = useWorkbench((s) => evalDefKeyOf(s.pointDef));
     const outcomes = useOutcomes(); // 결과 파생 한 벌(기본 허용 T1 단면) — outcome 술어의 재료
     // 결과 술어가 **어디에도 없으면**(활성 단계 ∪ 저장 집합) 재료를 상수로 끊는다 — 테마 재료의
     // themeInUse 게이트와 같은 이유: 안 그러면 T 레일을 만질 때마다 결과와 무관한 화면 전체의
@@ -153,15 +161,24 @@ export function useFilterFunnel(): FunnelView {
         [gv.groupByName, axisScopes],
     );
 
-    const evalLook = useMemo<EvalLookup>(
-        () => ({
+    /**
+     * 판정 조회기 공장 — **한 벌의 규칙**(키 폴백·3치)을 현재 정의와 부품 정의가 같이 쓴다. 갈리는 건
+     * 정의-종속 재료 셋(격자 축 줄·격자 축 값·결과 단면)뿐이라 그 셋만 주입받는다.
+     */
+    const makeEvalLook = useCallback(
+        (over: {
+            placementOf: (axisId: string) => Map<string, number> | undefined;
+            valuesOf: (axisId: string) => Map<string, number> | undefined;
+            /** 게으름 — 결과 술어가 실제 평가될 때만 걷기·단면이 돈다(outcomeInUse 게이트의 부품판). */
+            outcomesOf: () => OutcomesView | null;
+        }): EvalLookup => ({
             // 적용 집합(직접 ∪ 계층 조상) — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
             groupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date }),
             // "그룹 없음"은 **직접 소속 0개**를 센다 — 위의 합집합으로는 못 묻는 것.
             anyGroupAt: (i) => gv.anyGroupAt({ stockCode: i.stockCode, date: i.date }),
             hasGroup: (id) => gv.groupByName.has(id),
             orderKeyOf: (axisId, i) => {
-                const idx = placements.get(axisId);
+                const idx = over.placementOf(axisId);
                 if (!idx) return undefined; // 지워진 축 — 판단 불가
                 // 타점 항목은 타점 키 → 차트 키 폴백(day 축 행 = 차트) · 하루 항목은 차트 키만.
                 return i.time === undefined
@@ -170,36 +187,48 @@ export function useFilterFunnel(): FunnelView {
             },
             // 경계 앵커 키는 그 축의 행 키다. 옛 저장물(day 축인데 타점 키)은 시각을 벗겨 흡수(rowKeyToChartKey).
             bandBoundOrderKey: (axisKey, point) => {
-                const idx = placements.get(axisKey);
+                const idx = over.placementOf(axisKey);
                 return idx?.get(point) ?? idx?.get(rowKeyToChartKey(point));
             },
             // 값 맵의 키 = 행 키. 타점 항목은 폴백으로 day 축 행(차트)에 닿고, 하루 항목은 차트 키로 직접.
             // point 축을 하루 항목이 만나는 일은 없다(단계에 point 축이 있으면 해상도가 타점).
             axisValueOf: (axisId, i) => {
-                const values = ax.computedValues.get(axisId);
+                const values = over.valuesOf(axisId);
                 if (!values) return undefined;
                 return i.time === undefined
                     ? values.get(chartKey(i))
                     : (values.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time })) ?? values.get(chartKey(i)));
             },
-            boundValue: (axisId, b) => resolveBound(b, ax.computedValues.get(axisId)),
+            boundValue: (axisId, b) => resolveBound(b, over.valuesOf(axisId)),
             // 순위 단면(구운 번들) — 로딩·오류면 sectionAt 이 null 을 줘 테마 술어가 미배치로 선다.
             sectionRanksAt,
             themeProj: themeProjEff,
             // 결과 술어(기본 허용 T1 평가) — 무눌림의 낙폭·격자 미도착은 레코드에 없어 그대로 3치의 undefined 가 된다.
-            // T 변경은 outcomesEff 참조를 갈아 evalLook → materialsEpoch 까지 자동 무효(의도 — T 는 결과를
-            // 바꾼다). 결과 술어가 없으면 outcomesEff = null(상수)이라 그 무효화가 안 돈다(위 게이트).
-            outcomeEvalOf: (metric, i) =>
-                outcomesEff === null || i.time === undefined ? undefined
-                    : outcomesEff.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.eval[metric],
-            outcomeRailValues: (metric) => outcomesEff?.railValues.get(metric),
+            outcomeEvalOf: (metric, i) => {
+                const oc = over.outcomesOf();
+                return oc === null || i.time === undefined ? undefined
+                    : oc.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.eval[metric];
+            },
+            outcomeRailValues: (metric) => over.outcomesOf()?.railValues.get(metric),
             outcomeRecoveredOf: (i) => {
-                if (outcomesEff === null || i.time === undefined) return undefined;
-                const r = outcomesEff.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.slice.recovered;
+                const oc = over.outcomesOf();
+                if (oc === null || i.time === undefined) return undefined;
+                const r = oc.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.slice.recovered;
                 return r === null ? undefined : r; // 무눌림(저가 없음) = 결손
             },
         }),
-        [gv, placements, ax.computedValues, sectionRanksAt, themeProjEff, outcomesEff],
+        [gv, sectionRanksAt, themeProjEff],
+    );
+
+    // 현재 정의의 조회기 — T 변경은 outcomesEff 참조를 갈아 evalLook → materialsEpoch 까지 자동 무효
+    // (의도 — T 는 결과를 바꾼다). 결과 술어가 없으면 outcomesEff = null(상수)이라 그 무효화가 안 돈다(위 게이트).
+    const evalLook = useMemo<EvalLookup>(
+        () => makeEvalLook({
+            placementOf: (id) => placements.get(id),
+            valuesOf: (id) => ax.computedValues.get(id),
+            outcomesOf: () => outcomesEff,
+        }),
+        [makeEvalLook, placements, ax.computedValues, outcomesEff],
     );
 
     // ── 정산 ── 표시와 정산이 **같은 순서**를 봐야 한다(하루 먼저) — 어긋나면 "상류"가 화면과 다른 걸 가리킨다.
@@ -209,10 +238,16 @@ export function useFilterFunnel(): FunnelView {
     // 사전이 온 뒤에만 해상도를 확정한다 — 로딩 중의 모름은 "없음"이 아니다.
     const grain = isLoading ? "day" : resolveAutoGrain(stages, grainLook);
 
+    /** 현재 정의의 타점 시각 — 유니버스 전개·setCtx.timesOf·materialsFor(현재)가 같은 실물을 문다. */
+    const timesOfCur = useCallback(
+        (c: { stockCode: string; date: string }): readonly string[] => timesByChart.get(chartKey(c)) ?? [],
+        [timesByChart],
+    );
+
     const items = useMemo<FunnelItem[]>(() => {
         if (isLoading) return [];
-        return expandUniverse(cand.candidates, grain, (c) => timesByChart.get(chartKey(c)) ?? []);
-    }, [isLoading, cand.candidates, grain, timesByChart]);
+        return expandUniverse(cand.candidates, grain, timesOfCur);
+    }, [isLoading, cand.candidates, grain, timesOfCur]);
 
     const result = useMemo<FunnelResult | null>(
         () => (isLoading ? null : tallyFunnel(items, toFunnelStages(active, evalLook))),
@@ -226,9 +261,54 @@ export function useFilterFunnel(): FunnelView {
      * evalLook(그룹·배치·계산 축 값)·grainLook(scope 사전)이 각자의 재료 변경마다 새로 서므로 둘을
      * 물면 축 값·사전 변경이 전부 잡힌다.
      */
+    /**
+     * 정의 → 판정 재료(materialsFor) — 저장 집합의 자기-정의 평가의 실물. 현재 정의(키 일치)나 정의 없는
+     * 옛 저장물은 **현재 재료 그대로**(비용 0·평가 동일성). 다른 정의는 defDerived 캐시를 딛고 정의-종속
+     * 재료 셋(격자 축 줄·값·결과 단면)만 그 정의 것으로 덮어쓴다 — 그룹·테마·서버 day 축은 정의 무관이라 공유.
+     * 결과 단면은 게으르다(부품에 결과 술어가 없으면 걷기 비용 0).
+     */
+    const materialsFor = useMemo(() => {
+        const current: DefMaterials = { timesOf: timesOfCur, evalLook, grainLook };
+        const cache = new Map<string, DefMaterials>();
+        const gridSet = new Set(GRID_AXIS_IDS);
+        return (def: PointDefinition | undefined): DefMaterials => {
+            if (def === undefined) return current;
+            const key = evalDefKeyOf(def);
+            if (key === curEvalKey) return current;
+            const byDate = grids.byDate;
+            if (byDate === null) return current; // 격자 로딩 전 — isLoading 가드가 어차피 숫자를 막는다
+            const hit = cache.get(key);
+            if (hit) return hit;
+            const derived = defDerivedFor(byDate, def);
+            const times = new Map<string, string[]>();
+            for (const p of derived.auto.points) {
+                const k = chartKey(p);
+                const list = times.get(k);
+                if (list) list.push(p.time);
+                else times.set(k, [p.time]);
+            }
+            const views = derived.feeds().map(computedAxisView);
+            const oPlace = new Map(views.map((v) => [v.axis.key, buildAxisOrderIndex(v.line)]));
+            const oValues = new Map(views.map((v) => [v.axis.key, v.values]));
+            let oc: OutcomesView | null = null;
+            const outcomesOf = (): OutcomesView => (oc ??= derived.outcomes(def.toleranceT1Pct, def.toleranceT2Pct));
+            const made: DefMaterials = {
+                timesOf: (c) => times.get(chartKey(c)) ?? [],
+                grainLook, // 층위 사전은 정의 무관(그룹 scope·축 scope 는 정의가 안 바꾼다)
+                evalLook: makeEvalLook({
+                    placementOf: (id) => (gridSet.has(id) ? oPlace.get(id) : placements.get(id)),
+                    valuesOf: (id) => (gridSet.has(id) ? oValues.get(id) : ax.computedValues.get(id)),
+                    outcomesOf,
+                }),
+            };
+            cache.set(key, made);
+            return made;
+        };
+    }, [timesOfCur, evalLook, grainLook, curEvalKey, grids.byDate, makeEvalLook, placements, ax.computedValues]);
+
     const materialsEpoch = useMemo(
         () => `e${++materialsSeq}`,
-        [cand.candidates, timesByChart, evalLook, grainLook, isLoading],
+        [cand.candidates, timesByChart, evalLook, grainLook, isLoading, materialsFor],
     );
 
     /**
@@ -239,18 +319,19 @@ export function useFilterFunnel(): FunnelView {
     const setCtx = useMemo<SetResolveCtx>(
         () => ({
             candidates: cand.candidates,
-            timesOf: (c) => timesByChart.get(chartKey(c)) ?? [],
+            timesOf: timesOfCur,
             appliedGroupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date }),
             hasGroup: (n) => gv.groupByName.has(n),
             activeStages: stages,
             savedSetOf: (id) => savedSets.find((f) => f.id === id),
             assemblyOf: (id) => assemblies.find((a) => a.id === id),
+            materialsFor,
             ...(result !== null ? { activeFilter: { grain, active, tally: result } } : {}),
             materialsEpoch,
             evalLook,
             grainLook,
         }),
-        [cand.candidates, timesByChart, gv, evalLook, grainLook, stages, savedSets, assemblies, grain, active, result, materialsEpoch],
+        [cand.candidates, timesOfCur, gv, evalLook, grainLook, stages, savedSets, assemblies, materialsFor, grain, active, result, materialsEpoch],
     );
 
     const { resolveSet, viewOf } = useSetViews(result, setCtx);

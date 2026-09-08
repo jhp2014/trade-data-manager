@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { ChartRef, FunnelItem } from "@trade-data-manager/market/domain";
+import { DEFAULT_POINT_DEFINITION, type ChartRef, type FunnelItem, type PointDefinition } from "@trade-data-manager/market/domain";
 import type { SetRef } from "../../../lib/setRef.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import { chartKey } from "../../../lib/pointKey.js";
@@ -43,6 +43,9 @@ const savedSets = new Map<string, SavedSet>([
     ["fs3", { id: "fs3", name: "부위 깨짐", stages: [dateStage("d9", "2026-07-01", "2026-07-03")], part: { kind: "cell", stageId: "없는단계", cells: ["survive"] } }],
 ]);
 
+const grainLook = { hasGroup: (n: string) => knownGroups.has(n), axisScope: () => undefined };
+const timesOf = (c: { stockCode: string; date: string }): string[] => times.get(chartKey(c)) ?? [];
+
 const evalLook: EvalLookup = {
     groupNamesOf: appliedGroupNamesOf,
     anyGroupAt: () => true,
@@ -60,15 +63,24 @@ const evalLook: EvalLookup = {
 
 const ctx: SetResolveCtx = {
     candidates: [A, B, C],
-    timesOf: (c) => times.get(chartKey(c)) ?? [],
+    timesOf,
     appliedGroupNamesOf,
     hasGroup: (n) => knownGroups.has(n),
     activeStages,
     savedSetOf: (id) => savedSets.get(id),
     assemblyOf: () => undefined,
+    // 정의 사본 없는 저장물 = 현재 재료(실물과 같은 규칙 — 정의별 재료는 전용 테스트에서 갈아 끼운다).
+    materialsFor: () => ({ timesOf, evalLook, grainLook }),
     evalLook,
-    grainLook: { hasGroup: (n) => knownGroups.has(n), axisScope: () => undefined },
+    grainLook,
 };
+
+/** evalLook 을 갈아 끼운 ctx — resolveDef 가 재료를 materialsFor 로 받으므로 둘을 같이 바꿔야 한다. */
+const withLook = (base: SetResolveCtx, look: EvalLookup): SetResolveCtx => ({
+    ...base,
+    evalLook: look,
+    materialsFor: () => ({ timesOf, evalLook: look, grainLook }),
+});
 
 const codesOf = (r: { items: FunnelItem[] }): string[] => r.items.map((i) => `${i.stockCode.slice(-1)}${i.time ? "@" + i.time.slice(0, 5) : ""}`);
 
@@ -179,7 +191,7 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
 
     it("무관한 깔때기 편집(새 ctx·같은 세대)은 재정산하지 않고, 재료 세대가 바뀌면 반드시 재정산한다", () => {
         const { look, calls } = counting();
-        const base: SetResolveCtx = { ...ctx, evalLook: look, materialsEpoch: "정찰-세대-1" };
+        const base: SetResolveCtx = { ...withLook(ctx, look), materialsEpoch: "정찰-세대-1" };
         expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs1" }, base))).toEqual(["1", "2"]);
         const n1 = calls();
         expect(n1).toBeGreaterThan(0);
@@ -197,7 +209,7 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
 
     it("정의가 바뀐 집합(덮어쓰기)은 같은 세대라도 재정산된다", () => {
         const { look, calls } = counting();
-        const base: SetResolveCtx = { ...ctx, evalLook: look, materialsEpoch: "정찰-세대-3" };
+        const base: SetResolveCtx = { ...withLook(ctx, look), materialsEpoch: "정찰-세대-3" };
         resolveSetRef({ kind: "saved", setId: "fs1" }, base);
         const n1 = calls();
 
@@ -217,6 +229,46 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
         expect(codesOf(resolveSetRef({ kind: "survivors" }, base))).toEqual(["1", "2"]);
         const edited: SetResolveCtx = { ...base, activeStages: [] };
         expect(codesOf(resolveSetRef({ kind: "survivors" }, edited))).toEqual(["1", "2", "3"]); // 편집이 즉시 반영
+    });
+});
+
+describe("저장 집합의 자기-정의 평가 — 재료가 정의를 따라간다", () => {
+    const timeStage = (id: string, from: string, to: string): FilterStage =>
+        stage(id, [{ kind: "time", ranges: [{ from, to }] }]);
+    const defGate = (gate: number): PointDefinition => ({ ...DEFAULT_POINT_DEFINITION, baselineGateEok: gate });
+    // 같은 조건 사본·다른 정의 — 게이트 50 정의는 A 에 타점 하나, 30 정의는 둘(더 낮은 게이트 = 더 많은 시그널 설정).
+    const stagesSame: FilterStage[] = [timeStage("tt", "09:00", "10:30")]; // C(11:00)는 조건 밖 — 현재 정의 평가에서도 빠진다
+    const sets = new Map<string, SavedSet>([
+        ["g50", { id: "g50", name: "게이트50", stages: stagesSame, part: { kind: "survivors" }, pointDef: defGate(50) }],
+        ["g30", { id: "g30", name: "게이트30", stages: stagesSame, part: { kind: "survivors" }, pointDef: defGate(30) }],
+    ]);
+    const timesOf50 = (c: { stockCode: string; date: string }): string[] => (chartKey(c) === chartKey(A) ? ["09:30:00"] : []);
+    const timesOf30 = (c: { stockCode: string; date: string }): string[] => (chartKey(c) === chartKey(A) ? ["09:30:00", "10:00:00"] : []);
+    const dctx: SetResolveCtx = {
+        ...ctx,
+        savedSetOf: (id) => sets.get(id),
+        materialsFor: (def) => ({
+            timesOf: def === undefined ? timesOf : def.baselineGateEok === 50 ? timesOf50 : timesOf30,
+            evalLook,
+            grainLook,
+        }),
+        materialsEpoch: "자기정의-세대-1", // 세션 캐시가 켜진 채로 — 오염 회귀선
+    };
+
+    it("⚠ 같은 조건 사본·다른 pointDef 두 집합은 **서로 다른 정산**이다(세션 캐시 오염 회귀선)", () => {
+        expect(codesOf(resolveSetRef({ kind: "saved", setId: "g50" }, dctx))).toEqual(["1@09:30"]);
+        expect(codesOf(resolveSetRef({ kind: "saved", setId: "g30" }, dctx))).toEqual(["1@09:30", "1@10:00"]);
+        // 반대 순서로 다시 물어도(캐시 히트 경로) 각자 자기 정의의 답이다.
+        expect(codesOf(resolveSetRef({ kind: "saved", setId: "g30" }, { ...dctx }))).toEqual(["1@09:30", "1@10:00"]);
+        expect(codesOf(resolveSetRef({ kind: "saved", setId: "g50" }, { ...dctx }))).toEqual(["1@09:30"]);
+    });
+
+    it("정의 사본 없는 옛 저장물은 현재 정의로 평가된다", () => {
+        const old = new Map(sets);
+        old.set("noDef", { id: "noDef", name: "옛것", stages: stagesSame, part: { kind: "survivors" } });
+        const octx: SetResolveCtx = { ...dctx, savedSetOf: (id) => old.get(id) };
+        // 현재 재료(timesOf)의 시각: A 둘 + C 하나 — 그중 조건(≤10:30)에 드는 A 둘.
+        expect(codesOf(resolveSetRef({ kind: "saved", setId: "noDef" }, octx))).toEqual(["1@09:30", "1@10:00"]);
     });
 });
 

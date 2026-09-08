@@ -94,6 +94,13 @@ export const qualifyKeyOf = (windows: readonly QualifyWindow[]): string => windo
 export const judgeKeyOf = (d: PointJudgeDef): string =>
     [d.baselineGateEok, d.renewalGateEok, qualifyKeyOf(d.qualifyWindows), d.mergeRisePct, d.bullOnly, d.approachPct].join("|");
 
+/**
+ * 깔때기 **평가**가 보는 정의 키 — 판정 6노브 + 허용 폭 T 둘. 시뮬 노브는 안 넣는다:
+ * 시뮬은 술어가 없어 평가 결과를 못 바꾸는데, 키에 넣으면 시뮬 커밋마다 저장 집합 정산이 헛돈다.
+ */
+export const evalDefKeyOf = (d: PointDefinition): string =>
+    `${judgeKeyOf(d)}|${d.toleranceT1Pct}|${d.toleranceT2Pct}`;
+
 /** 시뮬 노브 7개의 내용 키(취소 둘 포함) — null(off)은 "-" 로 굳혀 0 과 갈린다. */
 export const simKeyOf = (p: TradeSimParams): string =>
     [p.entry.anchor, p.entry.pct, p.stopPct, p.takePct, p.trailUpPct, p.trailDownPct, p.cancelRisePct ?? "-", p.cancelAfterMin ?? "-"].join("|");

@@ -13,14 +13,25 @@
 // "결손은 결손"(축 규칙 3)이 참조에도 적용되는 것.
 import {
     expandUniverse, tallyFunnel,
-    type ChartRef, type FunnelCell, type FunnelItem, type FunnelResult, type Grain,
+    type ChartRef, type FunnelCell, type FunnelItem, type FunnelResult, type Grain, type PointDefinition,
 } from "@trade-data-manager/market/domain";
+import { evalDefKeyOf } from "../../lib/pointDef.js";
 import type { SetRef } from "../../lib/setRef.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import type { Assembly } from "../../store/assembliesSlice.js";
 import { unionOf, type UnionPart } from "./assembly.js";
 import { toFunnelStages, type EvalLookup } from "./evaluate.js";
 import { activeStages, funnelOrder, resolveAutoGrain, type FilterStage, type GrainLookup } from "./stage.js";
+
+/**
+ * 정의 하나의 판정 재료 — 저장 집합은 **자기 pointDef 로 처음부터 끝까지** 평가된다(자립 저장물의 완성).
+ * 타점 시각(모수)·격자 축 값/줄·결과 단면이 전부 그 정의의 것이어야 "게이트 50억 vs 30억 비교 집합"이 성립한다.
+ */
+export interface DefMaterials {
+    timesOf: (item: { stockCode: string; date: string }) => readonly string[];
+    evalLook: EvalLookup;
+    grainLook: GrainLookup;
+}
 
 /** 풀이에 필요한 바깥 재료. 없는 것(지워진 그룹·집합)은 undefined = 깨진 참조. */
 export interface SetResolveCtx {
@@ -38,6 +49,12 @@ export interface SetResolveCtx {
     savedSetOf: (id: string) => SavedSet | undefined;
     /** 조립 사전. undefined 반환 = 지워진 조립(깨진 참조). */
     assemblyOf: (id: string) => Assembly | undefined;
+    /**
+     * 정의 → 판정 재료. undefined(옛 저장물 — pointDef 없음)·현재 정의와 같은 키면 **현재 재료 그대로**
+     * (비용 0). 다른 정의는 defDerived 캐시를 딛고 격자 축 값/줄·타점 시각·결과 단면을 그 정의 것으로
+     * 덮어쓴 재료를 준다(발급은 깔때기 훅 — 재료가 바뀌면 함수째 새로 선다).
+     */
+    materialsFor: (def: PointDefinition | undefined) => DefMaterials;
     /**
      * 작업 깔때기의 **이미 끝난 정산** — 깔때기 훅이 방금 만든 것을 그대로 꽂는다.
      * 없으면 여기서 새로 정산하는데, 그러면 같은 조건을 두 번 평가할 뿐 아니라 **grain 이 갈릴 수 있다**:
@@ -102,7 +119,8 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
                 if (!m.enabled) continue;
                 const r = resolveSaved(m.setId, ctx);
                 if (r.broken) continue;
-                parts.push({ grain: r.grain, items: r.items, timesOf: ctx.timesOf });
+                // 부품의 하루→타점 전개도 **그 부품 정의의 시각**으로(자립 — 전개를 누구 정의로 하나가 안 생긴다).
+                parts.push({ grain: r.grain, items: r.items, timesOf: ctx.materialsFor(ctx.savedSetOf(m.setId)?.pointDef).timesOf });
             }
             const u = unionOf(parts);
             return { broken: false, grain: u.grain, items: u.items };
@@ -176,7 +194,10 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
     const hit = memo.get(setId);
     if (hit !== undefined) return hit;
 
-    const stages = setId === null ? ctx.activeStages : (ctx.savedSetOf(setId)?.stages ?? []);
+    const set = setId === null ? undefined : ctx.savedSetOf(setId);
+    const stages = setId === null ? ctx.activeStages : (set?.stages ?? []);
+    // 저장 집합은 자기 정의로 평가된다 — 정의 사본이 없는 옛 저장물은 현재 정의(관대 병합 규칙 그대로).
+    const mat = ctx.materialsFor(set?.pointDef);
 
     let sessionKey: string | null = null;
     if (setId !== null && ctx.materialsEpoch !== undefined) {
@@ -184,7 +205,10 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
             sessionEpoch = ctx.materialsEpoch;
             sessionDefCache.clear();
         }
-        sessionKey = JSON.stringify(stages);
+        // ⚠ 키에 **정의가 들어간다** — stages 만 보면 같은 조건·다른 게이트 두 집합이 서로의 정산을 먹는다
+        // (조용히 다른 집합). 정의 없는 옛 저장물은 "cur"(현재 정의) — 현재 정의가 바뀌면 평가에 닿는
+        // 변경은 전부 재료(타점·축 값·결과)를 지나 세대가 바뀌므로 낡은 정산이 살아남지 못한다.
+        sessionKey = `${set?.pointDef ? evalDefKeyOf(set.pointDef) : "cur"}\n${JSON.stringify(stages)}`;
         const sHit = sessionDefCache.get(sessionKey);
         if (sHit !== undefined) {
             memo.set(setId, sHit);
@@ -192,10 +216,10 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
         }
     }
 
-    const active = activeStages(funnelOrder(stages, ctx.grainLook).map((e) => e.stage));
-    const grain = resolveAutoGrain(stages, ctx.grainLook);
-    const items = expandUniverse(ctx.candidates, grain, ctx.timesOf);
-    const r: ResolvedFilter = { grain, active, tally: tallyFunnel(items, toFunnelStages(active, ctx.evalLook)) };
+    const active = activeStages(funnelOrder(stages, mat.grainLook).map((e) => e.stage));
+    const grain = resolveAutoGrain(stages, mat.grainLook);
+    const items = expandUniverse(ctx.candidates, grain, mat.timesOf);
+    const r: ResolvedFilter = { grain, active, tally: tallyFunnel(items, toFunnelStages(active, mat.evalLook)) };
     memo.set(setId, r);
     if (sessionKey !== null) sessionDefCache.set(sessionKey, r);
     return r;
