@@ -6,16 +6,33 @@ import { useRef } from "react";
 import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
 import { MIN_COL_W } from "./sheetColumns.js";
 
-export function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, sortStep, onToggleFreeze, onHide, onDropSort, onClose }: {
+export function HeaderMenu({ anchor, label, frozen, canHide, canFreeze, sortStep, difPeers, onMakeDif, onRemoveDif, onToggleFreeze, onHide, onDropSort, onClose }: {
     anchor: { x: number; y: number }; label: string; frozen: boolean; canHide: boolean; canFreeze: boolean;
     /** 이 열의 정렬 단(1부터). 0 = 체인에 없거나 1단짜리 정렬 → 항목 숨김. */
     sortStep: number;
+    /**
+     * 차이 열(A − B)의 **B 후보** — 이 열(A)을 뺄 상대. 지금 보이는 숫자형 결과 열 중 자기 자신 제외.
+     * 비어 있으면 항목이 안 뜬다(뺄 상대가 없으면 그 손짓은 뜻이 없다).
+     */
+    difPeers: readonly { key: string; label: string }[];
+    onMakeDif: (bKey: string) => void;
+    /** 이 열이 차이 열이면 삭제 손잡이(아니면 null). */
+    onRemoveDif: (() => void) | null;
     onToggleFreeze: () => void; onHide: () => void; onDropSort: () => void; onClose: () => void;
 }): JSX.Element {
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={168} padding={0} placement="beside" offset={6}>
             <MenuLabel>{label}</MenuLabel>
             {sortStep > 0 && <MenuItem onClick={onDropSort}>{sortStep}차 정렬에서 빼기</MenuItem>}
+            {onRemoveDif !== null && (
+                <MenuItem onClick={onRemoveDif} style={{ borderTop: sortStep > 0 ? "1px solid var(--border-subtle)" : undefined }}>차이 열 삭제</MenuItem>
+            )}
+            {difPeers.length > 0 && (
+                <>
+                    <div style={{ borderTop: "1px solid var(--border-subtle)" }}><MenuLabel>차이 열 만들기 — 이 열에서 뺄 상대</MenuLabel></div>
+                    {difPeers.map((pr) => <MenuItem key={pr.key} onClick={() => onMakeDif(pr.key)}>− {pr.label}</MenuItem>)}
+                </>
+            )}
             {canFreeze && <MenuItem onClick={onToggleFreeze} style={sortStep > 0 ? { borderTop: "1px solid var(--border-subtle)" } : undefined}>{frozen ? "🔓 고정 해제" : "🔒 왼쪽 고정"}</MenuItem>}
             {canHide && (
                 <MenuItem onClick={onHide} style={{ borderTop: canFreeze ? "1px solid var(--border-subtle)" : undefined, color: "var(--text-secondary)" }}>

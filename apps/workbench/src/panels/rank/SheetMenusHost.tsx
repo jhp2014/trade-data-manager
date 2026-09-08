@@ -9,6 +9,8 @@ import { HeaderMenu } from "./SheetMenus.js";
 import type { CellCtxPayload } from "./SheetRowView.js";
 import type { HdrCtxPayload } from "./SheetHeaderRow.js";
 import type { SheetColumns } from "./useSheetColumns.js";
+import { colKey, colLabel } from "./sheetColumns.js";
+import { isDifNumeric } from "./outcomeColumns.js";
 import type { SortKey } from "./sheetSort.js";
 
 /** 팝업 상태 한 벌 — 본체가 소유를 넘기고 opener 만 쓴다(닫기는 각 메뉴가 스스로). */
@@ -34,6 +36,17 @@ export function useSheetMenus(): SheetMenuState {
             ctx: () => setCtx(null), hdrCtx: () => setHdrCtx(null),
         },
     };
+}
+
+/**
+ * 차이 열의 **B 후보** — 지금 보이는 **숫자형 결과 열** 중 자기 자신 제외. 상태·회복처럼 숫자가 아닌
+ * 열은 빼기가 뜻을 잃으므로 뺀다(정렬은 서수라 되지만 "차이"는 아니다). 차이 열끼리 빼기도 제외 —
+ * 중첩은 범위 밖(별도 트랙)이고, 한 겹으로 옛 Δ 연장폭을 이미 대체한다.
+ */
+function difPeersOf(cols: SheetColumns, selfKey: string): { key: string; label: string }[] {
+    return cols.displayCols
+        .filter((c) => c.key === "out" && isDifNumeric(c.metric) && colKey(c) !== selfKey)
+        .map((c) => ({ key: colKey(c), label: colLabel(c) }));
 }
 
 export function SheetMenusHost({ m, axes, cols, sortAxisId, sortLen, dropSortKey }: {
@@ -77,6 +90,9 @@ export function SheetMenusHost({ m, axes, cols, sortAxisId, sortLen, dropSortKey
             {hdrCtx && (
                 <HeaderMenu anchor={hdrCtx} label={hdrCtx.label} frozen={hdrCtx.frozen} canHide={hdrCtx.canHide} canFreeze={hdrCtx.key !== "name"}
                     sortStep={sortLen > 1 ? hdrCtx.step : 0}
+                    difPeers={difPeersOf(cols, hdrCtx.key)}
+                    onMakeDif={(b) => { cols.addDif(hdrCtx.key, b); m.close.hdrCtx(); }}
+                    onRemoveDif={hdrCtx.key.startsWith("dif:") ? () => { cols.removeDif(hdrCtx.key.slice(4)); m.close.hdrCtx(); } : null}
                     onToggleFreeze={() => { cols.toggleFrozen(hdrCtx.key); m.close.hdrCtx(); }}
                     onHide={() => { cols.toggleHidden(hdrCtx.key); m.close.hdrCtx(); }}
                     onDropSort={() => { dropSortKey(hdrCtx.sortKey); m.close.hdrCtx(); }}

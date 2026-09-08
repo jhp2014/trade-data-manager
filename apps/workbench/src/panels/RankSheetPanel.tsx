@@ -4,7 +4,7 @@ import { useAutoPoints, useOutcomeSlices, usePointGrids, useTradeSim, type Outco
 import { useDisplayT } from "./outcome/outcomeLink.js";
 import { defDerivedFor } from "../lib/defDerived.js";
 import { seriesColor } from "../styles/palette.js";
-import type { OutPart } from "./rank/sheetColumns.js";
+import { colKey, type OutScope } from "./rank/sheetColumns.js";
 import { useCandidateDays } from "../lib/useCandidateDays.js";
 import { usePresenceIndex } from "../lib/usePresence.js";
 import { buildDaySheetRows, buildSheetRows, type SheetRow } from "./rank/rankSheet.js";
@@ -28,6 +28,7 @@ import { useLinkedSet } from "./filter/useSetBinding.js";
 import { SetBindingLabel } from "./filter/SetBindingLabel.js";
 import { setMembersOf } from "./filter/setMembers.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
+import { outcomeSortValue } from "./rank/outcomeColumns.js";
 import { PanelHeader, ScrollRow, miniBtn, mutedNote } from "../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../components/HeaderControls.js";
 import { chartKey, pointKey, rowKey, rowLookup } from "../lib/pointKey.js";
@@ -35,7 +36,7 @@ import { subjectStatus, useSubject } from "../lib/subject.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
 import { usePersistedState } from "../store/persist.js";
-import { useWorkbench } from "../store/workbench.js";
+import { selectFilterStages, useWorkbench } from "../store/workbench.js";
 import type { ReviewPointKey } from "@trade-data-manager/market/domain";
 
 // 타점 분석 시트 — 행=타점(격자 파생) · 열=축별 순위. (축은 전부 계산 축 — 판단축은 2026-08-25 폐지.)
@@ -135,23 +136,35 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
         () => (selectedSetRef?.kind === "assembly" ? (assemblies.find((a) => a.id === selectedSetRef.id) ?? null) : null),
         [selectedSetRef, assemblies],
     );
-    const outParts = useMemo<OutPart[] | undefined>(() => {
-        if (!viewingAssembly || dayMode) return undefined;
-        const out: OutPart[] = [];
-        // 색 = 조립 안 순번(끔·죽은 부품 포함 인덱스) — SetManager 부품 색점과 같은 규칙이라 눈이 잇는다.
-        viewingAssembly.members.forEach((m, i) => {
-            if (!m.enabled) return;
-            const set = savedSets.find((s) => s.id === m.setId);
-            if (!set) return;
-            out.push({ setId: m.setId, name: set.name, color: seriesColor(i) });
+    // 결과 열이 갈라지는 자리 — **배타 3갈래**(decisions.md 「허용 폭 T 의 인스턴스화」):
+    //   조립 뷰면 부품(모수가 다름) / 아니고 결과 조건이 있으면 인스턴스(T 가 다름) / 그 외 붙박이.
+    // 이 배타성이 "부품 × 인스턴스" 곱셈을 막는다.
+    const outcomeStages = useWorkbench((s) => selectFilterStages(s).filter((st) => st.predicates.some((pr) => pr.kind === "outcome")));
+    const outScopes = useMemo<OutScope[] | undefined>(() => {
+        if (dayMode) return undefined;
+        if (viewingAssembly) {
+            const out: OutScope[] = [];
+            // 색 = 조립 안 순번(끔·죽은 부품 포함 인덱스) — SetManager 부품 색점과 같은 규칙이라 눈이 잇는다.
+            viewingAssembly.members.forEach((m, i) => {
+                if (!m.enabled) return;
+                const set = savedSets.find((s) => s.id === m.setId);
+                if (!set) return;
+                out.push({ kind: "part", id: m.setId, name: set.name, color: seriesColor(i) });
+            });
+            return out.length > 0 ? out : undefined;
+        }
+        // 결과 조건마다 열 한 벌 — **꺼둔 조건도 선다**(탐색 = 꺼진 행: 거르지 않고 값만 본다).
+        const inst = outcomeStages.map((st, i): OutScope => {
+            const pr = st.predicates.find((x) => x.kind === "outcome");
+            return { kind: "inst", id: st.id, name: `T ${pr?.kind === "outcome" ? pr.t : 0}%`, color: seriesColor(i) };
         });
-        return out.length > 0 ? out : undefined;
-    }, [viewingAssembly, dayMode, savedSets]);
+        return inst.length > 0 ? inst : undefined;
+    }, [viewingAssembly, dayMode, savedSets, outcomeStages]);
 
     // ── 열 구성(고정·숨김·폭·컷 + 되짚기) — 넷 다 축 키를 들어 청소 규칙이 같으므로 한 훅이 소유한다.
     // 유령 키 청소 기준은 전체 축 — day 모드의 좁힌 목록으로 프룬하면 공유 컷의 point 축 키가 지워진다.
     const pruneAxisIds = useMemo(() => allAxes.map((a) => a.key), [allAxes]);
-    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode, pruneAxisIds, outParts });
+    const cols = useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode, pruneAxisIds, outScopes });
     const { displayCols, leftOf, tableW, lastFrozenKey, widthOf } = cols;
 
     // ── 전체 타점(행 원천) + 기간. day 모드는 후보 하루(존재 지도 파생)가 행 원천이다.
@@ -231,35 +244,68 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     //    아니라 읽기 면이라 자기 T 를 안 든다. T 커밋마다 단면 참조가 갈려 정렬·셀이 재계산된다.
     //    day 행 키(2조각)는 byKey(타점 키, 3조각)에 없어 폴백 없이 그대로 undefined 가 맞다.
     const displayT = useDisplayT();
-    const outcomes = useOutcomeSlices()(displayT);
+    const sliceAt = useOutcomeSlices();
+    const outcomes = sliceAt(displayT);
     // 시뮬 열의 값 — 같은 사정(시트 전용 소스, useTradeSim). 노브 커밋마다 참조가 갈려 재계산.
     const sim = useTradeSim();
     // 부품별 파생(조립 뷰) — 부품 정의(사본 없으면 현재 정의)의 결과 단면·시뮬·모수 키. defDerived 캐시라
     // 같은 정의를 깔때기 평가(materialsFor)와 공유한다(두 벌 안 돈다).
     const partAccess = useMemo(() => {
-        if (!outParts || grids.byDate === null) return null;
+        if (grids.byDate === null) return null;
         const m = new Map<string, { oc: OutcomesView; sim: SimView; has: (k: string) => boolean }>();
-        for (const p of outParts) {
-            const def = savedSets.find((s) => s.id === p.setId)?.pointDef ?? pointDefCur;
+        for (const sc of outScopes ?? []) {
+            if (sc.kind !== "part") continue;
+            const def = savedSets.find((s) => s.id === sc.id)?.pointDef ?? pointDefCur;
             const d = defDerivedFor(grids.byDate, def);
             // 부품 열의 T 도 **지금 보는 T** 다 — 부품이 가르는 건 모수(어느 시그널이 있나)지 T 가 아니다
             // (T 는 조건의 전제라 조건 인스턴스가 진다). 그래서 부품 × 인스턴스 곱셈이 안 생긴다.
-            m.set(p.setId, { oc: d.outcomes(displayT), sim: d.sim(def.sim), has: d.hasPoint });
+            m.set(sc.id, { oc: d.outcomes(displayT), sim: d.sim(def.sim), has: d.hasPoint });
         }
         return m;
-    }, [outParts, grids.byDate, savedSets, pointDefCur, displayT]);
-    // setId 가 오면 부품 열(그 부품 정의의 값) — 없으면 공용 결과 열(현재 정의). 정렬·셀이 같은 접근자를 문다.
-    const outcomeOf = useMemo(() => (row: SheetRow, setId?: string) =>
-        (setId !== undefined ? partAccess?.get(setId)?.oc.byKey.get(rowKey(row)) : outcomes.byKey.get(rowKey(row))), [outcomes, partAccess]);
-    const simOf = useMemo(() => (row: SheetRow, setId?: string) =>
-        (setId !== undefined ? partAccess?.get(setId)?.sim.byKey.get(rowKey(row)) : sim.byKey.get(rowKey(row))), [sim, partAccess]);
-    // 부품 모수 밖 판정 — "그 정의엔 이 시그널이 없다"(빈 칸과 다른 정보). 부품 파생이 아직 없으면 밖이 아니다.
-    const outsideOf = useMemo(() => (row: SheetRow, setId: string): boolean => {
-        const p = partAccess?.get(setId);
+    }, [outScopes, grids.byDate, savedSets, pointDefCur, displayT]);
+    /** 인스턴스 열의 단면 — 그 조건의 T 로(모수는 현재 정의와 같다). */
+    const instSlice = useMemo(() => {
+        const m = new Map<string, OutcomesView>();
+        for (const st of outcomeStages) {
+            const pr = st.predicates.find((x) => x.kind === "outcome");
+            if (pr?.kind === "outcome") m.set(st.id, sliceAt(pr.t));
+        }
+        return m;
+    }, [outcomeStages, sliceAt]);
+    // scope 가 오면 갈라진 열(부품 = 그 정의의 값 / 인스턴스 = 그 T 의 값) — 없으면 붙박이(표시 T).
+    const outcomeOf = useMemo(() => (row: SheetRow, scope?: { kind: "part" | "inst"; id: string }) => {
+        const k = rowKey(row);
+        if (scope === undefined) return outcomes.byKey.get(k);
+        return (scope.kind === "part" ? partAccess?.get(scope.id)?.oc : instSlice.get(scope.id))?.byKey.get(k);
+    }, [outcomes, partAccess, instSlice]);
+    // 시뮬은 **T 무관**이라 인스턴스로 안 갈린다 — 부품(정의)만 가른다.
+    const simOf = useMemo(() => (row: SheetRow, scope?: { kind: "part" | "inst"; id: string }) =>
+        (scope?.kind === "part" ? partAccess?.get(scope.id)?.sim : sim)?.byKey.get(rowKey(row)), [sim, partAccess]);
+    // 모수 밖 판정 — "그 정의엔 이 시그널이 없다"(빈 칸과 다른 정보). 인스턴스는 모수가 같아 언제나 false.
+    const outsideOf = useMemo(() => (row: SheetRow, scope: { kind: "part" | "inst"; id: string }): boolean => {
+        if (scope.kind !== "part") return false;
+        const p = partAccess?.get(scope.id);
         return p !== undefined && !p.has(rowKey(row));
     }, [partAccess]);
+    /** 차이 열 값 — 피연산자 열의 **같은 접근자**를 두 번 부른다(값 정의가 한 곳이라 정렬·칸이 못 갈린다). */
+    const difOf = useMemo(() => {
+        const byCol = new Map(cols.displayCols.filter((c) => c.key === "out").map((c) => [colKey(c), c]));
+        const valueAt = (row: SheetRow, key: string): number | null => {
+            const c = byCol.get(key);
+            if (!c || c.key !== "out") return null;
+            const sc = c.scope ? { kind: c.scope.kind, id: c.scope.id } : undefined;
+            return outcomeSortValue(outcomeOf(row, sc), simOf(row, sc), c.metric);
+        };
+        return (row: SheetRow, id: string): number | null => {
+            const d = cols.difs.find((x) => x.id === id);
+            if (!d) return null;
+            const a = valueAt(row, d.a);
+            const b = valueAt(row, d.b);
+            return a === null || b === null ? null : a - b;
+        };
+    }, [cols.displayCols, cols.difs, outcomeOf, simOf]);
 
-    const sortCtx = useMemo<SortCtx>(() => ({ nameOf, outcomeOf, simOf }), [nameOf, outcomeOf, simOf]);
+    const sortCtx = useMemo<SortCtx>(() => ({ nameOf, outcomeOf, simOf, difOf }), [nameOf, outcomeOf, simOf, difOf]);
     const sorted = useMemo(() => sortSheetRows(rows, sort, sortCtx, cutKeys), [rows, sort, sortCtx, cutKeys]);
     const groups = useMemo(() => buildSheetGroups(sorted, sort, sortCtx, cutKeys), [sorted, sort, sortCtx, cutKeys]);
 
@@ -402,7 +448,7 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
             <SheetRowView key={key} row={row} cols={displayCols}
                 leftOf={leftOf} lastFrozenKey={lastFrozenKey} widthOf={widthOf}
                 name={nameOf(row.stockCode)}
-                mode={cellMode} valuedOf={valuedOf} outcomeOf={outcomeOf} simOf={simOf} outsideOf={outsideOf} sortAxisId={sortAxisId}
+                mode={cellMode} valuedOf={valuedOf} outcomeOf={outcomeOf} simOf={simOf} outsideOf={outsideOf} difOf={difOf} sortAxisId={sortAxisId}
                 focus={isSubjectRow(row)} pinned={isPinned}
                 dim={bandsActive && !interKeys.has(matchKeyOf(row)) && (isPinned || filterModeEff === "dim")}
                 inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} top={top} h={rowH} />

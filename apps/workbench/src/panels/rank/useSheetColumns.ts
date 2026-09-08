@@ -14,7 +14,7 @@ import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import { usePersistedState } from "../../store/persist.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { OUTCOME_COL_IDS } from "./outcomeColumns.js";
-import { layoutColumns, colKey, pruneAxisKeys, pruneOutKeys, reorderFrozenCols, type Col, type OutPart } from "./sheetColumns.js";
+import { layoutColumns, colKey, pruneAxisKeys, pruneDifKeys, pruneOutKeys, reorderFrozenCols, type Col, type OutScope } from "./sheetColumns.js";
 import { matchPresetCols, parseSheetPresets, presetHidden, prunePresets, type SheetPreset } from "./sheetPresets.js";
 
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
@@ -24,12 +24,26 @@ const WIDTHS_KEY = "wb.rankSheetColWidths";
 const CUTS_KEY = "wb.rankSheetCuts";
 /** 열 프리셋 — 보이는 열 스냅샷 목록(sheetPresets 참고). 다른 넷과 같은 사정(축 키를 든다)이라 여기서 소유·청소. */
 const PRESETS_KEY = "wb.rankSheetPresets";
+/** 차이 열 — 결과 열 둘의 차(A − B). 시트 전용 저장물이라 다른 넷과 같은 주머니 규칙(행 모드별). */
+const DIFS_KEY = "wb.rankSheetDifs";
 /** day 행 모드는 고정·숨김·폭을 **딴 주머니**에 — 모드 토글이 열 배치를 섞으면 안 된다.
  *  컷(CUTS_KEY)만 공유: 컷은 축의 자리(orderKey 앵커)라 행 모드와 무관하게 같은 뜻이다. */
 const dayKey = (k: string): string => `${k}.day`;
 
 /** 되짚기 강조가 남는 시간(ms) — 스크롤이 멎고 눈이 따라잡을 만큼. */
 const FLASH_MS = 1400;
+
+/** 차이 열 하나 — 피연산자는 **결과 열의 colKey**(붙박이·부품·인스턴스 어느 갈래든 같은 접근자를 지난다). */
+export interface DifCol { id: string; a: string; b: string }
+const parseDifs = (o: unknown): DifCol[] | null => {
+    if (!Array.isArray(o)) return null;
+    const out: DifCol[] = [];
+    for (const raw of o) {
+        const d = raw as { id?: unknown; a?: unknown; b?: unknown };
+        if (typeof d?.id === "string" && typeof d.a === "string" && typeof d.b === "string" && d.a !== d.b) out.push({ id: d.id, a: d.a, b: d.b });
+    }
+    return out;
+};
 
 export interface SheetColumns {
     /** 그릴 열들과 그 기하 — layoutColumns 의 결과 그대로. */
@@ -67,20 +81,27 @@ export interface SheetColumns {
     /** 적용 = hiddenCols 를 "전체 − cols" 로 교체 — 순서·고정·폭은 안 만진다. */
     applyPreset: (p: SheetPreset) => void;
 
+    /** 차이 열들(A − B) — 피연산자는 결과 열 colKey. */
+    difs: DifCol[];
+    /** 차이 열 만들기 — 같은 쌍이 이미 있으면 안 만든다(중복 열은 정보가 없다). */
+    addDif: (a: string, b: string) => void;
+    removeDif: (id: string) => void;
+
     /** 열 헤더 등록(되짚기 스크롤 대상). */
     registerTh: (key: string, el: HTMLElement | null) => void;
     /** 지금 강조 중인 열 키. */
     flashCol: string | null;
 }
 
-export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode = "point", pruneAxisIds, outParts }: {
+export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMode = "point", pruneAxisIds, outScopes }: {
     axes: AxisRef[];
     axesLoading: boolean;
     /**
-     * 조립 뷰의 부품들 — 실리면 결과 열(`out:`)이 **부품별로 갈라진다**(공용 결과 열은 그동안 안 선다:
-     * 현재 정의 값이 조립 옆에 서면 어느 정의의 숫자인지 눈으로 못 가른다). point 행 모드에만 뜻이 있다.
+     * 결과 열이 갈라지는 자리들 — 조립 뷰의 부품 또는 결과 조건 인스턴스(패널이 **배타로** 골라 넘긴다).
+     * 실리면 공용 결과 열은 그동안 안 선다: 기준이 다른 숫자가 나란히 서면 어느 기준인지 눈으로 못 가른다.
+     * point 행 모드에만 뜻이 있다.
      */
-    outParts?: readonly OutPart[];
+    outScopes?: readonly OutScope[];
     /**
      * 유령 키 청소의 기준 축 목록 — **전체 축**(모드 필터 전). day 모드는 axes 를 day 축으로 좁혀
      * 넘기는데, 그 목록으로 프룬하면 공유 주머니(컷)의 point 축 키를 유령으로 오인해 지운다.
@@ -100,28 +121,43 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     const [colWidths, setColWidths] = usePersistedState<Record<string, number>>(day ? dayKey(WIDTHS_KEY) : WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null), {});
     const [cuts, setCuts] = usePersistedState<Record<string, string[]>>(CUTS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, string[]>) : null), {});
     const [presets, setPresets] = usePersistedState<SheetPreset[]>(day ? dayKey(PRESETS_KEY) : PRESETS_KEY, parseSheetPresets, []);
+    const [difs, setDifs] = usePersistedState<DifCol[]>(day ? dayKey(DIFS_KEY) : DIFS_KEY, parseDifs, []);
     // 드래그 중 폭의 **미리보기 층**(영속 밖) — pointermove 마다 localStorage 에 동기 기록하면 이벤트
     // 빈도만큼 JSON 직렬화가 돌아 드래그가 무거워진다. 움직이는 동안은 메모리로만 그리고 손을 뗄 때
     // commitWidth 가 한 번 영속에 적는다(최종 저장값 의미는 종전과 동일).
     const [previewWidths, setPreviewWidths] = useState<Record<string, number>>({});
+    // 청소 effect 가 읽는 최신값 — deps 에 넣으면 차이 열 편집마다 축 청소가 통째로 도는데, 이 effect 의
+    // 트리거는 어디까지나 "축·자리 목록이 바뀌었나" 하나여야 한다(revealAxis 의 flatRef 와 같은 규율).
+    const difsRef = useRef<DifCol[]>(difs);
+    difsRef.current = difs;
 
     // 축을 지우면 그 축 키가 넷 모두에 유령으로 남는다 → 축 목록이 로드된 뒤 한 번 청소(위 ⚠ 참고).
     // 격자 축은 **잠깐 숨을 수 있다** — 격자 로딩 전(서버 축이 먼저 와서 이 청소가 도는 순간 격자 축은
     // 아직 목록에 없다). 죽은 게 아니라 보호 목록을 합쳐 넘긴다(레일 서랍과 같은 처방).
     // 부품 열(`out:<setId>:<metric>`)의 생사 기준 = 저장 집합 목록 — 스토어 생성 때 동기 로드라
     // 축과 달리 로딩 가드가 필요 없다(savedSetsSlice.loadSavedSets).
+    // 인스턴스 열(`out:i:<stageId>:…`)의 생사 기준 = 지금 서 있는 자리 목록(패널이 넘긴 outScopes).
     const savedSets = useWorkbench((s) => s.savedSets);
     const liveSetIds = useMemo(() => savedSets.map((s) => s.id), [savedSets]);
+    const liveStageIds = useMemo(() => (outScopes ?? []).filter((sc) => sc.kind === "inst").map((sc) => sc.id), [outScopes]);
     useEffect(() => {
         if (axesLoading || axes.length === 0) return;
         const ids = [...(pruneAxisIds ?? axes.map((a) => a.key)), ...GRID_AXIS_IDS];
-        setFrozenCols((f) => pruneOutKeys(pruneAxisKeys(f, ids), liveSetIds));
-        setHiddenCols((h) => pruneOutKeys(pruneAxisKeys(h, ids), liveSetIds));
-        setColWidths((w) => pruneOutKeys(pruneAxisKeys(w, ids), liveSetIds));
-        setCuts((c) => pruneAxisKeys(c, ids)); // 컷 키는 축뿐 — 부품 열엔 컷이 없다
-        setPresets((p) => prunePresets(p, ids, liveSetIds));
+        const liveDifIds = difsRef.current.map((d) => d.id);
+        const prune = <T extends string[] | Record<string, unknown>>(x: T): T => pruneDifKeys(pruneOutKeys(pruneAxisKeys(x, ids), liveSetIds, liveStageIds), liveDifIds);
+        setFrozenCols(prune);
+        setHiddenCols(prune);
+        setColWidths(prune);
+        setCuts((c) => pruneAxisKeys(c, ids)); // 컷 키는 축뿐 — 갈라진 결과 열엔 컷이 없다
+        setPresets((p) => prunePresets(p, ids, liveSetIds, liveStageIds));
+        // 차이 열은 **피연산자가 지금 서 있어야** 뜻이 있다 — 한쪽이 사라지면 그 항목을 버린다.
+        setDifs((ds) => {
+            const live = new Set(baseKeysRef.current);
+            const next = ds.filter((d) => live.has(d.a) && live.has(d.b));
+            return next.length === ds.length ? ds : next;
+        });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [axes, axesLoading, pruneAxisIds, liveSetIds]);
+    }, [axes, axesLoading, pruneAxisIds, liveSetIds, liveStageIds]);
 
     // ── "저 축 보여줘"(타점 정보 → 여기) — 그 축 **열**로 가로 스크롤하고 잠깐 강조한다.
     //    시트에서는 열이 곧 축이고 축이 많으면 가로로 넘치므로 찾아 주는 일이 필요하다.
@@ -155,16 +191,22 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         ...axes.map((a): Col => ({ key: "axis", axisId: a.key, name: a.name, computed: isComputedAxis(a.key) })),
         ...(day
             ? [{ key: "points" } as Col, { key: "comment" } as Col]
-            // 조립 뷰(outParts)는 결과 열이 부품별로 — 부품 순서 × 열 순서(같은 부품의 열들이 붙어 선다).
-            : outParts && outParts.length > 0
-                ? outParts.flatMap((p) => OUTCOME_COL_IDS.map((id): Col => ({ key: "out", metric: id, part: p })))
+            // 갈라진 자리가 있으면 자리 순서 × 열 순서(같은 자리의 열들이 붙어 선다) — 없으면 붙박이 열.
+            : outScopes && outScopes.length > 0
+                ? outScopes.flatMap((sc) => OUTCOME_COL_IDS.map((id): Col => ({ key: "out", metric: id, scope: sc })))
                 : OUTCOME_COL_IDS.map((id): Col => ({ key: "out", metric: id }))),
-    ], [axes, day, outParts]);
+        // 차이 열은 언제나 맨 뒤(피연산자 열보다 오른쪽이라 "빼는 순서"가 눈으로 읽힌다).
+        ...(day ? [] : difs.map((d): Col => ({ key: "dif", id: d.id, a: d.a, b: d.b }))),
+    ], [axes, day, outScopes, difs]);
     // 미리보기 층이 영속 폭을 덮는다 — 드래그 중에도 열이 실시간으로 넓어져 보이되 저장은 안 된다.
     const effectiveWidths = useMemo(
         () => (Object.keys(previewWidths).length ? { ...colWidths, ...previewWidths } : colWidths),
         [colWidths, previewWidths],
     );
+    // 지금 서 있는 열 키들 — 차이 열의 피연산자 생존 판정 기준(자기 자신은 뺀다).
+    const baseKeysRef = useRef<string[]>([]);
+    baseKeysRef.current = baseCols.filter((c) => c.key !== "dif").map(colKey);
+
     const layout = useMemo(
         () => layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths: effectiveWidths, containerW, axisMin }),
         [baseCols, frozenCols, hiddenCols, effectiveWidths, containerW, axisMin],
@@ -192,6 +234,10 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
             return i < 0 ? [...ps, { name, cols }] : ps.map((p, j) => (j === i ? { name, cols } : p));
         }),
         deletePreset: (name) => setPresets((ps) => ps.filter((p) => p.name !== name)),
+        difs,
+        addDif: (a, b) => setDifs((ds) => (a === b || ds.some((d) => d.a === a && d.b === b) ? ds
+            : [...ds, { id: `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, a, b }])),
+        removeDif: (id) => setDifs((ds) => ds.filter((d) => d.id !== id)),
         // 결과 열 키는 metric 으로 맞춘다(matchPresetCols) — 붙박이 "결과"가 조립 뷰의 부품 열도 살린다.
         applyPreset: (p) => setHiddenCols(presetHidden(baseCols.map(colKey), matchPresetCols(p.cols, baseCols.map(colKey)))),
         cuts,

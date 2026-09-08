@@ -61,7 +61,7 @@ export function useRevealConsumer(key: string): { reveal: BoardReveal | null; ma
 }
 
 export const rowIdOfKey = (k: RailKey): string =>
-    k.kind === "axis" ? `axis:${k.axisId}` : k.kind === "outcome" ? `outcome:${k.metric}` : k.kind;
+    k.kind === "axis" ? `axis:${k.axisId}` : k.kind === "outcome" ? `outcome:${k.metric}@${k.t}` : k.kind;
 
 /** 이 필터가 보드의 어느 줄에 사는가 — 되짚기(위 목록 → 보드)의 유일한 대응표. */
 export function rowIdOfStage(s: FilterStage): string {
@@ -71,7 +71,7 @@ export function rowIdOfStage(s: FilterStage): string {
         case "group": return `group:${s.id}`;
         case "axisBand":
         case "axisValue": return `axis:${first.axisId}`;
-        case "outcome": return `outcome:${first.metric}`; // 지표별 줄 — kind 하나로 뭉개면 레일 4개가 한 줄로 접힌다
+        case "outcome": return `outcome:${first.metric}@${first.t}`; // (지표 × T) 별 줄 — 뭉개면 T 다른 조건이 한 줄로 접힌다
         case "outcomeRecovery": return `recovery:${s.id}`;
         case "date": return "date";
         case "time": return "time";

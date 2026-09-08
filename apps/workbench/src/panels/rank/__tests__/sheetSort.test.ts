@@ -22,7 +22,7 @@ const row = (code: string, over: Partial<SheetRow> & { ax?: RankCell | null } = 
 // 정렬은 slice.status/recovered 와 eval 만 읽으므로 그 부분 형태만 만들고 캐스팅한다.
 type OutcomeRecordLite = { slice: { status: "exceeded" | "contained" | "none"; recovered: boolean | null }; eval: Partial<Record<string, number>> };
 const OUTCOMES = new Map<string, OutcomeRecordLite>();
-const ctx: SortCtx = { nameOf: (c) => `${c}명`, outcomeOf: (r) => OUTCOMES.get(r.stockCode) as ReturnType<SortCtx["outcomeOf"]>, simOf: () => undefined };
+const ctx: SortCtx = { nameOf: (c) => `${c}명`, outcomeOf: (r) => OUTCOMES.get(r.stockCode) as ReturnType<SortCtx["outcomeOf"]>, simOf: () => undefined, difOf: () => null };
 const codes = (rows: SheetRow[]): string[] => rows.map((r) => r.stockCode);
 const AX: SortChain = [{ key: { kind: "axis", axisId: "A" }, dir: 1 }];
 
@@ -96,27 +96,41 @@ describe("정렬 체인", () => {
     });
 });
 
-describe("부품 열 정렬(out + setId) — 조립 뷰", () => {
-    it("영속 왕복 보존 · 오염된 setId 는 필드만 벗겨 공용 결과 열로 읽는다(관대)", () => {
-        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh", setId: "fs1" }, dir: -1 }];
+describe("갈라진 결과 열 정렬(out + scope) — 조립 뷰의 부품 · 결과 조건 인스턴스", () => {
+    it("영속 왕복 보존 · 오염된 scope 는 필드만 벗겨 공용 결과 열로 읽는다(관대)", () => {
+        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh", scope: { kind: "part", id: "fs1" } }, dir: -1 }];
         expect(parseSortChain(JSON.parse(JSON.stringify(chain)))).toEqual(chain);
-        expect(parseSortChain([{ key: { kind: "out", metric: "extHigh", setId: 3 }, dir: -1 }]))
+        expect(parseSortChain([{ key: { kind: "out", metric: "extHigh", scope: { kind: "nope", id: 3 } }, dir: -1 }]))
             .toEqual([{ key: { kind: "out", metric: "extHigh" }, dir: -1 }]);
     });
 
-    it("setId 가 ctx 접근자까지 흐른다 — 부품 정의의 값으로 정렬된다", () => {
-        const perPart: SortCtx = {
+    it("차이 열 정렬 키도 왕복한다 · id 가 아니면 그 단은 폐기", () => {
+        const chain: SortChain = [{ key: { kind: "dif", id: "d1" }, dir: -1 }];
+        expect(parseSortChain(JSON.parse(JSON.stringify(chain)))).toEqual(chain);
+        expect(parseSortChain([{ key: { kind: "dif" }, dir: -1 }])).toBeNull();
+    });
+
+    it("scope 가 ctx 접근자까지 흐른다 — 그 자리의 값으로 정렬된다", () => {
+        const perScope: SortCtx = {
             nameOf: (c) => c,
-            outcomeOf: (r, setId) => (setId === "fs1"
+            outcomeOf: (r, scope) => (scope?.id === "fs1"
                 ? ({ slice: { status: "exceeded", recovered: null }, eval: { extHigh: r.stockCode === "A" ? 1 : 9 } } as ReturnType<SortCtx["outcomeOf"]>)
                 : undefined),
             simOf: () => undefined,
+            difOf: () => null,
         };
         const rows = [row("A"), row("B")];
-        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh", setId: "fs1" }, dir: -1 }];
-        expect(codes(sortSheetRows(rows, chain, perPart))).toEqual(["B", "A"]);
-        // setId 없는 공용 열은 그 ctx 에서 전 행 바닥 — 폴백(날짜·종목)순.
-        expect(codes(sortSheetRows(rows, [{ key: { kind: "out", metric: "extHigh" }, dir: -1 }], perPart))).toEqual(["A", "B"]);
+        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh", scope: { kind: "part", id: "fs1" } }, dir: -1 }];
+        expect(codes(sortSheetRows(rows, chain, perScope))).toEqual(["B", "A"]);
+        // scope 없는 공용 열은 그 ctx 에서 전 행 바닥 — 폴백(날짜·종목)순.
+        expect(codes(sortSheetRows(rows, [{ key: { kind: "out", metric: "extHigh" }, dir: -1 }], perScope))).toEqual(["A", "B"]);
+    });
+
+    it("차이 열 값은 difOf 가 낸다 — null 은 방향 무관 바닥", () => {
+        const withDif: SortCtx = { ...ctx, difOf: (r) => (r.stockCode === "A" ? 3 : r.stockCode === "B" ? -1 : null) };
+        const rows = [row("A"), row("B"), row("없음")];
+        expect(codes(sortSheetRows(rows, [{ key: { kind: "dif", id: "d1" }, dir: -1 }], withDif))).toEqual(["A", "B", "없음"]);
+        expect(codes(sortSheetRows(rows, [{ key: { kind: "dif", id: "d1" }, dir: 1 }], withDif))).toEqual(["B", "A", "없음"]);
     });
 });
 

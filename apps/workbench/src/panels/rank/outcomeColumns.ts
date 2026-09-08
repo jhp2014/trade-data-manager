@@ -57,6 +57,13 @@ export const OUTCOME_COL_META: Record<OutcomeColId, OutcomeColMeta> = {
  * 방향 무관 바닥(sheetSort 규칙 2). 숫자들은 셀 표기와 같은 출처(eval/SimResult)를 읽는다.
  * 상태 서수 = 초과 0 · 이내 1 · 무눌림 2, 시뮬 서수 = SIM_STATUS_META.ord(비관→낙관).
  */
+/**
+ * 차이 열의 피연산자가 될 수 있는가 — **숫자 값을 내는 결과 열**만. 상태·회복·시뮬 분류는 서수라
+ * 정렬은 되지만 뺄셈이 뜻을 잃는다(그 차이는 아무것도 아니다).
+ */
+export const isDifNumeric = (id: OutcomeColId): boolean =>
+    id !== "recovered" && id !== "status" && id !== "simStatus";
+
 export function outcomeSortValue(rec: OutcomeRecord | undefined, sim: SimResult | undefined, id: OutcomeColId): number | null {
     if (isSimColId(id)) {
         if (sim === undefined) return null;

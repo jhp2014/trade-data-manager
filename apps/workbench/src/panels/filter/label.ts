@@ -44,8 +44,10 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
                 ? `${p.ranges[0]!.from}~${p.ranges[0]!.to}`
                 : `시간 ${p.ranges.length}구간`;
         case "themeStrength": return themeStrengthLabel(p.params);
-        case "outcome": return OUTCOME_METRIC_NAME[p.metric];
-        case "outcomeRecovery": return p.recovered ? "저가 회복" : "저가 미회복";
+        // T 를 라벨에 싣는다 — 같은 지표의 조건이 T 별로 여러 줄 설 수 있어(2026-09-09 인스턴스화)
+        // T 가 없으면 보드 목록에서 두 줄이 같은 이름으로 보인다.
+        case "outcome": return `${OUTCOME_METRIC_NAME[p.metric]} @T${p.t}%`;
+        case "outcomeRecovery": return `${p.recovered ? "저가 회복" : "저가 미회복"} @T${p.t}%`;
     }
 }
 

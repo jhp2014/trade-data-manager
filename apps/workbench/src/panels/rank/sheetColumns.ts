@@ -22,16 +22,24 @@ const AXIS_VALUE_W = 84;
 export const MIN_COL_W = 32;
 
 /**
- * 조립 뷰의 부품 열 표식 — 결과 열이 **부품(저장 집합)별로 갈라질 때** 싣는다. 열 주소(colKey)는
- * **부품 id** 다: 정의 지문으로 하면 부품의 T1 을 만질 때마다 주소가 바뀌어 열 설정(폭·고정·숨김·정렬)이
- * 리셋된다("축 키는 뜻의 주소" 규칙 — decisions.md 「집합 조립 (OR)」). 색은 조립 안 순번(seriesColor) —
- * SetManager 부품 색점과 같은 출처.
+ * 결과 열이 갈라지는 **자리** — 조립 뷰의 부품(part) 또는 결과 조건 인스턴스(inst). 열 주소(colKey)는
+ * 언제나 **id** 다: 값의 정체를 정하는 건 정의·T 지만 그걸 주소로 쓰면 그 값을 만질 때마다 주소가 바뀌어
+ * 열 설정(폭·고정·숨김·정렬)이 리셋된다("축 키는 뜻의 주소" 규칙).
+ *
+ * 셋은 **배타**다 — 조립 뷰면 부품 열만, 아니고 결과 조건이 있으면 인스턴스 열만, 그 외엔 붙박이 열.
+ * 이 배타성이 "부품 × 인스턴스" 곱셈을 막는 자리다(부품이 가르는 건 모수, 인스턴스가 가르는 건 T).
  */
-export interface OutPart {
-    setId: string;
+export interface OutScope {
+    kind: "part" | "inst";
+    id: string;
+    /** 헤더 라벨의 접두(부품 이름 또는 "T 5%"). */
     name: string;
+    /** 색점 — 부품은 조립 안 순번, 인스턴스는 조건 순번(둘 다 seriesColor). */
     color: string;
 }
+
+/** 옛 이름 — 조립(부품) 자리의 별칭. 소비자가 점진적으로 OutScope 로 옮겨간다. */
+export type OutPart = OutScope;
 
 export type Col =
     | { key: "name" }
@@ -46,13 +54,21 @@ export type Col =
      * 결과 열(point 행 모드 전용) — 값은 축 피드가 아니라 **시트 전용 소스**(useOutcomes)에서 온다.
      * 과거/미래 경계(decisions.md 「시그널 결과」): 결과는 레일/서랍의 특징이 아니고, 시트는 읽기 면이라
      * 여기서만 합류한다. 폭·라벨·정렬(가로)이 열마다 갈려 axis 처럼 런타임 override 를 탄다.
-     * part 가 실리면 조립 뷰의 **부품별 열**이다 — 값도 그 부품 정의의 파생에서 온다.
+     * scope 가 실리면 갈라진 열이다 — 부품(모수가 다름) 또는 결과 조건 인스턴스(T 가 다름).
      */
-    | { key: "out"; metric: OutcomeColId; part?: OutPart };
+    | { key: "out"; metric: OutcomeColId; scope?: OutScope }
+    /**
+     * 차이 열 — **결과 열 둘의 차**(A − B). 옛 `deltaExt`(Δ 연장폭) 특수 지표를 대체하는 일반 기계다:
+     * T 가 다른 두 인스턴스 열을 골라 빼면 그게 곧 "허용을 넓히면 더 가는 만큼"이다.
+     * 주소는 **id**(피연산자 키를 주소로 쓰면 한쪽 조건의 T 를 만질 때마다 열 설정이 리셋된다).
+     */
+    | { key: "dif"; id: string; a: string; b: string };
 export type ColKind = Col["key"];
 
-/** 부품 열이면 그 표식 — 헤더 색점·셀 "밖" 판정이 읽는다. */
-export const colPart = (c: Col): OutPart | null => (c.key === "out" ? (c.part ?? null) : null);
+/** 갈라진 열이면 그 자리 — 헤더 색점·셀 "밖" 판정이 읽는다. */
+export const colScope = (c: Col): OutScope | null => (c.key === "out" ? (c.scope ?? null) : null);
+/** 옛 이름(부품 전용 시절) — 호출부가 남아 있어 별칭으로 둔다. */
+export const colPart = colScope;
 
 // td 기본 스타일 3종 — COL_META 가 참조하므로 먼저 선언한다.
 const td: CSSProperties = { padding: "5px 8px", color: "var(--text-primary)" };
@@ -67,6 +83,7 @@ export interface ColMeta {
     justify: "flex-start" | "center" | "flex-end";
     td: CSSProperties;
 }
+const DIF_W = 78;
 export const COL_META: Record<ColKind, ColMeta> = {
     name: { width: NAME_W, label: "종목", justify: "flex-start", td: td },
     date: { width: DATE_W, label: "날짜", justify: "center", td: td },
@@ -75,20 +92,38 @@ export const COL_META: Record<ColKind, ColMeta> = {
     points: { width: 52, label: "타점", justify: "center", td: tdCell },
     comment: { width: 52, label: "메모", justify: "center", td: tdCell },
     out: { width: 56, label: "", justify: "flex-end", td: tdCell }, // 라벨·폭·정렬은 열별 override(아래 셋)
+    dif: { width: DIF_W, label: "차이", justify: "flex-end", td: tdCell },
 };
 
-// 부품 열 키 = `out:<setId>:<metric>`(3조각 — metric id 에 `:` 가 없어 조각 수가 판정 자다).
+/**
+ * 열 주소 — **네 갈래**가 배타다:
+ *   · 붙박이 결과 열 `out:<metric>`            (표시 T 기준)
+ *   · 부품 열      `out:p:<setId>:<metric>`     (조립 뷰 — 모수가 다름, 값은 표시 T)
+ *   · 인스턴스 열  `out:i:<stageId>:<metric>`   (결과 조건 — T 가 다름)
+ *   · 차이 열      `dif:<id>`
+ * 태그(`p`/`i`)가 없으면 id 접두 관습으로 갈라야 하는데 그건 조용히 깨진다 — 조각 수 + 태그가 판정 자다.
+ */
 export const colKey = (c: Col): string =>
-    (c.key === "axis" ? `ax:${c.axisId}` : c.key === "out" ? (c.part ? `out:${c.part.setId}:${c.metric}` : `out:${c.metric}`) : c.key);
+    (c.key === "axis" ? `ax:${c.axisId}`
+        : c.key === "dif" ? `dif:${c.id}`
+            : c.key === "out" ? (c.scope ? `out:${c.scope.kind === "part" ? "p" : "i"}:${c.scope.id}:${c.metric}` : `out:${c.metric}`)
+                : c.key);
 export const colWidth = (c: Col): number =>
     c.key === "axis" && c.computed ? AXIS_VALUE_W : c.key === "out" ? OUTCOME_COL_META[c.metric].width : COL_META[c.key].width;
 export const colLabel = (c: Col): string =>
-    (c.key === "axis" ? c.name : c.key === "out" ? (c.part ? `${c.part.name}·${OUTCOME_COL_META[c.metric].label}` : OUTCOME_COL_META[c.metric].label) : COL_META[c.key].label);
+    (c.key === "axis" ? c.name
+        : c.key === "out" ? (c.scope ? `${c.scope.name}·${OUTCOME_COL_META[c.metric].label}` : OUTCOME_COL_META[c.metric].label)
+            : COL_META[c.key].label);
 /** 가로 정렬 — out 은 열마다 갈린다(숫자=우측, 회복/상태=중앙). COL_META.justify 직접 읽기를 대체. */
 export const colJustify = (c: Col): ColMeta["justify"] => (c.key === "out" ? OUTCOME_COL_META[c.metric].justify : COL_META[c.key].justify);
-/** 헤더 툴팁의 열 설명 — 결과 열만 든다(축·기본 열은 라벨이 곧 설명). 부품 열은 그 부품 정의 기준임을 앞세운다. */
-export const colHelp = (c: Col): string | null =>
-    (c.key === "out" ? (c.part ? `부품 「${c.part.name}」 의 정의(T·게이트 등) 기준 — ${OUTCOME_COL_META[c.metric].help}` : OUTCOME_COL_META[c.metric].help) : null);
+/** 헤더 툴팁의 열 설명 — 결과·차이 열만 든다(축·기본 열은 라벨이 곧 설명). */
+export const colHelp = (c: Col): string | null => {
+    if (c.key === "dif") return "두 결과 열의 차(A − B) — 한쪽이라도 값이 없으면 값 없음. T 다른 두 조건 열을 빼면 옛 Δ 연장폭과 같은 뜻이다";
+    if (c.key !== "out") return null;
+    if (!c.scope) return OUTCOME_COL_META[c.metric].help;
+    const basis = c.scope.kind === "part" ? `부품 「${c.scope.name}」 의 정의(게이트 등) 기준` : `${c.scope.name} 조건의 허용 폭 기준`;
+    return `${basis} — ${OUTCOME_COL_META[c.metric].help}`;
+};
 
 export interface SheetLayout {
     /** 그릴 순서 그대로 — [고정 스택…, 비고정…]. */
@@ -170,17 +205,32 @@ export function pruneAxisKeys<T extends string[] | Record<string, unknown>>(cur:
 }
 
 /**
- * 지워진 부품(저장 집합)의 유령 열 키 제거 — `out:<setId>:<metric>`(**3조각**)만 대상이다.
- * 붙박이 2조각(`out:extHigh`)은 부품 무관이라 절대 안 건드린다 — 여길 잘못 물면 결과 열 설정이 통째 증발한다.
+ * 지워진 자리(부품·결과 조건)의 유령 열 키 제거 — 태그형 **4조각**(`out:p|i:<id>:<metric>`)만 대상이다.
+ * 붙박이 2조각(`out:extHigh`)은 자리 무관이라 절대 안 건드린다 — 여길 잘못 물면 결과 열 설정이 통째 증발한다.
+ * 옛 3조각(`out:<setId>:<metric>`, 2026-09-08~09 하루짜리 형식)은 **전부 유령으로 본다**(태그가 없다).
  */
-export function pruneOutKeys<T extends string[] | Record<string, unknown>>(cur: T, liveSetIds: readonly string[]): T {
-    const live = new Set(liveSetIds);
+export function pruneOutKeys<T extends string[] | Record<string, unknown>>(
+    cur: T,
+    liveSetIds: readonly string[],
+    liveStageIds: readonly string[] = [],
+): T {
+    const liveParts = new Set(liveSetIds);
+    const liveInsts = new Set(liveStageIds);
     const dead = (k: string): boolean => {
         if (!k.startsWith("out:")) return false;
         const parts = k.split(":");
-        return parts.length === 3 && !live.has(parts[1]!);
+        if (parts.length === 3) return true; // 태그 없는 옛 형식
+        if (parts.length !== 4) return false;
+        const [, tag, id] = parts as [string, string, string, string];
+        return tag === "p" ? !liveParts.has(id) : tag === "i" ? !liveInsts.has(id) : true;
     };
     return pruneBy(cur, dead);
+}
+
+/** 피연산자가 사라진 차이 열 청소 — 지금 서 있는 열 키 집합을 기준으로 판정한다. */
+export function pruneDifKeys<T extends string[] | Record<string, unknown>>(cur: T, liveDifIds: readonly string[]): T {
+    const live = new Set(liveDifIds);
+    return pruneBy(cur, (k) => k.startsWith("dif:") && !live.has(k.slice(4)));
 }
 
 function pruneBy<T extends string[] | Record<string, unknown>>(cur: T, dead: (k: string) => boolean): T {

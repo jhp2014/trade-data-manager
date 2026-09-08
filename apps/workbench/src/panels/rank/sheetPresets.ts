@@ -28,10 +28,10 @@ export function parseSheetPresets(o: unknown): SheetPreset[] | null {
  * pruneOutKeys(지워진 부품의 3조각 `out:<setId>:<id>` — 나머지 주머니 넷과 같은 사정).
  * **바뀐 게 없으면 같은 배열 참조**를 돌려준다 — usePersistedState 의 저장 effect 가 헛돌지 않게(기존 넷의 규약).
  */
-export function prunePresets(presets: SheetPreset[], liveAxisIds: string[], liveSetIds: readonly string[]): SheetPreset[] {
+export function prunePresets(presets: SheetPreset[], liveAxisIds: string[], liveSetIds: readonly string[], liveStageIds: readonly string[] = []): SheetPreset[] {
     let changed = false;
     const next = presets.map((p) => {
-        const cols = pruneOutKeys(pruneAxisKeys(p.cols, liveAxisIds), liveSetIds);
+        const cols = pruneOutKeys(pruneAxisKeys(p.cols, liveAxisIds), liveSetIds, liveStageIds);
         if (cols === p.cols) return p;
         changed = true;
         return { ...p, cols };

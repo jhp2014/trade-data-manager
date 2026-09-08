@@ -30,6 +30,7 @@ import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
 import { OUTCOME_REVEAL, RAIL_REVEAL, useRevealSender } from "./boardReveal.js";
 import { useLinkedThemeStage } from "./themeLink.js";
 import { OUTCOME_PANEL_ID } from "../outcome/outcomePanelIds.js";
+import { useLinkedOutcome } from "../outcome/outcomeLink.js";
 import { stageLabel } from "./label.js";
 import { stageKind, type FilterStage, type Grain } from "./stage.js";
 
@@ -60,6 +61,7 @@ export function ConditionBoard({ barsOpen }: {
     // ── 편집면으로 데려가기 ──
     const sendReveal = useRevealSender(RAIL_REVEAL);
     const sendOutcomeReveal = useRevealSender(OUTCOME_REVEAL);
+    const { setLinked: setLinkedOutcome } = useLinkedOutcome(); // 결과 줄 클릭 = 그 조건으로 연동 이동(판의 T 가 따라온다)
     const { linkedId, setLinked } = useLinkedThemeStage();
     const [groupEditor, setGroupEditor] = useState<GroupEditorAnchor | null>(null);
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
@@ -84,10 +86,13 @@ export function ConditionBoard({ barsOpen }: {
                 return;
             // ⚠ default 로 흘리면 필터 레일 패널로 가는데 거기엔 결과 줄이 없다(조용한 무반응) — 명시 분기.
             case "outcome":
+                // 연동을 이 조건으로 옮긴다 — 판의 표시 T 가 그 조건의 T 가 돼야 레일에 그 컷이 보인다.
+                setLinkedOutcome(stage.id);
                 sendOutcomeReveal(stage.id);
                 openAndFocus(OUTCOME_PANEL);
                 return;
             case "outcomeRecovery": // 편집면 = 결과 패널 머리글 칩(레일 줄이 없어 되짚기 신호는 안 보낸다)
+                setLinkedOutcome(stage.id);
                 openAndFocus(OUTCOME_PANEL);
                 return;
             default:
