@@ -1,6 +1,6 @@
 // 열 프리셋(순수) — 파서 관대성 · 적용 계산 · 유령 청소의 참조 동일성 규약.
 import { describe, expect, it } from "vitest";
-import { BUILTIN_POINT_PRESETS, parseSheetPresets, presetHidden, prunePresets } from "../sheetPresets.js";
+import { BUILTIN_POINT_PRESETS, matchPresetCols, parseSheetPresets, presetHidden, prunePresets } from "../sheetPresets.js";
 
 describe("parseSheetPresets — 출처가 localStorage 라 관대하게", () => {
     it("정상 항목은 그대로, 형태 불량 항목·비문자 키는 조용히 버린다", () => {
@@ -39,6 +39,21 @@ describe("prunePresets — 죽은 축·부품 키 청소(다른 넷과 같은 �
     it("바뀐 게 없으면 **같은 참조** — usePersistedState 저장 effect 가 헛돌지 않게", () => {
         const ps = [{ name: "p", cols: ["name", "ax:살", "out:fs살:extHigh"] }];
         expect(prunePresets(ps, ["살"], ["fs살"])).toBe(ps);
+    });
+});
+
+describe("matchPresetCols — 결과 열 키는 부품 유무를 넘나들며 metric 으로 맞춘다", () => {
+    it("붙박이 2조각 키가 조립 뷰의 부품 열(3조각)도 살린다", () => {
+        expect(matchPresetCols(["name", "out:extHigh"], ["name", "date", "out:fs1:extHigh", "out:fs1:status"]))
+            .toEqual(["name", "out:fs1:extHigh"]);
+    });
+    it("조립 뷰에서 저장한 3조각 키가 일반 뷰의 공용 결과 열도 살린다 · 축·기본 열은 정확 키 그대로", () => {
+        expect(matchPresetCols(["out:fs1:status", "ax:1"], ["out:status", "out:extHigh", "ax:1", "ax:2"]))
+            .toEqual(["out:status", "ax:1"]);
+    });
+    it("같은 뷰의 부품 프리셋은 정확 키만 — fs1 만 보기가 fs2 의 같은 metric 을 안 되살린다(멱등)", () => {
+        expect(matchPresetCols(["out:fs1:extHigh"], ["out:fs1:extHigh", "out:fs2:extHigh"]))
+            .toEqual(["out:fs1:extHigh"]);
     });
 });
 

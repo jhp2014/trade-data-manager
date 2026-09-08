@@ -117,15 +117,7 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
             // groupChain 의 "하나라도 죽으면 통째"와 다른 규칙(사용자 확정).
             const a = ctx.assemblyOf(ref.id);
             if (a === undefined) return BROKEN;
-            const parts: UnionPart[] = [];
-            for (const m of a.members) {
-                if (!m.enabled) continue;
-                const r = resolveSaved(m.setId, ctx);
-                if (r.broken) continue;
-                // 부품의 하루→타점 전개도 **그 부품 정의의 시각**으로(자립 — 전개를 누구 정의로 하나가 안 생긴다).
-                parts.push({ grain: r.grain, items: r.items, timesOf: ctx.materialsFor(ctx.savedSetOf(m.setId)?.pointDef).timesOf });
-            }
-            const u = unionOf(parts);
+            const u = unionOf(liveUnionParts(a, ctx));
             return { broken: false, grain: u.grain, items: u.items };
         }
 
@@ -151,6 +143,40 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
             // 폐지된 옛 바인딩의 잔해 — 항상 깨진 참조. 화면이 라벨과 "다시 고르기"로 받는다.
             return BROKEN;
     }
+}
+
+/** 켠·살아있는 부품들의 합집합 재료 — 부품의 전개 시각은 **그 부품 정의**의 것(자립). 조립 케이스와 타점 전개가 공유한다. */
+function liveUnionParts(a: Assembly, ctx: SetResolveCtx): UnionPart[] {
+    const parts: UnionPart[] = [];
+    for (const m of a.members) {
+        if (!m.enabled) continue;
+        const r = resolveSaved(m.setId, ctx);
+        if (r.broken) continue;
+        parts.push({ grain: r.grain, items: r.items, timesOf: ctx.materialsFor(ctx.savedSetOf(m.setId)?.pointDef).timesOf });
+    }
+    return parts;
+}
+
+/**
+ * 참조의 하루→타점 전개(∀) — **자기 정의의 시각으로**. 이미 타점 층위면 그대로.
+ *   · 저장 집합 = 그 집합 pointDef 의 시각(전개까지 자립 — "게이트 30 집합"의 타점은 게이트 30 세계의 것).
+ *   · day 조립 = 부품마다 자기 정의로 전개한 뒤 합집합(= 타점 층위 union 과 동치 — 항목이 어느 부품에서
+ *     왔는지 물을 필요가 원리적으로 없다).
+ *   · 그 외(유니버스·그룹 체인·작업 깔때기 유래) = 현재 정의의 시각(ctx.timesOf).
+ * viewedPointRefs(구독 패널의 타점 전개)가 쓴다 — 여기만 다른 시각을 쓰면 시트 행과 칩 건수가 갈린다.
+ */
+export function expandRefToPoints(ref: SetRef, r: ResolvedSet, ctx: SetResolveCtx): FunnelItem[] {
+    if (r.grain === "point") return [...r.items];
+    if (ref.kind === "saved") return expandToPointItems(r.items, ctx.materialsFor(ctx.savedSetOf(ref.setId)?.pointDef).timesOf);
+    if (ref.kind === "assembly") {
+        const a = ctx.assemblyOf(ref.id);
+        if (a !== undefined) {
+            // 부품별 자기-정의 전개를 강제하려고 각 부품을 미리 타점으로 내린 뒤 합친다(중복은 unionOf 가 접는다).
+            const parts = liveUnionParts(a, ctx).map((p): UnionPart => ({ grain: "point", items: expandToPointItems(p.items, p.timesOf), timesOf: p.timesOf }));
+            return unionOf(parts).items;
+        }
+    }
+    return expandToPointItems(r.items, ctx.timesOf);
 }
 
 /** 저장 집합 한 벌 — saved 참조와 조립의 부품이 같은 경로를 쓴다(두 벌이면 언젠가 다른 답을 낸다). */

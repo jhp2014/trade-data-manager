@@ -46,6 +46,22 @@ export const presetHidden = (allKeys: readonly string[], cols: readonly string[]
 };
 
 /**
+ * 프리셋 cols 를 지금 열 구성에 맞춘다 — **결과 열 키는 부품 유무를 넘나들며 metric 으로 맞춘다**.
+ * 조립 뷰의 결과 열은 3조각(`out:<setId>:<metric>`)이라 그대로 대조하면: 붙박이 "결과"(2조각)를
+ * 조립 뷰에서 누르는 순간 부품 열이 전부 숨어 시트가 비고, 반대로 조립 뷰에서 저장한 프리셋을
+ * 일반 뷰에서 누르면 공용 결과 열이 전부 숨는다. 프리셋의 뜻은 "이 **종류**의 결과 열을 본다"이지
+ * 특정 부품 열이 아니므로 metric 매칭이 뜻에 맞다(축·기본 열은 정확 키 그대로).
+ */
+export function matchPresetCols(presetCols: readonly string[], allKeys: readonly string[]): string[] {
+    const all = new Set(allKeys);
+    const keep = new Set(presetCols);
+    // **지금 열 구성에 없는** out: 키만 metric 으로 근사한다 — 있는 키는 정확 매칭. 안 그러면 같은 뷰에서
+    // "fs1 열만 보기"로 저장한 프리셋이 fs2 의 같은 metric 열까지 되살려 저장→적용이 비멱등이 된다.
+    const metrics = new Set(presetCols.filter((k) => k.startsWith("out:") && !all.has(k)).map((k) => k.split(":").pop()!));
+    return allKeys.filter((k) => keep.has(k) || (k.startsWith("out:") && metrics.has(k.split(":").pop()!)));
+}
+
+/**
  * 붙박이 프리셋 — 상수 목록으로 두고 사용자 목록과 분리 렌더한다(영속에 씨앗을 심으면 "지웠는데
  * 되살아난다"가 된다). "결과" = 옛 결과 시트 패널(2026-09-04 폐지)의 열 구성 그대로(시뮬 4 무포함 —
  * 사용자 확정, 붙박이는 상수라 추가가 싸서 "시뮬"을 따로 세웠다).

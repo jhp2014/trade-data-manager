@@ -15,7 +15,7 @@ import { usePersistedState } from "../../store/persist.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { OUTCOME_COL_IDS } from "./outcomeColumns.js";
 import { layoutColumns, colKey, pruneAxisKeys, pruneOutKeys, reorderFrozenCols, type Col, type OutPart } from "./sheetColumns.js";
-import { parseSheetPresets, presetHidden, prunePresets, type SheetPreset } from "./sheetPresets.js";
+import { matchPresetCols, parseSheetPresets, presetHidden, prunePresets, type SheetPreset } from "./sheetPresets.js";
 
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
 const HIDDEN_KEY = "wb.rankSheetHiddenCols";
@@ -192,7 +192,8 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
             return i < 0 ? [...ps, { name, cols }] : ps.map((p, j) => (j === i ? { name, cols } : p));
         }),
         deletePreset: (name) => setPresets((ps) => ps.filter((p) => p.name !== name)),
-        applyPreset: (p) => setHiddenCols(presetHidden(baseCols.map(colKey), p.cols)),
+        // 결과 열 키는 metric 으로 맞춘다(matchPresetCols) — 붙박이 "결과"가 조립 뷰의 부품 열도 살린다.
+        applyPreset: (p) => setHiddenCols(presetHidden(baseCols.map(colKey), matchPresetCols(p.cols, baseCols.map(colKey)))),
         cuts,
         toggleCut: (axisId, slotId) => setCuts((m) => {
             const k = `ax:${axisId}`;

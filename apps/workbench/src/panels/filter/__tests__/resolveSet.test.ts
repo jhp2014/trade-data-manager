@@ -5,7 +5,7 @@ import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import { chartKey } from "../../../lib/pointKey.js";
 import type { EvalLookup } from "../evaluate.js";
 import type { FilterStage } from "../stage.js";
-import { resolveSetRef, type SetResolveCtx } from "../resolveSet.js";
+import { expandRefToPoints, resolveSetRef, type SetResolveCtx } from "../resolveSet.js";
 
 // 유니버스: A(타점 둘) · B(타점 0) · C(타점 하나)
 const A: ChartRef = { stockCode: "000001", date: "2026-07-01" };
@@ -261,6 +261,26 @@ describe("저장 집합의 자기-정의 평가 — 재료가 정의를 따라�
         // 반대 순서로 다시 물어도(캐시 히트 경로) 각자 자기 정의의 답이다.
         expect(codesOf(resolveSetRef({ kind: "saved", setId: "g30" }, { ...dctx }))).toEqual(["1@09:30", "1@10:00"]);
         expect(codesOf(resolveSetRef({ kind: "saved", setId: "g50" }, { ...dctx }))).toEqual(["1@09:30"]);
+    });
+
+    it("day 층위 저장 집합·조립의 타점 전개(expandRefToPoints)도 **자기 정의의 시각**으로", () => {
+        const dsets = new Map(sets);
+        dsets.set("d50", { id: "d50", name: "day50", stages: [dateStage("dd", "2026-07-01", "2026-07-03")], part: { kind: "survivors" }, pointDef: defGate(50) });
+        dsets.set("d30", { id: "d30", name: "day30", stages: [dateStage("dd", "2026-07-01", "2026-07-03")], part: { kind: "survivors" }, pointDef: defGate(30) });
+        const asm = new Map([["asD", { id: "asD", name: "day합", members: [{ setId: "d50", enabled: true }, { setId: "d30", enabled: true }] }]]);
+        const c2: SetResolveCtx = { ...dctx, savedSetOf: (id) => dsets.get(id), assemblyOf: (id) => asm.get(id) };
+
+        const savedRef = { kind: "saved", setId: "d50" } as const;
+        const r = resolveSetRef(savedRef, c2);
+        expect(r.grain).toBe("day");
+        // 현재 정의(timesOf)로 전개했다면 A 둘 + C 하나 — 자기 정의(게이트 50)의 시각은 A@09:30 하나뿐.
+        expect(codesOf({ items: expandRefToPoints(savedRef, r, c2) })).toEqual(["1@09:30"]);
+
+        const asmRef = { kind: "assembly", id: "asD" } as const;
+        const ra = resolveSetRef(asmRef, c2);
+        expect(ra.grain).toBe("day"); // 부품 전부 day — 조립도 day(finest 규칙)
+        // 부품마다 자기 정의로 전개한 합집합 — 게이트 50(09:30) ∪ 게이트 30(09:30·10:00).
+        expect(codesOf({ items: expandRefToPoints(asmRef, ra, c2) })).toEqual(["1@09:30", "1@10:00"]);
     });
 
     it("정의 사본 없는 옛 저장물은 현재 정의로 평가된다", () => {

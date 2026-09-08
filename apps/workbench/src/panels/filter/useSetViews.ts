@@ -8,11 +8,10 @@
 // 빈 집합으로 거르면 빈 화면이 "조건에 다 걸렸다"로 읽히므로, 가드는 전부 여기(뷰 계약 안)에 있다.
 import { useCallback, useMemo } from "react";
 import type { FunnelItem, FunnelResult } from "@trade-data-manager/market/domain";
-import { expandToPointItems } from "../../lib/grainView.js";
 import { chartKey } from "../../lib/pointKey.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { useWorkbench } from "../../store/workbench.js";
-import { resolveSetRef, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
+import { expandRefToPoints, resolveSetRef, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
 import { usePresenceIndex } from "../../lib/usePresence.js";
 import { emptyPresence, hasActiveDnf, matchesPresenceDnf } from "../../lib/presence.js";
 
@@ -132,8 +131,13 @@ export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): Se
                 broken: r.broken,
                 viewedItems: items,
                 viewedChartKeys: new Set(items.map((i) => chartKey(i))),
-                // 전개(∀) — 하루 항목은 그날 타점 전부로. 타점 0인 하루는 대표가 없다(결손으로 보일 자리).
-                viewedPointRefs: expandToPointItems(items, (c) => ctx.timesOf(c))
+                // 전개(∀) — 하루 항목은 그날 타점 전부로, **그 참조 자신의 정의의 시각으로**(저장 집합·조립의
+                // 자립 — 현재 정의로 전개하면 "게이트 30 집합"의 타점이 게이트 50 세계의 것이 된다).
+                // 타점 0인 하루는 대표가 없다(결손으로 보일 자리). 시선(inGaze)은 day 낟알이라 전개 뒤 걸러도 같다.
+                // ⚠ 로딩 가드 — expandRefToPoints 의 조립 갈래는 r 이 아니라 ctx 로 재정산하므로, 로딩 중의
+                // 빈 스텁(r.items=[])을 지나쳐 미완성 재료로 전개한다. 뷰 계약의 가드가 여기서도 서야 한다.
+                viewedPointRefs: isLoading ? [] : expandRefToPoints(ref, r, ctx)
+                    .filter((i) => i.time !== undefined && inGaze(i))
                     .map((i) => ({ stockCode: i.stockCode, date: i.date, time: i.time! })),
             };
             cache.set(k, v);
