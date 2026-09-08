@@ -16,9 +16,9 @@ import { usePointRows } from "../../lib/usePointRows.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
-import { useOutcomes, usePointGrids } from "../../lib/PointGridsContext.js";
+import { useOutcomeSlices, usePointGrids } from "../../lib/PointGridsContext.js";
 import { defDerivedFor } from "../../lib/defDerived.js";
-import { evalDefKeyOf } from "../../lib/pointDef.js";
+import { judgeKeyOf } from "../../lib/pointDef.js";
 import { computedAxisView } from "../../lib/computedAxis.js";
 import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import type { OutcomesView } from "../../lib/useOutcomes.js";
@@ -107,9 +107,9 @@ export function useFilterFunnel(): FunnelView {
     const cand = useCandidateDays(); // 복제본 파생 — 서버 왕복 없음(candidateDaysOf)
     const pts = usePointRows(); // point 행 원천(격자 파생 한 벌) — 깔때기 모수가 여기서 온다
     const grids = usePointGrids(); // 격자 번들 — 부품(저장 집합)의 자기-정의 파생(defDerived)의 재료
-    // 현재 정의의 **평가 키**(판정 6노브 + T 둘, 시뮬 제외) — 문자열이라 값이 같으면 리렌더가 없다.
-    const curEvalKey = useWorkbench((s) => evalDefKeyOf(s.pointDef));
-    const outcomes = useOutcomes(); // 결과 파생 한 벌(기본 허용 T1 단면) — outcome 술어의 재료
+    // 현재 정의의 **평가 키**(판정 6노브 — T 가 술어로 내려가 정의는 판정만 남았다). 문자열이라 값이 같으면 리렌더가 없다.
+    const curEvalKey = useWorkbench((s) => judgeKeyOf(s.pointDef));
+    const sliceAt = useOutcomeSlices(); // T 별 결과 단면 접근자 — outcome 술어가 자기 T 로 조회한다
     // 결과 술어가 **어디에도 없으면**(활성 단계 ∪ 저장 집합) 재료를 상수로 끊는다 — 테마 재료의
     // themeInUse 게이트와 같은 이유: 안 그러면 T 레일을 만질 때마다 결과와 무관한 화면 전체의
     // 정산·저장 집합 캐시가 materialsEpoch 를 타고 통째 재계산된다.
@@ -117,7 +117,7 @@ export function useFilterFunnel(): FunnelView {
         () => hasOutcomePredicate(stages) || savedSets.some((f) => hasOutcomePredicate(f.stages)),
         [stages, savedSets],
     );
-    const outcomesEff = outcomeInUse ? outcomes : null;
+    const outcomesEff = outcomeInUse ? sliceAt : null;
 
     const isLoading = gv.isLoading || ax.isLoading || cand.isLoading || pts.isLoading;
 
@@ -174,8 +174,8 @@ export function useFilterFunnel(): FunnelView {
         (over: {
             placementOf: (axisId: string) => Map<string, number> | undefined;
             valuesOf: (axisId: string) => Map<string, number> | undefined;
-            /** 게으름 — 결과 술어가 실제 평가될 때만 걷기·단면이 돈다(outcomeInUse 게이트의 부품판). */
-            outcomesOf: () => OutcomesView | null;
+            /** T 별 게으름 — 결과 술어가 실제 평가될 때, **그 술어의 T 단면만** 돈다(outcomeInUse 게이트의 부품판). */
+            outcomesOf: (t: number) => OutcomesView | null;
         }): EvalLookup => ({
             // 적용 집합(직접 ∪ 계층 조상) — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
             groupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date }),
@@ -209,14 +209,14 @@ export function useFilterFunnel(): FunnelView {
             sectionRanksAt,
             themeProj: themeProjEff,
             // 결과 술어(기본 허용 T1 평가) — 무눌림의 낙폭·격자 미도착은 레코드에 없어 그대로 3치의 undefined 가 된다.
-            outcomeEvalOf: (metric, i) => {
-                const oc = over.outcomesOf();
+            outcomeEvalOf: (metric, t, i) => {
+                const oc = over.outcomesOf(t);
                 return oc === null || i.time === undefined ? undefined
                     : oc.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.eval[metric];
             },
-            outcomeRailValues: (metric) => over.outcomesOf()?.railValues.get(metric),
-            outcomeRecoveredOf: (i) => {
-                const oc = over.outcomesOf();
+            outcomeRailValues: (metric, t) => over.outcomesOf(t)?.railValues.get(metric),
+            outcomeRecoveredOf: (t, i) => {
+                const oc = over.outcomesOf(t);
                 if (oc === null || i.time === undefined) return undefined;
                 const r = oc.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.slice.recovered;
                 return r === null ? undefined : r; // 무눌림(저가 없음) = 결손
@@ -231,7 +231,7 @@ export function useFilterFunnel(): FunnelView {
         () => makeEvalLook({
             placementOf: (id) => placements.get(id),
             valuesOf: (id) => ax.computedValues.get(id),
-            outcomesOf: () => outcomesEff,
+            outcomesOf: (t) => outcomesEff?.(t) ?? null,
         }),
         [makeEvalLook, placements, ax.computedValues, outcomesEff],
     );
@@ -278,7 +278,7 @@ export function useFilterFunnel(): FunnelView {
         const gridSet = new Set(GRID_AXIS_IDS);
         return (def: PointDefinition | undefined): DefMaterials => {
             if (def === undefined) return current;
-            const key = evalDefKeyOf(def);
+            const key = judgeKeyOf(def);
             if (key === curEvalKey) return current;
             const byDate = grids.byDate;
             if (byDate === null) return current; // 격자 로딩 전 — isLoading 가드가 어차피 숫자를 막는다
@@ -295,8 +295,8 @@ export function useFilterFunnel(): FunnelView {
             const views = derived.feeds().map(computedAxisView);
             const oPlace = new Map(views.map((v) => [v.axis.key, buildAxisOrderIndex(v.line)]));
             const oValues = new Map(views.map((v) => [v.axis.key, v.values]));
-            let oc: OutcomesView | null = null;
-            const outcomesOf = (): OutcomesView => (oc ??= derived.outcomes(def.toleranceT1Pct));
+            // 부품 정의의 T 단면 — 그 부품 술어들의 T 별로(defDerived 가 LRU 로 받는다).
+            const outcomesOf = (t: number): OutcomesView => derived.outcomes(t);
             const made: DefMaterials = {
                 timesOf: (c) => times.get(chartKey(c)) ?? [],
                 grainLook, // 층위 사전은 정의 무관(그룹 scope·축 scope 는 정의가 안 바꾼다)

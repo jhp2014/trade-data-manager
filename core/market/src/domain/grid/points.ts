@@ -56,13 +56,9 @@ export interface PointDefinition {
      * ⚠ 검출 옵션의 `approachPct`(굽는 하한)와 **동명이지만 다른 물건** — 이쪽은 읽기 조절이다.
      */
     approachPct: number;
-    /**
-     * 결과 걷기의 허용 폭 T(%, 도메인 [2,30] — 하한 2 는 zigzag 해상도, decisions.md "시그널 결과").
-     * ⚠ **판정 노브가 아니다** — `pointsOf`/`levelsOf` 는 `PointJudgeDef` 로 좁혀 받아 원리적으로 못 본다.
-     * 결과 값(연장 고점·낙폭)·차트 다리 표식을 바꾸는 정의 상태이고, 한 타입에 두는 이유는
-     * 영속(wb.pointDef)·SavedSet payload·parsePointDef 가 전부 이 타입 하나를 지나기 때문(렌즈 노브의 후임).
-     */
-    toleranceT1Pct: number;
+    // ⚠ 허용 폭 T 는 **여기 없다**(2026-09-09 인스턴스화) — 모수도 행의 시각·가격도 안 바꾸고 결과 값만
+    // 바꾸므로 "값만 바꾸는 전제 = 술어 payload" 규칙에 따라 결과 술어로 내려갔다. 그래서 서로 다른 T 의
+    // 조건이 한 집합 안에서 AND 로 공존한다(decisions.md 「허용 폭 T 의 인스턴스화」).
     /**
      * 트레이드 시뮬 노브 7(simulate.ts — 진입/손절/익절/트레일2/취소2). T 와 같은 사정으로 여기
      * 동승한다: **판정 노브가 아니고**(PointJudgeDef 가 못 본다) 시뮬 결과 값·패널·시트 열을 바꾸는
@@ -72,7 +68,7 @@ export interface PointDefinition {
     sim: TradeSimParams;
 }
 
-/** Point 판정이 실제로 보는 노브 6개 — T 를 구독에서 배제하는 계약이 시그니처다(usePointGrids 헛재파생 방지). */
+/** Point 판정이 실제로 보는 노브 6개 — 정의에서 시뮬을 뺀 나머지 전부다(T 는 술어로 내려가 여기 없다). */
 export type PointJudgeDef = Pick<
     PointDefinition,
     "baselineGateEok" | "renewalGateEok" | "qualifyWindows" | "mergeRisePct" | "bullOnly" | "approachPct"
@@ -109,7 +105,6 @@ export const DEFAULT_POINT_DEFINITION: PointDefinition = {
     mergeRisePct: 0,
     bullOnly: true,
     approachPct: 0.5, // 기본 = 밴드 폭 전부(사용자 확정 — "전고점 −0.5% 안이면 갱신 영역")
-    toleranceT1Pct: 2,
     sim: DEFAULT_TRADE_SIM_PARAMS,
 };
 

@@ -242,7 +242,7 @@ describe("evalPredicate3 — 테마 강도 묶음", () => {
 
 describe("outcome 술어 — 값 전부 정확(세션 최고가 이후, 하한 규칙 철거)", () => {
     const rng = (from?: number, to?: number): FilterPredicate => ({
-        kind: "outcome", metric: "extHigh",
+        kind: "outcome", metric: "extHigh", t: 5,
         ranges: [{ ...(from !== undefined ? { from: { kind: "value", value: from } } : {}), ...(to !== undefined ? { to: { kind: "value", value: to } } : {}) }],
     });
     const withOutcome = (value: number): EvalLookup =>
@@ -260,12 +260,12 @@ describe("outcome 술어 — 값 전부 정확(세션 최고가 이후, 하한 �
     });
 
     it("빈 범위 = 빈 술어 = 통과", () => {
-        expect(evalPredicate3({ kind: "outcome", metric: "extHigh", ranges: [] }, item, look())).toBe(true);
+        expect(evalPredicate3({ kind: "outcome", metric: "extHigh", t: 5, ranges: [] }, item, look())).toBe(true);
     });
 });
 
 describe("outcomeRecovery 술어 — 보고 저가의 회복 여부(명목값)", () => {
-    const p = (recovered: boolean): FilterPredicate => ({ kind: "outcomeRecovery", recovered });
+    const p = (recovered: boolean): FilterPredicate => ({ kind: "outcomeRecovery", recovered, t: 5 });
     const withRecovered = (r: boolean | undefined): EvalLookup => look({ outcomeRecoveredOf: () => r });
 
     it("회복/미회복 그대로 판정", () => {

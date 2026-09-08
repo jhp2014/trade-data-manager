@@ -332,7 +332,7 @@ describe("outcome 술어 — 저장 왕복·검증", () => {
     it("parseStages 왕복이 지표·범위(앵커·값 경계)를 보존한다 — 파서 누락 = 저장본 통째 폐기의 회귀 방지선", () => {
         const stages: FilterStage[] = [{
             id: "o1", enabled: true, predicates: [{
-                kind: "outcome", metric: "extHigh",
+                kind: "outcome", metric: "extHigh", t: 5,
                 ranges: [{ from: { kind: "value", value: 4 } }, { from: { kind: "point", point: "005930|2026-07-06|09:30:00" }, to: { kind: "value", value: 20 } }],
             }],
         }];
@@ -341,27 +341,27 @@ describe("outcome 술어 — 저장 왕복·검증", () => {
 
     it("모르는 지표·깨진 범위는 저장본 통째 폐기(부분 복구 금지 원칙 그대로)", () => {
         expect(parseStages([{ id: "o1", enabled: true, predicates: [{ kind: "outcome", metric: "mfe", ranges: [] }] }])).toBeNull();
-        expect(parseStages([{ id: "o1", enabled: true, predicates: [{ kind: "outcome", metric: "extHigh", ranges: [{ from: 3 }] }] }])).toBeNull();
+        expect(parseStages([{ id: "o1", enabled: true, predicates: [{ kind: "outcome", metric: "extHigh", t: 5, ranges: [{ from: 3 }] }] }])).toBeNull();
     });
 
     it("빈 범위 = 빈 술어 · grain 은 point 고정(걷기 앵커가 시그널)", () => {
-        expect(isPredicateEmpty({ kind: "outcome", metric: "dropFromClose", ranges: [] })).toBe(true);
-        expect(predicateGrain({ kind: "outcome", metric: "dropFromClose", ranges: [{ from: { kind: "value", value: 0 } }] },
+        expect(isPredicateEmpty({ kind: "outcome", metric: "dropFromClose", t: 5, ranges: [] })).toBe(true);
+        expect(predicateGrain({ kind: "outcome", metric: "dropFromClose", t: 5, ranges: [{ from: { kind: "value", value: 0 } }] },
             { hasGroup: () => false, axisScope: () => undefined })).toBe("point");
     });
 
     it("outcomeRecovery — 왕복 보존, boolean 오염은 통째 폐기, 항상 조건(빈 술어 아님)", () => {
-        const stages: FilterStage[] = [{ id: "r1", enabled: true, predicates: [{ kind: "outcomeRecovery", recovered: false }] }];
+        const stages: FilterStage[] = [{ id: "r1", enabled: true, predicates: [{ kind: "outcomeRecovery", recovered: false, t: 5 }] }];
         expect(parseStages(JSON.parse(JSON.stringify(stages)))).toEqual(stages);
         expect(parseStages([{ id: "r1", enabled: true, predicates: [{ kind: "outcomeRecovery", recovered: "y" }] }])).toBeNull();
-        expect(isPredicateEmpty({ kind: "outcomeRecovery", recovered: true })).toBe(false);
-        expect(predicateGrain({ kind: "outcomeRecovery", recovered: true }, { hasGroup: () => false, axisScope: () => undefined })).toBe("point");
+        expect(isPredicateEmpty({ kind: "outcomeRecovery", recovered: true, t: 5 })).toBe(false);
+        expect(predicateGrain({ kind: "outcomeRecovery", recovered: true, t: 5 }, { hasGroup: () => false, axisScope: () => undefined })).toBe("point");
     });
 
     it("themeStrength·axisValue 혼재 저장본이 그대로 살아남는다 — outcome 추가가 순수 additive 라는 증명", () => {
         const mixed = [
             { id: "a", enabled: true, predicates: [{ kind: "axisValue", axisId: "c:x", ranges: [{ from: { kind: "value", value: 1 } }] }] },
-            { id: "o", enabled: true, predicates: [{ kind: "outcome", metric: "dropFromClose", ranges: [{ to: { kind: "value", value: -4 } }] }] },
+            { id: "o", enabled: true, predicates: [{ kind: "outcome", metric: "dropFromClose", t: 5, ranges: [{ to: { kind: "value", value: -4 } }] }] },
         ];
         const back = parseStages(JSON.parse(JSON.stringify(mixed)));
         expect(back).toHaveLength(2);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { usePointRows } from "../lib/usePointRows.js";
-import { useAutoPoints, useOutcomes, usePointGrids, useTradeSim, type OutcomesView, type SimView } from "../lib/PointGridsContext.js";
+import { useAutoPoints, useOutcomeSlices, usePointGrids, useTradeSim, type OutcomesView, type SimView } from "../lib/PointGridsContext.js";
+import { useDisplayT } from "./outcome/outcomeLink.js";
 import { defDerivedFor } from "../lib/defDerived.js";
 import { seriesColor } from "../styles/palette.js";
 import type { OutPart } from "./rank/sheetColumns.js";
@@ -226,9 +227,11 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     );
 
     // ── 결과 열의 값 — 축 피드가 아니라 **시트 전용 소스**다(과거/미래 경계, decisions 「시그널 결과」).
-    //    T(허용 폭) 커밋마다 참조가 갈려 정렬·행이 재계산된다(드래그 중엔 안 돈다 — setPointDef 는 pointerup 1회).
+    //    기준은 **지금 보는 T**(연동 결과 조건의 T, 없으면 탐색 T — 단일 출처 outcomeLink). 시트는 조건이
+    //    아니라 읽기 면이라 자기 T 를 안 든다. T 커밋마다 단면 참조가 갈려 정렬·셀이 재계산된다.
     //    day 행 키(2조각)는 byKey(타점 키, 3조각)에 없어 폴백 없이 그대로 undefined 가 맞다.
-    const outcomes = useOutcomes();
+    const displayT = useDisplayT();
+    const outcomes = useOutcomeSlices()(displayT);
     // 시뮬 열의 값 — 같은 사정(시트 전용 소스, useTradeSim). 노브 커밋마다 참조가 갈려 재계산.
     const sim = useTradeSim();
     // 부품별 파생(조립 뷰) — 부품 정의(사본 없으면 현재 정의)의 결과 단면·시뮬·모수 키. defDerived 캐시라
@@ -239,10 +242,12 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
         for (const p of outParts) {
             const def = savedSets.find((s) => s.id === p.setId)?.pointDef ?? pointDefCur;
             const d = defDerivedFor(grids.byDate, def);
-            m.set(p.setId, { oc: d.outcomes(def.toleranceT1Pct), sim: d.sim(def.sim), has: d.hasPoint });
+            // 부품 열의 T 도 **지금 보는 T** 다 — 부품이 가르는 건 모수(어느 시그널이 있나)지 T 가 아니다
+            // (T 는 조건의 전제라 조건 인스턴스가 진다). 그래서 부품 × 인스턴스 곱셈이 안 생긴다.
+            m.set(p.setId, { oc: d.outcomes(displayT), sim: d.sim(def.sim), has: d.hasPoint });
         }
         return m;
-    }, [outParts, grids.byDate, savedSets, pointDefCur]);
+    }, [outParts, grids.byDate, savedSets, pointDefCur, displayT]);
     // setId 가 오면 부품 열(그 부품 정의의 값) — 없으면 공용 결과 열(현재 정의). 정렬·셀이 같은 접근자를 문다.
     const outcomeOf = useMemo(() => (row: SheetRow, setId?: string) =>
         (setId !== undefined ? partAccess?.get(setId)?.oc.byKey.get(rowKey(row)) : outcomes.byKey.get(rowKey(row))), [outcomes, partAccess]);

@@ -263,10 +263,10 @@ export function PointDefPanel(): JSX.Element {
                 <NumField label="병합" suffix="%" value={mergeRisePct} onCommit={(v) => setDef({ mergeRisePct: v })} title="직전 저점 대비 상승폭이 이보다 작은 마디는 레벨에서 병합(잔 갱신 무시) — 0 = 병합 없음" />
                 <button
                     onClick={() => openAndFocus(OUTCOME_PANEL_ID)}
-                    title="결과 걷기 허용 폭 — 편집은 결과 패널의 T 레일에서(분포를 보며 정하는 값이라 그 판이 편집면)"
+                    title="시그널 결과 판 열기 — 허용 폭 T 는 정의가 아니라 **조건의 전제**라 그쪽에 산다(2026-09-09 인스턴스화)"
                     style={chipStyle(false)}
                 >
-                    허용 T {def.toleranceT1Pct}%
+                    결과 조건 ▸
                 </button>
                 <button
                     onClick={() => openAndFocus(TRADE_SIM_PANEL_ID)}

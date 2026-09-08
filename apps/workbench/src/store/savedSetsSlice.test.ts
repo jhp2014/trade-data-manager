@@ -29,7 +29,7 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
         expect(again[0].id).toBe(id); // 바인딩 참조(id)가 새 정의를 따라온다
         expect(again[0].stages).toHaveLength(2);
 
-        const saved = JSON.parse(storage.get("wb.savedSets.v2")!) as { id: string }[];
+        const saved = JSON.parse(storage.get("wb.savedSets.v3")!) as { id: string }[];
         expect(saved).toHaveLength(1);
     });
 
@@ -65,9 +65,9 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
         expect(store.getState().savedSets).toEqual([]);
     });
 
-    it("지금 키(v2)는 그대로 읽는다", async () => {
+    it("지금 키(v3)는 그대로 읽는다", async () => {
         stubStorage({
-            "wb.savedSets.v2": [{ id: "fs2", name: "새것", stages: [], part: { kind: "survivors" } }],
+            "wb.savedSets.v3": [{ id: "fs2", name: "새것", stages: [], part: { kind: "survivors" } }],
         });
         const store = await loadStore();
         expect(store.getState().savedSets.map((s) => s.name)).toEqual(["새것"]);
@@ -173,11 +173,11 @@ describe("저장 집합 — 타점 정의 payload (additive, 키 상향 없음)"
         store0.getState().addFilterStage([datePred]);
         store0.getState().saveSet("옛집합");
         // 저장물에서 새 필드를 지워 "옛 포맷"을 흉내낸다.
-        const raw = JSON.parse(storage.get("wb.savedSets.v2")!) as Record<string, unknown>[];
+        const raw = JSON.parse(storage.get("wb.savedSets.v3")!) as Record<string, unknown>[];
         for (const f of raw) {
             delete f.pointDef;
         }
-        storage.set("wb.savedSets.v2", JSON.stringify(raw));
+        storage.set("wb.savedSets.v3", JSON.stringify(raw));
 
         vi.resetModules();
         const store = await loadStore();
@@ -192,9 +192,9 @@ describe("저장 집합 — 타점 정의 payload (additive, 키 상향 없음)"
         const store0 = await loadStore();
         store0.getState().addFilterStage([datePred]);
         store0.getState().saveSet("오염");
-        const raw = JSON.parse(storage.get("wb.savedSets.v2")!) as Record<string, unknown>[];
+        const raw = JSON.parse(storage.get("wb.savedSets.v3")!) as Record<string, unknown>[];
         raw[0].pointDef = "garbage";
-        storage.set("wb.savedSets.v2", JSON.stringify(raw));
+        storage.set("wb.savedSets.v3", JSON.stringify(raw));
 
         vi.resetModules();
         const store = await loadStore();

@@ -7,7 +7,7 @@
 // ⚠ 이 Provider 는 RankAxesProvider **바깥**에 선다 — 축 합성이 자동 Point 를 재료로 쓴다.
 import { createContext, useContext, type ReactNode } from "react";
 import { useAutoPointsValue, usePointGridsValue, type AutoPointsView, type PointGridsView } from "./usePointGrids.js";
-import { useOutcomesValue, useOutcomeWalksValue, type OutcomesView, type OutcomeWalksView } from "./useOutcomes.js";
+import { useOutcomeSlicesValue, useOutcomeWalksValue, type OutcomesView, type OutcomeWalksView } from "./useOutcomes.js";
 import { useSimBasisValue, useTradeSimValue, type SimBasisView, type SimView } from "./useTradeSim.js";
 
 // 소비자는 이 파일 하나만 보면 되게 — 훅과 그 모양을 다른 곳에서 가져오게 하지 않는다.
@@ -18,7 +18,7 @@ export type { SimBasisView, SimView } from "./useTradeSim.js";
 
 const GridsCtx = createContext<PointGridsView | null>(null);
 const AutoCtx = createContext<AutoPointsView | null>(null);
-const OutcomesCtx = createContext<OutcomesView | null>(null);
+const SlicesCtx = createContext<((t: number) => OutcomesView) | null>(null);
 const WalksCtx = createContext<OutcomeWalksView | null>(null);
 const SimBasisCtx = createContext<SimBasisView | null>(null);
 const SimCtx = createContext<SimView | null>(null);
@@ -29,7 +29,7 @@ export function PointGridsProvider({ children }: { children: ReactNode }): JSX.E
     // 결과 파생 — 걷기(T 무관)·단면(T 의존) 두 층(useOutcomes 머리 주석). 같은 Provider 에 얹어
     // main·테스트 배선 무변경 + Provider 순서 규칙(격자 → 축 → 깔때기) 유지.
     const walks = useOutcomeWalksValue(auto, grids);
-    const outcomes = useOutcomesValue(walks);
+    const sliceAt = useOutcomeSlicesValue(walks);
     // 트레이드 시뮬 파생 — basis(취소 노브만)/결과(전 노브) 두 층(useTradeSim 머리 주석).
     const simBasis = useSimBasisValue(auto, grids);
     const sim = useTradeSimValue(auto, grids);
@@ -37,11 +37,11 @@ export function PointGridsProvider({ children }: { children: ReactNode }): JSX.E
         <GridsCtx.Provider value={grids}>
             <AutoCtx.Provider value={auto}>
                 <WalksCtx.Provider value={walks}>
-                    <OutcomesCtx.Provider value={outcomes}>
+                    <SlicesCtx.Provider value={sliceAt}>
                         <SimBasisCtx.Provider value={simBasis}>
                             <SimCtx.Provider value={sim}>{children}</SimCtx.Provider>
                         </SimBasisCtx.Provider>
-                    </OutcomesCtx.Provider>
+                    </SlicesCtx.Provider>
                 </WalksCtx.Provider>
             </AutoCtx.Provider>
         </GridsCtx.Provider>
@@ -69,10 +69,13 @@ export function useOutcomeWalks(): OutcomeWalksView {
     return v;
 }
 
-/** 시그널 결과 파생 한 벌 — 결과 패널·결과 시트·깔때기 평가가 전부 이걸 본다. */
-export function useOutcomes(): OutcomesView {
-    const v = useContext(OutcomesCtx);
-    if (!v) throw new Error("PointGridsProvider 밖에서 useOutcomes — main 배선을 확인하세요");
+/**
+ * 시그널 결과 **T 별 단면 접근자** — 결과 패널·결과 시트·깔때기 평가가 전부 이걸 본다.
+ * 조건마다 T 가 다르므로 단면은 하나가 아니다(2026-09-09 인스턴스화). 함수 신원은 걷기 층에만 매인다.
+ */
+export function useOutcomeSlices(): (t: number) => OutcomesView {
+    const v = useContext(SlicesCtx);
+    if (!v) throw new Error("PointGridsProvider 밖에서 useOutcomeSlices — main 배선을 확인하세요");
     return v;
 }
 

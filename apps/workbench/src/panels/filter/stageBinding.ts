@@ -16,7 +16,10 @@ import { addStage, removeStage, setStagePredicates, type FilterPredicate, type F
 /** 레일 하나를 가리키는 열쇠. 축은 id 로, 결과는 지표로, 날짜·시간은 종류만으로 유일하다. */
 export type RailKey =
     | { kind: "axis"; axisId: string }
-    | { kind: "outcome"; metric: OutcomeMetric }
+    /** 결과는 **(지표 × 허용 폭 T)** 가 자리다 — T 가 술어로 내려오면서(2026-09-09) 같은 지표의 조건이
+     *  T 별로 여러 개 설 수 있게 됐고, 키에 T 를 실어야 "이 레일에 뭘 그릴까"가 다시 함수가 된다
+     *  (그 값은 지금 보는 T 슬라이스의 그 조건 하나). 조건의 T 를 옮기는 건 레일이 아니라 T 레일이 한다. */
+    | { kind: "outcome"; metric: OutcomeMetric; t: number }
     | { kind: "date" }
     | { kind: "time" };
 
@@ -25,7 +28,7 @@ export function railKeyOf(p: FilterPredicate): RailKey | null {
     switch (p.kind) {
         case "axisBand":
         case "axisValue": return { kind: "axis", axisId: p.axisId };
-        case "outcome": return { kind: "outcome", metric: p.metric }; // 결과 패널의 레일(과거/미래 경계 저쪽)
+        case "outcome": return { kind: "outcome", metric: p.metric, t: p.t }; // 결과 패널의 레일(과거/미래 경계 저쪽)
         case "date": return { kind: "date" };
         case "time": return { kind: "time" };
         case "group": return null;
@@ -37,7 +40,7 @@ export function railKeyOf(p: FilterPredicate): RailKey | null {
 export function sameRailKey(a: RailKey, b: RailKey): boolean {
     if (a.kind !== b.kind) return false;
     if (a.kind === "axis") return a.axisId === (b as { axisId: string }).axisId;
-    if (a.kind === "outcome") return a.metric === (b as { metric: OutcomeMetric }).metric;
+    if (a.kind === "outcome") { const o = b as { metric: OutcomeMetric; t: number }; return a.metric === o.metric && a.t === o.t; }
     return true;
 }
 

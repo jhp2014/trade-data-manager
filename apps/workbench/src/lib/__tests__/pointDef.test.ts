@@ -60,17 +60,9 @@ describe("parsePointDef", () => {
         expect(isDefaultPointDef(parsePointDef({ qualifyWindows: [{ from: 600, to: 700 }] })!)).toBe(false);
     });
 
-    it("허용 폭 T — 옛 저장물(필드 없음·lens·T2 시절)은 기본 2, 오염은 그 필드만 기본", () => {
-        expect(parsePointDef({})!.toleranceT1Pct).toBe(2);
+    it("허용 폭 T 는 정의가 아니다(2026-09-09 인스턴스화) — 옛 T 필드는 조용히 무시된다", () => {
         expect(parsePointDef({ lens: "high" })).toEqual(DEFAULT_POINT_DEFINITION); // 렌즈 필드는 무시(관대 병합)
-        expect(parsePointDef({ toleranceT2Pct: 9 })).toEqual(DEFAULT_POINT_DEFINITION); // 폐지된 T2 필드도 무시
-        expect(parsePointDef({ toleranceT1Pct: "x" })!.toleranceT1Pct).toBe(2);
-    });
-
-    it("허용 폭 T — 도메인 [2,30] 클램프", () => {
-        expect(parsePointDef({ toleranceT1Pct: 0.5 })).toMatchObject({ toleranceT1Pct: 2 });
-        expect(parsePointDef({ toleranceT1Pct: 99 })).toMatchObject({ toleranceT1Pct: 30 });
-        expect(isDefaultPointDef(parsePointDef({ toleranceT1Pct: 8 })!)).toBe(false);
+        expect(parsePointDef({ toleranceT1Pct: 8, toleranceT2Pct: 9 })).toEqual(DEFAULT_POINT_DEFINITION);
     });
 
     it("시뮬 노브 — 옛 저장물(sim 없음)은 통째 기본값, 오염은 그 필드만 기본", () => {

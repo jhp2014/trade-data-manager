@@ -28,7 +28,9 @@ import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
 /** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
 const GAZE_PRESENCE_KEY = "wb.workset.presenceFilter.v2"; // v2: 골격 존재 리터럴 리셋
 
-const STAGES_KEY = "wb.filterStages.v3"; // 지금 쓰는 단일 벌 — v3: 골격 은퇴(skeleton-* leaf 리셋, savedSetsSlice 와 같은 이유)
+const STAGES_KEY = "wb.filterStages.v4"; // 지금 쓰는 단일 벌 — v4: 허용 폭 T 인스턴스화(결과 술어가 t 를 든다).
+// 옛 결과 술어엔 t 가 없고 그 기준(정의의 T1)은 복원할 수 없다 — 사용자 확정 "기존 저장물은 버린다"에 따라
+// 승계 코드 없이 키를 올린다. parseStages 는 술어 하나만 못 읽어도 저장본 통째를 버리므로 부분 승계는 애초에 불가.
 const SLOTS_KEY = "wb.filterSlots"; // 슬롯 시절 — 활성 칸 하나만 이어받는다(나머지 칸은 버린다)
 const LEGACY_STAGES_KEY = "wb.filterStages"; // 슬롯 이전의 단일 벌
 
@@ -38,7 +40,7 @@ const LEGACY_STAGES_KEY = "wb.filterStages"; // 슬롯 이전의 단일 벌
  * 슬롯을 안 쓰던 사람에게는 애초에 빈 칸이다. 옛 키는 안 지운다 — 새 키가 서면 자연히 안 읽힌다.
  */
 const loadStages = (): FilterStage[] => {
-    // v3 리셋 이전 키들(v2·슬롯·최초)은 읽지 않는다 — 은퇴한 골격 leaf 가 되살아나는 뒷문이 된다.
+    // v4 리셋 이전 키들(v3·v2·슬롯·최초)은 읽지 않는다 — 옛 leaf·t 없는 결과 술어가 되살아나는 뒷문이 된다.
     void SLOTS_KEY;
     void LEGACY_STAGES_KEY;
     return loadJson(STAGES_KEY, parseStages) ?? [];

@@ -1,4 +1,5 @@
-// 결과 패널 — T 레일은 정의(pointDef)를 만지고 조건(stages)은 안 만진다 / 결과 레일은 그으면 조건이 된다.
+// 결과 패널 — T 레일은 **표시 T**(연동 조건의 T, 없으면 탐색 T)를 만지고 조건(stages)은 안 만든다 /
+// 결과 레일은 그으면 (지표 × 표시 T) 자리의 조건이 된다.
 // 시드: 렌더 하네스의 격자는 얕은 눌림(<2%)뿐이라 상태가 전부 "이내"가 된다 — 결과 걷기를 실제로 태우려면
 // **깊은 눌림 격자를 직접 심는다**(pointGridsQuery 캐시 덮어쓰기, 구조 불변식 준수).
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -10,6 +11,11 @@ import { pointGridsQuery } from "../../../api/queries.js";
 import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
 import { RAIL_PAD } from "../../filter/rail/Rail.js";
 import { OutcomePanel } from "../OutcomePanel.js";
+import { OUTCOME_T_KEY, OUTCOME_T_SCOPE } from "../outcomeLink.js";
+
+/** 탐색 T(세션) — 이 파일의 검사는 연동 조건이 없는 상태라 표시 T = 탐색 T 다. */
+const tOf = (): number => (useWorkbench.getState().sessionUi[OUTCOME_T_SCOPE]?.[OUTCOME_T_KEY] as number | undefined) ?? 2;
+const setT = (t: number): void => { useWorkbench.getState().setSessionUi(OUTCOME_T_SCOPE, OUTCOME_T_KEY, t); };
 
 const DATE = "2026-07-06";
 
@@ -97,7 +103,8 @@ describe("결과 패널", () => {
         const chip = [...container.querySelectorAll("button")].find((b) => b.textContent?.startsWith("미회복"))!;
         fireEvent.click(chip);
         expect(stages()).toHaveLength(1);
-        expect(stages()[0]!.predicates[0]).toEqual({ kind: "outcomeRecovery", recovered: false });
+        // 회복 조건도 자기 T 를 든다 — 표시 T(연동 없으면 탐색 T = 기본 2%)가 실린다.
+        expect(stages()[0]!.predicates[0]).toEqual({ kind: "outcomeRecovery", recovered: false, t: 2 });
         // 보드에서 꺼 둔 상태(enabled=false) — 칩은 꺼짐으로 그려지고, 클릭은 삭제가 아니라 재활성이어야 한다.
         act(() => useWorkbench.getState().toggleFilterStage(stages()[0]!.id));
         expect(stages()[0]!.enabled).toBe(false);
@@ -111,7 +118,7 @@ describe("결과 패널", () => {
     it("T 레일 빈 트랙 드래그 = 컷 하나 이동 — stages 는 안 생긴다(필터가 아니다)", () => {
         const { container } = renderPanelUnder();
         drag(trackOf(container, "허용 폭 T"), 0.1, 0.5); // 2~30% 도메인에서 T → 16
-        expect(useWorkbench.getState().pointDef.toleranceT1Pct).toBe(16);
+        expect(tOf()).toBe(16);
         expect(stages()).toHaveLength(0);
     });
 
@@ -123,7 +130,7 @@ describe("결과 패널", () => {
         fireEvent.pointerDown(label, { button: 0, clientX: xAt(toFracOf(2)), pointerId: 1 });
         fireEvent.pointerMove(track, { clientX: xAt(toFracOf(9)), pointerId: 1 });
         fireEvent.pointerUp(track, { pointerId: 1 });
-        expect(useWorkbench.getState().pointDef.toleranceT1Pct).toBe(9);
+        expect(tOf()).toBe(9);
     });
 
     it("T 레일에 보조 핸들이 없다 — T2·Δ 문법은 폐지됐다(2026-09-09 인스턴스화)", () => {
@@ -150,7 +157,7 @@ describe("결과 패널", () => {
     });
 
     it("허용 폭 T 를 10% 로 올리면 전부 '이내' — 깊이 최대 8.33% 라 T 를 못 넘는다", () => {
-        useWorkbench.getState().setPointDef({ toleranceT1Pct: 10 });
+        setT(10);
         const { container } = renderPanelUnder();
         expect(container.textContent).toContain("초과 0");
         expect(container.textContent).toContain("이내 3");

@@ -16,7 +16,7 @@ import {
     type ChartRef, type FunnelCell, type FunnelItem, type FunnelResult, type Grain, type PointDefinition,
 } from "@trade-data-manager/market/domain";
 import { expandToPointItems } from "../../lib/grainView.js";
-import { evalDefKeyOf } from "../../lib/pointDef.js";
+import { judgeKeyOf } from "../../lib/pointDef.js";
 import type { SetRef } from "../../lib/setRef.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import type { Assembly } from "../../store/assembliesSlice.js";
@@ -283,10 +283,11 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
             sessionEpoch = ctx.materialsEpoch;
             sessionDefCache.clear();
         }
-        // ⚠ 키에 **정의가 들어간다** — stages 만 보면 같은 조건·다른 게이트 두 집합이 서로의 정산을 먹는다
+        // ⚠ 키에 **정의가 들어간다**(판정 노브 — T 는 술어에 있어 stages 직렬화가 이미 싣는다) —
+        // 이게 없으면 같은 조건·다른 게이트 두 집합이 서로의 정산을 먹는다
         // (조용히 다른 집합). 정의 없는 옛 저장물은 "cur"(현재 정의) — 현재 정의가 바뀌면 평가에 닿는
         // 변경은 전부 재료(타점·축 값·결과)를 지나 세대가 바뀌므로 낡은 정산이 살아남지 못한다.
-        sessionKey = `${set?.pointDef ? evalDefKeyOf(set.pointDef) : "cur"}\n${JSON.stringify(stages)}`;
+        sessionKey = `${set?.pointDef ? judgeKeyOf(set.pointDef) : "cur"}\n${JSON.stringify(stages)}`;
         const sHit = sessionDefCache.get(sessionKey);
         if (sHit !== undefined) {
             memo.set(setId, sHit);

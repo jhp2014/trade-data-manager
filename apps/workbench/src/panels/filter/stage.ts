@@ -16,7 +16,7 @@
 // 확답을 주게 되어, 사전이 도착하는 순간 해상도가 튀고 결과 목록이 통째로 다시 그려진다. 이 앱이 이미
 // 쓰는 규칙과 같다(evalPredicate·and3) — "아니다"와 "모른다"는 섞지 않는다. 모름을 어떻게 다룰지는
 // **사전 로드 여부를 아는 소비자**의 몫이다(로딩 중 = 보류 / 로드 끝났는데 없음 = 죽은 참조).
-import type { Grain } from "@trade-data-manager/market/domain";
+import { TOLERANCE_MAX_PCT, TOLERANCE_MIN_PCT, type Grain } from "@trade-data-manager/market/domain";
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr } from "../rank/groupFilter.js";
 import { DEFAULT_THEME_STRENGTH, anyConditionOn, parseThemeStrengthParams, type ThemeStrengthParams } from "../../lib/themeStrength.js";
@@ -61,13 +61,15 @@ export type FilterPredicate =
     // 테마 강도 묶음 — **파라미터가 payload 안에 산다**(SavedSet 이 stages 를 통째 복사하므로
     // 외부 참조로 두면 집합의 자립이 깨진다). 전 파라미터는 보드 행(레일·칩)에서 직접 편집한다.
     | { kind: "themeStrength"; params: ThemeStrengthParams }
-    // 시그널 결과(미래 값) — 허용 폭 T 는 여기 없다: T1/T2 는 정의 상태(pointDef payload)고 술어는
-    // **기본 허용 T1 평가의 값 범위만** 갖는다(decisions.md "시그널 결과" — 레일 직결 편집과 T 다른
-    // 조건이 한 레일에 공존 불가라 술어 params 동결안을 뒤집었다). 경계는 axisValue 와 같은 AxisBound.
-    | { kind: "outcome"; metric: OutcomeMetric; ranges: AxisValueRange[] }
+    // 시그널 결과(미래 값) — **허용 폭 T 를 술어가 든다**(2026-09-09 인스턴스화: 옛 "T 는 정의 상태"를
+    // 뒤집음). T 는 모수도 행의 시각·가격도 안 바꾸고 결과 값만 바꾸므로 값만 바꾸는 전제 = 술어 payload
+    // 규칙에 따라 여기 산다 — 그래서 **서로 다른 T 의 조건이 한 집합 안에서 AND 로 공존한다**
+    // (decisions.md 「허용 폭 T 의 인스턴스화」). 경계는 axisValue 와 같은 AxisBound.
+    | { kind: "outcome"; metric: OutcomeMetric; t: number; ranges: AxisValueRange[] }
     // 보고 저가의 회복 여부(그 저가 이후 직전 고가 재돌파 — 세션 최고가 판정, 볼륨 무관) — 명목값이라
     // 레일이 아니라 결과 패널 머리글 칩이 편집 입구다. 무눌림(저가 없음)은 결손(3치 undefined).
-    | { kind: "outcomeRecovery"; recovered: boolean };
+    // `slice.recovered` 가 T 단면의 산출물이라 **이쪽도 자기 T 를 든다**(안 그러면 이 조건만 표시 T 를 따른다).
+    | { kind: "outcomeRecovery"; recovered: boolean; t: number };
 
 export type PredicateKind = FilterPredicate["kind"];
 
@@ -356,14 +358,21 @@ const isFromToRange = (o: unknown): o is { from: string; to: string } => {
     return typeof r.from === "string" && typeof r.to === "string";
 };
 
+/** 허용 폭 T 로 쓸 수 있는 값인가 — 도메인 [2,30]. 밖이면 그 술어는 폐기(파서 원칙: 반쯤 살리지 않는다). */
+const isTolerance = (v: unknown): v is number =>
+    typeof v === "number" && Number.isFinite(v) && v >= TOLERANCE_MIN_PCT && v <= TOLERANCE_MAX_PCT;
+
 function parsePredicate(o: unknown): FilterPredicate | null {
-    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown; params?: unknown; metric?: unknown; recovered?: unknown };
+    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown; params?: unknown; metric?: unknown; recovered?: unknown; t?: unknown };
     switch (p?.kind) {
         case "outcome":
-            return isOutcomeMetric(p.metric) && Array.isArray(p.ranges) && p.ranges.every(isAxisValueRange)
-                ? { kind: "outcome", metric: p.metric, ranges: p.ranges } : null;
+            // t 는 **필수**다 — 없는 저장물은 T 가 정의에 살던 시절 것이라 그 기준을 복원할 수 없다
+            // (기존 저장물은 버린다는 확정에 따라 승계하지 않는다. 키 상향이 실제 방어선이고 이건 이중 가드).
+            return isOutcomeMetric(p.metric) && isTolerance(p.t) && Array.isArray(p.ranges) && p.ranges.every(isAxisValueRange)
+                ? { kind: "outcome", metric: p.metric, t: p.t, ranges: p.ranges } : null;
         case "outcomeRecovery":
-            return typeof p.recovered === "boolean" ? { kind: "outcomeRecovery", recovered: p.recovered } : null;
+            return typeof p.recovered === "boolean" && isTolerance(p.t)
+                ? { kind: "outcomeRecovery", recovered: p.recovered, t: p.t } : null;
         case "themeStrength": {
             // 관대한 병합 — 필드가 늘어도 옛 저장물이 통째 안 죽는다. payload 자체가 누락·오염이어도
             // **조건-off 로 살린다**: 이 파서의 null 은 저장본 한 벌 통째 폐기라, 지어낸 활성 조건(기본값)보다

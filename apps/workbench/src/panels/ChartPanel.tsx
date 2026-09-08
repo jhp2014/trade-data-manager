@@ -6,6 +6,7 @@ import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
 import { autoPointsOfChart, useAutoPoints, usePointGrids } from "../lib/PointGridsContext.js";
+import { useDisplayT } from "./outcome/outcomeLink.js";
 import { minuteToHms, sliceOutcome, walkOutcome } from "@trade-data-manager/market/domain";
 import type { AutoPointInput } from "../chart/minuteOverlays.js";
 import { ownBundle, useAnchorMarks, useBaselineLines, useIgnoreCandles } from "../lib/chartAnchorHooks.js";
@@ -81,11 +82,12 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const ignore = useIgnoreCandles(code, viewDate);
 
     // 자동 Point(격자 파생) — 정의(pointDef) 반영 즉석 파생. ◇ 마커가 품질 육안 검증 입구다(재현율 대신).
-    // 다리 표식이 켜지면 ◇ 라벨에 연장 고점(T1 연동 — 결과 걷기의 **기본 허용** 단면)을 덧붙이고, 그 봉엔
-    // 드롭 캡을 긋는다. 렌즈 노브의 후임(2026-09-04): 앵커 = 허용 폭 T1 의 함수(T1=2% ⇒ 옛 첫 고점과 동일).
+    // 다리 표식이 켜지면 ◇ 라벨에 연장 고점을 덧붙이고, 그 봉엔 드롭 캡을 긋는다.
+    // 기준 T 는 **지금 보는 T**(연동 결과 조건의 T, 없으면 탐색 T) — 차트는 조건이 아니라 읽기 면이라
+    // 자기 T 를 안 든다(단일 출처 = outcomeLink.useDisplayT).
     const autoView = useAutoPoints();
     const grids = usePointGrids();
-    const t1 = useWorkbench((s) => s.pointDef.toleranceT1Pct);
+    const t1 = useDisplayT();
     const { autoPoints, legHighTimes, legHighBySignal } = useMemo<{
         autoPoints: AutoPointInput[];
         legHighTimes: number[];

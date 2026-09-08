@@ -47,14 +47,14 @@ export interface EvalLookup {
     /** 테마 멤버십 투영(읽기 시점 — 굽지 않는다). 재료 미도착이면 null. */
     themeProj: ThemeProjection | null;
     /**
-     * 결과 술어값(**기본 허용 T1** 평가, 전부 정확 — 세션 최고가 굽기 이후 하한 기계 철거) —
-     * 무눌림의 낙폭 2종·격자 미도착은 undefined(3치).
+     * 결과 술어값(**그 술어 자신의 허용 폭 T** 단면, 전부 정확 — 세션 최고가 굽기 이후 하한 기계 철거) —
+     * 무눌림의 낙폭 2종·격자 미도착은 undefined(3치). T 가 인자인 이유: 조건마다 T 가 다를 수 있다.
      */
-    outcomeEvalOf: (metric: OutcomeMetric, item: FunnelItem) => number | undefined;
+    outcomeEvalOf: (metric: OutcomeMetric, t: number, item: FunnelItem) => number | undefined;
     /** 결과 경계 앵커(타점) 해석용 값 맵(레일과 같은 맵, resolveBound 규칙 공유). */
-    outcomeRailValues: (metric: OutcomeMetric) => Map<string, number> | undefined;
+    outcomeRailValues: (metric: OutcomeMetric, t: number) => Map<string, number> | undefined;
     /** 보고 저가의 회복 여부 — 무눌림(저가 없음)·격자 미도착은 undefined(3치). */
-    outcomeRecoveredOf: (item: FunnelItem) => boolean | undefined;
+    outcomeRecoveredOf: (t: number, item: FunnelItem) => boolean | undefined;
 }
 
 /**
@@ -152,9 +152,9 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
         case "outcome": {
             // 시각 없는 항목(타점 없는 후보 하루)은 걷기의 앵커가 없다 — time 술어와 같은 결.
             if (item.time === undefined) return undefined;
-            const v = look.outcomeEvalOf(p.metric, item);
+            const v = look.outcomeEvalOf(p.metric, p.t, item);
             if (v === undefined) return undefined; // 무눌림의 낙폭·격자 미도착 = 결손
-            const values = look.outcomeRailValues(p.metric);
+            const values = look.outcomeRailValues(p.metric, p.t);
             const resolved: [number, number][] = [];
             for (const r of p.ranges) {
                 if (!r.from && !r.to) continue;
@@ -169,7 +169,7 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
 
         case "outcomeRecovery": {
             if (item.time === undefined) return undefined;
-            const r = look.outcomeRecoveredOf(item);
+            const r = look.outcomeRecoveredOf(p.t, item);
             return r === undefined ? undefined : r === p.recovered;
         }
     }

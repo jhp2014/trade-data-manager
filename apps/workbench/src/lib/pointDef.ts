@@ -11,8 +11,6 @@ import {
     type QualifyWindow,
     SIM_PCT_MAX,
     SIM_PCT_MIN,
-    TOLERANCE_MAX_PCT,
-    TOLERANCE_MIN_PCT,
     type PointDefinition,
     type PointJudgeDef,
     type TradeSimParams,
@@ -94,12 +92,6 @@ export const qualifyKeyOf = (windows: readonly QualifyWindow[]): string => windo
 export const judgeKeyOf = (d: PointJudgeDef): string =>
     [d.baselineGateEok, d.renewalGateEok, qualifyKeyOf(d.qualifyWindows), d.mergeRisePct, d.bullOnly, d.approachPct].join("|");
 
-/**
- * 깔때기 **평가**가 보는 정의 키 — 판정 6노브 + 허용 폭 T. 시뮬 노브는 안 넣는다:
- * 시뮬은 술어가 없어 평가 결과를 못 바꾸는데, 키에 넣으면 시뮬 커밋마다 저장 집합 정산이 헛돈다.
- */
-export const evalDefKeyOf = (d: PointDefinition): string => `${judgeKeyOf(d)}|${d.toleranceT1Pct}`;
-
 /** 시뮬 노브 7개의 내용 키(취소 둘 포함) — null(off)은 "-" 로 굳혀 0 과 갈린다. */
 export const simKeyOf = (p: TradeSimParams): string =>
     [p.entry.anchor, p.entry.pct, p.stopPct, p.takePct, p.trailUpPct, p.trailDownPct, p.cancelRisePct ?? "-", p.cancelAfterMin ?? "-"].join("|");
@@ -141,9 +133,6 @@ export function parsePointDef(raw: unknown): PointDefinition | null {
     const r = raw as Partial<Record<keyof PointDefinition, unknown>>;
     const num = (v: unknown, d: number): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : d);
     const bool = (v: unknown, d: boolean): boolean => (typeof v === "boolean" ? v : d); // num 재사용 금지 — ≥0 가드가 boolean 을 조용히 먹는다
-    // 허용 폭 T — 도메인 [2,30] 클램프. 옛 저장물(lens·T2 필드 시절)의 남은 필드는 조용히 무시된다.
-    const tol = (v: unknown, d: number): number =>
-        Math.min(TOLERANCE_MAX_PCT, Math.max(TOLERANCE_MIN_PCT, num(v, d)));
     return {
         // 게이트는 **정수 억**으로 정규화 — pointsOf 의 `BigInt(gateEok)` 가 소수를 받으면 던진다
         // (RangeError). setPointDef 가 매번 이 파서를 지나므로 여기 한 곳이 전 입력 경로(타이핑·
@@ -155,7 +144,6 @@ export function parsePointDef(raw: unknown): PointDefinition | null {
         bullOnly: bool(r.bullOnly, DEFAULT_POINT_DEFINITION.bullOnly), // 2026-08-31 추가 — 옛 저장물엔 없어 기본 true 로 채워진다
         // 2026-09-05 추가(격자 v9 기준 밴드) — 옛 저장물엔 없어 기본 0.5, 도메인 [0, 0.5] 클램프(상한 = 굽는 하한).
         approachPct: Math.min(APPROACH_MAX_PCT, Math.max(APPROACH_MIN_PCT, num(r.approachPct, DEFAULT_POINT_DEFINITION.approachPct))),
-        toleranceT1Pct: tol(r.toleranceT1Pct, DEFAULT_POINT_DEFINITION.toleranceT1Pct),
         sim: parseTradeSimParams(r.sim), // 2026-09-06 추가 — 옛 저장물엔 없어 통째 기본값으로 채워진다
     };
 }

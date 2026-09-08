@@ -26,8 +26,8 @@ describe("조건 한 벌 로드·이관", () => {
         expect(selectFilterStages(store.getState())).toEqual([]);
     });
 
-    it("지금 키(v3)는 그대로 읽는다", async () => {
-        stubStorage({ "wb.filterStages.v3": [{ id: "now", enabled: true, predicates: [datePred] }] });
+    it("지금 키(v4)는 그대로 읽는다", async () => {
+        stubStorage({ "wb.filterStages.v4": [{ id: "now", enabled: true, predicates: [datePred] }] });
         const store = await loadStore();
         expect(selectFilterStages(store.getState()).map((s) => s.id)).toEqual(["now"]);
     });
@@ -39,7 +39,7 @@ describe("편집은 곧 영속", () => {
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
         expect(selectFilterStages(store.getState())).toHaveLength(1);
-        const saved = JSON.parse(storage.get("wb.filterStages.v3")!) as unknown[];
+        const saved = JSON.parse(storage.get("wb.filterStages.v4")!) as unknown[];
         expect(saved).toHaveLength(1);
     });
 });

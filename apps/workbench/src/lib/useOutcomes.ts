@@ -3,7 +3,7 @@
 //
 // 걷기 층은 시그널·격자에만 의존한다 — T 레일을 문지르는 드래그가 수천 시그널 × 피벗 순회를 다시
 // 돌리면 안 되고, 그 계약이 이 파일의 존재 이유다(합치면 어기기 쉬워 함수 경계로 못 박는다).
-// 소비자(결과 패널·결과 시트·깔때기 평가)는 전부 PointGridsContext 의 useOutcomes 를 본다(파생 1벌).
+// 소비자(결과 패널·결과 시트·깔때기 평가)는 전부 PointGridsContext 의 useOutcomeSlices 를 본다(파생 1벌).
 //
 // 값은 **전부 정확하다**(2026-09-04 세션 최고가 굽기 이후 — 하한(≥)·표시/술어 분리 기계는 철거됐다).
 // 낙폭·회복은 무눌림(none)에서만 null = 무사건이지 결손이 아니다.
@@ -11,7 +11,6 @@
 // 경로 뷰 좌표라 격자 해상도(2%)의 근사다 — outcome.ts 머리 주석 참조. 깊이·회복·저가는 여전히 정확.
 import { useMemo } from "react";
 import { pointKeyOf, sliceOutcome, walkOutcome, type OutcomeSlice, type OutcomeWalk } from "@trade-data-manager/market/domain";
-import { useWorkbench } from "../store/workbench.js";
 import { OUTCOME_METRICS, type OutcomeMetric } from "./outcomeMetric.js";
 import type { AutoPointsView, PointGridsView } from "./usePointGrids.js";
 
@@ -75,11 +74,32 @@ export interface OutcomesView {
     railValues: ReadonlyMap<OutcomeMetric, Map<string, number>>;
 }
 
-/** ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(소비는 PointGridsContext 의 useOutcomes). */
-export function useOutcomesValue(walks: OutcomeWalksView): OutcomesView {
-    // T 원시값 하나만 구독 — pointDef 통째를 물면 판정 노브 편집에도 단면 전체가 재계산된다(반대 방향의 같은 함정).
-    const t = useWorkbench((s) => s.pointDef.toleranceT1Pct);
-    return useMemo<OutcomesView>(() => buildOutcomesView(walks, t), [walks, t]);
+/** 한 걷기 층에서 동시에 살려 두는 T 단면 수 — 조건 인스턴스 수 + 표시 T + 드래그 전이값. */
+const MAX_SLICES = 8;
+
+/**
+ * ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(소비는 PointGridsContext 의 useOutcomeSlices).
+ *
+ * **T 별 단면 접근자**를 준다(2026-09-09 인스턴스화 — 조건마다 T 가 달라 단면이 여럿이다).
+ * 신원은 걷기 층에만 매인다 — T 를 아무리 문질러도 이 함수는 안 갈리므로 깔때기의 `materialsEpoch`,
+ * 즉 저장 집합 정산 캐시가 T 드래그로 통째 무효화되지 않는다(옛 단일 단면이 못 지키던 계약).
+ */
+export function useOutcomeSlicesValue(walks: OutcomeWalksView): (t: number) => OutcomesView {
+    return useMemo(() => {
+        const cache = new Map<number, OutcomesView>();
+        return (t: number): OutcomesView => {
+            const hit = cache.get(t);
+            if (hit !== undefined) {
+                cache.delete(t); // LRU 갱신 — Map 삽입 순서가 곧 나이
+                cache.set(t, hit);
+                return hit;
+            }
+            const made = buildOutcomesView(walks, t);
+            cache.set(t, made);
+            if (cache.size > MAX_SLICES) cache.delete(cache.keys().next().value!);
+            return made;
+        };
+    }, [walks]);
 }
 
 /** 단면 조립(순수) — 상태 3분류·회복 카운트·값 맵이 여기 있고, 테스트가 이 함수를 직접 잰다. */

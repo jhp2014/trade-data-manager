@@ -44,15 +44,11 @@ export interface LinkedThemeStage {
 }
 
 /**
- * 연동 상태 훅 — 보드 테마 칸과 패널 둘 다 이걸 쓴다. 저장 id 가 죽으면 다음 행으로 옮겨 적는다
- * (두 소비자가 같이 떠 있어도 해석이 결정적이라 이중 기록은 같은 값 — 무해).
- * 처음(기록 없음)은 첫 행 자동 연동 — 행이 있는데 패널이 비어 있는 것보다 정직하다.
+ * 연동 id 해석 코어(범용) — **테마와 결과가 같은 관용구를 쓴다**(두 벌이면 "죽은 id 는 다음 행으로"
+ * 규칙이 갈린다). 저장 id 가 죽으면 다음 행으로 옮겨 적고, 기록이 없으면 첫 행을 자동 연동한다.
  */
-export function useLinkedThemeStage(): LinkedThemeStage {
-    const stages = useWorkbench(selectFilterStages);
-    const themeStages = useMemo(() => stages.filter((s) => stageKind(s) === "themeStrength"), [stages]);
-    const curIds = useMemo(() => themeStages.map((s) => s.id), [themeStages]);
-    const stored = useWorkbench((s) => s.sessionUi[THEME_LINK_SCOPE]?.[THEME_LINK_KEY]) as string | null | undefined;
+export function useLinkedStageId(scope: string, curIds: readonly string[]): { linkedId: string | null; setLinked: (id: string | null) => void } {
+    const stored = useWorkbench((s) => s.sessionUi[scope]?.[THEME_LINK_KEY]) as string | null | undefined;
     const setSessionUi = useWorkbench((s) => s.setSessionUi);
 
     // 이전 목록 — "다음 행" 판정의 재료. 해석(렌더) 뒤에 갱신해야 이번 해석이 직전 목록을 본다.
@@ -66,9 +62,21 @@ export function useLinkedThemeStage(): LinkedThemeStage {
 
     // 죽은 id 는 옮겨 적는다 — 다음 삭제 때도 "직전에 보던 행" 기준으로 다음을 찾을 수 있게.
     useEffect(() => {
-        if (typeof stored === "string" && !curIds.includes(stored)) setSessionUi(THEME_LINK_SCOPE, THEME_LINK_KEY, linkedId);
-    }, [stored, curIds, linkedId, setSessionUi]);
+        if (typeof stored === "string" && !curIds.includes(stored)) setSessionUi(scope, THEME_LINK_KEY, linkedId);
+    }, [scope, stored, curIds, linkedId, setSessionUi]);
 
-    const setLinked = useCallback((id: string | null) => setSessionUi(THEME_LINK_SCOPE, THEME_LINK_KEY, id), [setSessionUi]);
+    const setLinked = useCallback((id: string | null) => setSessionUi(scope, THEME_LINK_KEY, id), [scope, setSessionUi]);
+    return { linkedId, setLinked };
+}
+
+/**
+ * 연동 상태 훅 — 보드 테마 칸과 패널 둘 다 이걸 쓴다.
+ * 처음(기록 없음)은 첫 행 자동 연동 — 행이 있는데 패널이 비어 있는 것보다 정직하다.
+ */
+export function useLinkedThemeStage(): LinkedThemeStage {
+    const stages = useWorkbench(selectFilterStages);
+    const themeStages = useMemo(() => stages.filter((s) => stageKind(s) === "themeStrength"), [stages]);
+    const curIds = useMemo(() => themeStages.map((s) => s.id), [themeStages]);
+    const { linkedId, setLinked } = useLinkedStageId(THEME_LINK_SCOPE, curIds);
     return { themeStages, linkedId, setLinked };
 }

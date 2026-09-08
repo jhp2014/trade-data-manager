@@ -4,13 +4,15 @@
 // 행이 된다 — 사본·동기화 없음). 갈리는 건 경계 하나 — 저긴 시그널 봉까지(과거·특징), 여긴 그 이후
 // (미래·결과)다. 결과 값은 축 피드에 없으므로 이 패널이 그 분포·조건의 유일한 자리다.
 //
-// 맨 위 **T 레일은 필터가 아니다** — 모수를 안 거르고 아래 레일들의 값을 바꾸는 정의 조작(pointDef 의
-// T1/T2, SavedSet payload 동승)이라 색을 가른다(앰버 = LEG_HIGH, 조건 빨강 금지). T1 = 기본 허용
-// (술어·레일·차트 표식의 기준), T1~T2 = Δ 관찰 구간 — 전용 컴포넌트(ToleranceRail)가 그 비대칭을 그린다.
+// 맨 위 **T 레일은 필터가 아니다** — 모수를 안 거르고 아래 레일들의 값을 바꾸는 전제라 색을 가른다
+// (앰버 = LEG_HIGH, 조건 빨강 금지). 2026-09-09 인스턴스화 이후 T 는 **조건마다 하나**이고, 이 판은
+// 한 번에 한 T 를 본다: 칩 스트립이 결과 조건들을 세우고 연동된 것의 T 가 곧 표시 T 다(연동이 없으면
+// 탐색 T). 아래 지표 레일들은 그 표시 T 단면을 그리고, 그으면 (지표 × 표시 T) 자리의 조건이 된다 —
+// **서로 다른 T 의 조건은 칩을 갈아 끼우며 만든다**(테마 순위 패널의 연동 거울과 같은 관용구).
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { OUTCOME_METRIC_NAME, type OutcomeMetric } from "../../lib/outcomeMetric.js";
-import { useOutcomes, useOutcomeWalks } from "../../lib/PointGridsContext.js";
+import { useOutcomeSlices, useOutcomeWalks } from "../../lib/PointGridsContext.js";
 import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
 import { useSubject } from "../../lib/subject.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
@@ -22,8 +24,10 @@ import { Note } from "../filter/grain.js";
 import type { FilterStage } from "../filter/stage.js";
 import { OutcomeMetricRail } from "./OutcomeRails.js";
 import { ToleranceRail } from "./ToleranceRail.js";
+import { outcomeTOf, useLinkedOutcome } from "./outcomeLink.js";
+import { OUTCOME_METRIC_NAME as METRIC_NAME } from "../../lib/outcomeMetric.js";
 
-/** 레일 방향 — 전부 "큰 값 = 오른쪽"(연장은 크게, 낙폭은 얕게가 오른쪽). 값 기준은 전부 T1(기본 허용) 단면·정확값. */
+/** 레일 방향 — 전부 "큰 값 = 오른쪽"(연장은 크게, 낙폭은 얕게가 오른쪽). 값 기준은 전부 **표시 T** 단면·정확값. */
 const METRIC_ROWS: readonly { metric: OutcomeMetric; hint: string }[] = [
     { metric: "extHigh", hint: "허용 폭 T 로 이어 읽은 연장 고점(Point 봉 종가 대비 %) — 이내·무눌림은 세션 최고가라 전부 정확값입니다" },
     { metric: "dropFromHigh", hint: "보고 저가의 낙폭(직전 고점 대비 %) — 초과: T 를 처음 넘은 눌림 · 이내: T 이내 최대 눌림. 무눌림은 값 없음(무사건)" },
@@ -31,9 +35,11 @@ const METRIC_ROWS: readonly { metric: OutcomeMetric; hint: string }[] = [
 ];
 
 export function OutcomePanel(): JSX.Element {
-    const outcomes = useOutcomes();
+    const sliceAt = useOutcomeSlices();
     const walks = useOutcomeWalks(); // 분포 스트립 재료(T 무관 — 걷기 층 소유)
-    const setDef = useWorkbench((s) => s.setPointDef);
+    // 표시 T 와 연동 행 — 이 판의 모든 값이 이 T 단면에서 나온다(단일 출처는 outcomeLink).
+    const { outcomeStages, linkedId, setLinked, displayT, setDisplayT } = useLinkedOutcome();
+    const outcomes = sliceAt(displayT);
     const v = useFunnel();
     const stages = useWorkbench(selectFilterStages);
     const applyRail = useWorkbench((s) => s.applyFilterRail);
@@ -67,13 +73,14 @@ export function OutcomePanel(): JSX.Element {
     const removeStage = useWorkbench((s) => s.removeFilterStage);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
     const toggleStage = useWorkbench((s) => s.toggleFilterStage);
-    const recoveryStage = stages.find((s) => s.predicates.some((p) => p.kind === "outcomeRecovery"));
+    // 회복 조건도 T 를 드므로 **표시 T 의 것**만 이 칩이 맡는다(다른 T 의 회복 조건은 그 칩을 연동해야 보인다).
+    const recoveryStage = stages.find((s) => s.predicates.some((p) => p.kind === "outcomeRecovery" && p.t === displayT));
     const recoveryOn = recoveryStage?.predicates.find((p) => p.kind === "outcomeRecovery");
     const recoveryActive = (recovered: boolean): boolean =>
         recoveryStage?.enabled === true && recoveryOn?.kind === "outcomeRecovery" && recoveryOn.recovered === recovered;
     const toggleRecovery = (recovered: boolean): void => {
         if (recoveryStage === undefined) {
-            addStage([{ kind: "outcomeRecovery", recovered }]);
+            addStage([{ kind: "outcomeRecovery", recovered, t: displayT }]);
             return;
         }
         const same = recoveryOn?.kind === "outcomeRecovery" && recoveryOn.recovered === recovered;
@@ -83,7 +90,7 @@ export function OutcomePanel(): JSX.Element {
             else toggleStage(recoveryStage.id);
             return;
         }
-        setPredicates(recoveryStage.id, [{ kind: "outcomeRecovery", recovered }]);
+        setPredicates(recoveryStage.id, [{ kind: "outcomeRecovery", recovered, t: displayT }]);
         if (!recoveryStage.enabled) toggleStage(recoveryStage.id);
     };
 
@@ -117,11 +124,34 @@ export function OutcomePanel(): JSX.Element {
                 </span>
             </PanelHeader>
 
+            {/* 칩 스트립 = 결과 조건 목록의 파생 뷰(테마 순위 패널과 같은 관용구) — 클릭 = 연동 전환.
+                연동된 칩의 T 가 곧 표시 T 이고, 아래 레일들이 그 단면을 그린다. "탐색" = 연동 해제
+                (조건이 아닌 T 로 둘러보기 — 그으면 그 T 의 조건이 새로 선다). */}
+            <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 10px", borderBottom: "1px solid var(--border-subtle)", overflowX: "auto", whiteSpace: "nowrap" }} className="no-scrollbar">
+                <span style={{ fontSize: 9.5, color: "var(--text-tertiary)", flexShrink: 0 }}>조건</span>
+                <button onClick={() => setLinked(null)} title="연동 해제 — 조건에 매이지 않은 탐색 T 로 둘러본다(그으면 그 T 의 조건이 생긴다)"
+                    style={recoveryChip(linkedId === null)}>탐색 T {displayT}%</button>
+                {outcomeStages.map((st) => {
+                    const t = outcomeTOf(st) ?? 0;
+                    const p = st.predicates.find((x) => x.kind === "outcome" || x.kind === "outcomeRecovery");
+                    const what = p?.kind === "outcome" ? METRIC_NAME[p.metric] : "회복";
+                    return (
+                        <button key={st.id} onClick={() => setLinked(st.id)}
+                            title={`T ${t}% · ${what} — 클릭하면 이 조건의 T 로 판을 맞춥니다${st.enabled === false ? " (보드에서 꺼둔 조건)" : ""}`}
+                            style={{ ...recoveryChip(linkedId === st.id), opacity: st.enabled === false ? 0.5 : 1 }}>
+                            T {t}% · {what}
+                        </button>
+                    );
+                })}
+                {outcomeStages.length === 0 && <span style={{ fontSize: 9.5, color: "var(--text-tertiary)" }}>아직 없음 — 아래 레일을 그으면 이 T 의 조건이 섭니다</span>}
+            </div>
+
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }}>
                 {counts.total === 0 && <Note>자동 시그널이 아직 없습니다 — 격자 로딩 중이거나 정의 게이트가 전부 걸렀습니다</Note>}
-                <ToleranceRail t={outcomes.t} onCommit={(t) => setDef({ toleranceT1Pct: t })} breakDepths={walks.breakDepths} />
+                <ToleranceRail t={displayT} onCommit={setDisplayT} breakDepths={walks.breakDepths}
+                    note={linkedId === null ? "탐색(조건 아님)" : "연동 조건의 T"} />
                 {METRIC_ROWS.map(({ metric, hint }) => {
-                    const key: RailKey = { kind: "outcome", metric };
+                    const key: RailKey = { kind: "outcome", metric, t: displayT };
                     const stage: FilterStage | undefined = stagesFor(stages, key)[0];
                     const rowId = rowIdOfKey(key);
                     return (
@@ -133,7 +163,7 @@ export function OutcomePanel(): JSX.Element {
                                 ranges={predicateOfKind(stages, key, "outcome")?.ranges ?? []}
                                 markerKey={markerKey}
                                 memberKeys={memberKeys}
-                                onChange={(ranges) => applyRail(key, ranges ? { kind: "outcome", metric, ranges } : null)}
+                                onChange={(ranges) => applyRail(key, ranges ? { kind: "outcome", metric, t: displayT, ranges } : null)}
                             />
                         </div>
                     );
