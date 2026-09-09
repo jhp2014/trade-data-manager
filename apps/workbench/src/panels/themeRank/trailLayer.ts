@@ -3,10 +3,13 @@
 //
 // 시점은 고정 간격이 아니라 **사용자 오프셋**(settingsSlice.themeTrailOffsets, 상한은 그 슬라이스가 잰다)이다 —
 // 분당 전부 이으면 서수 지그재그로 스파게티가 된다는 판단(2026-09-09 논의). 평면에 시간 글자는 없다 —
-// 흐림 계단이 곧 순서다(과거일수록 흐리고 가늘고 작다).
+// 흐림 계단이 곧 순서다(과거일수록 흐리고 가늘다).
 //
-// 결손은 결손: 꼭짓점이 null(그 분 서수 없음·장 시작 전)이면 점도 선분도 그리지 않는다 — 이웃끼리
-// 건너 잇지도 않는다(없는 경로를 지어내는 셈이라).
+// **선만 그린다 — 꼭짓점 점 없음**(2026-09-09 사용자 확정): 표본 시점의 자리는 선의 꺾임과 두께·흐림
+// 계단이 이미 말하고, 점을 남기면 머리 점(산점)과 섞여 "점이 두 종류"가 된다. 점 = 지금, 선 = 과거.
+//
+// 결손은 결손: 꼭짓점이 null(그 분 서수 없음·장 시작 전)이면 그 양옆 선분을 그리지 않는다 — 이웃끼리
+// 건너 잇지도 않는다(없는 경로를 지어내는 셈이라). 양옆이 다 결손인 중간 시점은 흔적 없이 사라진다(수용).
 import type { DrawGroup, DrawLayer, DrawOp } from "../canvas/drawList.js";
 
 export interface TrailPoint {
@@ -30,10 +33,9 @@ export interface TrailScales {
 /** 렌즈 밖 동료 흐리기 — scatterLayer 의 DIM 과 같은 값(꼬리만 진하면 층이 어긋나 보인다). */
 const DIM = 0.3;
 
-/** 계단 i(0=가장 과거)…n-1(머리 직전) → 진하기·굵기·꼭짓점 반지름. 마지막 계단이 가장 진하다. */
+/** 계단 i(0=가장 과거)…n-1(머리 직전) → 진하기·굵기. 마지막 계단이 가장 진하다. */
 const alphaOf = (i: number, n: number): number => 0.2 + 0.6 * ((i + 1) / n);
 const widthOf = (i: number, n: number): number => 1.2 + 0.8 * ((i + 1) / n);
-const radiusOf = (i: number, n: number): number => 1.6 + ((i + 1) / n);
 
 export function trailLayer({ trails, scales }: { trails: readonly Trail[]; scales: TrailScales }): DrawLayer {
     const ops: DrawOp[] = [];
@@ -44,9 +46,6 @@ export function trailLayer({ trails, scales }: { trails: readonly Trail[]; scale
         for (let i = 0; i < n; i++) {
             const a = t.pts[i];
             const b = t.pts[i + 1];
-            if (a) {
-                ops.push({ op: "circle", cx: scales.x(a.amount), cy: scales.y(a.rate), r: radiusOf(i, n), fill: t.color, opacity: alphaOf(i, n) * mul });
-            }
             if (a && b) {
                 ops.push({
                     op: "line",
