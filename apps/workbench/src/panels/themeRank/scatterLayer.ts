@@ -36,13 +36,17 @@ export interface ScatterArgs {
     /** 켜진 렌즈 — 그 테마를 공유하는 동료만 진하게. null = 전부 진하게. */
     lens: string | null;
     scales: ScatterScales;
+    /** 꼬리가 켜져 있으면 점을 줄인다(2026-09-09) — 꼬리+원래 크기는 난잡하다(사용자 확정). */
+    compact?: boolean;
 }
 
 /** 렌즈 밖 동료의 흐리기 — 색은 살리고 존재감만 낮춘다(회색으로 죽이면 정체성을 잃는다). */
 const DIM = 0.3;
-const PEER_R = 4;
 
-export function scatterLayer({ points, subject, peerThemes, colorOf, lens, scales }: ScatterArgs): DrawLayer {
+export function scatterLayer({ points, subject, peerThemes, colorOf, lens, scales, compact }: ScatterArgs): DrawLayer {
+    const peerR = compact ? 2.8 : 4;
+    const subjR = compact ? 3.5 : 5;
+    const subjRing = compact ? 6 : 8.5;
     const dim: DrawOp[] = [];
     const strong: DrawOp[] = [];
     const subjectOps: DrawOp[] = [];
@@ -50,18 +54,18 @@ export function scatterLayer({ points, subject, peerThemes, colorOf, lens, scale
         const cx = scales.x(p.amount);
         const cy = scales.y(p.rate);
         if (p.code === subject) {
-            subjectOps.push({ op: "circle", cx, cy, r: 5, fill: ACTIVE });
-            subjectOps.push({ op: "circle", cx, cy, r: 8.5, stroke: ACTIVE, width: 1.5 });
+            subjectOps.push({ op: "circle", cx, cy, r: subjR, fill: ACTIVE });
+            subjectOps.push({ op: "circle", cx, cy, r: subjRing, stroke: ACTIVE, width: 1.5 });
             continue;
         }
         const themes = peerThemes.get(p.code);
         if (!themes || themes.length === 0) continue; // 동료가 아니면 그리지 않는다
         const into = lens !== null && !themes.includes(lens) ? dim : strong;
-        into.push({ op: "circle", cx, cy, r: PEER_R, fill: colorOf.get(themes[0]) ?? ACTIVE });
+        into.push({ op: "circle", cx, cy, r: peerR, fill: colorOf.get(themes[0]) ?? ACTIVE });
         // 겹침 = 둘째 테마색 링. 존 안/밖이 링을 놓아준 자리다(위 머리 주석).
         // 반지름을 키워 **채움 밖에** 두는 게 중요하다: 같은 자리에 겹치면 그룹 알파가 그 고리에서만
         // 누적돼(0.3 두 겹 ≈ 0.51) 옅은 무리의 겹침 점이 혼자 밝아진다([[skeleton-canvas-render]] 묶음 알파).
-        if (themes.length >= 2) into.push({ op: "circle", cx, cy, r: PEER_R + 1.75, stroke: colorOf.get(themes[1]) ?? ACTIVE, width: 1.5 });
+        if (themes.length >= 2) into.push({ op: "circle", cx, cy, r: peerR + 1.75, stroke: colorOf.get(themes[1]) ?? ACTIVE, width: 1.5 });
     }
     const groups: DrawGroup[] = [
         { opacity: DIM, ops: dim },

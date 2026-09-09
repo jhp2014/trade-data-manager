@@ -94,7 +94,7 @@ function paintOp(
             ctx.fillRect(o.x, o.y, o.w, o.h);
             return;
         case "circle":
-            ctx.globalAlpha = groupAlpha;
+            ctx.globalAlpha = groupAlpha * (o.opacity ?? 1);
             ctx.beginPath();
             ctx.arc(o.cx, o.cy, o.r, 0, Math.PI * 2);
             if (o.fill !== undefined) {

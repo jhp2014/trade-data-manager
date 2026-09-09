@@ -6,9 +6,10 @@
 // 스크럽하는 순간 어차피 이 경로로 넘어가고, 두 경로를 섞으면 위 사고 모양이 된다. 번들은 모수 전체를
 // 도는 카운트(useThemeStrengthStats) 전용. 두 재료가 같다는 근거: dayBoards.replayBoard 와 RankSections
 // 가 같은 derived.snapshot(date).stocks[].minutes 를 쓴다.
-import { rankSectionOf, type RankSection } from "@trade-data-manager/market/domain";
+import type { RankSection } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import type { SectionRanks } from "../../lib/themeStrength.js";
+import { sectionAtMinute } from "./sectionSeries.js";
 
 /** 재계산 단면 + O(1) 조회 — themeStrength 의 SectionRanks 를 충족(번들 단면과 같은 함수에 들어간다). */
 export interface ScrubSection extends SectionRanks {
@@ -35,9 +36,9 @@ export function defaultMinuteOf(
     return lastSnapshotMinute;
 }
 
-/** (스냅샷, 날짜, "HH:MM"[:SS 허용]) → 단면. 비용 ≈ 이진탐색 ~500회 + 정렬 2회 ≈ 0.5ms — 분 단위 memo 로 충분. */
+/** (스냅샷, 날짜, "HH:MM"[:SS 허용 — 분 절단]) → 단면. 계산은 sectionSeries 공용 캐시를 거친다(같은 분은 한 번만). */
 export function scrubSectionOf(stocks: readonly ReplayStock[], date: string, time: string): ScrubSection {
-    const section = rankSectionOf(stocks, date, time);
+    const section = sectionAtMinute(stocks, date, hmOf(time));
     const codes = stocks.map((s) => s.code);
     const idx = new Map(codes.map((c, i) => [c, i] as const));
     const indexOf = (code: string): number | null => idx.get(code) ?? null;

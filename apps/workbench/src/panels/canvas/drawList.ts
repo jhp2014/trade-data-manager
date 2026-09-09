@@ -57,7 +57,7 @@ export type DrawOp =
     }
     | { op: "line"; x1: number; y1: number; x2: number; y2: number; stroke: string; width: number; dash?: string; opacity?: number }
     | { op: "rect"; x: number; y: number; w: number; h: number; fill: string }
-    | { op: "circle"; cx: number; cy: number; r: number; fill?: string; stroke?: string; width?: number }
+    | { op: "circle"; cx: number; cy: number; r: number; fill?: string; stroke?: string; width?: number; opacity?: number }
     | {
         op: "text";
         x: number; y: number; text: string;

@@ -5,7 +5,7 @@
 // 좌표는 전부 %(프랙션) — 픽셀 측정(ResizeObserver)이 필요 없다. 포인터 → 분 변환만 이벤트 시점의
 // getBoundingClientRect 로 한다.
 import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { ACTIVE, FILTER, ZONE_TENURE } from "../../styles/palette.js";
+import { ACTIVE, ACTIVE_SOFT, FILTER, ZONE_TENURE } from "../../styles/palette.js";
 import type { BandSegment } from "./zoneTrack.js";
 
 /** 트랙 좌우 여백(px) — 끝 분의 표식·라벨이 잘리지 않을 만큼(Rail 의 RAIL_PAD 와 같은 역할). */
@@ -13,7 +13,7 @@ const PAD_X = 10;
 
 const fmtMin = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
-export function TimelineBar({ lo, hi, minute, pointMinutes, segments, onScrub }: {
+export function TimelineBar({ lo, hi, minute, pointMinutes, segments, trailFrom, onScrub }: {
     lo: number;
     hi: number;
     /** 현재 분(스크럽 또는 기본 사다리) — null 이면 플레이헤드 없음. */
@@ -22,6 +22,8 @@ export function TimelineBar({ lo, hi, minute, pointMinutes, segments, onScrub }:
     pointMinutes: readonly number[];
     /** 존 재적 구간 — null 은 연동 행 없음(띠 없이 트랙만). */
     segments: readonly BandSegment[] | null;
+    /** 꼬리 창 시작(가장 오래된 오프셋 분) — null 은 꼬리 없음. [trailFrom, minute] 에 옅은 띠. */
+    trailFrom?: number | null;
     onScrub: (minute: number) => void;
 }): JSX.Element {
     const span = Math.max(hi - lo, 1);
@@ -58,6 +60,13 @@ export function TimelineBar({ lo, hi, minute, pointMinutes, segments, onScrub }:
             style={barWrap}>
             {/* 기준 트랙 */}
             <div style={{ position: "absolute", left: PAD_X, right: PAD_X, top: TRACK_TOP, height: 4, borderRadius: 2, background: "var(--bg-tertiary)", pointerEvents: "none" }} />
+            {/* 꼬리 창 — 산점의 꼬리가 어느 구간을 보는지(존 띠보다 아래 = 옅게 깔린다). */}
+            {trailFrom != null && minute !== null && trailFrom < minute && (
+                <div aria-hidden style={{
+                    position: "absolute", top: TRACK_TOP, height: 4, background: ACTIVE_SOFT, opacity: 0.7, pointerEvents: "none",
+                    left: at(trailFrom), width: `calc(${Math.max(fracOf(minute) - fracOf(trailFrom), 0)} * (100% - ${2 * PAD_X}px))`,
+                }} />
+            )}
             {/* 존 재적 띠 — 끊김이 이탈이다. */}
             {segments?.map((s, i) => (
                 <div key={i} aria-hidden style={{

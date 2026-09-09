@@ -28,10 +28,12 @@ export interface SettingsSlice {
     themeBoardSettings: ThemeBoardSettings;
     replaySettings: ReplayBoardSettings;
     boardMarket: BoardMarketMap; // 보드별 기준 시장(영속)
+    themeTrailOffsets: readonly number[]; // 테마 순위 꼬리 오프셋(분, 오름차순·상한 5). 빈 배열 = 꼬리 꺼짐
     setNewsSearchEngine: (engine: NewsSearchEngine) => void;
     setThemeBoardSettings: (patch: Partial<ThemeBoardSettings>) => void;
     setReplaySettings: (patch: Partial<ReplayBoardSettings>) => void;
     setBoardMarket: (board: keyof BoardMarketMap, market: BoardMarket) => void;
+    setThemeTrailOffsets: (offsets: readonly number[]) => void;
 }
 
 // ── 영속 필드 — 키·로드·저장이 한 자리에 묶인다(persistedField). 설정 모달이 편집하는 것들이
@@ -73,11 +75,27 @@ const BOARD_MARKET = persistedField<BoardMarketMap>(
     BOARD_MARKET_DEFAULT,
 );
 
+// 테마 순위 꼬리 오프셋(분) — 편집 손은 설정 모달이 아니라 패널 푸터의 팝오버다(boardMarket 이
+// 보드 헤더에서 편집되는 것과 같은 예외). 날짜·종목과 무관한 보기 취향이라 영속.
+const TRAIL_CAP = 5; // 흐림 계단이 이보다 많으면 눈으로 구분이 안 된다
+/** 정돈 한 곳 — 정수 1..390 만, 중복 제거, 오름차순, 상한 컷. setter 와 로더가 같은 자를 쓴다. */
+export const normalizeTrailOffsets = (list: readonly unknown[]): number[] =>
+    [...new Set(list.filter((v): v is number => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 390))]
+        .sort((a, b) => a - b)
+        .slice(0, TRAIL_CAP);
+const TRAIL_DEFAULT: number[] = [];
+const TRAIL_OFFSETS = persistedField<number[]>(
+    "wb.themeTrailOffsets",
+    (o) => (Array.isArray(o) ? normalizeTrailOffsets(o) : null),
+    TRAIL_DEFAULT,
+);
+
 export const createSettingsSlice: StateCreator<WorkbenchState, [], [], SettingsSlice> = (set) => ({
     newsSearchEngine: NEWS_ENGINE.load(),
     themeBoardSettings: THEME_BOARD.load(),
     replaySettings: REPLAY.load(),
     boardMarket: BOARD_MARKET.load(),
+    themeTrailOffsets: TRAIL_OFFSETS.load(),
 
     setNewsSearchEngine: (engine) => set(() => ({ newsSearchEngine: NEWS_ENGINE.save(engine) })),
     setThemeBoardSettings: (patch) =>
@@ -86,4 +104,6 @@ export const createSettingsSlice: StateCreator<WorkbenchState, [], [], SettingsS
         set((s) => ({ replaySettings: REPLAY.save({ ...s.replaySettings, ...patch }) })),
     setBoardMarket: (board, market) =>
         set((s) => ({ boardMarket: BOARD_MARKET.save({ ...s.boardMarket, [board]: market }) })),
+    setThemeTrailOffsets: (offsets) =>
+        set(() => ({ themeTrailOffsets: TRAIL_OFFSETS.save(normalizeTrailOffsets(offsets)) })),
 });
