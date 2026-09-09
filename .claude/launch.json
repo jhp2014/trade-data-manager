@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "api-wt",
+      "name": "api-dev",
       "runtimeExecutable": "cmd",
       "runtimeArgs": [
         "/c",
@@ -11,7 +11,7 @@
       "port": 3011
     },
     {
-      "name": "workbench-wt",
+      "name": "workbench-dev",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [
         "--filter",

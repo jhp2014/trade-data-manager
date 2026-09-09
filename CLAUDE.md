@@ -12,7 +12,7 @@ trade-data-manager — 한국 주식 데이터 수집·큐레이션·실시간 �
 
 - 세션이 사용자 폴더에서 시작됐으면 **먼저 `C:\Dev\tdm-work` 로 옮기고** 작업한다. 사용자 폴더의 파일은 고치지 않는다(그 폴더의 dev 서버가 떠 있어 화면이 흔들린다).
 - 개발 서버 기동: `$env:API_PORT=3011; pnpm --filter @trade-data-manager/api dev` · `pnpm --filter @trade-data-manager/workbench dev -- --port 3110`.
-  루트 `pnpm dev` 는 3001/3100 을 뺏으므로 **개발 워크트리에서 금지**. 같은 이유로 `.claude/launch.json` 에는 **개발 항목(api-wt·workbench-wt)만 둔다** — 사용자 포트를 띄울 손잡이를 아예 안 만드는 것이 경고문보다 확실하다(사용자 화면을 봐야 하면 `preview_start` 에 url 을 직접 준다). apps/live 는 양쪽 다 VPS(100.74.165.85:3002)를 본다.
+  루트 `pnpm dev` 는 3001/3100 을 뺏으므로 **개발 워크트리에서 금지**. 같은 이유로 `.claude/launch.json` 에는 **개발 항목(api-dev·workbench-dev)만 둔다** — 사용자 포트를 띄울 손잡이를 아예 안 만드는 것이 경고문보다 확실하다(사용자 화면을 봐야 하면 `preview_start` 에 url 을 직접 준다). apps/live 는 양쪽 다 VPS(100.74.165.85:3002)를 본다.
 - **공유 자원 — 개발 쪽에서 금지**: market 로컬 Postgres 는 한 벌이다. `ingest backfill`·`db-ops backup` 실행 금지(사용자 데이터가 바뀐다), drizzle 마이그레이션 금지(스키마 변경 작업은 사용자가 사용을 멈추고 진행하기로 합의). curation(Supabase)·live 알람 설정은 **읽기만**.
 - 야간 스케줄러(20:30 collect→backup)는 사용자 폴더 고정.
 - worktree 신설 시 git 추적 밖 물건을 수동 복사: `.env` 6개(`infra/persistence·kis·kiwoom·krx·google·telegram`), `apps/workbench/.env.local`(`API_PROXY_TARGET=http://localhost:3011`), `apps/api/.cache`(~760MB, 안 하면 격자·순위 재굽기).
