@@ -32,7 +32,6 @@ export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[], assembl
         }
         case "orphan": return `${ref.label} (폐지된 바인딩)`;
         case "cell": return "짚은 칸";
-        case "groupChain": return ref.names.join(" & ");
         case "items": return ref.label;
     }
 }

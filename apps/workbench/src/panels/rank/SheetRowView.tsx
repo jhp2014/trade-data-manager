@@ -42,6 +42,11 @@ export interface SheetRowHandlers {
     onNav: (row: SheetRow) => void;
     onTogglePin: (key: string) => void;
     onCellCtx: (p: CellCtxPayload) => void;
+    /**
+     * 비축 셀(이름·날짜·시각) 우클릭 = 그룹 배정 팝오버(좌클릭=시선/우클릭=라벨 채널 분리).
+     * 축 셀은 제 우클릭(컷 메뉴, onCellCtx)이 있어 안 겹친다 — 행 전역이 아니라 셀 단위로 건 이유.
+     */
+    onRowCtx: (row: SheetRow, at: { x: number; y: number }) => void;
 }
 
 export interface SheetRowViewProps {
@@ -113,8 +118,11 @@ function SheetRowViewImpl({
     };
 
     type CellRender = { body: ReactNode; style?: CSSProperties; onClick?: () => void; onContextMenu?: (e: React.MouseEvent) => void; title?: string };
+    // 비축 셀 공통 우클릭 — 그룹 배정 팝오버(커서 좌표 앵커).
+    const rowCtx = (ev: React.MouseEvent): void => { ev.preventDefault(); h.onRowCtx(row, { x: ev.clientX, y: ev.clientY }); };
     const CELLS: Record<ColKind, (c: Col) => CellRender> = {
         name: () => ({
+            onContextMenu: rowCtx,
             style: { fontWeight: 600, whiteSpace: "nowrap", position: "relative", borderLeft: `3px solid ${focus ? "var(--accent-primary)" : "transparent"}` },
             body: (
                 <>
@@ -130,11 +138,13 @@ function SheetRowViewImpl({
         }),
         date: () => ({
             onClick: () => h.onNav(row),
+            onContextMenu: rowCtx,
             style: { whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontSize: 11, color: "var(--text-secondary)" },
             body: row.date.slice(2).replace(/-/g, "."),
         }),
         time: () => ({
             onClick: () => h.onNav(row),
+            onContextMenu: rowCtx,
             style: { whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums", textAlign: "center", cursor: "pointer", fontWeight: 600, color: "var(--accent-primary)" },
             body: row.time?.slice(0, 5) ?? "—",
         }),

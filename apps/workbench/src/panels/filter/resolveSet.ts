@@ -40,10 +40,6 @@ export interface SetResolveCtx {
     candidates: readonly ChartRef[];
     /** 그 하루의 타점 시각들(타점 0이면 빈 배열). */
     timesOf: (c: ChartRef) => readonly string[];
-    /** 적용 그룹(직접 ∪ 계층조상) — 깔때기와 같은 판정. */
-    appliedGroupNamesOf: (item: FunnelItem) => readonly string[];
-    /** 사전에 있는 그룹인가. false = 지워진 그룹(깨진 참조). */
-    hasGroup: (name: string) => boolean;
     /** 작업 깔때기의 단계들(조건 한 벌) — survivors·cell 참조의 재료. */
     activeStages: readonly FilterStage[];
     /** 저장 집합 사전. undefined 반환 = 지워진 집합(깨진 참조). */
@@ -114,22 +110,11 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
         case "assembly": {
             // 조립 = 켠 부품들의 합집합(순수 규칙은 assembly.ts). **죽은 부품은 그 부품만 빠진다** —
             // 조립 전체를 BROKEN 으로 접지 않는 건 진단이 부품 단위라서다(UI 가 부품 줄에 깨짐을 표시한다).
-            // groupChain 의 "하나라도 죽으면 통째"와 다른 규칙(사용자 확정).
+            // (옛 groupChain 의 "하나라도 죽으면 통째"와 다른 규칙 — 사용자 확정.)
             const a = ctx.assemblyOf(ref.id);
             if (a === undefined) return BROKEN;
             const u = unionOf(liveUnionParts(a, ctx));
             return { broken: false, grain: u.grain, items: u.items };
-        }
-
-        case "groupChain": {
-            // 그룹은 전부 하루(차트) 층위다 — 판정도 그 층위에서 한다.
-            if (ref.names.some((n) => !ctx.hasGroup(n))) return BROKEN;
-            const grain: Grain = "day";
-            const items = expandUniverse(ctx.candidates, grain, ctx.timesOf).filter((i) => {
-                const applied = ctx.appliedGroupNamesOf(i);
-                return ref.names.every((n) => applied.includes(n));
-            });
-            return { broken: false, grain, items };
         }
 
         case "items":

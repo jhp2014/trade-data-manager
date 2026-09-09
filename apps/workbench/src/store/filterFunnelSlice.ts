@@ -18,9 +18,10 @@ import type { FunnelCell } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import type { SetRef } from "../lib/setRef.js";
 import {
-    activeStages, addStage, moveStage, parseStages, removeStage, renameStage, setStagePredicates, toggleStage,
+    activeStages, addStage, moveStage, parseStages, removeStage, renameGroupInStages, renameStage, setStagePredicates, toggleStage,
     type FilterPredicate, type FilterStage,
 } from "../panels/filter/stage.js";
+import { persistSavedSets } from "./savedSetsSlice.js";
 import { applyRailPredicate, type RailKey } from "../panels/filter/stageBinding.js";
 import { loadJson, saveJson } from "./persist.js";
 import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
@@ -92,6 +93,13 @@ export interface FilterFunnelSlice {
     moveFilterStage: (from: number, to: number) => void;
     setFilterStagePredicates: (id: string, predicates: FilterPredicate[]) => void;
     renameFilterStage: (id: string, name: string) => void;
+    /**
+     * 그룹 **개명 승계** — 그룹 필터 리터럴이 그룹을 이름으로 들고 있어, 서버 개명 후 여기서 작업 깔때기 +
+     * 저장 집합(조건 사본)의 옛 이름을 따라 바꾼다. 안 하면 개명 즉시 그 이름을 쓰던 저장물이 죽은 참조가
+     * 된다(@none:day 승계 규칙과 같은 성질). putStages 를 안 타는 이유: 이건 손 편집이 아니라 기계 승계라
+     * 시선·선택 포인터를 건드리면 안 된다(단계 id 불변 — 시선은 그대로 유효하다).
+     */
+    renameGroupInFilters: (from: string, to: string) => void;
     clearFilterStages: () => void;
     setFunnelSelection: (sel: FunnelSelection | null) => void;
 }
@@ -141,6 +149,19 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     moveFilterStage: (from, to) => set((s) => putStages(s, moveStage(selectFilterStages(s), from, to))),
     setFilterStagePredicates: (id, predicates) => set((s) => putStages(s, setStagePredicates(selectFilterStages(s), id, predicates))),
     renameFilterStage: (id, name) => set((s) => putStages(s, renameStage(selectFilterStages(s), id, name))),
+    renameGroupInFilters: (from, to) => set((s) => {
+        const stages = renameGroupInStages(selectFilterStages(s), from, to);
+        const sets = s.savedSets.map((f) => {
+            const st = renameGroupInStages(f.stages, from, to);
+            return st === f.stages ? f : { ...f, stages: st };
+        });
+        const setsTouched = sets.some((f, i) => f !== s.savedSets[i]);
+        if (stages !== s.filterStages) saveJson(STAGES_KEY, stages);
+        return {
+            ...(stages !== s.filterStages ? { filterStages: stages } : {}),
+            ...(setsTouched ? { savedSets: persistSavedSets(sets) } : {}),
+        };
+    }),
     clearFilterStages: () => set((s) => putStages(s, [])),
     // 칸 짚기도 깔때기를 만지는 손이다 — 선택 포인터는 작업 깔때기로 복귀한다.
     setFunnelSelection: (sel) => set(() => ({ funnelSelection: sel, selectedSetRef: null })),

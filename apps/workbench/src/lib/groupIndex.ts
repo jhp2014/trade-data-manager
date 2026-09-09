@@ -7,9 +7,7 @@
 // **항목은 grain 별 두 피드다** — 차트(종목, 날짜)와 좌표 라벨(종목, 날짜, 분 — 2026-09-09 재도입,
 // Point 저장이 아니라 캔들 좌표에 붙은 라벨). 피드·캐시는 분리 유지(무효화가 갈려야 한다)하고,
 // 여기 함수들은 rowKey(time 유무 = grain, 두 키 공간은 구분자 수로 갈려 안 섞임)로 양쪽을 다 받는다.
-import type { Group } from "@trade-data-manager/wire";
-import { expandWithAncestors } from "./groupTree.js";
-import { rowKey } from "./pointKey.js";
+import { rowKey, rowKeyToChartKey } from "./pointKey.js";
 
 /** 멤버십 피드 항목의 공통 모양 — GroupMembership(2조각 키)·PointGroupMembership(3조각 키) 둘 다 맞는다. */
 type MembershipRef = { stockCode: string; date: string; time?: string };
@@ -30,16 +28,32 @@ export function countByGroup(feed: readonly { groupNames: string[] }[]): Map<str
     return m;
 }
 
+// (옛 expandMemberships — 겹침 롤업용 조상 전개 사본 — 는 유일 소비자였던 그룹 목록 패널과 함께 삭제. 2026-09-10.)
+
 /**
- * 피드의 각 항목 groupNames 를 **조상까지 편** 사본 — 조회(맵 카운트·겹침·롤업)용. 편집은 원본을 본다.
- * 항목 하나가 같은 부모의 자식 둘에 들어 있어도 부모는 항목당 **한 번만** 나온다(expandWithAncestors 가
- * Set 으로 걸러서) — 그래서 이 결과에 countByGroup 을 그대로 얹으면 dedupe 롤업 건수가 된다.
+ * 두 적용 집합의 합집합 — 깔때기 판정 `groupNamesOf` 의 3갈래 결합(day 직접∪조상 + point 라벨/∃ 상향).
+ * 한쪽이 비면 **다른 쪽 참조 그대로**(라벨 없는 날이 대다수라 추가 할당 0 — applyGroupToggle 의 같은 규칙).
  */
-export function expandMemberships<M extends { groupNames: string[] }>(feed: readonly M[], groupByName: ReadonlyMap<string, Group>): M[] {
-    return feed.map((m) => {
-        const groupNames = expandWithAncestors(m.groupNames, groupByName);
-        return groupNames.length === m.groupNames.length ? m : { ...m, groupNames };
-    });
+export function unionNames(a: readonly string[], b: readonly string[]): readonly string[] {
+    if (b.length === 0) return a;
+    if (a.length === 0) return b;
+    return [...new Set([...a, ...b])];
+}
+
+/**
+ * 좌표 라벨 피드를 **하루로 접는다**(∃ 상향의 색인) — 차트 키 → 그날 좌표 라벨들의 그룹 이름 합집합.
+ * day 층위 행에 point 그룹 필터를 물을 때 "라벨 타점을 하나라도 가진 날"이 이 맵 조회 한 번이 된다.
+ * 이름은 직접 소속만 담는다 — 조상 전개(계층 상속)는 호출부가 groupByName 을 들고 할 일.
+ */
+export function foldPointIndexToDay(feed: readonly (MembershipRef & { groupNames: string[] })[]): Map<string, string[]> {
+    const m = new Map<string, Set<string>>();
+    for (const p of feed) {
+        const k = rowKeyToChartKey(rowKey(p));
+        let set = m.get(k);
+        if (!set) m.set(k, (set = new Set()));
+        for (const n of p.groupNames) set.add(n);
+    }
+    return new Map([...m].map(([k, set]) => [k, [...set]]));
 }
 
 /**

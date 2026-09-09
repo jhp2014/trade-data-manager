@@ -27,6 +27,7 @@ import { useRankSections } from "../../lib/useRankSections.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { themeProjectionOf } from "../../lib/themeStrength.js";
 import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
+import { unionNames } from "../../lib/groupIndex.js";
 import type { SetRef } from "../../lib/setRef.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
 import { buildAxisOrderIndex, buildAxisOrderIndexes } from "./axisLookup.js";
@@ -190,9 +191,19 @@ export function useFilterFunnel(): FunnelView {
             /** (W,r) 별 게으름 — 급타점 술어가 실제 평가될 때 그 단면만 돈다(결과와 같은 결). */
             hotOf: (w: number, r: number) => HotCounts | null;
         }): EvalLookup => ({
-            // 적용 집합(직접 ∪ 계층 조상) — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
-            groupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date }),
-            // "그룹 없음"은 **직접 소속 0개**를 센다 — 위의 합집합으로는 못 묻는 것.
+            // 적용 집합 — grain 으로 세 갈래를 합친다(그룹 필터 kind 는 하나, decisions.md 「그룹 편집 출구」):
+            //   · day(하루 그룹): 직접 ∪ 계층 조상 — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
+            //   · point 항목: + 그 좌표의 라벨(직접 ∪ 조상). 하루 그룹은 층위 상속(day→point ∀)으로 이미 위에 있다.
+            //   · day 항목: + **∃ 상향** — 그날 좌표 라벨들의 그룹 합집합("라벨 타점을 하나라도 가진 날").
+            // 라벨 없는 날/타점이 대다수라 한쪽이 비면 다른 쪽 참조 그대로(unionNames — 순수·테스트됨).
+            groupNamesOf: (i) =>
+                unionNames(
+                    gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date }),
+                    i.time === undefined
+                        ? gv.pointNamesAtDay({ stockCode: i.stockCode, date: i.date })
+                        : gv.appliedPointGroupNamesOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
+                ),
+            // "그룹 없음"은 **하루 직접 소속 0개**를 센다(@none:day 저장물 승계 — point 라벨만 있는 날도 "그룹 없음").
             anyGroupAt: (i) => gv.anyGroupAt({ stockCode: i.stockCode, date: i.date }),
             hasGroup: (id) => gv.groupByName.has(id),
             orderKeyOf: (axisId, i) => {
@@ -352,8 +363,6 @@ export function useFilterFunnel(): FunnelView {
         () => ({
             candidates: cand.candidates,
             timesOf: timesOfCur,
-            appliedGroupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date }),
-            hasGroup: (n) => gv.groupByName.has(n),
             activeStages: stages,
             savedSetOf: (id) => savedSets.find((f) => f.id === id),
             assemblyOf: (id) => assemblies.find((a) => a.id === id),
@@ -363,7 +372,7 @@ export function useFilterFunnel(): FunnelView {
             evalLook,
             grainLook,
         }),
-        [cand.candidates, timesOfCur, gv, evalLook, grainLook, stages, savedSets, assemblies, materialsFor, grain, active, result, materialsEpoch],
+        [cand.candidates, timesOfCur, evalLook, grainLook, stages, savedSets, assemblies, materialsFor, grain, active, result, materialsEpoch],
     );
 
     const { resolveSet, viewOf } = useSetViews(result, setCtx);

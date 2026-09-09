@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
     activeStages, addStage, autoGrain, canAddGroupLiteral, canAddPredicate,
     funnelOrder, isPredicateDead, isPredicateEmpty, moveStage, parseStages, predicateGrain, removeStage,
-    renameStage, resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
+    renameGroupInStages, renameStage, resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
     type FilterPredicate, type FilterStage, type Grain, type GrainLookup,
 } from "../stage.js";
 import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
@@ -394,5 +394,29 @@ describe("hotPoints 술어 — 파라미터가 payload 에 산다", () => {
     it("빈 ranges 는 조건이 없는 것 — 평가에서 빠진다(꺼진 행이 열만 세우는 근거)", () => {
         expect(isPredicateEmpty({ kind: "hotPoints", w: 60, r: 3, ranges: [] })).toBe(true);
         expect(isPredicateEmpty({ kind: "hotPoints", w: 60, r: 3, ranges: [{ to: { kind: "value", value: 2 } }] })).toBe(false);
+    });
+});
+
+describe("renameGroupInStages — 그룹 개명 승계(리터럴 id = 이름)", () => {
+    const stages: FilterStage[] = [
+        stage("s1", [{ kind: "group", expr: expr("눌림", "테마") }]),
+        stage("s2", [{ kind: "date", ranges: [{ from: "2026-07-01", to: "2026-07-02" }] }]),
+    ];
+
+    it("옛 이름 리터럴만 새 이름으로 — 다른 술어·단계는 그대로", () => {
+        const out = renameGroupInStages(stages, "눌림", "눌림A");
+        const g = out[0]!.predicates[0]!;
+        expect(g.kind === "group" && g.expr.groups[0]!.literals[0]!.groupId).toBe("눌림A");
+        expect(g.kind === "group" && g.expr.groups[1]!.literals[0]!.groupId).toBe("테마");
+        expect(out[1]).toBe(stages[1]); // 그룹 술어 없는 단계 = 같은 참조
+    });
+
+    it("안 쓰는 이름이면 **같은 배열 그대로** — 호출부가 참조 비교로 영속을 건너뛴다", () => {
+        expect(renameGroupInStages(stages, "없는그룹", "x")).toBe(stages);
+    });
+
+    it("없음 리터럴(@none:day)은 안 닿는다", () => {
+        const s = [stage("s", [{ kind: "group" as const, expr: expr(NONE_GROUP) }])];
+        expect(renameGroupInStages(s, NONE_GROUP, "이상한짓")).toBe(s);
     });
 });

@@ -2,6 +2,7 @@ import { WorkbenchShell } from "./shell/WorkbenchShell.js";
 import { FunnelProvider } from "./panels/filter/FunnelContext.js";
 import { SettingsModal } from "./components/SettingsModal.js";
 import { AssignThemeModal } from "./components/AssignThemeModal.js";
+import { GroupAssignPopover } from "./components/GroupAssignPopover.js";
 import { Taskbar } from "./components/Taskbar.js";
 import { useUi } from "./store/ui.js";
 import { useKeymap } from "./keymap/useKeymap.js";
@@ -27,6 +28,7 @@ export function App(): JSX.Element {
             </FunnelProvider>
             {settingsOpen && <SettingsModal onClose={closeSettings} />}
             <AssignThemeModal />
+            <GroupAssignPopover />
         </div>
     );
 }

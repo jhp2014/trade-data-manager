@@ -155,6 +155,7 @@ export function MinuteChart({
     zoom = null,
     lockTimeScale = false,
     onMovePoint,
+    onMarkContext,
     onRightClick,
     onRemoveLine,
     onLineContext,
@@ -179,6 +180,8 @@ export function MinuteChart({
     zoom?: { bars: number; anchorTime: number | null } | null; // f 줌 — anchorTime 중심 ±bars/2 봉. null = 세션 기본(07:50/08:50~15:30).
     lockTimeScale?: boolean; // 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지(리프레임 안 함)
     onMovePoint: (time: string) => void; // 좌클릭 = 그 봉으로 타점 이동(tradeTime HH:MM:SS)
+    /** ◇ 우클릭 = 그룹 배정(좌표 라벨). 복기 전용 개념이라 optional — 실시간 차트는 안 넘긴다. */
+    onMarkContext?: (tradeTime: string, at: { x: number; y: number }) => void;
     onRightClick: (anchor: { date: string; time: string }, at: { x: number; y: number }) => void;
     onRemoveLine: (line: RenderLine) => void;
     /** 있으면 선 근처 우클릭 = 메뉴(복기), 없으면 즉시 삭제(실시간). */
@@ -279,7 +282,11 @@ export function MinuteChart({
                         onMouseEnter={() => setHoveredAuto(a.time)}
                         onMouseLeave={() => setHoveredAuto((cur) => (cur === a.time ? null : cur))}
                         onClick={() => a.point && onMovePoint(a.point.tradeTime)}
-                        onContextMenu={(e) => e.preventDefault()}
+                        onContextMenu={(e) => {
+                            // 네이티브 캔들 메뉴는 escapeSelector([data-group-marker])로 이미 비켜준다 — 여긴 브라우저 메뉴만 막고 배정을 연다.
+                            e.preventDefault();
+                            if (a.point && onMarkContext) onMarkContext(a.point.tradeTime, { x: e.clientX, y: e.clientY });
+                        }}
                         title={autoLabelOf(a.time)}
                         style={{ ...markerBoxStyle(a.x, 7), cursor: "pointer" }}
                     >

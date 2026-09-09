@@ -100,6 +100,17 @@ button {
     opacity: 1;
 }
 
+/* 그룹 배정 팝오버 행의 ⋯(관리) 손잡이 — 평상시 숨김, 그 행 hover/포커스 시 노출(.rail-stow 와 같은 이유:
+   목록은 조용해야 훑히고, 관리는 머문 행에서만 꺼낸다). */
+.ga-row .ga-more {
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.ga-row:hover .ga-more,
+.ga-row:focus-within .ga-more {
+    opacity: 1;
+}
+
 /* 가로 휠 스크롤 영역(차트 컨트롤 바 등) — 스크롤바는 숨기고 휠로만 이동. 폭이 좁으면 잘려 보이는 게 정상. */
 .no-scrollbar {
     scrollbar-width: none;

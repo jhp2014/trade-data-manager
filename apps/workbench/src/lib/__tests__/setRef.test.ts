@@ -10,7 +10,6 @@ describe("setRefKey — 같은 집합이면 같은 키", () => {
             { kind: "assembly", id: "as1" } as SetRef,
             { kind: "orphan", label: "그룹 테마" } as SetRef,
             { kind: "cell", stageId: "s1", cells: ["survive"] } as SetRef,
-            { kind: "groupChain", names: ["테마", "돌파"] } as SetRef,
             { kind: "items", label: "밴드", items: [{ stockCode: "A", date: "2026-07-01" }] } as SetRef,
         ].map(setRefKey);
         expect(new Set(keys).size).toBe(keys.length);
@@ -26,14 +25,9 @@ describe("setRefKey — 같은 집합이면 같은 키", () => {
         expect(setRefKey({ kind: "survivors" })).not.toBe(setRefKey({ kind: "saved", setId: "x" }));
     });
 
-    it("⚠ 자유 텍스트 이름이 키를 오염시키지 못한다 — 'A&B' 그룹 체인 ≠ [A,B] 체인 (캐시 키라 충돌=다른 집합 반환)", () => {
-        expect(setRefKey({ kind: "groupChain", names: ["A&B"] }))
-            .not.toBe(setRefKey({ kind: "groupChain", names: ["A", "B"] }));
-    });
-
-    it("체인 순서는 집합을 안 바꾼다(교집합) — 키가 같아 한 번만 풀린다", () => {
-        expect(setRefKey({ kind: "groupChain", names: ["A", "B"] }))
-            .toBe(setRefKey({ kind: "groupChain", names: ["B", "A"] }));
+    it("⚠ 자유 텍스트 라벨이 키를 오염시키지 못한다 — JSON 배열 인코딩이라 단사(캐시 키라 충돌=다른 집합 반환)", () => {
+        expect(setRefKey({ kind: "orphan", label: '["x"]' }))
+            .not.toBe(setRefKey({ kind: "items", label: "x", items: [] }));
     });
 });
 
@@ -55,9 +49,7 @@ describe("parseSetRef — 영속 4종 + orphan", () => {
     });
 
     it("세션 종류는 저장 대상이 아니다 — 파서가 거부한다", () => {
-        expect(parseSetRef({ kind: "groupChain", names: ["a"] })).toBeNull();
         expect(parseSetRef({ kind: "items", label: "x", items: [] })).toBeNull();
-        expect(isPersistableSetRef({ kind: "groupChain", names: ["a"] })).toBe(false);
         expect(isPersistableSetRef({ kind: "items", label: "x", items: [] })).toBe(false);
         expect(isPersistableSetRef({ kind: "cell", stageId: "s", cells: ["survive"] })).toBe(false);
     });

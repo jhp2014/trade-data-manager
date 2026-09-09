@@ -4,8 +4,9 @@
 //   · 영속 4종 : 유니버스(전체) / 최종 생존(작업 깔때기) / 저장 집합 / 조립(부품 합집합 — 2026-09-08)
 //     — 패널 바인딩으로 저장할 수 있다. 저장 집합·조립만이 이름 있는 저장물이고, 그룹·필터를 직접
 //     가리키는 영속 참조는 폐지됐다(그룹은 깔때기의 재료지 바인딩 대상이 아니다 — 잠깐 탐색은 연동 모드가 담당한다).
-//   · 세션 3종 : 짚은 칸(작업 깔때기) / 그룹 체인(교집합) / 항목 목록(시트 밴드 등) — 짚음 채널·내부
-//     리졸빙에만 쓰이고 저장되지 않는다. (집합 난립 방지: 이름을 붙일 때만 저장물이 된다.)
+//   · 세션 2종 : 짚은 칸(작업 깔때기) / 항목 목록(시트 밴드 등) — 짚음 채널·내부 리졸빙에만 쓰이고
+//     저장되지 않는다. (집합 난립 방지: 이름을 붙일 때만 저장물이 된다.)
+//     (옛 그룹 체인(교집합)은 2026-09-10 그룹 목록 패널 은퇴와 함께 삭제 — 생산자가 이미 0이었다.)
 //   · 잔해 1종 : orphan — **파서만 만든다.** 폐지된 옛 바인딩(그룹 직접·칸 직접)이 저장소에 남아 있으면
 //     여기로 변환되고, 리졸버가 항상 깨진 참조로 푼다. 조용히 연동으로 폴백하지 않는 이유: 실패가
 //     소리 없이 다른 집합을 보여주는 방향이라서다("깨진 참조 = 빈 집합 + 라벨" 규칙).
@@ -21,7 +22,6 @@ export type SetRef =
     | { kind: "assembly"; id: string }
     | { kind: "orphan"; label: string }
     | { kind: "cell"; stageId: string; cells: FunnelCell[] }
-    | { kind: "groupChain"; names: string[] }
     | { kind: "items"; label: string; items: FunnelItem[] };
 
 /** 패널 바인딩으로 저장해도 되는 참조인가 — 세션 3종은 정의가 세션 밖에 없어 저장하면 즉시 깨진 참조다. */
@@ -49,7 +49,6 @@ export function setRefKey(r: SetRef): string {
         case "assembly": return `a${JSON.stringify([r.id])}`;
         case "orphan": return `o${JSON.stringify([r.label])}`;
         case "cell": return `c${JSON.stringify([r.stageId, [...r.cells].sort()])}`;
-        case "groupChain": return `gc${JSON.stringify([...r.names].sort())}`;
         case "items": return `it${JSON.stringify([r.label, r.items.map(funnelKey)])}`;
     }
 }

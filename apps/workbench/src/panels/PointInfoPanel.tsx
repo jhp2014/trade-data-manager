@@ -8,6 +8,7 @@ import { useGroups } from "../lib/GroupsContext.js";
 import { useStockName } from "../lib/useStockName.js";
 import { PlacementRows } from "../components/Placement.js";
 import { GroupChips } from "../components/GroupChips.js";
+import { useGroupAssign } from "../store/groupAssign.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { PanelHeader } from "../components/ControlChrome.js";
 
@@ -26,9 +27,18 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     const pointTime = useMemo(() => (time && points.includes(time) ? time : null), [points, time]);
 
     const placements = usePlacements();
-    const { chartGroupsOf, pathLabel } = useGroups();
-    // 그룹은 하루 층위 하나뿐이다(타점 그룹 폐지) — 이 패널은 그 날의 그룹을 보여준다.
+    const { chartGroupsOf, pointGroupNamesOf, groupByName, pathLabel } = useGroups();
+    // 그룹 두 줄 — 타점(좌표 라벨, 2026-09-09 재도입)과 그 날. grain 이 달라 칩 줄을 섞지 않는다.
     const groups = useMemo(() => chartGroupsOf({ stockCode: code, date: viewDate }), [code, viewDate, chartGroupsOf]);
+    const pointGroups = useMemo(
+        () =>
+            pointTime === null
+                ? []
+                : pointGroupNamesOf({ stockCode: code, date: viewDate, time: pointTime })
+                      .map((n) => groupByName.get(n))
+                      .filter((g): g is NonNullable<typeof g> => g != null),
+        [pointTime, code, viewDate, pointGroupNamesOf, groupByName],
+    );
     const detail = useMemo(
         () => (pointTime ? placements.detailOf({ stockCode: code, date: viewDate, time: pointTime }) : null),
         [pointTime, code, viewDate, placements],
@@ -36,6 +46,13 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
 
     if (!code) return <BoardCenter text="종목을 선택하세요" />;
     if (!pointTime || !detail) return <BoardCenter text={time ? `${time.slice(0, 5)} — 타점 아님` : "시각을 선택하세요"} />;
+
+    /** 배정 팝오버 열기 — time 유무가 입구 grain(타점/날)을 가른다. */
+    const openAssign = (e: React.MouseEvent, timeArg: string | null | undefined): void =>
+        useGroupAssign.getState().open(
+            { stockCode: code, name: name ?? undefined, date: viewDate, time: timeArg ?? undefined },
+            { x: e.clientX, y: e.clientY },
+        );
 
     return (
         <div
@@ -49,9 +66,24 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
                 <span className="tabular" style={{ flexShrink: 0, color: "var(--accent-primary)", fontWeight: 700 }}>{pointTime.slice(0, 5)}</span>
             </PanelHeader>
 
-            {/* 그룹 줄 — 축 레인 위(명목 분류가 순서 차원보다 먼저 읽힌다). 한 줄 고정: 폭이 좁아도 wrap 하지 않고
-                hover 가로 스크롤로 훑는다(줄 수가 늘면 아래 축 목록이 밀린다). 편집은 그룹 패널에서만. */}
-            <div style={{ flexShrink: 0, padding: "4px 8px", borderBottom: "1px solid var(--border-subtle)" }}>
+            {/* 그룹 두 줄 — 타점(좌표 라벨)·그 날. 각 줄 한 줄 고정(wrap 없이 hover 가로 스크롤).
+                클릭/우클릭 = 배정 팝오버(시선 충돌 없는 패널이라 좌클릭 보조 입구 허용 — decisions.md 그룹 편집 출구). */}
+            <div
+                onClick={(e) => openAssign(e, pointTime)}
+                onContextMenu={(e) => { e.preventDefault(); openAssign(e, pointTime); }}
+                title="클릭 = 그룹 배정"
+                style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "3px 8px", borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}
+            >
+                <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)" }}>타점</span>
+                <GroupChips groups={pointGroups} scroll empty="그룹 없음" pathOf={(id) => pathLabel(id, "(지워짐)")} />
+            </div>
+            <div
+                onClick={(e) => openAssign(e, undefined)}
+                onContextMenu={(e) => { e.preventDefault(); openAssign(e, undefined); }}
+                title="클릭 = 그룹 배정"
+                style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, padding: "3px 8px", borderBottom: "1px solid var(--border-subtle)", cursor: "pointer" }}
+            >
+                <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)" }}>날</span>
                 <GroupChips groups={groups} scroll empty="그룹 없음" pathOf={(id) => pathLabel(id, "(지워짐)")} />
             </div>
 

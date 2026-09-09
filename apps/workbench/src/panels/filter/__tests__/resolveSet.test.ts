@@ -66,8 +66,6 @@ const evalLook: EvalLookup = {
 const ctx: SetResolveCtx = {
     candidates: [A, B, C],
     timesOf,
-    appliedGroupNamesOf,
-    hasGroup: (n) => knownGroups.has(n),
     activeStages,
     savedSetOf: (id) => savedSets.get(id),
     assemblyOf: () => undefined,
@@ -104,27 +102,7 @@ describe("resolveSetRef — 산지별 풀이", () => {
     });
 });
 
-describe("그룹 체인 — 교집합은 하루(차트) 층위에서", () => {
-    it("체인은 전부를 가진 하루만", () => {
-        const r = resolveSetRef({ kind: "groupChain", names: ["테마", "돌파"] }, ctx);
-        expect(r.grain).toBe("day");
-        expect(codesOf(r)).toEqual(["1"]); // A 만 둘 다
-    });
-
-    it("하나짜리 체인도 같은 층위", () => {
-        const r = resolveSetRef({ kind: "groupChain", names: ["테마"] }, ctx);
-        expect(r.grain).toBe("day");
-        expect(codesOf(r)).toEqual(["1", "2"]);
-    });
-
-    it("체인에 지워진 그룹이 섞이면 통째로 깨진 참조", () => {
-        expect(resolveSetRef({ kind: "groupChain", names: ["테마", "없는그룹"] }, ctx).broken).toBe(true);
-    });
-
-    it("빈 체인은 전부 — 분모가 통째로 사라지지 않게(membersOfAll 과 같은 규칙)", () => {
-        expect(codesOf(resolveSetRef({ kind: "groupChain", names: [] }, ctx))).toEqual(["1", "2", "3"]);
-    });
-});
+// (옛 그룹 체인(groupChain) 케이스는 2026-09-10 그룹 목록 패널 은퇴와 함께 종류째 삭제.)
 
 describe("저장 집합 — 자립 저장물의 풀이(판정 엔진은 깔때기 것 그대로)", () => {
     it("부위=생존자: 제 조건 사본으로 판정 — 작업 깔때기와 독립", () => {

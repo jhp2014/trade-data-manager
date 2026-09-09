@@ -54,6 +54,12 @@ const parsePart = (o: unknown): SavedSetPart | null => {
     return null;
 };
 
+/** 저장 집합 영속 — 슬라이스 밖(그룹 개명 승계)에서도 같은 키로 쓰기 위한 유일한 출구. */
+export const persistSavedSets = (sets: SavedSet[]): SavedSet[] => {
+    saveJson(SAVED_SETS_KEY, sets);
+    return sets;
+};
+
 /** 새 키를 먼저 읽고, 없으면 옛 "저장한 깔때기"를 부위=생존자로 이관한다(id 유지 — 옛 필터 바인딩이
  *  같은 id 의 saved 참조로 무손실 전환되는 근거). 옛 키는 안 지운다 — 새 키가 생기면 자연히 안 읽힌다. */
 const loadSavedSets = (): SavedSet[] => {

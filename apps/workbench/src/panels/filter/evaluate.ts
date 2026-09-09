@@ -21,7 +21,11 @@ import { isPredicateEmpty, unknownPredicate, type AxisBound, type FilterPredicat
 
 /** 판정에 필요한 바깥 재료. 없는 것은 전부 `undefined` = 판단 불가(탈락 아님). */
 export interface EvalLookup {
-    /** 이 항목에 적용되는 그룹 이름들 — **하루 상속 포함**(차트에 붙은 그룹은 그날 타점 전부에 적용). */
+    /**
+     * 이 항목에 적용되는 그룹 이름들 — 세 상속을 다 편 집합이다: 계층(조상) · 층위(day→point ∀ —
+     * 차트에 붙은 그룹은 그날 타점 전부에 적용) · **∃ 상향**(point→day — day 항목은 그날 좌표 라벨의
+     * 그룹도 포함, "라벨 타점을 하나라도 가진 날").
+     */
     groupNamesOf: (item: FunnelItem) => readonly string[];
     /**
      * 이 항목의 차트에 그룹이 하나라도 붙어 있나 — "그룹 없음" 리터럴이 묻는 것.

@@ -19,6 +19,7 @@ import { PresenceBadges, PresenceIcon, GroupNamesCard } from "../components/Pres
 import { ScrollRow } from "../components/ControlChrome.js";
 import { HoverCard } from "../components/HoverCard.js";
 import { GROUP_PLAIN, PIN } from "../styles/palette.js";
+import { useGroupAssign } from "../store/groupAssign.js";
 
 export interface WorksetEntry {
     date: string;
@@ -137,7 +138,12 @@ export function WorksetList({ groups, focus, lens, nameOf, groupsOf, pathOf, onP
                         const selected = e.code === focus.code && e.date === focus.date;
                         const member = lens ? lens.dayMember(e) : false;
                         return (
-                            <button key={r.key} data-row={r.key} onClick={() => onPickDay(e)} style={{
+                            <button key={r.key} data-row={r.key} onClick={() => onPickDay(e)}
+                                onContextMenu={(ev) => {
+                                    ev.preventDefault();
+                                    useGroupAssign.getState().open({ stockCode: e.code, name: nameOf(e.code) ?? undefined, date: e.date }, { x: ev.clientX, y: ev.clientY });
+                                }}
+                                style={{
                                 ...seat, display: "flex", alignItems: "center", gap: 6, textAlign: "left",
                                 border: "none", padding: "0 10px", boxSizing: "border-box", cursor: "pointer", font: "inherit", overflow: "hidden",
                                 borderLeft: `3px solid ${selected ? "var(--accent-hover)" : "transparent"}`,
@@ -164,7 +170,12 @@ export function WorksetList({ groups, focus, lens, nameOf, groupsOf, pathOf, onP
                     const pMember = lens ? lens.pointMember(p) : false;
                     const pGroups = groupsOf(p);
                     return (
-                        <button key={r.key} data-row={r.key} onClick={() => onPickPoint(p)} style={{
+                        <button key={r.key} data-row={r.key} onClick={() => onPickPoint(p)}
+                            onContextMenu={(ev) => {
+                                ev.preventDefault();
+                                useGroupAssign.getState().open({ stockCode: r.entry.code, name: nameOf(r.entry.code) ?? undefined, date: r.entry.date, time: p.time }, { x: ev.clientX, y: ev.clientY });
+                            }}
+                            style={{
                             ...seat, display: "flex", alignItems: "center", gap: 6, textAlign: "left",
                             border: "none", borderBottom: "1px solid var(--border-subtle)", padding: "0 10px 0 22px", boxSizing: "border-box",
                             cursor: "pointer", font: "inherit", overflow: "hidden",

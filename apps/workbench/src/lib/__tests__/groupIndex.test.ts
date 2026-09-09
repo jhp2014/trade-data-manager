@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { GroupMembership } from "@trade-data-manager/wire";
-import type { Group } from "@trade-data-manager/wire";
-import { applyGroupToggle, buildGroupIndex, countByGroup, expandMemberships } from "../groupIndex.js";
+import { applyGroupToggle, buildGroupIndex, countByGroup, foldPointIndexToDay, unionNames } from "../groupIndex.js";
 
 const DAY1 = { stockCode: "005930", date: "2026-06-30" };
 const DAY2 = { stockCode: "000660", date: "2026-06-30" };
@@ -71,25 +70,41 @@ describe("groupIndex", () => {
         });
     });
 
-    describe("expandMemberships — 계층 상속을 조회용 사본에 편다", () => {
-        const grp = (name: string, parentName: string | null = null): Group => ({ name, parentName });
-        // 테마 ▸ {2차전지, 반도체}
-        const byName = new Map<string, Group>([["테마", grp("테마")], ["2차전지", grp("2차전지", "테마")], ["반도체", grp("반도체", "테마")]]);
+    // (expandMemberships 는 유일 소비자였던 겹침 롤업이 그룹 목록 패널과 함께 폐기되며 삭제 — 2026-09-10.)
+});
 
-        it("자식 소속이면 조상도 적용된다", () => {
-            const out = expandMemberships(feed({ ...DAY1, groupNames: ["2차전지"] }), byName);
-            expect(out[0]!.groupNames).toEqual(["2차전지", "테마"]);
-        });
+describe("foldPointIndexToDay — ∃ 상향의 색인(좌표 라벨 피드 → 하루)", () => {
+    it("같은 날의 라벨들을 차트 키 하나로 합친다(중복 이름 dedupe)", () => {
+        const m = foldPointIndexToDay([
+            { stockCode: "005930", date: "2026-06-30", time: "10:03:00", groupNames: ["눌림", "돌파"] },
+            { stockCode: "005930", date: "2026-06-30", time: "13:10:00", groupNames: ["눌림"] },
+            { stockCode: "000660", date: "2026-06-30", time: "09:10:00", groupNames: ["갭"] },
+        ]);
+        expect(m.get("005930|2026-06-30")).toEqual(["눌림", "돌파"]);
+        expect(m.get("000660|2026-06-30")).toEqual(["갭"]);
+    });
 
-        it("같은 부모의 자식 둘에 들어 있어도 부모는 한 번 — countByGroup 을 얹으면 dedupe 롤업", () => {
-            const out = expandMemberships(feed({ ...DAY1, groupNames: ["2차전지", "반도체"] }), byName);
-            expect(out[0]!.groupNames).toEqual(["2차전지", "반도체", "테마"]);
-            expect(countByGroup(out).get("테마")).toBe(1);
-        });
+    it("라벨 없는 날은 키가 없다 — 조회 쪽이 빈 배열 고정 참조로 받는다", () => {
+        expect(foldPointIndexToDay([]).size).toBe(0);
+    });
+});
 
-        it("바뀔 게 없는 항목은 같은 참조 그대로", () => {
-            const f = feed({ ...DAY1, groupNames: ["테마"] });
-            expect(expandMemberships(f, byName)[0]).toBe(f[0]);
-        });
+describe("unionNames — 깔때기 groupNamesOf 의 3갈래 결합", () => {
+    it("point 쪽이 비면 day 참조 그대로(라벨 없는 날 대다수 — 추가 할당 0)", () => {
+        const day = ["테마", "소재"];
+        expect(unionNames(day, [])).toBe(day);
+    });
+
+    it("day 쪽이 비면 point 참조 그대로", () => {
+        const pt = ["눌림"];
+        expect(unionNames([], pt)).toBe(pt);
+    });
+
+    it("겹치는 이름은 한 번만(중복 dedupe)", () => {
+        expect(unionNames(["테마", "눌림"], ["눌림", "갭"])).toEqual(["테마", "눌림", "갭"]);
+    });
+
+    it("둘 다 비면 빈 배열", () => {
+        expect(unionNames([], [])).toEqual([]);
     });
 });

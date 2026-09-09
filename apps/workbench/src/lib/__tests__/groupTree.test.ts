@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { Group } from "../../api/groups.js";
-import { ancestorsOf, expandWithAncestors, groupPathLabel, inheritanceSources, isAncestorOf } from "../groupTree.js";
+import { ancestorsOf, canReparent, expandWithAncestors, groupPathLabel, inheritanceSources, isAncestorOf } from "../groupTree.js";
 
 const g = (name: string, parentName: string | null = null): Group =>
     ({ name, parentName });
@@ -108,5 +108,28 @@ describe("isAncestorOf — 겹침 계산의 조상–자손 쌍 거름망", () =
 
     it("무관한 둘은 거짓", () => {
         expect(isAncestorOf("돌파형", "소부장", dict)).toBe(false);
+    });
+});
+
+describe("canReparent — 순환을 여기서 막는다 (옛 그룹 목록 패널에서 이관, 소비자=배정 팝오버 부모 피커)", () => {
+    it("자기 자신 밑으로는 못 간다", () => {
+        expect(canReparent("반도체", "반도체", dict)).toBe(false);
+    });
+
+    it("**제 자손 밑으로는 못 간다** — 트리가 끊긴다", () => {
+        expect(canReparent("대형주", "소부장", dict)).toBe(false);
+    });
+
+    it("이미 그 부모면 할 일이 없다", () => {
+        expect(canReparent("반도체", "대형주", dict)).toBe(false);
+    });
+
+    it("무관한 그룹 밑으로는 갈 수 있다", () => {
+        expect(canReparent("돌파형", "대형주", dict)).toBe(true);
+    });
+
+    it("최상위로 빼기는 부모가 있을 때만 뜻이 있다", () => {
+        expect(canReparent("반도체", null, dict)).toBe(true);
+        expect(canReparent("돌파형", null, dict)).toBe(false);
     });
 });

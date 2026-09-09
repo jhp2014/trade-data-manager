@@ -17,7 +17,6 @@ import { FilterFunnelPanel } from "../panels/FilterFunnelPanel.js";
 import { RailPanel } from "../panels/filter/RailPanel.js";
 import { NormOverlayPanel } from "../panels/norm/NormOverlayPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
-import { GroupListPanel } from "../panels/GroupListPanel.js";
 import { NewsPanel } from "../panels/NewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 import { WatchlistPanel } from "../panels/WatchlistPanel.js";
@@ -95,8 +94,8 @@ export const PANEL_CATALOG: PanelEntry[] = [
     { id: "rank-point-1", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },
     // 테마 순위 — 순위 평면(등락×대금 서수)에 테마 동료를 세우는 순수 시선. 조건화(스냅샷)는 집합 편성 보드의 몫.
     { id: "theme-rank-1", component: "themeRank", title: "테마 순위 [복기]", plane: "eod", render: () => <ThemeRankPanel /> },
-    // 그룹 목록 — 계층·겹침·드릴다운. 옛 맵 패널("map")은 삭제 — 저장 프리셋의 맵 칸은 sanitizeLayout 이 걷어낸다.
-    { id: "group-list-1", component: "groupList", title: "그룹", plane: "eod", render: () => <GroupListPanel /> },
+    // (옛 그룹 목록 패널("groupList")은 2026-09-10 은퇴 — 그룹 편집은 배정 팝오버가 유일 표면.
+    //  옛 맵 패널("map")과 같은 길: 저장 프리셋의 그 칸은 sanitizeLayout 이 걷어낸다.)
     { id: "hts-news-1", component: "htsNews", title: "HTS뉴스", plane: "eod", render: () => <NewsPanel plane="replay" /> },
 ];
 

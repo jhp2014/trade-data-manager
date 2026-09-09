@@ -18,6 +18,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { GROUP_H, ROW_H, SheetRowView, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { flatIndexOfRow, flattenSheetGroups, stepFlatRow } from "./rank/sheetFlatRows.js";
 import { usePublishRowNav } from "../lib/rowNav.js";
+import { useGroupAssign } from "../store/groupAssign.js";
 import { SheetHeaderRow } from "./rank/SheetHeaderRow.js";
 import { SheetMenusHost, useSheetMenus } from "./rank/SheetMenusHost.js";
 import { SheetPresetMenu } from "./rank/SheetPresetMenu.js";
@@ -441,6 +442,8 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     rowHandlersRef.current.onNav = navRow;
     rowHandlersRef.current.onTogglePin = togglePin;
     rowHandlersRef.current.onCellCtx = menus.openCellCtx;
+    rowHandlersRef.current.onRowCtx = (row, at) =>
+        useGroupAssign.getState().open({ stockCode: row.stockCode, name: nameOf(row.stockCode), date: row.date, time: row.time }, at);
     const rowH = rowHandlersRef.current;
 
     // 한 행 렌더 — 상태 파생(포커스·핀·흐림)만 여기서 계산하고 렌더는 SheetRowView(memo). 호버는 CSS.

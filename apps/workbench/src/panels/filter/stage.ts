@@ -18,7 +18,7 @@
 // **사전 로드 여부를 아는 소비자**의 몫이다(로딩 중 = 보류 / 로드 끝났는데 없음 = 죽은 참조).
 import { TOLERANCE_MAX_PCT, TOLERANCE_MIN_PCT, type Grain } from "@trade-data-manager/market/domain";
 import type { GroupExpr } from "../rank/groupFilter.js";
-import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr } from "../rank/groupFilter.js";
+import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr, renameGroupInExpr } from "../rank/groupFilter.js";
 import { DEFAULT_THEME_STRENGTH, anyConditionOn, parseThemeStrengthParams, type ThemeStrengthParams } from "../../lib/themeStrength.js";
 import { isOutcomeMetric, type OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { isHotR, isHotW } from "../../lib/hotPoints.js";
@@ -168,9 +168,35 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
 const literalIds = (expr: GroupExpr): string[] =>
     expr.groups.flatMap((g) => g.literals.map((l) => l.groupId));
 
-/** 리터럴 하나의 층위 — 그룹은 전부 하루(차트) 층위다. 사전에 없는 id 는 지워진 그룹 = 모름. */
+/**
+ * 리터럴 하나의 층위 — 그룹은 **point 그룹(좌표 라벨)이 생긴 뒤에도 전부 "day"로 둔다**(2026-09-10 확정).
+ * ∃ 상향(day 행 = "라벨 타점을 하나라도 가진 날") 덕에 day 층위에서도 답이 나오므로, point 로 바꾸면
+ * autoGrain 이 화면 해상도를 타점으로 끌어내려 가짜 정밀도만 생긴다. 사전에 없는 id 는 지워진 그룹 = 모름.
+ */
 const literalScope = (groupId: string, look: GrainLookup): Grain | undefined =>
     isNoneLiteral(groupId) || look.hasGroup(groupId) ? "day" : undefined;
+
+/**
+ * 그룹 개명 승계 — 단계들의 그룹 술어에서 옛 이름을 새 이름으로. 바뀐 게 없으면 **같은 배열 그대로**
+ * (호출부가 참조 비교로 영속 여부를 정한다). 규칙의 이유는 renameGroupInExpr 주석에.
+ */
+export function renameGroupInStages(stages: readonly FilterStage[], from: string, to: string): FilterStage[] {
+    let touched = false;
+    const out = stages.map((s) => {
+        let stageTouched = false;
+        const predicates = s.predicates.map((p) => {
+            if (p.kind !== "group") return p;
+            const expr = renameGroupInExpr(p.expr, from, to);
+            if (expr === p.expr) return p;
+            stageTouched = true;
+            return { ...p, expr };
+        });
+        if (!stageTouched) return s;
+        touched = true;
+        return { ...s, predicates };
+    });
+    return touched ? out : (stages as FilterStage[]);
+}
 
 /** 사전이 로드된 뒤에도 알갱이를 모르는 술어 = **죽은 참조**(지워진 그룹·축). 화면이 이걸 표시해야 한다. */
 export function isPredicateDead(p: FilterPredicate, look: GrainLookup): boolean {

@@ -71,3 +71,24 @@ export function inheritanceSources(directNames: readonly string[], groupByName: 
 export function isAncestorOf(a: string, b: string, groupByName: ReadonlyMap<string, Group>): boolean {
     return ancestorsOf(b, groupByName).some((g) => g.name === a);
 }
+
+/**
+ * 이 그룹을 저 그룹 밑으로 넣을 수 있나. `null` 은 최상위로 빼기. (옛 그룹 목록 패널에서 이관 —
+ * 지금 소비자는 배정 팝오버의 부모 피커.)
+ *
+ * 막는 것 둘:
+ *   · 자기 자신 · **자기 자손** 밑으로 — 트리가 끊긴다
+ *   · 이미 그 부모 — 할 일이 없다
+ */
+export function canReparent(
+    name: string,
+    parentName: string | null,
+    groupByName: ReadonlyMap<string, Group>,
+): boolean {
+    const self = groupByName.get(name);
+    if (parentName === null) return self?.parentName !== null;
+    if (parentName === name) return false;
+    if (isAncestorOf(name, parentName, groupByName)) return false;
+    if (self?.parentName === parentName) return false;
+    return true;
+}

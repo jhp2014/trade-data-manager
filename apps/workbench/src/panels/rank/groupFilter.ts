@@ -91,6 +91,24 @@ export function moveGroupLiteral(expr: GroupExpr, gi: number, li: number, to: nu
     return { groups: groups.filter((g) => g.literals.length > 0) };
 }
 
+/**
+ * 그룹 **개명 승계** — 식 안의 리터럴이 옛 이름을 들고 있으면 새 이름으로 바꾼 사본, 없으면 **원본 참조
+ * 그대로**(호출부가 참조 비교로 "바뀐 것만 영속"할 수 있게). 리터럴 id 가 이름 그 자체라서 필요한 규칙이다:
+ * 서버 renameGroup 은 groups.name 만 바꾸고 필터 JSON(클라 영속)은 모르므로, 여기서 안 따라가면
+ * 개명 즉시 그 이름을 쓰던 저장 필터·집합이 죽은 참조(모름 → 전 항목 미배치)가 된다.
+ * 없음 리터럴(@none:day)은 이름이 아니라 안 닿는다(그룹 이름에 @ 는 없다).
+ */
+export function renameGroupInExpr(expr: GroupExpr, from: string, to: string): GroupExpr {
+    if (isNoneLiteral(from)) return expr; // 없음 리터럴은 이름이 아니다 — 승계 대상 밖(방어).
+    let touched = false;
+    const groups = expr.groups.map((g) => {
+        if (!g.literals.some((l) => l.groupId === from)) return g;
+        touched = true;
+        return { literals: g.literals.map((l) => (l.groupId === from ? { ...l, groupId: to } : l)) };
+    });
+    return touched ? { groups } : expr;
+}
+
 function mapGroups(expr: GroupExpr, gi: number, fn: (g: ExprClause) => ExprClause): GroupExpr {
     if (!expr.groups[gi]) return expr;
     return { groups: expr.groups.map((g, i) => (i === gi ? fn(g) : g)) };

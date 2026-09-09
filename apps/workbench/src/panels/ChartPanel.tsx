@@ -18,6 +18,7 @@ import { usePresenceOf } from "../lib/usePresence.js";
 import { PresenceBadges } from "../components/PresenceBadges.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { GroupChips } from "../components/GroupChips.js";
+import { useGroupAssign } from "../store/groupAssign.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import {
     amountMarkerControl,
@@ -201,7 +202,17 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     <>
                         {/* 존재 배지(day 줄) — 이 날의 큐레이션 요약. 뒤에 이 날의 그룹 칩(그룹은 하루 층위 하나뿐). */}
                         <PresenceBadges presence={presence} />
-                        <GroupChips groups={chartGroupsOf({ stockCode: code, date: viewDate })} pathOf={(id) => pathLabel(id, "(지워짐)")} style={{ maxWidth: 180, flexShrink: 1 }} />
+                        {/* 칩 영역 우클릭 = 이 날 그룹 배정(입구 규칙: 좌클릭=시선/우클릭=라벨 — 헤더라 좌클릭 충돌은 없지만 어휘를 통일). */}
+                        <span
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                useGroupAssign.getState().open({ stockCode: code, name: name ?? undefined, date: viewDate }, { x: e.clientX, y: e.clientY });
+                            }}
+                            style={{ display: "inline-flex", minWidth: 0, flexShrink: 1 }}
+                        >
+                            {/* empty 문구 필수 — 칩 0개면 span 폭이 0이라 첫 그룹을 붙일 우클릭 면적 자체가 없다. */}
+                            <GroupChips groups={chartGroupsOf({ stockCode: code, date: viewDate })} empty="그룹 없음" pathOf={(id) => pathLabel(id, "(지워짐)")} style={{ maxWidth: 180, flexShrink: 1 }} />
+                        </span>
                     </>
                 }
             />
@@ -254,6 +265,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                     lockTimeScale={lockScale}
                                     onMovePoint={(t) => setTime(t)}
+                                    onMarkContext={(t, at) => useGroupAssign.getState().open({ stockCode: code, name: name ?? undefined, date: viewDate, time: t }, at)}
                                     onRightClick={(a, at) => openMenu(at, { candle: { date: a.date, time: a.time } })}
                                     onRemoveLine={(l) => lines.removeLineById(l.id)}
                                     onLineContext={(l, at) => openMenu(at, { nearLine: l })}
