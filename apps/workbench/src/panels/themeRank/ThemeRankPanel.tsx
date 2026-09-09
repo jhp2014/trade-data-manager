@@ -1,5 +1,6 @@
 // 테마 순위 패널 — **연동 거울**: 순위 평면(x=거래대금 서수·y=등락률 서수)에 그날 유니버스를 점으로
-// 세우고, 시선 종목의 테마 동료를 켠 채 시각 스크럽으로 테마 상황을 탐색한다.
+// 세우고, 시선 종목의 테마 동료를 켠 채 시각 스크럽으로 테마 상황을 탐색한다. 표시 시각은 **전역
+// focus.time 직결**(2026-09-09) — 차트 클릭·a/d 와 이 패널의 타임라인 바가 같은 채널을 양방향으로 민다.
 //
 // 조건을 **만드는** 손은 여기 없다(행은 집합 편성 보드의 ＋ 조건이 낳는다). 대신 이 패널이 테마 조건의
 // **유일한 편집면**이다(2026-08-29 재편) — 보드 행은 요약 줄·정산·순서만 진다. 행 하나(themeLink)를
@@ -22,8 +23,7 @@ import { CanvasLayers } from "../canvas/CanvasPainter.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { themeStrengthLabel } from "../filter/label.js";
 import { themeParamsOf, useLinkedThemeStage } from "../filter/themeLink.js";
-import { useSubject, subjectStatus, subjectKeyOf, isAutoPointTime } from "../../lib/subject.js";
-import { autoPointsOfChart, useAutoPoints } from "../../lib/PointGridsContext.js";
+import { useSubject, subjectStatus } from "../../lib/subject.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useChartPoints } from "../../lib/useChartPoints.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
@@ -54,17 +54,19 @@ const HIT_R = 8;
 const CLICK_SLOP = 4;
 
 const fmtMin = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+/** 분 → focus.time 포맷("HH:MM:00") — Taskbar TimeControl 과 같은 자. */
+const fmtHms = (m: number): string => `${fmtMin(m)}:00`;
 
 export function ThemeRankPanel(): JSX.Element {
     const subject = useSubject();
     const { nameOf } = useStockNamesDict();
-    // 동료 클릭 이동(아래 navigate)이 쓰는 것들 — 시선 갈아끼우기 · 되돌아가기 · 옮겨갈 종목의 타점 판정.
+    // 전역 시각(focus.time) — 표시 분의 1순위 재료(아래 minute)이자, 동료 클릭 이동·되돌아가기의 시각.
     const setCode = useWorkbench((s) => s.setCode);
     const setFocus = useWorkbench((s) => s.setFocus);
+    const setTime = useWorkbench((s) => s.setTime);
     const focusTime = useWorkbench((s) => s.focus.time);
     const lastFocusOrigin = useWorkbench((s) => s.lastFocusOrigin);
     const originId = useId(); // 시선 변경 출처 태그 — 브레드크럼이 "내가 옮긴 것"만 기억하게 한다
-    const auto = useAutoPoints();
 
     // ── 연동 행 — 보드와 같은 상태 하나(펼침 ≡ 연동). 이 행의 params 가 존·카운트의 유일한 재료다.
     const { themeStages, linkedId, setLinked } = useLinkedThemeStage();
@@ -76,10 +78,7 @@ export function ThemeRankPanel(): JSX.Element {
     const snapQ = useDaySnapshot(subject?.date ?? null);
     const stocks = snapQ.data?.stocks;
 
-    // ── 스크럽 분 — 세션 수명(프리셋 전환엔 살고 새로고침엔 리셋). subject 가 바뀌면 따라가기(null)로 되돌린다.
-    const subjectKey = subject ? subjectKeyOf(subject) : "";
-    const scrub = useWorkbench((s) => s.sessionUi["themeRank"]?.[subjectKey]) as number | undefined;
-    const setSessionUi = useWorkbench((s) => s.setSessionUi);
+    const setSessionUi = useWorkbench((s) => s.setSessionUi); // 렌즈·되돌아가기 앵커용(스크럽은 전역 시각으로 이관)
 
     // 슬라이더 도메인 — 스냅샷의 실제 분 범위.
     const minuteRange = useMemo(() => {
@@ -96,13 +95,19 @@ export function ThemeRankPanel(): JSX.Element {
         return Number.isFinite(lo) ? { lo, hi } : null;
     }, [stocks]);
 
-    // 기본 분 — 사다리(타점 시각 → 그날 첫 타점 → 마지막 봉)는 순수 함수(defaultMinuteOf)가 소유한다.
+    // ── 표시 분 = **전역 시각 직결**(2026-09-09 양방향 수렴 — 복기 보드·뉴스와 같은 focus.time 채널).
+    // 옛 로컬 스크럽(sessionUi, subjectKey 낟알)은 은퇴했다 — 차트 클릭·a/d·툴바 슬라이더·아래 타임라인
+    // 바가 전부 setTime 하나로 이 값을 민다. focus.time 이 없으면(하루 선택) 기본 사다리가 채운다
+    // (그날 첫 타점 → 마지막 봉 — 빈 화면을 만들지 않는다, defaultMinuteOf).
     const chartPoints = useChartPoints(subject?.code ?? "", subject?.date ?? "");
-    const defaultMinute = useMemo(() => {
+    const minute = useMemo(() => {
         if (!subject) return null;
-        return defaultMinuteOf(subject.time, chartPoints, minuteRange?.hi ?? null);
-    }, [subject, chartPoints, minuteRange]);
-    const minute = scrub ?? defaultMinute;
+        const m = defaultMinuteOf(focusTime, chartPoints, minuteRange?.hi ?? null);
+        // 표시 클램프만 — 장전 시각(뉴스 점프 08:20 등)이 오면 첫 봉에 세운다(빈 산점 + 라벨/자리 불일치
+        // 방지). 전역 focus.time 은 되쓰지 않는다(패널이 전역을 정정하기 시작하면 루프 모양이 된다).
+        if (m === null || !minuteRange) return m;
+        return Math.min(Math.max(m, minuteRange.lo), minuteRange.hi);
+    }, [subject, focusTime, chartPoints, minuteRange]);
 
     // ── 단면 — 분 단위 memo. 파라미터는 의존성이 아니다(존 판정은 서수의 하류 — 드래그가 단면을 재굽지 않게).
     const section: ScrubSection | null = useMemo(() => {
@@ -115,7 +120,11 @@ export function ThemeRankPanel(): JSX.Element {
     // 불통과일 수 있다(판정은 테마 단위 AND · 테마 사이 ∃ — 분해 금지). 그 눈-숫자 어긋남을 **렌즈**가
     // 푼다: 칩 줄에서 테마 하나를 고르면 그 테마 멤버만 동료로 남는다(= 판정 단위와 화면이 같아진다).
     const themesView = useThemeIndex();
-    const subjectThemes = useMemo(() => (subject ? themesView.index.themesOf(subject.code) : []), [themesView.index, subject]);
+    // ⚠ 아래 시선-파생 memo 들의 의존성은 subject 객체가 아니라 **원시값(code·date)** 이다 — useSubject 가
+    // focus.time 마다 새 객체를 내놓아서, 객체를 걸면 타임라인 드래그 1틱마다 이 사슬(동료 맵·색·트랙)이
+    // 통째로 재계산된다(트랙은 390분 × 정렬 — 공짜가 아니다). 분을 실제로 먹는 memo(section·verdicts)만 minute 을 따른다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const subjectThemes = useMemo(() => (subject ? themesView.index.themesOf(subject.code) : []), [themesView.index, subject?.code]);
     // 렌즈 — 세션 수명(sessionUi). **소속 아니면 전체로 접는 건 순수 파생**이다: 시선이 바뀔 때마다
     // 저장값을 지우는 effect 를 두면 "돌아왔는데 렌즈가 없다"가 되고, 지우는 시점 경쟁도 생긴다.
     // 저장값은 남기고 읽을 때만 거르므로, 그 테마에 속한 종목으로 돌아오면 렌즈도 같이 살아난다.
@@ -134,7 +143,8 @@ export function ThemeRankPanel(): JSX.Element {
                 else out.set(c, [t]);
             }
         return out;
-    }, [themesView.index, subject, subjectThemes]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [themesView.index, subject?.code, subjectThemes]);
     // 테마 색 — 이름 해시(결정론) + 이 시선 안에서만 충돌 회피. 산점 점과 칩 스와치의 단일 출처.
     const themeColors = useMemo(() => themeColorMap(subjectThemes), [subjectThemes]);
     // 멤버십 재료가 아직/영영 없을 수 있다 — 빈 인덱스는 "동료 0"이 아니라 **모름**이다. 회색 층이 있던
@@ -253,20 +263,17 @@ export function ThemeRankPanel(): JSX.Element {
      * 점 클릭 = 그 종목으로 이동. **동료(teal)만 집힌다** — 회색 점까지 열었더니 오클릭이 잦았다
      * (2026-09-07 실사용). 규칙은 "보이는 대로": 렌즈가 켜져 있으면 그 테마 멤버만 동료라, 회색으로
      * 내려앉은 다른 테마 동료도 안 집힌다(집으려면 렌즈를 끄면 된다 — 화면과 손이 어긋나지 않게).
-     * 날짜·시각(전역 focus)은 그대로 두고 종목만 갈아끼운다.
-     * ⚠ 스크럽 분 **이월**이 이 이동의 전부다 — subjectKey 가 종목을 품고 있어서, 이월하지 않으면 새
-     * 종목의 기본 분(첫 타점·마지막 봉)으로 시각이 튄다. "같은 시각의 순위 평면에서 옆 종목으로" 가 깨진다.
+     * 시각은 전역 하나다(focus.time) — setCode 가 time 을 유지하므로 "같은 시각의 순위 평면에서 옆
+     * 종목으로"는 공짜다(옛 sessionUi 스크럽 이월의 후계). 단 하루 선택(focus.time=null)이면 표시 중이던
+     * 기본 분을 **실체화**해서 간다 — 안 하면 새 종목의 기본 사다리(그 종목의 첫 타점)로 시각이 튄다.
      */
     const navigate = (code: string): void => {
         if (!subject || code === subject.code || !peerThemes.has(code)) return;
-        if (minute !== null) {
-            const time = isAutoPointTime(focusTime, autoPointsOfChart(auto, code, subject.date)) ? focusTime : null;
-            setSessionUi("themeRank", subjectKeyOf({ code, date: subject.date, time }), minute);
-        }
         // 앵커는 처음 떠날 때만 찍는다 — 연쇄로 몇 다리를 건너도 출발점은 하나.
         if (!anchor) setSessionUi("themeRank", "origin", { code: subject.code, date: subject.date, time: focusTime });
         setHover(null); // 옮겨간 평면에 옛 종목 툴팁이 남지 않게(마우스가 멈춰 있으면 정정될 기회가 없다)
-        setCode(code, originId);
+        if (focusTime === null && minute !== null) setFocus({ date: subject.date, code, time: fmtHms(minute) }, originId);
+        else setCode(code, originId);
     };
 
     // ── 컷선 드래그(위 SVG 층이 포인터 소유 — 캔버스는 포인터를 안 받는다). 연동 행 없으면 손짓도 없다.
@@ -347,7 +354,8 @@ export function ThemeRankPanel(): JSX.Element {
     const hasLink = linkedParams !== null;
     const track = useMemo(
         () => (hasLink && stocks && subject && minuteRange ? subjectOrdinalTrack(stocks, subject.date, subject.code, minuteRange) : null),
-        [hasLink, stocks, subject, minuteRange],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [hasLink, stocks, subject?.code, subject?.date, minuteRange],
     );
     // 의존성은 **원시값**(zone 은 렌더마다 새 객체 — layers 메모와 같은 함정, 호버 move 마다 재계산·재렌더가 된다).
     const segments = useMemo(
@@ -528,13 +536,17 @@ export function ThemeRankPanel(): JSX.Element {
             )}
 
             {/* footer = 시각 타임라인만 — 조건 폼은 없다(조건은 보드 행·컷선이 전부다).
-                띠 = 시선 종목의 존 재적(연동 행 N/M 기준, 끊김 = 이탈/결손) · ▼ = 타점(클릭 = 점프). */}
+                띠 = 시선 종목의 존 재적(연동 행 N/M 기준, 끊김 = 이탈/결손) · ▼ = 타점(클릭 = 점프).
+                스크럽 = setTime — 전역 시각의 큰 손잡이다(Taskbar TimeControl 과 같은 채널의 다른 손).
+                차트 표식·복기 보드·뉴스가 같이 움직인다. */}
             {subject && section && minuteRange && (
                 <div style={footer}>
                     <span style={{ ...cond, flexShrink: 0 }}>시각</span>
                     <TimelineBar lo={minuteRange.lo} hi={minuteRange.hi} minute={minute}
                         pointMinutes={pointMinutes} segments={segments}
-                        onScrub={(m) => setSessionUi("themeRank", subjectKey, m)} />
+                        // 동등값 가드 — TimelineBar 는 pointermove 마다 부르는데(분 안 바뀌어도), setTime 은
+                        // 같은 값이어도 새 focus 객체를 만들어 전역 재렌더를 일으킨다(Taskbar range 는 onChange 라 무풍).
+                        onScrub={(m) => { const t = fmtHms(m); if (useWorkbench.getState().focus.time !== t) setTime(t); }} />
                 </div>
             )}
         </div>

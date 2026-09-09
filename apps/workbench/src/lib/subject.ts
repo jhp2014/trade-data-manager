@@ -48,9 +48,8 @@ export function useSubject(): Subject | null {
 /**
  * 그 시각이 이 차트의 자동 타점인가 — **분 절단으로 비교**한다(단면 조회 useRankSections 와 같은 자를
  * 써야 초가 붙은 setTime 호출자(뉴스 점프 등)의 시각이 조용히 "타점 아님"으로 떨어지지 않는다).
- * 훅 밖으로 낸 이유: 다른 (종목,날짜)의 subject 를 **미리 셈해야 하는** 자리가 있어서다(테마 순위
- * 패널의 동료 클릭 이동 — 옮겨갈 종목의 subjectKey 를 알아야 스크럽 분을 이월한다). 이 판정을
- * 호출부가 재현하면 "무엇이 선택인가"의 답이 다시 둘이 된다.
+ * (한때 테마 순위 패널의 스크럽 이월이 밖에서 썼으나 스크럽이 전역 시각으로 이관되며 외부 소비자는
+ * 없어졌다 — 판정 자체는 useSubject 의 몸통이라 여기 남는다.)
  */
 export function isAutoPointTime(time: string | null, points: readonly { min: number }[]): boolean {
     return time !== null && points.some((p) => minuteToHms(p.min).slice(0, 5) === time.slice(0, 5));

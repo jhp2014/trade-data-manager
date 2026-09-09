@@ -22,15 +22,15 @@ export interface ScrubSection extends SectionRanks {
 const hmOf = (t: string): number => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
 
 /**
- * 스크럽의 기본 분 — 빈 화면을 만들지 않는 사다리(사용자 확정):
- * 타점 시각 → (하루 선택이면) 그날 첫 타점 → (타점도 없으면) 스냅샷 마지막 봉.
+ * 표시 분 — 빈 화면을 만들지 않는 사다리(사용자 확정):
+ * 전역 시각(focus.time) → (하루 선택이면) 그날 첫 타점 → (타점도 없으면) 스냅샷 마지막 봉.
  */
 export function defaultMinuteOf(
-    subjectTime: string | null,
+    focusTime: string | null,
     pointTimes: readonly string[],
     lastSnapshotMinute: number | null,
 ): number | null {
-    if (subjectTime) return hmOf(subjectTime);
+    if (focusTime) return hmOf(focusTime);
     if (pointTimes.length > 0) return hmOf(pointTimes[0]);
     return lastSnapshotMinute;
 }
