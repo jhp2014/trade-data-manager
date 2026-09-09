@@ -10,6 +10,8 @@
 // 이름은 손잡이지 주장이 아니다 — "미정1" 로 지어도 된다. 이름 짓는 비용이 낮아야 잘게 쪼갤 수 있고,
 // 그래야 "하나의 이름으로 디테일을 계속 구분할 수 없다"는 원래 문제를 피한다.
 
+import type { ReviewPointKey } from "./reviewPoint.js";
+
 /**
  * 그룹 불변식 위반 — **호출자의 잘못**이지 서버 고장이 아니다(순환·없는 부모).
  * DB 로는 못 막아 저장 경로가 던지는데, 그냥 Error 로 던지면 가장자리에서 500 이 되어 화면에
@@ -29,7 +31,9 @@ export interface ChartRef {
 }
 
 // (옛 GroupScope·scopeContains — 그룹이 하루냐 타점이냐 — 는 2026-09-01 타점 층위 폐지로 삭제.
-//  그룹의 멤버는 이제 언제나 차트(하루) 하나뿐이라 층위를 말할 게 없다.)
+//  2026-09-09 좌표 라벨(아래 GroupPointItemRef)로 타점 grain 이 재도입됐지만 되살리지 않는다:
+//  grain 은 저장 층이 아니라 멤버십 테이블이 갈라 말하고, "그룹당 한 grain" 은 스키마 강제가 아닌
+//  관례다 — 배정 UI 가 그룹 목록을 grain 으로 거른다(decisions.md market/curation 스키마 절).)
 
 /**
  * 그룹 하나. **이름이 곧 정체성**이다(전역 유일) — 계약은 id 가 아니라 이름으로 지목한다.
@@ -43,11 +47,23 @@ export interface Group {
     parentName: string | null;
 }
 
-/** 그룹에 든 항목의 키 — 언제나 차트(종목, 날짜). */
+/** 하루 그룹에 든 항목의 키 — 차트(종목, 날짜). */
 export type GroupItemRef = ChartRef;
 
 /** 한 항목에 붙은 그룹들(멤버십 피드 항목). 전 항목을 한 번에 받아 화면이 키로 접는다. */
 export interface GroupMembership extends GroupItemRef {
+    groupNames: string[];
+}
+
+/**
+ * 타점 그룹에 든 항목의 키 — **캔들 좌표**(종목, 날짜, 분). Point(격자 파생물)가 아니다:
+ * 파생물의 키는 정의 노브의 함수라 사람 편집물이 붙을 자리가 없고, 좌표는 정의 무관이라 있다.
+ * 격자가 재구워져 그 분에 Point 가 없어도 라벨은 남는다(고아 = 정보, chart_anchors 와 같은 계보).
+ */
+export type GroupPointItemRef = ReviewPointKey;
+
+/** 한 좌표에 붙은 그룹들(타점 멤버십 피드 항목). GroupMembership 의 좌표 라벨 판. */
+export interface PointGroupMembership extends GroupPointItemRef {
     groupNames: string[];
 }
 

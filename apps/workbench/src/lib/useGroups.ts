@@ -1,10 +1,12 @@
 // 그룹 한 벌 — 차트 카드·타점 정보 패널·시트/필터·정규화 패널이 공유한다.
 // 사전(groups)과 멤버십을 늘 같이 쓰므로 훅 하나로 준다(팔레트 = 사전 + 빈도).
 //
-// **항목은 언제나 차트(종목, 날짜)다** — 2026-09-01 타점 층위 폐지로 그룹이 붙는 자리가 하나가 됐다.
-// ⚠ 그래도 **층위 상속은 살아 있다**: 타점 행에 그룹을 물으면 호출부(useFilterFunnel)가 시각을 벗겨
+// 항목은 grain 별 둘이다: **차트(종목, 날짜)** 와 **좌표 라벨(종목, 날짜, 분)** — 후자는 2026-09-09
+// 재도입된 타점 grain 멤버십(Point 저장이 아니라 캔들 좌표에 붙은 라벨, wire group.ts). 피드·캐시·
+// 토글 키는 grain 별로 분리다(무효화·in-flight 조율이 갈려야 한다). "그룹당 한 grain" 은 관례 —
+// 배정 UI 가 그룹 목록을 grain 으로 거른다(이 훅은 검사하지 않는다).
+// ⚠ **층위 상속은 살아 있다**: 타점 행에 day 그룹을 물으면 호출부(useFilterFunnel)가 시각을 벗겨
 // 그날 차트로 묻기 때문에, 하루 그룹은 그날 타점 전부에 그대로 적용된다(깔때기의 day→point ∀ 전개).
-// 사라진 건 *저장된* 층위지 *적용*이 아니다 — 여기 함수들이 차트 참조만 받는 것도 그래서다.
 // 상속 둘:
 //   · 층위 상속: 하루 그룹 → 그날의 모든 타점(위 문단 — 이 훅 바깥에서 키를 접어 일어난다).
 //   · 계층 상속: 자식 그룹 소속이면 조상 그룹에도 적용된다(멤버는 자기 그룹만 알고, 상위 포함은
@@ -19,14 +21,16 @@
 // → 캐시를 먼저 고치고, **마지막 요청이 끝났을 때만** 서버와 맞춘다(비행 중인 게 남았으면 건너뜀).
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Group, GroupItemRef, GroupMembership } from "../api/groups.js";
-import { attachGroup, detachGroup } from "../api/groups.js";
-import { groupsQuery, groupMembershipsQuery } from "../api/queries.js";
+import type { Group, GroupItemRef, GroupMembership, GroupPointItemRef, PointGroupMembership } from "../api/groups.js";
+import { attachGroup, detachGroup, attachPointGroup, detachPointGroup } from "../api/groups.js";
+import { groupsQuery, groupMembershipsQuery, pointGroupMembershipsQuery } from "../api/queries.js";
 import { applyGroupToggle, buildGroupIndex, countByGroup } from "./groupIndex.js";
 import { ancestorsOf, expandWithAncestors, groupPathLabel, inheritanceSources } from "./groupTree.js";
-import { chartKey } from "./pointKey.js";
+import { chartKey, pointKey } from "./pointKey.js";
 
 const TOGGLE_KEY = ["group-toggle"];
+// point 토글은 별도 키 — day 와 in-flight 를 섞어 세면 마지막 정산(invalidate)이 엉뚱한 피드로 미뤄진다.
+const POINT_TOGGLE_KEY = ["group-toggle-point"];
 
 /** 차트 참조 — (종목,날짜). 하루 소속의 키. */
 export interface ChartGroupRef {
@@ -71,6 +75,17 @@ export interface GroupsView {
     toggleChart: (chart: ChartGroupRef, groupName: string, on?: boolean) => void;
     /** 전 항목 멤버십 원본 — 겹침(징검다리) 계산처럼 접지 않은 피드가 필요한 곳에서 쓴다. */
     memberships: GroupMembership[];
+
+    // ── 좌표 라벨(타점 grain) — day 판과 대칭. 배정 UI 는 아직 없다(출구 논의 별도) — 데이터 층만.
+    /** 이 좌표에 붙은 그룹 이름들(직접만 — 표시·편집 판정). */
+    pointGroupNamesOf: (ref: GroupPointItemRef) => string[];
+    /** 이 그룹의 좌표 라벨 사용 건수. day countOf 와 **합산하지 않는다** — 뜻이 다른 두 수다. */
+    pointCountOf: (groupName: string) => number;
+    /** 좌표 라벨 토글(낙관적). on 생략 = 현재 상태의 반대. */
+    togglePoint: (ref: GroupPointItemRef, groupName: string, on?: boolean) => void;
+    /** 전 좌표 라벨 멤버십 원본. */
+    pointMemberships: PointGroupMembership[];
+
     isLoading: boolean;
 }
 
@@ -84,12 +99,16 @@ export function useGroupsValue(): GroupsView {
     const qc = useQueryClient();
     const groupsQ = useQuery(groupsQuery());
     const memberQ = useQuery(groupMembershipsQuery());
+    const pointMemberQ = useQuery(pointGroupMembershipsQuery());
 
     const groups = useMemo(() => groupsQ.data ?? [], [groupsQ.data]);
     const memberships = useMemo(() => memberQ.data ?? [], [memberQ.data]);
+    const pointMemberships = useMemo(() => pointMemberQ.data ?? [], [pointMemberQ.data]);
     const groupByName = useMemo(() => new Map(groups.map((g) => [g.name, g])), [groups]);
     const chartIndex = useMemo(() => buildGroupIndex(memberships), [memberships]);
     const counts = useMemo(() => countByGroup(memberships), [memberships]);
+    const pointIndex = useMemo(() => buildGroupIndex(pointMemberships), [pointMemberships]);
+    const pointCounts = useMemo(() => countByGroup(pointMemberships), [pointMemberships]);
 
     // 옛 nameOf(id→이름) 조회가 사라졌다 — 이름이 곧 키라 정렬 기준이 키 자신이고,
     // "막 만든 그룹이 사전에 아직 없어 id 로 정렬되는" 경계 조건도 함께 없어졌다.
@@ -107,8 +126,22 @@ export function useGroupsValue(): GroupsView {
         },
     });
 
+    const pointMemberKey = pointGroupMembershipsQuery().queryKey;
+    const pointToggleMut = useMutation({
+        mutationKey: POINT_TOGGLE_KEY,
+        mutationFn: ({ item, groupName, on }: { item: GroupPointItemRef; groupName: string; on: boolean }) =>
+            on ? attachPointGroup(groupName, item) : detachPointGroup(groupName, item),
+        onMutate: ({ item, groupName, on }) => {
+            qc.setQueryData<PointGroupMembership[]>(pointMemberKey, (cur) => applyGroupToggle(cur ?? [], item, groupName, on));
+        },
+        onSettled: () => {
+            if (qc.isMutating({ mutationKey: POINT_TOGGLE_KEY }) <= 1) void qc.invalidateQueries({ queryKey: pointMemberKey });
+        },
+    });
+
     return useMemo(() => {
         const chartOf = (c: ChartGroupRef): string[] => chartIndex.get(chartKey(c)) ?? [];
+        const pointOf = (p: GroupPointItemRef): string[] => pointIndex.get(pointKey(p)) ?? [];
         return {
             groups,
             groupByName,
@@ -123,9 +156,18 @@ export function useGroupsValue(): GroupsView {
             toggleChart: (c, groupName, on) =>
                 toggleMut.mutate({ item: { stockCode: c.stockCode, date: c.date }, groupName, on: on ?? !chartOf(c).includes(groupName) }),
             memberships,
-            isLoading: groupsQ.isLoading || memberQ.isLoading,
+            pointGroupNamesOf: pointOf,
+            pointCountOf: (groupName) => pointCounts.get(groupName) ?? 0,
+            togglePoint: (p, groupName, on) =>
+                pointToggleMut.mutate({
+                    item: { stockCode: p.stockCode, date: p.date, time: p.time },
+                    groupName,
+                    on: on ?? !pointOf(p).includes(groupName),
+                }),
+            pointMemberships,
+            isLoading: groupsQ.isLoading || memberQ.isLoading || pointMemberQ.isLoading,
         };
         // mutation 은 매 렌더 새 객체(useMutation) — 의존성에 넣으면 매번 재생성되므로 제외(mutate 는 안정).
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [groups, groupByName, chartIndex, counts, memberships, groupsQ.isLoading, memberQ.isLoading]);
+    }, [groups, groupByName, chartIndex, counts, memberships, pointIndex, pointCounts, pointMemberships, groupsQ.isLoading, memberQ.isLoading, pointMemberQ.isLoading]);
 }

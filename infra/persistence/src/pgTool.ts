@@ -15,6 +15,15 @@ export interface PgConn {
     database: string;
 }
 
+/**
+ * pg 에러 코드(SQLSTATE) 추출 — 드라이버/ORM 이 원본 에러를 감싸든(cause 사슬 1층) 아니든 잡히게
+ * 양쪽을 본다. 42P01(undefined_table) 흡수처럼 코드로 분기하는 자리가 전부 이걸 쓴다(관례 단일화).
+ */
+export const pgErrorCode = (e: unknown): string | undefined => {
+    const err = e as { code?: string; cause?: { code?: string } };
+    return err.code ?? err.cause?.code;
+};
+
 /** 임의 URL → PgConn. 쿼리스트링은 무시 — SSL 은 호출부가 PGSSLMODE 로 제어한다. */
 export function parseConnFromUrl(url: string): PgConn {
     const u = new URL(url);

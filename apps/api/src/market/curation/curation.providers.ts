@@ -69,7 +69,7 @@ export const curationProviders: Provider[] = [
         // 그룹 — repo 를 그대로 노출(사전 CRUD·전 항목 부착 피드·부착/해제). 축과 달리 순서가 없는 분류.
         provide: GROUP_REPO,
         useFactory: (marketPool: Pool, curationPool: Pool) =>
-            curationRepo((db) => new DrizzleGroupRepository(db), ["createGroup", "renameGroup", "removeGroup", "attach", "detach", "setParent"], "group", marketPool, curationPool),
+            curationRepo((db) => new DrizzleGroupRepository(db), ["createGroup", "renameGroup", "removeGroup", "attach", "detach", "attachPoint", "detachPoint", "setParent"], "group", marketPool, curationPool),
         inject: [MARKET_POOL, CURATION_POOL],
     },
     {

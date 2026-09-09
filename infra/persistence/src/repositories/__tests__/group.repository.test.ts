@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { sql } from "drizzle-orm";
 import { createTestDb, type TestDb } from "../../test-support/testDb.js";
 import { DrizzleGroupRepository } from "../group.repository.js";
 
@@ -88,6 +89,68 @@ describe("DrizzleGroupRepository (pglite)", () => {
         await repo.renameGroup("옛 이름", "새 이름");
         expect((await repo.listGroups()).map((x) => x.name)).toEqual(["새 이름"]);
         expect(await groupNamesOf(DAY1)).toEqual(["새 이름"]);
+    });
+
+    describe("좌표 라벨(타점 grain)", () => {
+        const P1 = { stockCode: "005930", date: "2026-06-30", time: "10:03:00" };
+        const P2 = { stockCode: "005930", date: "2026-06-30", time: "10:41:00" };
+
+        const pointGroupNamesOf = async (item: typeof P1): Promise<string[]> =>
+            (await repo.listAllPointMemberships())
+                .find((m) => m.stockCode === item.stockCode && m.date === item.date && m.time === item.time)
+                ?.groupNames.sort() ?? [];
+
+        it("attachPoint/detachPoint — 멱등이고, 한 좌표에 여러 그룹", async () => {
+            const x = await repo.createGroup("눌림A");
+            const y = await repo.createGroup("눌림B");
+            await repo.attachPoint(x.name, P1);
+            await repo.attachPoint(x.name, P1); // 멱등
+            await repo.attachPoint(y.name, P1);
+
+            expect(await pointGroupNamesOf(P1)).toEqual([x.name, y.name].sort());
+
+            await repo.detachPoint(x.name, P1);
+            expect(await pointGroupNamesOf(P1)).toEqual([y.name]);
+            await repo.detachPoint(x.name, P1); // 안 붙어 있어도 조용히
+        });
+
+        it("피드는 좌표 키로 접힌다 — 같은 날 다른 시각은 별개 항목", async () => {
+            const a = await repo.createGroup("A");
+            await repo.attachPoint(a.name, P1);
+            await repo.attachPoint(a.name, P2);
+
+            const feed = await repo.listAllPointMemberships();
+            expect(feed).toHaveLength(2);
+            expect(feed.map((m) => m.time).sort()).toEqual([P1.time, P2.time]);
+        });
+
+        it("day 멤버십과 피드가 갈린다 — 같은 (종목,날짜)를 양쪽에 붙여도 서로 안 섞인다", async () => {
+            const g = await repo.createGroup("G");
+            await repo.attach(g.name, DAY1);
+            await repo.attachPoint(g.name, P1);
+
+            expect(await repo.listAllMemberships()).toHaveLength(1);
+            expect(await repo.listAllPointMemberships()).toHaveLength(1);
+        });
+
+        it("없는 그룹에 붙이면 거부", async () => {
+            await expect(repo.attachPoint("없는 그룹", P1)).rejects.toThrow();
+        });
+
+        it("그룹을 지우면 좌표 라벨도 사라진다", async () => {
+            const g = await repo.createGroup("임시");
+            await repo.attach(g.name, DAY1);
+            await repo.attachPoint(g.name, P1);
+            await repo.removeGroup(g.name);
+            expect(await repo.listAllMemberships()).toEqual([]);
+            expect(await repo.listAllPointMemberships()).toEqual([]);
+        });
+
+        it("테이블이 없으면 읽기는 빈 피드로 합류(42P01 흡수) — 코드 반영↔마이그 적용 사이 창", async () => {
+            // 실제 드라이버가 던지는 에러 모양(감싸든 아니든)으로 pgErrorCode 추출이 맞는지까지 여기서 잠긴다.
+            await t.db.execute(sql`drop table curation.group_members_point`);
+            expect(await repo.listAllPointMemberships()).toEqual([]);
+        });
     });
 
     describe("그룹 안 그룹", () => {

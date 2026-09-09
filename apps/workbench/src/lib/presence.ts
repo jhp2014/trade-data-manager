@@ -55,6 +55,8 @@ export const PRESENCE_KINDS: readonly PresenceKindDef[] = [
         countOf: (d: DayPresence) => d.marks.get(p.key) ?? 0,
     })),
     // 타점은 격자 파생이라 사람 편집물이 아니다 → 존재 지도의 종류가 아니다(옛 "타점"·"타점 그룹" 칩 폐지).
+    // 좌표 라벨(group_members_point, 2026-09-09)도 **일부러 안 넣는다** — 존재 지도는 하루 grain 인데
+    // 타점 grain 흔적을 어느 하루 종류로 접을지는 투영·3상 논의(별도 세션)의 결정 사항이다.
     // 키 "group-day" 는 일부러 그대로 둔다 — 저장된 3상 필터가 이 문자열로 영속돼 있다.
     { key: "group-day", name: "그룹", color: GROUP_PLAIN, countOf: (d) => d.dayGroups.length, namesOf: (d) => d.dayGroups },
     { key: "comment", name: "코멘트", color: "var(--text-secondary)", countOf: (d) => (d.comment ? 1 : 0) },

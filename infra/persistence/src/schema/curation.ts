@@ -5,9 +5,10 @@
 //   · chart_anchors  : 차트 앵커 — 캔들 좌표 참조의 단일 테이블(가격선+파라미터 앵커 통합, 아래 9번)
 // 분류: groups = 이름 붙인 집합 + 관계(아래 7~8번). (옛 rank_axes 판단축은 2026-08-25 폐지 — 계산 축이 대체.)
 //
-// **타점 층위는 없다**(2026-09-01): 손 타점(review_points)을 드롭하면서 curation 의 사람 편집물은
-// 전부 하루(차트) 층위가 됐다 — 타점은 이제 격자에서 읽기 시점에 파생되는 것이라 저장할 게 없다.
-// 그래서 group_members.trade_time·groups.scope·chart_anchors.trade_time 도 함께 사라졌다.
+// **타점(파생물)은 저장하지 않는다**(2026-09-01 손 타점 review_points 드롭 — 타점은 격자에서 읽기
+// 시점에 파생된다. group_members.trade_time·groups.scope·chart_anchors.trade_time 도 함께 사라졌다).
+// 타점 grain 의 사람 편집물은 **좌표 라벨** 하나다(2026-09-09, group_members_point — 아래 8b번):
+// 캔들 좌표(종목,날짜,분)에 붙은 사람 판단이지 Point 참조가 아니라, 격자가 재구워져도 라벨은 남는다.
 //
 // 수치 표현(잠금): 가격류는 integer(원 단가 int 안전). 도메인은 무손실 string 계약 → 매퍼 경계에서만 변환.
 import { pgSchema, varchar, date, time, timestamp, text, bigint, bigserial, primaryKey, foreignKey, unique, index, uniqueIndex } from "drizzle-orm/pg-core";
@@ -94,6 +95,37 @@ export const groupMembers = curation.table(
 
 export type GroupMemberRow = typeof groupMembers.$inferSelect;
 export type GroupMemberInsert = typeof groupMembers.$inferInsert;
+
+// 8b. 타점 그룹 멤버 — **좌표 라벨**: 캔들 좌표(종목, 날짜, 분)에 붙은 그룹 소속(2026-09-09).
+//     Point(격자 파생물)를 저장하는 게 아니다 — 파생물의 키는 정의 노브의 함수라 붙을 자리가 없고,
+//     좌표는 정의 무관이라 있다. 그래서 groups 밖으로는 FK 없음: 격자가 재구워져 그 분에 Point 가
+//     없어도 라벨은 남는다(고아 = 정보 — chart_anchors "선은 타점보다 오래 산다"와 같은 계보).
+//
+//     group_members 에 trade_time 재추가는 기각 — 0019 가 걷어낸 grain 혼합 복잡성(부분 유니크
+//     둘·비대칭 FK)의 회귀다. grain 은 테이블이 갈라 말하고, "그룹당 한 grain" 은 스키마 강제가
+//     아닌 관례다(배정 UI 가 그룹 목록을 grain 으로 거른다 — decisions.md).
+//     time 은 분봉 앵커(chart_anchors.anchor_time)와 같은 자 — un dense 분 타임라인.
+export const groupMembersPoint = curation.table(
+    "group_members_point",
+    {
+        id: bigserial("id", { mode: "bigint" }).primaryKey(),
+        groupId: bigint("group_id", { mode: "bigint" })
+            .notNull()
+            .references(() => groups.id, { onDelete: "cascade" }),
+        stockCode: varchar("stock_code", { length: 10 }).notNull(),
+        tradeDate: date("trade_date").notNull(),
+        time: time("time").notNull(),
+    },
+    (t) => [
+        // 멱등 부착 — (그룹, 좌표) 하나가 곧 멤버십. 이름은 0019 가 드롭한 옛 인덱스명의 재사용(충돌 없음).
+        uniqueIndex("uq_group_member_point").on(t.groupId, t.stockCode, t.tradeDate, t.time),
+        index("idx_group_members_point_group").on(t.groupId), // "이 그룹 몇 건인가"(팔레트 빈도·삭제 확인)
+        index("idx_group_members_point_item").on(t.stockCode, t.tradeDate, t.time), // "이 좌표가 든 그룹들" — (종목,날짜) 접두 질의도 이걸 탄다
+    ],
+);
+
+export type PointGroupMemberRow = typeof groupMembersPoint.$inferSelect;
+export type PointGroupMemberInsert = typeof groupMembersPoint.$inferInsert;
 
 // ── 차트 앵커 ───────────────────────────────────────────────────────────────
 // 9. 차트 앵커 — 캔들 좌표 참조의 **단일 테이블**. 옛 price_lines(가격선)와 point_anchors(타점 파라미터 앵커)를

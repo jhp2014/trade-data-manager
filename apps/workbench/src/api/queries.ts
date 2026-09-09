@@ -14,7 +14,7 @@ import { fetchAllChartAnchors } from "./chartAnchors.js";
 import { fetchComputedAxes } from "./rank.js";
 import { fetchRankSections } from "./rankSections.js";
 import { fetchPointGrids } from "./pointGrids.js";
-import { fetchGroups, fetchGroupMemberships } from "./groups.js";
+import { fetchGroups, fetchGroupMemberships, fetchPointGroupMemberships } from "./groups.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext, fetchAllThemeMembers } from "./themes.js";
 import { fetchAllDailyComments } from "./comment.js";
@@ -113,9 +113,13 @@ export const pointGridsQuery = () =>
 export const groupsQuery = () =>
     queryOptions({ queryKey: ["groups"], queryFn: ({ signal }) => fetchGroups(signal), staleTime: IMMUTABLE , meta: CURATION });
 
-// 멤버십은 **한 피드**다 — 항목은 언제나 차트(종목, 날짜)이고, 캐시를 나누면 한쪽만 무효화되는 사고가 열린다.
+// 멤버십은 grain 당 **한 피드**다 — 캐시를 항목별로 나누면 한쪽만 무효화되는 사고가 열린다.
+// day(차트)와 point(좌표 라벨)는 테이블이 다르므로 키도 다르다(테이블 낟알 1:1) — 무효화가 갈려야 한다.
 export const groupMembershipsQuery = () =>
     queryOptions({ queryKey: ["group-members"], queryFn: ({ signal }) => fetchGroupMemberships(signal), staleTime: IMMUTABLE , meta: CURATION });
+
+export const pointGroupMembershipsQuery = () =>
+    queryOptions({ queryKey: ["group-members-point"], queryFn: ({ signal }) => fetchPointGroupMemberships(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 /**
  * 종목 마스터 전량(코드·이름·시장) — 이름 사전의 **단일 출처**. 키가 상수라 어느 화면에서 불러도 한 벌이다.

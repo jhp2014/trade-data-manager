@@ -5,14 +5,17 @@ import type {
     Group,
     GroupItemRef,
     GroupMembership,
+    GroupPointItemRef,
+    PointGroupMembership,
     CreateGroupInput,
     RenameGroupInput,
     RemoveGroupInput,
     AttachGroupInput,
+    AttachPointGroupInput,
     SetGroupParentInput,
 } from "@trade-data-manager/wire";
 import { GROUP_REPO } from "../tokens.js";
-import { assertYmd, assertStockCode, assertName, rejectDuplicateName } from "../validation.js";
+import { assertYmd, assertHms, assertStockCode, assertName, rejectDuplicateName } from "../validation.js";
 
 // 그룹 큐레이션 — 이름 붙인 집합 + 관계(중첩)·위치. 옛 태그 컨트롤러를 흡수했다.
 // 사전과 멤버십이 한 컨트롤러: 팔레트도 맵도 늘 둘을 같이 읽는다.
@@ -30,10 +33,16 @@ export class GroupController {
         return this.repo.listGroups();
     }
 
-    /** 전 항목의 멤버십 한 번에 — 항목은 언제나 차트(종목, 날짜). */
+    /** 전 항목의 멤버십 한 번에 — 항목은 차트(종목, 날짜). */
     @Get("members")
     members(): Promise<GroupMembership[]> {
         return this.repo.listAllMemberships();
+    }
+
+    /** 전 좌표 라벨의 멤버십 한 번에 — 항목은 캔들 좌표(종목, 날짜, 분). Point 저장이 아니다(wire group.ts). */
+    @Get("point-members")
+    pointMembers(): Promise<PointGroupMembership[]> {
+        return this.repo.listAllPointMemberships();
     }
 
     @Post()
@@ -68,6 +77,18 @@ export class GroupController {
         return { ok: true };
     }
 
+    @Post("point-members")
+    async attachPoint(@Body() body: AttachPointGroupInput): Promise<{ ok: true }> {
+        await guard(() => this.repo.attachPoint(assertName(body?.group, "group"), assertPointItem(body?.item)));
+        return { ok: true };
+    }
+
+    @Post("point-members/remove")
+    async detachPoint(@Body() body: AttachPointGroupInput): Promise<{ ok: true }> {
+        await guard(() => this.repo.detachPoint(assertName(body?.group, "group"), assertPointItem(body?.item)));
+        return { ok: true };
+    }
+
     /** 그룹 안 그룹. 없는 부모를 가리키거나 순환이면 저장 경로가 거절한다. */
     @Put("parent")
     async setParent(@Body() body: SetGroupParentInput): Promise<{ ok: true }> {
@@ -99,4 +120,13 @@ async function guard<T>(run: () => Promise<T>): Promise<T> {
 /** 항목 키 — 차트(종목, 날짜). */
 function assertItem(item: Partial<GroupItemRef> | undefined): GroupItemRef {
     return { stockCode: assertStockCode(item?.stockCode, "stockCode"), date: assertYmd(item?.date, "date") };
+}
+
+/** 항목 키 — 캔들 좌표(종목, 날짜, 분). */
+function assertPointItem(item: Partial<GroupPointItemRef> | undefined): GroupPointItemRef {
+    return {
+        stockCode: assertStockCode(item?.stockCode, "stockCode"),
+        date: assertYmd(item?.date, "date"),
+        time: assertHms(item?.time, "time"),
+    };
 }

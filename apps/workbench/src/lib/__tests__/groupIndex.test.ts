@@ -54,6 +54,23 @@ describe("groupIndex", () => {
         });
     });
 
+    describe("좌표 라벨(타점 grain) — rowKey 일반화가 두 키 공간을 안 섞는다", () => {
+        const P1 = { stockCode: "005930", date: "2026-06-30", time: "10:03:00" };
+
+        it("인덱스 키 = 3조각 좌표 키 — 같은 (종목,날짜)의 2조각 차트 키와 충돌하지 않는다", () => {
+            const idx = buildGroupIndex([{ ...P1, groupNames: ["눌림"] }]);
+            expect(idx.get("005930|2026-06-30|10:03:00")).toEqual(["눌림"]);
+            expect(idx.get("005930|2026-06-30")).toBeUndefined();
+        });
+
+        it("토글도 좌표 키로 맞춘다 — 같은 날 다른 시각은 별개 항목", () => {
+            const f = [{ ...P1, groupNames: ["a"] }];
+            const out = applyGroupToggle(f, { ...P1, time: "10:41:00" }, "a", true);
+            expect(out).toHaveLength(2);
+            expect(applyGroupToggle(f, P1, "a", true)).toBe(f); // 같은 좌표는 멱등(같은 배열)
+        });
+    });
+
     describe("expandMemberships — 계층 상속을 조회용 사본에 편다", () => {
         const grp = (name: string, parentName: string | null = null): Group => ({ name, parentName });
         // 테마 ▸ {2차전지, 반도체}

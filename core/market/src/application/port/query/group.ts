@@ -1,4 +1,4 @@
-import type { Group, GroupItemRef, GroupMembership } from "#domain";
+import type { Group, GroupItemRef, GroupMembership, GroupPointItemRef, PointGroupMembership } from "#domain";
 
 // 그룹 큐레이션 포트 — 읽기(Reader)/쓰기(Store) 분리(ISP). 둘 다 앱 대면(query).
 // 사전과 멤버십이 한 슬라이스인 이유: 둘은 늘 같이 읽힌다(팔레트 = 사전 + 빈도, 맵 = 사전 + 겹침).
@@ -13,6 +13,11 @@ export interface GroupReader {
      * 소비자(차트·시트·정규화)가 모두 전체를 보므로 왕복 1회·캐시 1개면 화면 간 어긋날 여지가 없다(rank 의 listAllLines 와 같은 판단).
      */
     listAllMemberships(): Promise<GroupMembership[]>;
+    /**
+     * 전 좌표 라벨의 멤버십을 한 번에 — listAllMemberships 의 타점(캔들 좌표) grain 판.
+     * Point 저장이 아니라 좌표에 붙은 라벨이다(domain/review/group.ts GroupPointItemRef).
+     */
+    listAllPointMemberships(): Promise<PointGroupMembership[]>;
 }
 
 /**
@@ -33,6 +38,11 @@ export interface GroupStore {
     attach(groupName: string, item: GroupItemRef): Promise<void>;
     /** 뺀다. 안 들어 있으면 조용한 no-op. */
     detach(groupName: string, item: GroupItemRef): Promise<void>;
+
+    /** 좌표 라벨을 그룹에 넣는다(멱등). "그룹당 한 grain" 은 관례 — 여기서 검사하지 않는다(배정 UI 몫). */
+    attachPoint(groupName: string, item: GroupPointItemRef): Promise<void>;
+    /** 좌표 라벨을 뺀다. 안 들어 있으면 조용한 no-op. */
+    detachPoint(groupName: string, item: GroupPointItemRef): Promise<void>;
 
     /** 그룹 안 그룹. null = 최상위로. 순환이 아닌지 여기서 막는다(DB 로는 못 막는 제약). */
     setParent(name: string, parentName: string | null): Promise<void>;

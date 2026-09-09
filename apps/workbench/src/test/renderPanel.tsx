@@ -11,10 +11,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
 import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankSectionBundle, StockMeta, ThemeMember } from "@trade-data-manager/wire";
 import { hmsToMinute, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
-import type { Group, GroupMembership } from "../api/groups.js";
+import type { Group, GroupMembership, PointGroupMembership } from "../api/groups.js";
 import {
     allAnchorsQuery, allCommentsQuery, allThemeMembersQuery, chartQuery, computedAxesQuery,
-    groupMembershipsQuery, groupsQuery, pointGridsQuery, rankSectionsQuery, stockMasterQuery,
+    groupMembershipsQuery, groupsQuery, pointGridsQuery, pointGroupMembershipsQuery, rankSectionsQuery, stockMasterQuery,
 } from "../api/queries.js";
 import type { DecodedPointGrids } from "../api/pointGrids.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
@@ -95,6 +95,8 @@ export interface Seed {
     candidateDays?: { stockCode: string; date: string }[];
     groups?: Group[];
     memberships?: GroupMembership[];
+    /** 좌표 라벨(타점 grain) 멤버십 — 안 주면 빈 피드. */
+    pointMemberships?: PointGroupMembership[];
     /** 그날 복기 파생(정규화 패널의 테마·거래대금 재료 — useDaySnapshot 키). */
     daySnapshot?: { date: string; data: DayReplay };
     computedAxes?: ComputedAxisFeed[];
@@ -145,6 +147,7 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(allCommentsQuery().queryKey, seed.comments ?? []);
     qc.setQueryData(groupsQuery().queryKey, seed.groups ?? []);
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
+    qc.setQueryData(pointGroupMembershipsQuery().queryKey, seed.pointMemberships ?? []);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
     qc.setQueryData(rankSectionsQuery().queryKey, seed.rankSections ?? { version: 1, dates: [], pending: [] });
     // 격자 = 타점의 원천. 명시 격자가 있으면 그대로, 없으면 seed.points 를 최소 격자로 번역한다.

@@ -4,15 +4,18 @@ import type {
     Group,
     GroupItemRef,
     GroupMembership,
+    GroupPointItemRef,
     GroupReader,
     GroupStore,
+    PointGroupMembership,
 } from "@trade-data-manager/market";
 import type { Database } from "../db.js";
-import { groups, groupMembers } from "../schema/curation.js";
+import { pgErrorCode } from "../pgTool.js";
+import { groups, groupMembers, groupMembersPoint } from "../schema/curation.js";
 import { rowToGroup, type NameTable } from "../mappers/group.js";
 
 /**
- * Drizzle 구현 — 그룹(사전 + 관계) + 멤버십 정션.
+ * Drizzle 구현 — 그룹(사전 + 관계) + 멤버십 정션 **둘**(하루 group_members · 좌표 라벨 group_members_point).
  *
  * **계약은 이름, 저장은 id.** 밖에서는 그룹을 이름으로 지목하고(이름은 전역 유일), 안에서는
  * surrogate id 로 FK 를 건다 — rename 이 FK 를 타고 cascade 하지 않고, 조인도 bigint 로 남는다.
@@ -56,6 +59,49 @@ export class DrizzleGroupRepository implements GroupReader, GroupStore {
         return [...byItem.values()];
     }
 
+    async listAllPointMemberships(): Promise<PointGroupMembership[]> {
+        // listAllMemberships 의 좌표 라벨 판 — 접는 키에 time 이 하나 더 낄 뿐 같은 문법이다.
+        // ⚠ 42P01(undefined_table) 흡수: 마이그레이션은 Supabase 에만 걸고 로컬 미러는 전체교체라,
+        // "코드 반영 → 나중에 적용+sync" 사이 창에서 로컬에 이 테이블이 없다. 그 창에서 읽기가
+        // 500 으로 죽지 않게 빈 배열로 합류한다(mirror.ts readLastMirrorSyncAt 과 같은 처방).
+        let rows: Array<{ stockCode: string; date: string; time: string; groupName: string }>;
+        try {
+            rows = await this.db
+                .select({
+                    stockCode: groupMembersPoint.stockCode,
+                    date: groupMembersPoint.tradeDate,
+                    time: groupMembersPoint.time,
+                    groupName: groups.name,
+                })
+                .from(groupMembersPoint)
+                .innerJoin(groups, eq(groups.id, groupMembersPoint.groupId))
+                .orderBy(
+                    asc(groupMembersPoint.stockCode),
+                    asc(groupMembersPoint.tradeDate),
+                    asc(groupMembersPoint.time),
+                );
+        } catch (e) {
+            if (pgErrorCode(e) === "42P01") return [];
+            throw e;
+        }
+
+        const byItem = new Map<string, PointGroupMembership>();
+        for (const r of rows) {
+            const key = `${r.stockCode}|${r.date}|${r.time}`;
+            const hit = byItem.get(key);
+            if (hit) hit.groupNames.push(r.groupName);
+            else {
+                byItem.set(key, {
+                    stockCode: r.stockCode,
+                    date: r.date,
+                    time: r.time,
+                    groupNames: [r.groupName],
+                });
+            }
+        }
+        return [...byItem.values()];
+    }
+
     async createGroup(name: string): Promise<Group> {
         // 같은 이름이면 그 그룹을 돌려준다 — 중복 생성 사고를 막는 멱등(옛 태그 사전의 규칙 계승).
         const existing = await this.db.select().from(groups).where(eq(groups.name, name)).limit(1);
@@ -90,6 +136,29 @@ export class DrizzleGroupRepository implements GroupReader, GroupStore {
                     eq(groupMembers.groupId, id),
                     eq(groupMembers.stockCode, item.stockCode),
                     eq(groupMembers.tradeDate, item.date),
+                ),
+            );
+    }
+
+    async attachPoint(groupName: string, item: GroupPointItemRef): Promise<void> {
+        const id = await this.idOf(groupName);
+        // 멱등 — uq_group_member_point 가 (그룹, 종목, 날짜, 시각)을 잡고 있어 충돌하면 그냥 넘어간다.
+        await this.db
+            .insert(groupMembersPoint)
+            .values({ groupId: id, stockCode: item.stockCode, tradeDate: item.date, time: item.time })
+            .onConflictDoNothing();
+    }
+
+    async detachPoint(groupName: string, item: GroupPointItemRef): Promise<void> {
+        const id = await this.idOf(groupName);
+        await this.db
+            .delete(groupMembersPoint)
+            .where(
+                and(
+                    eq(groupMembersPoint.groupId, id),
+                    eq(groupMembersPoint.stockCode, item.stockCode),
+                    eq(groupMembersPoint.tradeDate, item.date),
+                    eq(groupMembersPoint.time, item.time),
                 ),
             );
     }

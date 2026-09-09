@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { getDatabaseUrl, getCurationDatabaseUrl } from "./env.js";
-import { parseConnFromUrl, runPgToolOn, withPgClient, type PgConn } from "./pgTool.js";
+import { parseConnFromUrl, pgErrorCode, runPgToolOn, withPgClient, type PgConn } from "./pgTool.js";
 
 /**
  * curation 미러 — 단방향 전체교체(Supabase → 로컬).
@@ -32,7 +32,7 @@ export interface CurationMirrorOptions {
 export interface CurationMirrorResult {
     /** 미러가 갱신된 시각. skipped 면 null. */
     syncedAt: Date | null;
-    /** 주요 4테이블 합계 행수(로그·확인용). skipped 면 0. */
+    /** 사람 편집물 전 테이블 합계 행수(로그·확인용). skipped 면 0. */
     rows: number;
     /** CURATION_DATABASE_URL 미설정 = 별도 원본 없음 → 아무것도 안 함. */
     skipped: boolean;
@@ -63,7 +63,7 @@ export async function readLastMirrorSyncAt(q: MirrorStateQuerier): Promise<Date 
         const r = await q.query(`select synced_at from ${STATE_TABLE} where name = '${STATE_KEY}'`);
         return r.rows.length > 0 ? (r.rows[0].synced_at as Date) : null;
     } catch (e) {
-        if ((e as { code?: string }).code === "42P01") return null; // undefined_table — 아직 한 번도 안 돎
+        if (pgErrorCode(e) === "42P01") return null; // undefined_table — 아직 한 번도 안 돎
         throw e;
     }
 }
@@ -146,17 +146,20 @@ async function replaceLocalSchema(local: PgConn, dumpPath: string, pgBinDir: str
 }
 
 async function countMainTables(local: PgConn): Promise<number> {
-    return withPgClient(local, (c) =>
-        c
-            .query(
-                // 사람 편집물 전 테이블의 행 합 — 동기화가 "빈 스키마로 교체"되지 않았는지 보는 눈.
-                // ⚠ 목록이 스키마와 함께 움직인다: review_points 는 2026-09-01 드롭됐다(타점은 격자 파생).
-                "select coalesce(sum(n),0)::int total from (" +
-                    "select count(*) n from curation.chart_anchors " +
-                    "union all select count(*) from curation.daily_comments " +
-                    "union all select count(*) from curation.groups " +
-                    "union all select count(*) from curation.group_members) x",
-            )
-            .then((r) => r.rows[0].total as number),
-    );
+    return withPgClient(local, async (c) => {
+        // 사람 편집물 전 테이블의 행 합 — 동기화가 "빈 스키마로 교체"되지 않았는지 보는 눈.
+        // 테이블 목록은 **런타임 열거**다(db-ops inspect 와 같은 결) — 옛 하드코딩 목록은 스키마가 바뀔
+        // 때마다 같이 움직여야 했고(review_points 드롭, group_members_point 신설이 실제로 두 번 밟았다),
+        // 코드 반영과 Supabase 마이그 적용이 어긋난 창(덤프에 새 테이블이 아직 없음)에서 없는 테이블을
+        // 세다 죽는 문제도 열거가 원리적으로 없앤다. curation 스키마의 base 테이블 = 곧 사람 편집물 전부다.
+        const tables = await c.query(
+            "select table_name from information_schema.tables where table_schema = 'curation' and table_type = 'BASE TABLE'",
+        );
+        if (tables.rows.length === 0) return 0;
+        const arms = tables.rows
+            .map((row, i) => `select count(*)${i === 0 ? " n" : ""} from curation."${(row as { table_name: string }).table_name}"`)
+            .join(" union all ");
+        const r = await c.query(`select coalesce(sum(n),0)::int total from (${arms}) x`);
+        return r.rows[0].total as number;
+    });
 }
