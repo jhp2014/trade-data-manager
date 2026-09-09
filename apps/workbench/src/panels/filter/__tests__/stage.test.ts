@@ -367,3 +367,32 @@ describe("outcome 술어 — 저장 왕복·검증", () => {
         expect(back).toHaveLength(2);
     });
 });
+
+describe("hotPoints 술어 — 파라미터가 payload 에 산다", () => {
+    const raw = (w: unknown, r: unknown): unknown => [{
+        id: "h", enabled: true, predicates: [{ kind: "hotPoints", w, r, ranges: [{ to: { kind: "value", value: 2 } }] }],
+    }];
+
+    it("정상 저장물은 왕복한다", () => {
+        const out = parseStages(raw(60, 3))!;
+        expect(out[0]!.predicates[0]).toEqual({ kind: "hotPoints", w: 60, r: 3, ranges: [{ to: { kind: "value", value: 2 } }] });
+    });
+
+    it("w·r 이 도메인 밖이면 그 저장본은 폐기된다 — 반쯤 살리지 않는다", () => {
+        // 파라미터가 없거나 밖이면 "이 조건이 무엇을 세는지"를 복원할 수 없다(결과 술어의 t 와 같은 결).
+        // 폐기 = 저장본 **통째** null(위 "반쯤 살아난 조건은 없느니만 못하다"와 같은 규약).
+        expect(parseStages(raw(0, 3))).toBeNull();
+        expect(parseStages(raw(60, 99))).toBeNull();
+        expect(parseStages(raw(undefined, 3))).toBeNull();
+    });
+
+    it("층위는 타점이다 — 쌍을 세는 자가 타점이라 행 정체성도 타점", () => {
+        const look = { hasGroup: () => true, axisScope: () => undefined };
+        expect(predicateGrain({ kind: "hotPoints", w: 60, r: 3, ranges: [] }, look)).toBe("point");
+    });
+
+    it("빈 ranges 는 조건이 없는 것 — 평가에서 빠진다(꺼진 행이 열만 세우는 근거)", () => {
+        expect(isPredicateEmpty({ kind: "hotPoints", w: 60, r: 3, ranges: [] })).toBe(true);
+        expect(isPredicateEmpty({ kind: "hotPoints", w: 60, r: 3, ranges: [{ to: { kind: "value", value: 2 } }] })).toBe(false);
+    });
+});

@@ -16,12 +16,13 @@ import { usePointRows } from "../../lib/usePointRows.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
-import { useOutcomeSlices, usePointGrids } from "../../lib/PointGridsContext.js";
+import { useHotCounts, useOutcomeSlices, usePointGrids } from "../../lib/PointGridsContext.js";
 import { defDerivedFor } from "../../lib/defDerived.js";
 import { judgeKeyOf } from "../../lib/pointDef.js";
 import { computedAxisView } from "../../lib/computedAxis.js";
 import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import type { OutcomesView } from "../../lib/useOutcomes.js";
+import type { HotCounts } from "../../lib/hotPoints.js";
 import { useRankSections } from "../../lib/useRankSections.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { themeProjectionOf } from "../../lib/themeStrength.js";
@@ -96,6 +97,9 @@ const hasThemePredicate = (stages: readonly FilterStage[]): boolean =>
 const hasOutcomePredicate = (stages: readonly FilterStage[]): boolean =>
     stages.some((s) => s.predicates.some((p) => p.kind === "outcome" || p.kind === "outcomeRecovery"));
 
+const hasHotPredicate = (stages: readonly FilterStage[]): boolean =>
+    stages.some((s) => s.predicates.some((p) => p.kind === "hotPoints"));
+
 /** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
 export function useFilterFunnel(): FunnelView {
     const stages = useWorkbench(selectFilterStages);
@@ -118,6 +122,13 @@ export function useFilterFunnel(): FunnelView {
         [stages, savedSets],
     );
     const outcomesEff = outcomeInUse ? sliceAt : null;
+    // 급타점 재료 — 결과와 같은 게이트 규칙(안 쓰면 상수로 끊어 무관한 화면의 정산 재계산을 막는다).
+    const hotAt = useHotCounts();
+    const hotInUse = useMemo(
+        () => hasHotPredicate(stages) || savedSets.some((f) => hasHotPredicate(f.stages)),
+        [stages, savedSets],
+    );
+    const hotEff = hotInUse ? hotAt : null;
 
     const isLoading = gv.isLoading || ax.isLoading || cand.isLoading || pts.isLoading;
 
@@ -176,6 +187,8 @@ export function useFilterFunnel(): FunnelView {
             valuesOf: (axisId: string) => Map<string, number> | undefined;
             /** T 별 게으름 — 결과 술어가 실제 평가될 때, **그 술어의 T 단면만** 돈다(outcomeInUse 게이트의 부품판). */
             outcomesOf: (t: number) => OutcomesView | null;
+            /** (W,r) 별 게으름 — 급타점 술어가 실제 평가될 때 그 단면만 돈다(결과와 같은 결). */
+            hotOf: (w: number, r: number) => HotCounts | null;
         }): EvalLookup => ({
             // 적용 집합(직접 ∪ 계층 조상) — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
             groupNamesOf: (i) => gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date }),
@@ -221,6 +234,16 @@ export function useFilterFunnel(): FunnelView {
                 const r = oc.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.slice.recovered;
                 return r === null ? undefined : r; // 무눌림(저가 없음) = 결손
             },
+            // 급타점 수 — 값에 결손이 없으므로(0 도 사실) undefined 는 **재료 미도착**일 때뿐이다.
+            hotCountOf: (w, r, i) => {
+                const h = over.hotOf(w, r);
+                return h === null || i.time === undefined ? undefined
+                    : h.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }));
+            },
+            hotRailValues: (w, r) => {
+                const h = over.hotOf(w, r);
+                return h === null ? undefined : (h.byKey as Map<string, number>);
+            },
         }),
         [gv, sectionRanksAt, themeProjEff],
     );
@@ -232,8 +255,9 @@ export function useFilterFunnel(): FunnelView {
             placementOf: (id) => placements.get(id),
             valuesOf: (id) => ax.computedValues.get(id),
             outcomesOf: (t) => outcomesEff?.(t) ?? null,
+            hotOf: (w, r) => hotEff?.(w, r) ?? null,
         }),
-        [makeEvalLook, placements, ax.computedValues, outcomesEff],
+        [makeEvalLook, placements, ax.computedValues, outcomesEff, hotEff],
     );
 
     // ── 정산 ── 표시와 정산이 **같은 순서**를 봐야 한다(하루 먼저) — 어긋나면 "상류"가 화면과 다른 걸 가리킨다.
@@ -297,6 +321,8 @@ export function useFilterFunnel(): FunnelView {
             const oValues = new Map(views.map((v) => [v.axis.key, v.values]));
             // 부품 정의의 T 단면 — 그 부품 술어들의 T 별로(defDerived 가 LRU 로 받는다).
             const outcomesOf = (t: number): OutcomesView => derived.outcomes(t);
+            // 부품 정의의 급타점 단면 — 모수가 "그 부품의 정의로 뽑은 타점"이라 쌍도 그쪽 것이어야 한다.
+            const hotOf = (w: number, r: number): HotCounts => derived.hot(w, r);
             const made: DefMaterials = {
                 timesOf: (c) => times.get(chartKey(c)) ?? [],
                 grainLook, // 층위 사전은 정의 무관(그룹 scope·축 scope 는 정의가 안 바꾼다)
@@ -304,6 +330,7 @@ export function useFilterFunnel(): FunnelView {
                     placementOf: (id) => (gridSet.has(id) ? oPlace.get(id) : placements.get(id)),
                     valuesOf: (id) => (gridSet.has(id) ? oValues.get(id) : ax.computedValues.get(id)),
                     outcomesOf,
+                    hotOf,
                 }),
             };
             cache.set(key, made);

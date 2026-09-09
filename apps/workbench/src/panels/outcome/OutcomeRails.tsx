@@ -21,7 +21,7 @@ const properSubset = (member: number[], total: number): number[] | undefined =>
     member.length > 0 && member.length < total ? member : undefined;
 
 /** 결과 레일 방향은 전부 "큰 값 = 오른쪽"(연장은 크게, 낙폭은 얕게가 오른쪽) — strongerWhen "higher" 고정. */
-export function OutcomeMetricRail({ name, values, ranges, markerKey, memberKeys, onChange }: {
+export function OutcomeMetricRail({ name, values, ranges, markerKey, memberKeys, onChange, fmtValue = fmtPct }: {
     name: string;
     /** 타점키 → 값(useOutcomes.railValues — 낙폭 2종은 무눌림 행이 빠진다). undefined = 재료 미도착. */
     values: Map<string, number> | undefined;
@@ -30,6 +30,10 @@ export function OutcomeMetricRail({ name, values, ranges, markerKey, memberKeys,
     /** 보는 집합 멤버의 타점 키들 — 강조색 틱·분포 멤버 층(필터 레일 패널과 같은 계약). null = 오버레이 없음. */
     memberKeys: ReadonlySet<string> | null;
     onChange: (ranges: AxisValueRange[] | null) => void;
+    /** 값 → 라벨. 기본은 등락률 모양 — 단위가 다른 형제 레일(급타점 수 = 정수 "개")만 넘긴다.
+     *  ⚠ 경계 라벨·양끝 라벨·마커 **전부**가 이걸 써야 한다 — 하나만 fmtPct 로 남으면 같은 줄에서
+     *  "2개"와 "+2.0%"가 나란히 보인다(리뷰 2026-09-09). */
+    fmtValue?: (v: number) => string;
 }): JSX.Element {
     const domain = useMemo(() => (values ? valueDomain(values) : null), [values]);
     const fracIndex = useMemo(
@@ -44,7 +48,7 @@ export function OutcomeMetricRail({ name, values, ranges, markerKey, memberKeys,
     };
     const fmt = (b: AxisBound): string => {
         const v = resolveBound(b, values);
-        return v === undefined ? GONE_LABEL : fmtPct(v);
+        return v === undefined ? GONE_LABEL : fmtValue(v);
     };
 
     const weakEnd: AxisBound = { kind: "value", value: domain?.min ?? 0 };
@@ -75,12 +79,12 @@ export function OutcomeMetricRail({ name, values, ranges, markerKey, memberKeys,
                 return { kind: "value", value: v };
             }}
             fmt={fmt}
-            minLabel={fmtPct(domain?.min ?? 0)}
-            maxLabel={fmtPct(domain?.max ?? 0)}
+            minLabel={fmtValue(domain?.min ?? 0)}
+            maxLabel={fmtValue(domain?.max ?? 0)}
             ticks={ticks}
             memberTicks={memberTicks}
             dist={{ ticks, member: memberTicks }}
-            marker={markerValue === undefined ? null : { frac: frac(markerValue), label: fmtPct(markerValue) }}
+            marker={markerValue === undefined ? null : { frac: frac(markerValue), label: fmtValue(markerValue) }}
             disabledNote={domain ? undefined : "값 없음 — 격자 로딩 중이거나 이 값을 가진 시그널이 없습니다"}
             onChange={(next) => {
                 const out = toValueRanges(next, boundFrac, "higher");

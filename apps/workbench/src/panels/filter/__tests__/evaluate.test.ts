@@ -21,6 +21,8 @@ const base: EvalLookup = {
     outcomeEvalOf: () => undefined,
     outcomeRailValues: () => undefined,
     outcomeRecoveredOf: () => undefined,
+    hotCountOf: () => undefined,
+    hotRailValues: () => undefined,
 };
 const look = (over: Partial<EvalLookup> = {}): EvalLookup => ({ ...base, ...over });
 
@@ -277,5 +279,29 @@ describe("outcomeRecovery 술어 — 보고 저가의 회복 여부(명목값)",
     it("무눌림(저가 없음)·격자 미도착·시각 없는 항목은 결손", () => {
         expect(evalPredicate3(p(true), item, withRecovered(undefined))).toBeUndefined();
         expect(evalPredicate3(p(true), dayItem, withRecovered(true))).toBeUndefined();
+    });
+});
+
+describe("hotPoints — 값에 결손이 없다(0 은 사실)", () => {
+    const withHot = (n: number | undefined): EvalLookup => look({
+        hotCountOf: () => n,
+        hotRailValues: () => new Map([["k", 0]]),
+    });
+    const p = (from: number, to: number): FilterPredicate => ({
+        kind: "hotPoints", w: 60, r: 3,
+        ranges: [{ from: { kind: "value", value: from }, to: { kind: "value", value: to } }],
+    });
+
+    it("0 은 통과/탈락을 실제로 판정한다 — 미배치로 새지 않는다", () => {
+        expect(evalPredicate3(p(0, 1), item, withHot(0))).toBe(true);
+        expect(evalPredicate3(p(2, 99), item, withHot(0))).toBe(false);
+    });
+
+    it("재료 미도착만 판단 불가", () => {
+        expect(evalPredicate3(p(0, 1), item, withHot(undefined))).toBeUndefined();
+    });
+
+    it("시각 없는 항목(하루)은 셀 쌍의 끝점이 없다 — 판단 불가", () => {
+        expect(evalPredicate3(p(0, 1), dayItem, withHot(0))).toBeUndefined();
     });
 });

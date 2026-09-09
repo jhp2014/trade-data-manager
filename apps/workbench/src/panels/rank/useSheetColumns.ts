@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isComputedAxis } from "../../lib/computedAxis.js";
 import type { AxisRef } from "../../lib/computedAxis.js";
 import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
+import { hotAxisId, hotInstancesOf } from "../../lib/hotAxis.js";
 import { usePersistedState } from "../../store/persist.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
 import { OUTCOME_BASE_COL_IDS, OUTCOME_COL_IDS } from "./outcomeColumns.js";
@@ -149,6 +150,16 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         [allStages],
     );
     /**
+     * 급타점 축의 보호 목록 — **축 목록이 아니라 저장물(stages) 기준**이다. 이 축은 격자 파생이라
+     * 격자 로딩 창에서 잠깐 없는데, 이 청소 effect 는 **서버 축만 도착하면** 돈다(axesLoading = 서버 쿼리).
+     * 그 창에서 축 목록으로 재면 hot 열의 폭·고정·숨김·프리셋이 **영구 삭제된다** — 인스턴스 결과 열이
+     * savedSets 를 보는 것과 같은 대칭이다. 조건이 실제로 지워지면 그때 청소된다(의도).
+     */
+    const liveHotAxisIds = useMemo(
+        () => hotInstancesOf(allStages).map((h) => hotAxisId(h.stageId)),
+        [allStages],
+    );
+    /**
      * 차이 열 피연산자가 살아 있나 — **저장물 기준**(뷰 갈래 무관). 결과 열 키의 네 갈래를 그대로 읽는다:
      * 붙박이는 언제나 살아 있고, 부품은 저장 집합이, 인스턴스는 결과 조건이 생사를 정한다.
      */
@@ -163,7 +174,7 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
 
     useEffect(() => {
         if (axesLoading || axes.length === 0) return;
-        const ids = [...(pruneAxisIds ?? axes.map((a) => a.key)), ...GRID_AXIS_IDS];
+        const ids = [...(pruneAxisIds ?? axes.map((a) => a.key)), ...GRID_AXIS_IDS, ...liveHotAxisIds];
         const liveDifIds = difsRef.current.map((d) => d.id);
         const prune = <T extends string[] | Record<string, unknown>>(x: T): T => pruneDifKeys(pruneOutKeys(pruneAxisKeys(x, ids), liveSetIds, liveStageIds), liveDifIds);
         setFrozenCols(prune);
@@ -178,7 +189,7 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
             return next.length === ds.length ? ds : next;
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [axes, axesLoading, pruneAxisIds, liveSetIds, liveStageIds]);
+    }, [axes, axesLoading, pruneAxisIds, liveSetIds, liveStageIds, liveHotAxisIds]);
 
     // ── "저 축 보여줘"(타점 정보 → 여기) — 그 축 **열**로 가로 스크롤하고 잠깐 강조한다.
     //    시트에서는 열이 곧 축이고 축이 많으면 가로로 넘치므로 찾아 주는 일이 필요하다.

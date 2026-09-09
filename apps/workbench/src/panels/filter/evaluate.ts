@@ -17,7 +17,7 @@ import { rowKeyToChartKey } from "../../lib/pointKey.js";
 import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { passesPoint, type SectionRanks, type ThemeProjection } from "../../lib/themeStrength.js";
 import { isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
-import { isPredicateEmpty, type AxisBound, type FilterPredicate, type FilterStage } from "./stage.js";
+import { isPredicateEmpty, unknownPredicate, type AxisBound, type FilterPredicate, type FilterStage } from "./stage.js";
 
 /** 판정에 필요한 바깥 재료. 없는 것은 전부 `undefined` = 판단 불가(탈락 아님). */
 export interface EvalLookup {
@@ -55,6 +55,14 @@ export interface EvalLookup {
     outcomeRailValues: (metric: OutcomeMetric, t: number) => Map<string, number> | undefined;
     /** 보고 저가의 회복 여부 — 무눌림(저가 없음)·격자 미도착은 undefined(3치). */
     outcomeRecoveredOf: (t: number, item: FunnelItem) => boolean | undefined;
+    /**
+     * 급타점 수 — 그 (창 W, 상승률 r) 단면에서 이 항목의 값. **격자 미도착만 undefined 다**:
+     * 값 자체에는 결손이 없다(세어봤더니 0 = 사실). "0"과 "모름"을 여기서 뭉개면 첫 돌파가
+     * 미배치 칸으로 새어 나간다.
+     */
+    hotCountOf: (w: number, r: number, item: FunnelItem) => number | undefined;
+    /** 급타점 수 경계 앵커(타점) 해석용 값 맵 — 레일과 같은 맵(resolveBound 규칙 공유). */
+    hotRailValues: (w: number, r: number) => Map<string, number> | undefined;
 }
 
 /**
@@ -172,6 +180,27 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
             const r = look.outcomeRecoveredOf(p.t, item);
             return r === undefined ? undefined : r === p.recovered;
         }
+
+        case "hotPoints": {
+            // 시각 없는 항목(타점 없는 후보 하루)은 셀 쌍의 끝점이 없다 — time 술어와 같은 결.
+            if (item.time === undefined) return undefined;
+            const v = look.hotCountOf(p.w, p.r, item);
+            if (v === undefined) return undefined; // 격자 미도착 = 판단 불가(값 0 과는 다른 것)
+            const values = look.hotRailValues(p.w, p.r);
+            const resolved: [number, number][] = [];
+            for (const rg of p.ranges) {
+                if (!rg.from && !rg.to) continue;
+                const lo = rg.from ? resolveBound(rg.from, values) : -Infinity;
+                const hi = rg.to ? resolveBound(rg.to, values) : Infinity;
+                if (lo === undefined || hi === undefined) continue;
+                resolved.push(lo <= hi ? [lo, hi] : [hi, lo]);
+            }
+            if (resolved.length === 0) return undefined;
+            return resolved.some(([from, to]) => v >= from && v <= to);
+        }
+
+        // 자물쇠 — 빠뜨린 술어가 여기 오면 **전 항목이 미배치**로 세어져 조용히 필터가 죽는다(stage.ts).
+        default: return unknownPredicate(p);
     }
 }
 

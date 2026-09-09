@@ -16,7 +16,8 @@ import {
 } from "@trade-data-manager/market/domain";
 import type { ComputedAxisFeed } from "@trade-data-manager/wire";
 import { gridFeatureFeeds } from "./gridFeatures.js";
-import { cancelKeyOf, judgeKeyOf, simKeyOf } from "./pointDef.js";
+import { cancelKeyOf, hotKeyOf, judgeKeyOf, simKeyOf } from "./pointDef.js";
+import { hotCountsOf, hotPairsOf, type HotCounts, type HotPairs } from "./hotPoints.js";
 import type { AutoPoint, AutoPointsView, PointGridsView } from "./usePointGrids.js";
 import { buildOutcomesView, buildWalksView, type OutcomesView, type OutcomeWalksView } from "./useOutcomes.js";
 import { buildSimBasisView, buildSimView, type SimBasisView, type SimView } from "./useTradeSim.js";
@@ -39,6 +40,13 @@ export interface DefDerived {
     simBasis: (cancel: Pick<TradeSimParams, "cancelRisePct" | "cancelAfterMin">) => SimBasisView;
     /** 시뮬 결과 — 노브 7 별 LRU. */
     sim: (params: TradeSimParams) => SimView;
+    /**
+     * 급타점 수 단면 — **(W,r) 별 LRU**다. 인스턴스 목록을 통째로 키에 넣지 않는 이유: 그러면
+     * 인스턴스 하나를 만질 때마다 나머지 둘의 값까지 재계산된다(결과의 `outcomes(t)` 와 같은 결).
+     */
+    hot: (w: number, r: number) => HotCounts;
+    /** 연속 타점 쌍의 간격·상승률 — W·r 레일의 과녁. **노브 무관**이라 judge 층에 산다(게으름). */
+    hotPairs: () => HotPairs;
 }
 
 /** 동시 활성 정의 상한 — 조립 부품 수의 실질 상한(초과분은 가장 오래된 정의부터 재계산으로 대체). */
@@ -47,6 +55,8 @@ const CAP_DEFS = 4;
 const CAP_SLICES = 4;
 /** 결과 단면(T)만 더 넉넉히 — **인스턴스 수의 함수**다(동시 필요 = 결과 조건 수 + 표시 T + 드래그 전이값). */
 const CAP_OUTCOME_SLICES = 8;
+/** 급타점 단면도 같은 이유로 넉넉히 — 동시 필요 = 인스턴스 3 + 표시 (W,r) + 드래그 전이값. */
+const CAP_HOT_SLICES = 8;
 
 const cacheByBundle = new WeakMap<ByDate, Map<string, DefDerived>>();
 /** 파생 산출물(auto) → 그 정의의 묶음 — 소비자(useRankAxes 등)가 auto 참조만 들고 묶음에 닿는 길. */
@@ -97,6 +107,8 @@ function makeDerived(byDate: ByDate, def: PointJudgeDef): DefDerived {
     const outcomes = new Map<string, OutcomesView>();
     const basis = new Map<string, SimBasisView>();
     const sims = new Map<string, SimView>();
+    const hots = new Map<string, HotCounts>();
+    let hotPairs: HotPairs | null = null;
     const walksOf = (): OutcomeWalksView => (walks ??= buildWalksView(auto, gridsView));
     return {
         auto,
@@ -106,6 +118,8 @@ function makeDerived(byDate: ByDate, def: PointJudgeDef): DefDerived {
         outcomes: (t) => lru(outcomes, `${t}`, () => buildOutcomesView(walksOf(), t), CAP_OUTCOME_SLICES),
         simBasis: (cancel) => lru(basis, cancelKeyOf(cancel), () => buildSimBasisView(auto, gridsView, cancel)),
         sim: (params) => lru(sims, simKeyOf(params), () => buildSimView(auto, gridsView, params)),
+        hot: (w, r) => lru(hots, hotKeyOf(w, r), () => hotCountsOf(auto.points, w, r), CAP_HOT_SLICES),
+        hotPairs: () => (hotPairs ??= hotPairsOf(auto.points)),
     };
 }
 

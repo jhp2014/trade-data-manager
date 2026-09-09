@@ -111,3 +111,18 @@ describe("applyRailPredicate — 레일 하나 = 필터 하나", () => {
         expect(applyRailPredicate(only, AX, null)).toHaveLength(0);
     });
 });
+
+describe("급타점 레일 키 — (창 W × 상승률 r) 이 자리다", () => {
+    const pred = (w: number, r: number): FilterPredicate => ({ kind: "hotPoints", w, r, ranges: [] });
+
+    it("파라미터가 키에 실린다 — 안 실으면 '이 레일에 뭘 그릴까'가 함수가 아니게 된다", () => {
+        expect(railKeyOf(pred(60, 3))).toEqual({ kind: "hotPoints", w: 60, r: 3 });
+    });
+
+    it("다른 (W,r) 은 다른 자리, 같은 (W,r) 은 같은 자리", () => {
+        const a = railKeyOf(pred(60, 3))!;
+        expect(sameRailKey(a, railKeyOf(pred(60, 3))!)).toBe(true);
+        expect(sameRailKey(a, railKeyOf(pred(30, 3))!)).toBe(false);
+        expect(sameRailKey(a, railKeyOf(pred(60, 5))!)).toBe(false);
+    });
+});

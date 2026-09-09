@@ -9,7 +9,8 @@ import { computedAxisView, type AxisRef } from "./computedAxis.js";
 import { derivedOfAuto } from "./defDerived.js";
 import { gridFeatureFeeds, GRID_AXIS_IDS } from "./gridFeatures.js";
 import { useAutoPoints, usePointGrids } from "./PointGridsContext.js";
-import { useWorkbench } from "../store/workbench.js";
+import { selectFilterStages, useWorkbench } from "../store/workbench.js";
+import { hotAxisFeeds, hotAxisId, hotInstancesKeyOf, hotInstancesOf } from "./hotAxis.js";
 import { retainHidden } from "./axisPrefs.js";
 
 const GRID_AXIS_ID_SET = new Set(GRID_AXIS_IDS);
@@ -60,6 +61,19 @@ export function useRankAxesValue(): RankAxesView {
     //   열 설정·필터는 그동안 유령 주소를 든다(로드되면 되살아난다 — 청소는 축 목록이 온 뒤에만 돈다).
     const autoView = useAutoPoints();
     const gridsView = usePointGrids();
+    // 급타점 축 인스턴스 — 조건 하나가 축 하나다(런타임 등록의 유일한 예외, hotAxis.ts).
+    // ⚠ 항등 셀렉터로 구독하고 useMemo 로 접는다 — 셀렉터 안에서 배열을 만들면 얕은 비교가 늘 실패해
+    //   스토어의 모든 갱신이 이 훅을 깨운다(decisions.md 2026-09-09).
+    const stages = useWorkbench(selectFilterStages);
+    const hotInstances = useMemo(() => hotInstancesOf(stages), [stages]);
+    const hotKey = hotInstancesKeyOf(hotInstances);
+    // 축 id 목록도 **내용 키**로 문다 — 배열 신원을 물면 아무 조건이나 만질 때마다 reorder 신원이
+    // 갈리고, 그 참조가 반환 객체(RankAxesView)까지 흘러 구독자 전원을 깨운다(값 memo 만 막으면 반쪽).
+    const hotAxisIds = useMemo(
+        () => hotInstances.map((h) => hotAxisId(h.stageId)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [hotKey],
+    );
     const computed = useMemo(() => {
         const server = computedQ.data ?? [];
         // 정의별 캐시 산출물이면 피드도 캐시(정의를 오가도 재계산 없음) — 아니면(테스트 주입 등) 직접 계산.
@@ -73,8 +87,12 @@ export function useRankAxesValue(): RankAxesView {
             const dup = synth.filter((f) => serverKeys.has(f.key)).map((f) => f.key);
             if (dup.length > 0) console.error(`[rank-axes] 축 키 충돌 — 서버와 클라 파생이 같은 키를 낸다: ${dup.join(", ")}`);
         }
-        return [...server, ...synth].map(computedAxisView);
-    }, [computedQ.data, autoView, gridsView]);
+        const hot = autoView.points.length > 0 ? hotAxisFeeds(autoView, hotInstances) : [];
+        return [...server, ...synth, ...hot].map(computedAxisView);
+        // ⚠ 인스턴스 목록은 **내용 키**로 문다(hotKey) — 배열 신원으로 물면 무관한 조건을 만질 때마다
+        //   이 memo 가 갈리고, 그 참조가 computedValues → evalLook → 저장 집합 정산 캐시까지 흘러간다.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [computedQ.data, autoView, gridsView, hotKey]);
 
     const axes = useMemo<AxisRef[]>(() => {
         const idx = new Map(orderPref.map((k, i) => [k, i]));
@@ -96,9 +114,11 @@ export function useRankAxesValue(): RankAxesView {
         const to = ids.indexOf(targetId);
         if (from < 0 || to < 0) return;
         ids.splice(to, 0, ids.splice(from, 1)[0]);
-        // 화면 목록으로 덮어쓰기 전에 잠깐 숨은 격자 축(격자 로딩 전)의 자리를 되살린다.
-        setRankAxisOrder(retainHidden(ids, orderPref, GRID_AXIS_ID_SET));
-    }, [axes, orderPref, setRankAxisOrder]);
+        // 화면 목록으로 덮어쓰기 전에 잠깐 숨은 축의 자리를 되살린다 — 격자 축(격자 로딩 전)과
+        // **급타점 축**(조건은 살아 있는데 격자가 아직 없어 축이 안 선 창)이 그 대상이다.
+        const keep = new Set([...GRID_AXIS_ID_SET, ...hotAxisIds]);
+        setRankAxisOrder(retainHidden(ids, orderPref, keep));
+    }, [axes, orderPref, setRankAxisOrder, hotAxisIds]);
 
     const computedValues = useMemo(() => new Map(computed.map((c) => [c.axis.key, c.values])), [computed]);
     const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.key, { strongerWhen: c.strongerWhen, scale: c.scale, fmt: c.fmt }])), [computed]);

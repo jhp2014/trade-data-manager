@@ -25,6 +25,8 @@ export const REVEAL_SCOPE = "funnelReveal";
 export const RAIL_REVEAL = "rails";
 /** 결과 술어가 사는 화면(결과 패널) — 필터 레일과 편집면이 다르다(과거/미래 패널 경계). */
 export const OUTCOME_REVEAL = "outcome";
+/** 급타점 패널의 되짚기 채널 — 편집면이 달라 결과와 키를 가른다(신호가 섞이면 엉뚱한 판이 열린다). */
+export const HOT_REVEAL = "hot";
 
 /** 되짚기를 보내는 쪽(조건 목록). */
 export function useRevealSender(key: string): (stageId: string) => void {
@@ -61,7 +63,10 @@ export function useRevealConsumer(key: string): { reveal: BoardReveal | null; ma
 }
 
 export const rowIdOfKey = (k: RailKey): string =>
-    k.kind === "axis" ? `axis:${k.axisId}` : k.kind === "outcome" ? `outcome:${k.metric}@${k.t}` : k.kind;
+    k.kind === "axis" ? `axis:${k.axisId}`
+        : k.kind === "outcome" ? `outcome:${k.metric}@${k.t}`
+            : k.kind === "hotPoints" ? `hot:${k.w}@${k.r}`
+                : k.kind;
 
 /** 이 필터가 보드의 어느 줄에 사는가 — 되짚기(위 목록 → 보드)의 유일한 대응표. */
 export function rowIdOfStage(s: FilterStage): string {
@@ -76,6 +81,7 @@ export function rowIdOfStage(s: FilterStage): string {
         case "date": return "date";
         case "time": return "time";
         case "themeStrength": return `theme:${s.id}`;
+        case "hotPoints": return `hot:${first.w}@${first.r}`; // (W×r) 별 줄 — rowIdOfKey 와 같은 자
     }
 }
 

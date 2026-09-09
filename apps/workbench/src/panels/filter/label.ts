@@ -48,6 +48,8 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
         // T 가 없으면 보드 목록에서 두 줄이 같은 이름으로 보인다.
         case "outcome": return `${OUTCOME_METRIC_NAME[p.metric]} @T${p.t}%`;
         case "outcomeRecovery": return `${p.recovered ? "저가 회복" : "저가 미회복"} @T${p.t}%`;
+        // (W,r) 을 라벨에 싣는다 — 결과의 @T 와 같은 이유: 인스턴스가 여럿이라 없으면 두 줄이 같은 이름이 된다.
+        case "hotPoints": return `급타점 수 (${p.w}분/${p.r}%)`;
     }
 }
 
@@ -73,6 +75,7 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         case "themeStrength": return "테마";
         case "outcome":
         case "outcomeRecovery": return "결과";
+        case "hotPoints": return "급타점";
         default: return "";
     }
 }

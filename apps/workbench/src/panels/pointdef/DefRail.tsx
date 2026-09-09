@@ -60,11 +60,17 @@ export interface DefRailProps {
     /** 손 뗄 때 한 번. 움직인 쪽만 바뀐 값이 온다(반대쪽은 도메인 끝 그대로). */
     onCommit: (next: { from: number; to: number }) => void;
     title?: string;
+    /**
+     * 줄 색 — 기본은 정의층(POINT_DEF teal). 급타점 패널의 W·r 레일은 **전제이지 필터가 아니라**
+     * 결과 T 레일과 같은 앰버(LEG_HIGH)를 쓴다. 필터 빨강(FILTER)은 어느 쪽에도 금지 — 이 줄이
+     * 모수를 안 거른다는 표식이 색이다.
+     */
+    accent?: string;
 }
 
 type Edge = "from" | "to";
 
-export function DefRail({ label, unit, toFrac, fromFrac, fmt, minLabel, maxLabel, values, mode, from, to, note, insideOf, onCommit, title }: DefRailProps): JSX.Element {
+export function DefRail({ label, unit, toFrac, fromFrac, fmt, minLabel, maxLabel, values, mode, from, to, note, insideOf, onCommit, title, accent = POINT_DEF }: DefRailProps): JSX.Element {
     const trackRef = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<Edge | null>(null);
     const [preview, setPreview] = useState<{ from: number; to: number } | null>(null);
@@ -147,7 +153,7 @@ export function DefRail({ label, unit, toFrac, fromFrac, fmt, minLabel, maxLabel
                         <button
                             onClick={(e) => { e.stopPropagation(); setDistOpen((v) => !v); }}
                             title={distOpen ? "분포 접기" : "이 축의 분포를 막대로 펼치기(세로 로그 척도)"}
-                            style={distOpen ? { ...miniLink, color: POINT_DEF, textDecoration: "underline" } : miniLink}
+                            style={distOpen ? { ...miniLink, color: accent, textDecoration: "underline" } : miniLink}
                         >
                             분포
                         </button>
@@ -165,17 +171,17 @@ export function DefRail({ label, unit, toFrac, fromFrac, fmt, minLabel, maxLabel
                     <span style={endLabel(true)}>{minLabel}</span>
                     <span style={endLabel(false)}>{maxLabel}</span>
                     <div aria-hidden style={{ position: "absolute", left: RAIL_PAD, right: RAIL_PAD, top: "50%", height: 2, transform: "translateY(-50%)", background: "var(--border-default)", pointerEvents: "none" }} />
-                    <div aria-hidden style={{ position: "absolute", top: "50%", height: 4, transform: "translateY(-50%)", left: at(fFrom), width: widthOf(fFrom, fTo), background: POINT_DEF, pointerEvents: "none", zIndex: 1 }} />
+                    <div aria-hidden style={{ position: "absolute", top: "50%", height: 4, transform: "translateY(-50%)", left: at(fFrom), width: widthOf(fFrom, fTo), background: accent, pointerEvents: "none", zIndex: 1 }} />
                     {edges.map((edge) => {
                         const f = edge === "from" ? fFrom : fTo;
                         return (
                             <div key={edge}>
-                                <span aria-hidden style={{ position: "absolute", top: "50%", left: at(f), transform: "translate(-50%,-50%)", width: 3, height: 15, borderRadius: 1.5, background: POINT_DEF, pointerEvents: "none", zIndex: 3 }} />
+                                <span aria-hidden style={{ position: "absolute", top: "50%", left: at(f), transform: "translate(-50%,-50%)", width: 3, height: 15, borderRadius: 1.5, background: accent, pointerEvents: "none", zIndex: 3 }} />
                                 {/* 포인터는 트랙이 캡처한다 — 라벨엔 down 만 단다(move/up 을 또 달면 같은 드래그가 두 번 접수된다). */}
                                 <span
                                     onPointerDown={(e) => { e.stopPropagation(); beginDrag(e); }}
                                     title="끌어서 이 경계 조정"
-                                    style={{ position: "absolute", top: "calc(50% + 8px)", left: at(f), transform: "translateX(-50%)", fontSize: 9.5, fontWeight: 700, color: POINT_DEF, cursor: "ew-resize", whiteSpace: "nowrap", touchAction: "none", zIndex: 5 }}
+                                    style={{ position: "absolute", top: "calc(50% + 8px)", left: at(f), transform: "translateX(-50%)", fontSize: 9.5, fontWeight: 700, color: accent, cursor: "ew-resize", whiteSpace: "nowrap", touchAction: "none", zIndex: 5 }}
                                 >{fmt(edge === "from" ? shown.from : shown.to)}</span>
                             </div>
                         );
@@ -204,7 +210,7 @@ export function DefRail({ label, unit, toFrac, fromFrac, fmt, minLabel, maxLabel
                                     title={`${fmt(fromFrac(binCenter(i, HIST_BINS)))} · ${b.count.toLocaleString()}건${alive ? "" : " (컷 밖)"}`}
                                     style={{ flex: 1, position: "relative", height: "100%", overflow: "hidden" }}>
                                     {b.count > 0 && (
-                                        <span aria-hidden style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: h, background: alive ? POINT_DEF : "var(--border-default)" }} />
+                                        <span aria-hidden style={{ position: "absolute", left: 0, right: 0, bottom: 0, height: h, background: alive ? accent : "var(--border-default)" }} />
                                     )}
                                 </div>
                             );
@@ -212,7 +218,7 @@ export function DefRail({ label, unit, toFrac, fromFrac, fmt, minLabel, maxLabel
                     </div>
                     {edges.map((edge) => (
                         // translateX(-50%) 필수 — 위 손잡이(width 3)가 중심을 at(f) 에 두므로, 빼면 반 픽셀 어긋난다(실측 선례).
-                        <span key={edge} aria-hidden style={{ position: "absolute", left: at(edge === "from" ? fFrom : fTo), transform: "translateX(-50%)", top: 0, bottom: 4, width: 1, background: POINT_DEF, opacity: 0.6, pointerEvents: "none" }} />
+                        <span key={edge} aria-hidden style={{ position: "absolute", left: at(edge === "from" ? fFrom : fTo), transform: "translateX(-50%)", top: 0, bottom: 4, width: 1, background: accent, opacity: 0.6, pointerEvents: "none" }} />
                     ))}
                 </div>
             </div>

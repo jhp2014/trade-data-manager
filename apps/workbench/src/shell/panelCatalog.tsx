@@ -25,6 +25,8 @@ import { LiveTapePanel } from "../panels/liveTape/LiveTapePanel.js";
 import { ThemeRankPanel } from "../panels/themeRank/ThemeRankPanel.js";
 import { OutcomePanel } from "../panels/outcome/OutcomePanel.js";
 import { OUTCOME_PANEL_ID } from "../panels/outcome/outcomePanelIds.js";
+import { HOT_PANEL_ID } from "../panels/hot/hotPanelIds.js";
+import { HotPointsPanel } from "../panels/hot/HotPointsPanel.js";
 import { PointDefPanel } from "../panels/pointdef/PointDefPanel.js";
 import { POINT_DEF_PANEL_ID } from "../panels/pointdef/pointDefPanelIds.js";
 import { TradeSimPanel } from "../panels/sim/TradeSimPanel.js";
@@ -77,6 +79,9 @@ export const PANEL_CATALOG: PanelEntry[] = [
     // 결과 시트 패널(outcomeSheet)은 2026-09-04 폐지 — 결과 열이 기존 시트(rankSheet)의 열 프리셋으로 들어갔다.
     // 옛 배치에 남은 id 는 sanitizeLayout 자가치유가 걷어낸다(옛 map·rankSkeleton* 과 같은 길).
     { id: OUTCOME_PANEL_ID, component: "outcomeRails", title: "시그널 결과", plane: "eod", render: () => <OutcomePanel /> },
+    // 급타점 — 창 W 안 급한 재돌파의 개수(시그널 **이전**의 특징이라 필터 레일의 형제다). 전제가 쌍
+    // (W,r) 이라 1차원 레일에 안 앉아 전용 판을 둔다 — 편집면이 여기 하나여야 값의 경로가 닫힌다.
+    { id: HOT_PANEL_ID, component: "hotPoints", title: "급타점", plane: "eod", render: () => <HotPointsPanel /> },
     // 트레이드 시뮬 — 노브 7(정의 payload 동승) + 체결률 곡선·분류·도달 분포. 깔때기 거울이 아니라
     // 모수(보는 집합)로만 이어진다(decisions.md 「시그널 결과」 트레이드 시뮬 항목).
     { id: TRADE_SIM_PANEL_ID, component: "tradeSim", title: "트레이드 시뮬", plane: "eod", render: () => <TradeSimPanel /> },

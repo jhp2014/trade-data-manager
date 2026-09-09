@@ -21,6 +21,7 @@ import type { GroupExpr } from "../rank/groupFilter.js";
 import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr } from "../rank/groupFilter.js";
 import { DEFAULT_THEME_STRENGTH, anyConditionOn, parseThemeStrengthParams, type ThemeStrengthParams } from "../../lib/themeStrength.js";
 import { isOutcomeMetric, type OutcomeMetric } from "../../lib/outcomeMetric.js";
+import { isHotR, isHotW } from "../../lib/hotPoints.js";
 
 // 판정 알갱이 — 도메인 공용 어휘(그룹 scope·축 scope·깔때기 Grain 이 전부 같은 타입). 여기서 재수출해
 // 필터 모듈들은 stage 만 본다(도메인 경로가 바뀌어도 한 줄).
@@ -69,9 +70,26 @@ export type FilterPredicate =
     // 보고 저가의 회복 여부(그 저가 이후 직전 고가 재돌파 — 세션 최고가 판정, 볼륨 무관) — 명목값이라
     // 레일이 아니라 결과 패널 머리글 칩이 편집 입구다. 무눌림(저가 없음)은 결손(3치 undefined).
     // `slice.recovered` 가 T 단면의 산출물이라 **이쪽도 자기 T 를 든다**(안 그러면 이 조건만 표시 T 를 따른다).
-    | { kind: "outcomeRecovery"; recovered: boolean; t: number };
+    | { kind: "outcomeRecovery"; recovered: boolean; t: number }
+    // 급타점 수 — **창 W·상승률 하한 r 을 술어가 든다**(테마·결과와 같은 규칙: 파라미터가 payload 안에
+    // 살아야 SavedSet 이 자립한다). 값은 격자 파생 축으로 나가지만(축 id = `c:hot:<stageId>`) 조건은
+    // 축 술어(axisValue)가 아니라 **자기 종류**다 — 파라미터가 조건에 실려 있어야 서로 다른 (W,r) 이
+    // 한 집합 안에서 AND 로 공존한다(decisions.md 「급타점 수 축」).
+    | { kind: "hotPoints"; w: number; r: number; ranges: AxisValueRange[] };
 
 export type PredicateKind = FilterPredicate["kind"];
+
+/**
+ * 술어 종류 스위치의 **자물쇠**. 이 레포는 `noImplicitReturns` 가 없어서, 반환형에 `undefined`/`null`
+ * 이 있는 스위치는 case 를 빠뜨려도 컴파일이 통과한다 — 그리고 그때의 증상이 조용하다:
+ * `evalPredicate3` 를 빠뜨리면 **모든 항목이 미배치로 세어져** 숫자는 나오는데 필터가 아무 일도 안 하고,
+ * `predicateGrain` 을 빠뜨리면 그 조건이 보드에서 "(지워짐)"으로 보이며, `railKeyOf` 를 빠뜨리면
+ * 그은 컷이 그 행에 안 붙는다. 그래서 그 세 자리는 default 에서 이 함수를 부른다 — 새 술어 종류를
+ * 더하는 손이 **컴파일 에러로** 그 셋을 만나게 하는 것이 이 함수의 존재 이유 전부다.
+ */
+export function unknownPredicate(p: never): never {
+    throw new Error(`알 수 없는 술어 종류: ${JSON.stringify(p)}`);
+}
 
 /** 단계 하나 — 술어들의 AND. 단계끼리도 AND 지만, 나뉘어 있어야 "어느 단계가 무엇을 죽였나"를 물을 수 있다. */
 export interface FilterStage {
@@ -94,6 +112,7 @@ export function isPredicateEmpty(p: FilterPredicate): boolean {
         case "themeStrength": return !anyConditionOn(p.params); // 활성 하위 조건 0 = 무제한 통과
         case "outcome": return p.ranges.length === 0;
         case "outcomeRecovery": return false; // boolean 하나라 항상 조건이다
+        case "hotPoints": return p.ranges.length === 0;
     }
 }
 
@@ -140,6 +159,8 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
         case "themeStrength": return "point"; // 단면 조회에 시각이 필수 — 행 정체성은 타점(보드 테마 칸은 UI 그룹핑)
         case "outcome": return "point"; // 결과 걷기의 앵커가 시그널(타점)이다 — 시각 없이는 판정 불가
         case "outcomeRecovery": return "point";
+        case "hotPoints": return "point"; // 쌍을 세는 자가 타점이다 — 행 정체성도 타점
+        default: return unknownPredicate(p); // 자물쇠: 빠뜨리면 그 조건이 보드에서 "(지워짐)"으로 보인다
     }
 }
 
@@ -363,7 +384,7 @@ const isTolerance = (v: unknown): v is number =>
     typeof v === "number" && Number.isFinite(v) && v >= TOLERANCE_MIN_PCT && v <= TOLERANCE_MAX_PCT;
 
 function parsePredicate(o: unknown): FilterPredicate | null {
-    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown; params?: unknown; metric?: unknown; recovered?: unknown; t?: unknown };
+    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown; params?: unknown; metric?: unknown; recovered?: unknown; t?: unknown; w?: unknown; r?: unknown };
     switch (p?.kind) {
         case "outcome":
             // t 는 **필수**다 — 없는 저장물은 T 가 정의에 살던 시절 것이라 그 기준을 복원할 수 없다
@@ -391,6 +412,10 @@ function parsePredicate(o: unknown): FilterPredicate | null {
         case "axisValue":
             return typeof p.axisId === "string" && Array.isArray(p.ranges) && p.ranges.every(isAxisValueRange)
                 ? { kind: "axisValue", axisId: p.axisId, ranges: p.ranges } : null;
+        case "hotPoints":
+            // w·r 은 **필수**다 — 파라미터가 없으면 이 조건이 무엇을 세는지 복원할 수 없다(결과 술어의 t 와 같은 결).
+            return isHotW(p.w) && isHotR(p.r) && Array.isArray(p.ranges) && p.ranges.every(isAxisValueRange)
+                ? { kind: "hotPoints", w: p.w, r: p.r, ranges: p.ranges } : null;
         case "date":
             return Array.isArray(p.ranges) && p.ranges.every(isFromToRange)
                 ? { kind: "date", ranges: p.ranges } : null;

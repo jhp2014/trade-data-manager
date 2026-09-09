@@ -100,6 +100,9 @@ export const simKeyOf = (p: TradeSimParams): string =>
 export const cancelKeyOf = (p: Pick<TradeSimParams, "cancelRisePct" | "cancelAfterMin">): string =>
     `${p.cancelRisePct ?? "-"}|${p.cancelAfterMin ?? "-"}`;
 
+/** 급타점 수 단면의 키 — (창 W, 상승률 r). judge 층 위의 슬라이스라 T·시뮬과 형제다. */
+export const hotKeyOf = (w: number, r: number): string => `${w}|${r}`;
+
 /**
  * 옛 저장물 승계 — 이 필드는 두 번 확장됐다(스칼라 → 창 하나 → 목록). 새 채널이 있으면 그쪽이 이긴다:
  * 두 채널이 함께 실린 저장물에서 옛 값이 새 편집을 되돌리면 안 된다.

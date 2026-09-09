@@ -59,6 +59,8 @@ const evalLook: EvalLookup = {
     outcomeEvalOf: () => undefined,
     outcomeRailValues: () => undefined,
     outcomeRecoveredOf: () => undefined,
+    hotCountOf: () => undefined,
+    hotRailValues: () => undefined,
 };
 
 const ctx: SetResolveCtx = {

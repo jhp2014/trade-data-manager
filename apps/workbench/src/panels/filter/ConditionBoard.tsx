@@ -27,9 +27,11 @@ import { GrainSection, Note } from "./grain.js";
 import { GroupEditors, type GroupEditorAnchor } from "./ConditionEditors.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
-import { OUTCOME_REVEAL, RAIL_REVEAL, useRevealSender } from "./boardReveal.js";
+import { HOT_REVEAL, OUTCOME_REVEAL, RAIL_REVEAL, useRevealSender } from "./boardReveal.js";
 import { useLinkedThemeStage } from "./themeLink.js";
 import { OUTCOME_PANEL_ID } from "../outcome/outcomePanelIds.js";
+import { HOT_PANEL_ID } from "../hot/hotPanelIds.js";
+import { useLinkedHot } from "../hot/hotLink.js";
 import { useLinkedOutcome } from "../outcome/outcomeLink.js";
 import { stageLabel } from "./label.js";
 import { stageKind, type FilterStage, type Grain } from "./stage.js";
@@ -61,7 +63,9 @@ export function ConditionBoard({ barsOpen }: {
     // ── 편집면으로 데려가기 ──
     const sendReveal = useRevealSender(RAIL_REVEAL);
     const sendOutcomeReveal = useRevealSender(OUTCOME_REVEAL);
+    const sendHotReveal = useRevealSender(HOT_REVEAL);
     const { setLinked: setLinkedOutcome } = useLinkedOutcome(); // 결과 줄 클릭 = 그 조건으로 연동 이동(판의 T 가 따라온다)
+    const { setLinked: setLinkedHot, canAdd: canAddHot, nextParams: nextHot } = useLinkedHot(); // 급타점도 같은 규칙(판의 (W,r) 이 따라온다)
     const { linkedId, setLinked } = useLinkedThemeStage();
     const [groupEditor, setGroupEditor] = useState<GroupEditorAnchor | null>(null);
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
@@ -94,6 +98,12 @@ export function ConditionBoard({ barsOpen }: {
             case "outcomeRecovery": // 편집면 = 결과 패널 머리글 칩(레일 줄이 없어 되짚기 신호는 안 보낸다)
                 setLinkedOutcome(stage.id);
                 openAndFocus(OUTCOME_PANEL);
+                return;
+            case "hotPoints":
+                // 연동을 이 조건으로 옮긴다 — 판의 표시 (W,r) 이 그 조건의 것이라야 레일에 그 컷이 보인다.
+                setLinkedHot(stage.id);
+                sendHotReveal(stage.id);
+                openAndFocus(HOT_PANEL_ID);
                 return;
             default:
                 sendReveal(stage.id);
@@ -177,6 +187,20 @@ export function ConditionBoard({ barsOpen }: {
                     <AddCondition
                         onRails={() => openAndFocus(RAIL_PANEL)}
                         onOutcome={() => openAndFocus(OUTCOME_PANEL)}
+                        onHot={() => {
+                            // 행을 만든다(테마형) — (W,r) 기본값이 뜻을 갖고, **행이 있어야 축이 서고
+                            // 열이 서서** "조건 없이 여러 (W,r) 을 열로 펼쳐 비교"가 성립한다.
+                            if (nextHot === null) return; // 빈 자리 없음 — 겹치는 행을 만들지 않는다
+                            addStage([{ kind: "hotPoints", w: nextHot.w, r: nextHot.r, ranges: [] }]);
+                            // **연동을 새 행으로 옮긴다** — 사다리가 매번 다른 (W,r) 을 집으므로 안 옮기면
+                            // 메뉴 라벨이 약속한 자리와 판이 실제로 보여주는 자리가 확정적으로 어긋난다
+                            // (addFilterStage 가 id 를 안 돌려줘 방금 append 된 마지막 행을 읽는다).
+                            const made = selectFilterStages(useWorkbench.getState()).at(-1);
+                            if (made) setLinkedHot(made.id);
+                            openAndFocus(HOT_PANEL_ID);
+                        }}
+                        canAddHot={canAddHot}
+                        nextHot={nextHot}
                         onGroup={(e) => groupCreate.open(e.clientX, e.clientY)}
                         onTheme={() => {
                             addStage([{ kind: "themeStrength", params: { ...DEFAULT_THEME_STRENGTH } }]);
@@ -205,11 +229,16 @@ export function ConditionBoard({ barsOpen }: {
  * 거기서 긋는 순간 조건이 된다(레일 하나 = 필터 하나). 테마·그룹은 기본값이 뜻을 갖거나 팔레트에서
  * 곧바로 식을 쓰므로 행을 만든다.
  */
-function AddCondition({ onRails, onOutcome, onGroup, onTheme }: {
+function AddCondition({ onRails, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot }: {
     onRails: () => void;
     onOutcome: () => void;
     onGroup: (e: React.MouseEvent) => void;
     onTheme: () => void;
+    onHot: () => void;
+    /** 급타점 인스턴스 상한(3) — **생성 지점에서만** 막는다(밖에서 온 저장물은 안 자른다). */
+    canAddHot: boolean;
+    /** 다음에 만들 자리 — 라벨이 **무엇이 생길지** 미리 말한다(늘 같은 값이 아니라서). */
+    nextHot: { w: number; r: number } | null;
 }): JSX.Element {
     const [open, setOpen] = useState(false);
     // 해제(바깥 클릭·Esc)는 수제 백드롭이 아니라 공용 규칙 한 벌 — 어떤 영역이 mousedown 을 삼켜도
@@ -242,6 +271,13 @@ function AddCondition({ onRails, onOutcome, onGroup, onTheme }: {
                     {item("결과 — 시그널 이후", "시그널 결과 판으로 — 연장 고점·저가(미래 값) 분포를 보며 그으면 조건이 됩니다", onOutcome)}
                     {item("그룹 조건", "그룹 식 — 여러 개로 나누면 각각의 기여도가 보입니다(그룹은 하루 층위 하나뿐)", onGroup)}
                     {item("테마 강도", "기본값으로 켜진 행을 만들고 테마 순위 패널에서 엽니다", onTheme)}
+                    {canAddHot
+                        ? item(nextHot === null ? "급타점 수" : `급타점 수 (${nextHot.w}분/${nextHot.r}%)`,
+                            "아직 안 쓰인 자리로 행을 만들고 급타점 판에서 엽니다 — 짧은 시간에 급한 재돌파가 몇 번 지나갔나", onHot)
+                        : <span style={{ display: "block", fontSize: 11.5, padding: "5px 10px", color: "var(--text-tertiary)" }}
+                            title="급타점 인스턴스는 3개까지입니다 — 열이 늘면 화면이 먼저 무너집니다. 하나 지우고 다시 만드세요">
+                            급타점 수 (3개 한도)
+                        </span>}
                 </div>
             )}
         </div>

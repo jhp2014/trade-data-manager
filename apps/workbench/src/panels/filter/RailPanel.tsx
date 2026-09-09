@@ -23,6 +23,7 @@ import { usePointRows } from "../../lib/usePointRows.js";
 import { useCandidateDays } from "../../lib/useCandidateDays.js";
 import { type AxisRef } from "../../lib/computedAxis.js";
 import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
+import { isHotAxisId } from "../../lib/hotAxis.js";
 import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
 import { useSubject } from "../../lib/subject.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
@@ -110,14 +111,22 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
         [pointerOn, selectedView],
     );
 
+    /**
+     * 이 판이 다루는 축 — **급타점 축은 뺀다.** 그 축을 여기 깔면 같은 값에 `axisValue` 조건을 거는
+     * 두 번째 편집 경로가 생기는데, 그 조건은 부품(저장 집합)의 자기-정의 평가에서 재료가 없어
+     * **조용히 전부 미배치**가 된다(파라미터가 술어 payload 에 사는 축의 일반 규칙 — 테마가 레일이
+     * 아닌 것과 같은 이유). 급타점의 편집면은 전용 판 하나다.
+     */
+    const railAxes = useMemo(() => ax.axes.filter((a) => !isHotAxisId(a.key)), [ax.axes]);
+
     // ── 레일 순서 ──
     const [axisOrder, setAxisOrder] = usePersistedState<string[]>(AXIS_ORDER_KEY, parseAxisOrder, []);
-    const orderedAxes = useMemo(() => orderAxes(ax.axes, axisOrder), [ax.axes, axisOrder]);
+    const orderedAxes = useMemo(() => orderAxes(railAxes, axisOrder), [railAxes, axisOrder]);
     const orderedIds = useMemo(() => orderedAxes.map((a) => a.key), [orderedAxes]);
     // 끌고 있는 축 — 표시선과 층위 검사에 쓴다. dragover 는 dataTransfer 값을 못 읽어서(브라우저 보안)
     // 미디어타입만 보이므로, **id 는 여기서** 든다.
     const [dragAxis, setDragAxis] = useState<string | null>(null);
-    const scopeOf = useMemo(() => new Map(ax.axes.map((a) => [a.key, a.scope])), [ax.axes]);
+    const scopeOf = useMemo(() => new Map(railAxes.map((a) => [a.key, a.scope])), [railAxes]);
 
     // ── 서랍 — 축을 치워 두는 자리(보기 상태, 조건은 안 건드린다). 셈은 axisDrawer(순수)에.
     const [drawerIds, setDrawerIds] = usePersistedState<string[]>(DRAWER_KEY, parseDrawerIds, []);
@@ -127,10 +136,10 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
         setDrawerIds((ids) => (ids.includes(axisKey) ? ids.filter((k) => k !== axisKey) : [...ids, axisKey]));
     // 죽은 축 id 청소 — **로딩 중엔 금지**(아직 안 온 축을 유령으로 오인해 지운다, 시트 열 설정과 같은 함정).
     useEffect(() => {
-        if (ax.isLoading || ax.axes.length === 0) return;
-        const live = ax.axes.map((a) => a.key);
+        if (ax.isLoading || railAxes.length === 0) return;
+        const live = railAxes.map((a) => a.key);
         setDrawerIds((ids) => pruneDrawer(ids, live, GRID_AXIS_IDS));
-    }, [ax.isLoading, ax.axes, setDrawerIds]);
+    }, [ax.isLoading, railAxes, setDrawerIds]);
 
     /** 이 축 위에 놓을 수 있나 — **같은 층위 · 같은 편(서랍 안/밖)**.
      *  편이 다르면 안 보이는 자리로 순서가 옮겨진다. */
