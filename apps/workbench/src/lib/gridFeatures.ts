@@ -32,7 +32,6 @@ const EOK = 1e8;
 const BASE_SPECS = [
     { key: "baseline-position", name: "기준선 대비 %", strongerWhen: "higher", display: { suffix: "%", decimals: 1, signed: true } },
     { key: "daily-change-un", name: "당일 % (UN)", strongerWhen: "higher", display: { suffix: "%", decimals: 1, signed: true } },
-    { key: "grid-prior-levels", name: "직전 마디 수", strongerWhen: "higher", display: { suffix: "개", decimals: 0, signed: false } },
     { key: "grid-daily-change-krx", name: "당일 % (KRX)", strongerWhen: "higher", display: { suffix: "%", decimals: 1, signed: true } },
     // 큰 값 우측(2026-09-02 사용자 확정 — 얕음→깊음이 좌→우로 읽히게)
     { key: "grid-pullback-pct", name: "눌림 깊이", strongerWhen: "higher", display: { suffix: "%", decimals: 1, signed: false } },
@@ -71,7 +70,7 @@ function pullbackLowPivot(grid: PointGrid, levelMin: number | null, pointMin: nu
 }
 
 /**
- * 자동 Point 전체 → 특징 피드 9개. 자리는 useRankAxesValue 가 서버 피드 뒤에 이어 붙인다.
+ * 자동 Point 전체 → 특징 피드 8개. 자리는 useRankAxesValue 가 서버 피드 뒤에 이어 붙인다.
  * 값 없는 Point 는 values 에 없다 = 그 축에 미배치(계산 축 계약 그대로).
  */
 export function gridFeatureFeeds(
@@ -95,7 +94,6 @@ export function gridFeatureFeeds(
         // 두 판을 가르는 정보는 전일 종가 쪽이라는 판단. 2026-09-02 사용자 확정).
         if (grid.prevBase !== null && grid.prevBase > 0) pushBase("daily-change-un", { ...key, value: r2(((a.point.close - grid.prevBase) / grid.prevBase) * 100) });
         if (grid.prevBaseKrx !== null && grid.prevBaseKrx > 0) pushBase("grid-daily-change-krx", { ...key, value: r2(((a.point.close - grid.prevBaseKrx) / grid.prevBaseKrx) * 100) });
-        pushBase("grid-prior-levels", { ...key, value: a.point.levelIdx });
         const low = pullbackLowPivot(grid, a.point.levelMin, a.point.min);
         if (low !== null && a.point.levelPrice > 0) pushBase("grid-pullback-pct", { ...key, value: r2(((a.point.levelPrice - low.price) / a.point.levelPrice) * 100) });
         // 타점 대금 = **자기 봉 대금**(게이트 판정에 쓴 그 값). ⚠ 게이트와 같은 재료를 다른 손잡이가 만진다 —

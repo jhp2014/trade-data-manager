@@ -1,6 +1,6 @@
 // 타점 시트의 **열 구성**(순수) — 열 기술자·기본 속성 테이블 + 배치 계산(고정 스택·폭·순서).
-// 렌더(RankSheetPanel)에서 떼어낸 이유: 폭 분배와 고정 순서는 규칙이 얽혀 있어(수동 폭 ↔ 잔여 분배,
-// 고정 배열 순서 ↔ 축 서열) 눈으로 확인하기 어렵다. 여기 두면 테스트가 규칙을 붙잡는다.
+// 렌더(RankSheetPanel)에서 떼어낸 이유: 폭 분배와 순서는 규칙이 얽혀 있어(수동 폭 ↔ 잔여 분배,
+// 열 순서 pref ↔ 기본 순서 ↔ 고정 집합) 눈으로 확인하기 어렵다. 여기 두면 테스트가 규칙을 붙잡는다.
 //
 // 열을 하나 붙이려면 여기 **Col 한 항목 + COL_META 한 줄**, 그리고 패널의 CELLS 한 항목(컴파일러가 강제).
 import type { CSSProperties } from "react";
@@ -137,7 +137,9 @@ export interface SheetLayout {
 }
 
 /**
- * 열 배치 — 숨김 제외 → 고정 스택(순서 = frozenCols 배열) → 비고정(기본 순서) → 폭 확정.
+ * 열 배치 — 숨김 제외 → 고정 스택 → 비고정 → 폭 확정. **두 무리 다 들어온 순서를 지킨다**:
+ * 순서는 열 순서 pref 하나가 정하고(`orderCols`), 고정은 "왼쪽에 붙나"만 말한다(집합).
+ * 그래서 고정을 걸고 푸는 것이 열의 자리를 안 흔든다(옛 frozenCols 배열 순서 시절엔 튀었다).
  *
  * 폭 규칙: **수동 폭을 준 열과 계산 축 열이 고정폭**. 나머지 축 열이 남는 폭을 나눠 갖는다(최소 axisMin).
  * 그래서 수동 폭을 전부 지우면(원위치) 기본 동작으로 정확히 복귀하고, 전부 지정하면 전부 고정폭이 된다.
@@ -146,9 +148,9 @@ export interface SheetLayout {
  *
  * 종목 열은 언제나 고정 스택 맨 앞 붙박이라 frozenCols 에 없어도 고정으로 친다(사용자가 못 푼다).
  */
-export function layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths, containerW, axisMin }: {
-    baseCols: Col[];
-    frozenCols: string[]; // 고정 열 키(이 **배열 순서**가 곧 좌측 스택 순서)
+export function layoutColumns({ baseCols, frozenKeys, hiddenCols, colWidths, containerW, axisMin }: {
+    baseCols: Col[]; // 열 순서 pref 가 이미 입혀진 목록(orderCols 의 산출물)
+    frozenKeys: ReadonlySet<string>; // 고정 열 키 **집합** — 좌측 스택 순서는 baseCols 순서가 정한다
     hiddenCols: string[];
     colWidths: Record<string, number>; // colKey → 수동 폭(px)
     containerW: number;
@@ -157,13 +159,12 @@ export function layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths, con
     const hidden = new Set(hiddenCols);
     const visible = baseCols.filter((c) => c.key === "name" || !hidden.has(colKey(c)));
 
-    const byKey = new Map(visible.map((c) => [colKey(c), c]));
     const frozen: Col[] = [
         ...visible.filter((c) => c.key === "name"),
-        ...frozenCols.map((k) => byKey.get(k)).filter((c): c is Col => c != null && c.key !== "name"),
+        ...visible.filter((c) => c.key !== "name" && frozenKeys.has(colKey(c))),
     ];
-    const frozenKeys = new Set(frozen.map(colKey));
-    const displayCols = [...frozen, ...visible.filter((c) => !frozenKeys.has(colKey(c)))];
+    const stacked = new Set(frozen.map(colKey));
+    const displayCols = [...frozen, ...visible.filter((c) => !stacked.has(colKey(c)))];
 
     const manual = (c: Col): number | undefined => colWidths[colKey(c)];
     const flex = displayCols.filter((c) => c.key === "axis" && !c.computed && manual(c) == null);
@@ -186,14 +187,62 @@ export function layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths, con
     };
 }
 
-/** 고정 그룹 안 재정렬 — 배열이 곧 좌측 스택 순서다. 축 열이 섞여 있어도 축 서열(rankAxisOrder)은 안 건드린다. */
-export function reorderFrozenCols(cols: string[], dragged: string, target: string): string[] {
-    const from = cols.indexOf(dragged);
-    const to = cols.indexOf(target);
-    if (from < 0 || to < 0 || from === to) return cols;
-    const next = cols.slice();
-    next.splice(to, 0, next.splice(from, 1)[0]);
-    return next;
+/**
+ * 열 순서 pref 를 기본 순서에 입힌다 — **pref 가 주 순서고, 기본 순서는 pref 에 없는 열의 자리**다.
+ *
+ * 없는 열(새로 생긴 축·갈래가 바뀐 결과 열·부분 pref 로 시딩된 첫 로드)은 **기본 순서에서 자기 앞에
+ * 있던 열 전부의 뒤**에 선다. "맨 뒤로"가 아닌 이유는 열이 섞인 목록에서 맨 뒤가 결과·차이 열의
+ * 오른쪽이라서고(축만 있던 시절의 규칙을 뒤집은 자리), "가장 가까운 앞 이웃 뒤"가 아닌 이유는 그
+ * 이웃이 사용자 손에 어디로든 옮겨져 있을 수 있어서다 — 축 하나를 앞으로 끌어 둔 pref 에 결과 열
+ * 한 무리가 빠져 있으면 그 무리가 **축 사이로 끼어든다**(마이그레이션 시딩이 정확히 그 모양이다).
+ *
+ * 셈: 기본 순서를 훑으며 마지막으로 본 pref 순위를 기억하고, 모르는 키엔 그 순위 **바로 뒤의
+ * 소수 자리**를 준다(같은 틈의 키끼리는 기본 순서 유지). 그 값으로 한 번 정렬하면 끝이다.
+ */
+export function orderCols(baseCols: readonly Col[], pref: readonly string[]): Col[] {
+    if (pref.length === 0) return [...baseCols];
+    const rank = new Map(pref.map((k, i) => [k, i]));
+    const eff = new Map<string, number>();
+    let last = -1; // 지금까지 본 pref 순위의 **최댓값**(-1 = 아직 하나도 못 봤다 = 첫 pref 키보다 앞)
+    let gap = 0;
+    for (const c of baseCols) {
+        const k = colKey(c);
+        const r = rank.get(k);
+        if (r !== undefined) {
+            last = Math.max(last, r); // **최대**여야 한다: pref 가 기본 순서를 거스르면(축 하나를 앞으로
+            gap = 0;                  // 끌어 둔 경우) "마지막으로 본 순위"는 뒤로 물러서고, 그 뒤의 모르는
+            eff.set(k, r);            // 열들이 그만큼 앞으로 끼어든다.
+        } else {
+            gap += 1;
+            eff.set(k, last + gap / (baseCols.length + 1)); // < last+1 이라 다음 pref 키를 못 넘는다
+        }
+    }
+    return [...baseCols].sort((a, b) => eff.get(colKey(a))! - eff.get(colKey(b))!);
+}
+
+/**
+ * 드롭하면 target 의 **어느 쪽**에 서나 — 뒤로 끌면 뒤, 앞으로 끌면 앞(레일 `dropEdge` 와 같은 규칙).
+ * 판정은 손이 움직인 목록, 즉 **화면 순서**로 한다.
+ */
+export function dropSide(shown: readonly string[], dragged: string, target: string): "before" | "after" | null {
+    const from = shown.indexOf(dragged);
+    const to = shown.indexOf(target);
+    if (from < 0 || to < 0 || from === to) return null;
+    return from < to ? "after" : "before";
+}
+
+/**
+ * dragged 를 target 의 앞/뒤로 옮긴다 — **움직이는 건 그 열 하나뿐**이고 나머지의 상대 순서는 그대로다.
+ * 화면 순서를 저장 순서에 통째로 베끼지 않는 이유가 여기 있다: 화면은 고정 열을 앞으로 끌어올린
+ * 목록이라, 베끼면 드래그 한 번이 "고정은 소속만 말한다"를 깨고 손 안 댄 열의 자리를 영구히 바꾼다.
+ * 바뀔 게 없으면 null(호출부가 쓸데없는 저장을 안 하게).
+ */
+export function placeCol(keys: readonly string[], dragged: string, target: string, side: "before" | "after"): string[] | null {
+    if (dragged === target || keys.indexOf(dragged) < 0 || keys.indexOf(target) < 0) return null;
+    const rest = keys.filter((k) => k !== dragged);
+    const at = rest.indexOf(target) + (side === "after" ? 1 : 0);
+    const next = [...rest.slice(0, at), dragged, ...rest.slice(at)];
+    return next.every((k, i) => k === keys[i]) ? null : next;
 }
 
 

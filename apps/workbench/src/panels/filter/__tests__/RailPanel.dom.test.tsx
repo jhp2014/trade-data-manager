@@ -337,7 +337,7 @@ describe("현재 자리 마커 — 하루만 골라도 하루 층위엔 선다",
 });
 
 // ── 레일 순서 바꾸기 — 잡이는 **이름 열**이다(트랙은 조건 긋기라 못 쓴다).
-// 저장물은 이 패널 전용(wb.filterAxisOrder) — 시트 축 서열(store rankAxisOrder)과 갈라져 있다(사용자 확정).
+// 저장물은 이 패널 전용(wb.filterAxisOrder) — 시트 열 순서(wb.rankSheetColOrder)와 갈라져 있다(사용자 확정).
 const ORDER_KEY = "wb.filterAxisOrder";
 const ORDER_SEED: Seed = {
     candidateDays, points,
@@ -378,7 +378,7 @@ describe("레일 순서 — 이름 열을 끌어 바꾸고, 로컬에 남는다"
     it("바꾼 순서가 로컬에 남는다 — 다시 열어도 그대로", () => {
         const { container, unmount } = renderRails(ORDER_SEED);
         dragAxisOnto(container, "하루축A", "하루축B");
-        // 격자 파생 축들도 목록에 실린다(기준선 대비 %·당일 %·직전 마디 수·눌림 깊이) — 심은 셋의
+        // 격자 파생 축들도 목록에 실린다(기준선 대비 %·당일 %·눌림 깊이·타점 대금 …) — 심은 셋의
         // **상대 순서**만 본다. 승계 키(c:baseline-position 등)라 접두로는 못 거른다.
         const seeded = new Set(["c:day-a", "c:day-b", "c:pt-ax"]);
         const order = (JSON.parse(localStorage.getItem(ORDER_KEY)!) as string[]).filter((k) => seeded.has(k));
@@ -396,10 +396,10 @@ describe("레일 순서 — 이름 열을 끌어 바꾸고, 로컬에 남는다"
         expect(railNames(container)).toEqual(["하루축A", "하루축B", "타점축"]);
     });
 
-    it("시트 축 서열은 안 건드린다 — 두 순서는 별개 저장물이다", () => {
+    it("시트 열 순서는 안 건드린다 — 두 순서는 별개 저장물이다", () => {
         const { container } = renderRails(ORDER_SEED);
         dragAxisOnto(container, "하루축A", "하루축B");
-        expect(useWorkbench.getState().rankAxisOrder).toEqual([]);
+        expect(localStorage.getItem("wb.rankSheetColOrder")).toBeNull();
     });
 
     it("날짜·시간 레일엔 잡이가 없다 — 층위 안에서 자리가 정해진 줄이다", () => {

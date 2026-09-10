@@ -51,8 +51,9 @@ import type { ReviewPointKey } from "@trade-data-manager/market/domain";
 //    안 버리고 N개로 나눈다 → 구간끼리 한 화면에서 비교된다(밴드는 분석 모수까지 좁힌다는 게 다른 점).
 //  · 필터 활성 시 행=보는 집합(좁히기) 또는 전체+흐리게. **깔때기를 직접 구독**한다(어댑터 없음).
 //  · 축은 코드가 정의한다(파일 하나 + 레지스트리 한 줄) — 만들기·이름 변경·배치가 화면에 없다.
-//  · **비고정** 축 열의 드래그 재정렬은 store rankAxisOrder 를 만진다(시트 전용 순서 — 집합 편성 보드는 제 것을 따로 든다).
-//    고정한 열은 시트 전용 자리 — 고정 그룹 안에서만 순서를 바꾼다(순서 소스가 둘이라 규칙을 갈랐다).
+//  · **열 순서는 저장물 하나**(`wb.rankSheetColOrder`, 행 모드별)다 — 축이든 결과·차이 열이든 종류를 안 가리고
+//    헤더 드래그로 옮긴다. 고정은 "왼쪽에 붙나"만 말하고 순서엔 관여하지 않는다. 집합 편성 보드의 레일 순서는
+//    제 저장물을 따로 든다(같은 축이 두 화면에서 다른 자리에 설 수 있다).
 //  · 열 폭은 손으로 조절 가능(헤더 오른쪽 가장자리 드래그). **수동 폭과 계산 축이 고정폭**이고, 나머지 축 열이
 //    남는 폭을 나눠 갖는다 → "폭 원위치"(수동 폭 삭제)면 기본 동작으로 정확히 복귀한다.
 //  · **그룹(태그)은 시트에 없다** — 좁은 셀에 넣으면 이름이 잘려 색만 남고, 그 색을 읽으려면 결국 다른 패널을
@@ -101,7 +102,7 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     const pinnedSet = useMemo(() => new Set(pinned), [pinned]);
 
     // ── 축 + 라인(필터 보드 레일과 공유) → 순위 인덱스. 열 재정렬도 같은 store 순서를 만진다.
-    const { axes: allAxes, linesByAxis, computedValues, computedMeta, isLoading: axesLoading, reorder: reorderAxis } = useRankAxes();
+    const { axes: allAxes, linesByAxis, computedValues, computedMeta, isLoading: axesLoading } = useRankAxes();
     // day 모드의 열은 day 축만 — point 축은 행(하루)에 값을 정의할 수 없다(시각이 값에 들어간다).
     const axes = useMemo(() => (dayMode ? allAxes.filter((a) => a.scope === "day") : allAxes), [allAxes, dayMode]);
     const axisIds = useMemo(() => axes.map((a) => a.key), [axes]);
@@ -548,7 +549,6 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
                     헤더를 스크롤 상자 **밖**으로 빼면 안 된다 — 가로 스크롤이 갈려 고정 열이 죽는다. */}
                 <div style={{ position: "sticky", top: 0, zIndex: 5, width: tableW, height: headH, boxSizing: "border-box", background: "var(--bg-secondary)" }}>
                     <SheetHeaderRow displayCols={displayCols} cols={cols} sort={sort}
-                        reorderAxis={reorderAxis}
                         onSort={clickHeader} onHeaderCtx={menus.openHdrCtx} />
                     {pinnedRows.map((row, j) => renderRow(row, j === pinnedRows.length - 1, true))}
                 </div>

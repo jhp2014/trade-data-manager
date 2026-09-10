@@ -1,6 +1,6 @@
-// 시트 열 구성의 **로컬 설정 넷**(고정·숨김·폭·그룹 컷)과 그 청소 가드.
+// 시트 열 구성의 **로컬 설정**(순서·고정·숨김·폭·그룹 컷)과 그 청소 가드.
 //
-// 넷을 한 훅이 들고 있는 이유는 성격이 아니라 **위험**이 같아서다: 넷 다 키에 축 id 를 담고 있어서
+// 한 훅이 들고 있는 이유는 성격이 아니라 **위험**이 같아서다: 전부 키에 축 id 를 담고 있어서
 // (`ax:<id>`) 축이 지워지면 유령 키가 남는다. 청소 자체(pruneAxisKeys)는 순수 함수라 이미 덮여 있고,
 // 여기서 재는 건 **언제 부르나**다 — 골격 패널에서 반복해 만난 모양 그대로다.
 //
@@ -21,6 +21,8 @@ const FROZEN_KEY = "wb.rankSheetFrozenCols";
 const HIDDEN_KEY = "wb.rankSheetHiddenCols";
 const WIDTHS_KEY = "wb.rankSheetColWidths";
 const CUTS_KEY = "wb.rankSheetCuts";
+const ORDER_KEY = "wb.rankSheetColOrder";
+const LEGACY_AXIS_ORDER_KEY = "wb.rankAxisOrder";
 
 /** 설정 넷에 **살아 있는 축·죽은 축·축이 아닌 열**을 섞어 심는다. */
 const seedSettings = (): void => {
@@ -36,8 +38,8 @@ const BASE: Args = { axes: LIVE, axesLoading: false, containerW: 1200, axisMin: 
 const setup = (over: Partial<Args> = {}): ReturnType<typeof renderHook<ReturnType<typeof useSheetColumns>, Args>> =>
     renderHook((a: Args) => useSheetColumns(a), { initialProps: { ...BASE, ...over } });
 
-beforeEach(() => { localStorage.clear(); useWorkbench.setState({ revealAxis: null, rankAxisOrder: [] }); });
-afterEach(() => { localStorage.clear(); useWorkbench.setState({ revealAxis: null, rankAxisOrder: [] }); });
+beforeEach(() => { localStorage.clear(); useWorkbench.setState({ revealAxis: null }); });
+afterEach(() => { localStorage.clear(); useWorkbench.setState({ revealAxis: null }); });
 
 describe("픽스처 자신 — 죽은 키가 실제로 심겼나", () => {
     // 안 심겼으면 아래 "안 지운다" 검사가 통째로 헛돈다.
@@ -248,5 +250,75 @@ describe("축 보여줘 — 숨긴 열이면 먼저 꺼낸다", () => {
 
         act(() => { useWorkbench.setState({ revealAxis: { axisId: "a2", at: Date.now() + 1 } }); });
         expect(result.current.flashCol).toBe("ax:a2");
+    });
+});
+
+// ── 열 순서(2026-09-10) — 시트 순서의 유일한 저장물. 종류·고정 여부를 안 가린다.
+describe("열 순서", () => {
+    it("드래그가 종류를 안 가린다 — 결과 열을 축 앞으로 옮길 수 있다", () => {
+        const { result } = setup();
+        act(() => result.current.reorderCol("out:extHigh", "ax:a1"));
+        const keys = result.current.displayCols.map(colKey);
+        expect(keys.indexOf("out:extHigh")).toBeLessThan(keys.indexOf("ax:a1"));
+        expect(stored(ORDER_KEY)).toContain("out:extHigh");
+    });
+
+    it("방향은 화면 순서로 읽고 이동은 저장 순서에서 한 칸만 — 고정을 풀어도 손 안 댄 열이 안 움직인다", () => {
+        const { result } = setup();
+        // 기본 고정(date·time) 스택이 ax:a2 를 앞으로 올린다 → 화면에선 a2 가 a1 앞, 저장 순서는 그 반대.
+        act(() => result.current.toggleFrozen("ax:a2"));
+        const shown = result.current.displayCols.map(colKey);
+        expect(shown.indexOf("ax:a2")).toBeLessThan(shown.indexOf("ax:a1"));
+        // 화면에서 뒤로 끌었으니 "a1 뒤" — 저장 순서에선 이미 그러므로 아무것도 안 바뀌어야 한다.
+        // 저장 순서로 방향을 읽던 옛 셈은 여기서 a2 를 a1 **앞**으로 옮겨 놨다(고정 탓에 화면엔 안 보였다).
+        act(() => result.current.reorderCol("ax:a2", "ax:a1"));
+        act(() => result.current.toggleFrozen("ax:a2")); // 고정 해제 — 이제 저장 순서가 그대로 보인다
+        const after = result.current.displayCols.map(colKey);
+        expect(after.indexOf("ax:a1")).toBeLessThan(after.indexOf("ax:a2"));
+    });
+
+    it("고정 중에 **다른 열**을 끌어도 고정 열의 자리는 안 바뀐다(화면 순서를 저장물에 베끼지 않는다)", () => {
+        const { result } = setup();
+        act(() => result.current.toggleFrozen("ax:a2"));
+        act(() => result.current.reorderCol("out:extHigh", "out:status")); // 무관한 두 열끼리
+        act(() => result.current.toggleFrozen("ax:a2"));
+        const after = result.current.displayCols.map(colKey);
+        expect(after.indexOf("ax:a1")).toBeLessThan(after.indexOf("ax:a2")); // 기본 자리 그대로
+    });
+
+    it("고정을 걸고 풀어도 자리가 안 튄다 — 고정은 소속만 말한다", () => {
+        const { result } = setup();
+        act(() => result.current.reorderCol("ax:a2", "ax:a1"));
+        const before = result.current.displayCols.map(colKey);
+        act(() => result.current.toggleFrozen("ax:a2"));
+        act(() => result.current.toggleFrozen("ax:a2"));
+        expect(result.current.displayCols.map(colKey)).toEqual(before);
+    });
+
+    it("드래그는 순서만 바꾼다 — 지금 화면에 없는 열의 자리를 pref 에서 안 지운다", () => {
+        // 격자 축은 격자 로딩 전엔 축 목록에 없다(그래서 청소의 보호 목록에 있다) — 그 창에서 다른 열을
+        // 끌었다고 자리를 잃으면 안 된다. 화면 목록으로 통째 새로 쓰던 옛 방식이 정확히 그 사고였다.
+        const ABSENT = "ax:c:grid-pullback-pct";
+        localStorage.setItem(ORDER_KEY, JSON.stringify(["ax:a1", ABSENT, "ax:a2"]));
+        const { result } = setup();
+        act(() => result.current.reorderCol("ax:a2", "ax:a1"));
+        expect(stored(ORDER_KEY)).toContain(ABSENT);
+        expect((stored(ORDER_KEY) as string[]).indexOf("ax:a2")).toBeLessThan((stored(ORDER_KEY) as string[]).indexOf("ax:a1"));
+    });
+
+    it("옛 저장물(고정 배열 순서 + 축 서열)에서 1회 시딩 — 보던 순서를 승계한다", () => {
+        localStorage.setItem(FROZEN_KEY, JSON.stringify(["date"]));
+        localStorage.setItem(LEGACY_AXIS_ORDER_KEY, JSON.stringify(["a2", "a1"]));
+        const { result } = setup();
+        const keys = result.current.displayCols.map(colKey);
+        expect(keys.indexOf("ax:a2")).toBeLessThan(keys.indexOf("ax:a1")); // 옛 서열 그대로
+        expect(keys[0]).toBe("name"); // 종목은 언제나 맨 앞 붙박이
+    });
+
+    it("죽은 축 키는 순서에서도 청소된다(다른 설정과 같은 체인)", () => {
+        localStorage.setItem(ORDER_KEY, JSON.stringify(["ax:a1", "ax:죽은축", "date"]));
+        setup();
+        expect(stored(ORDER_KEY)).not.toContain("ax:죽은축");
+        expect(stored(ORDER_KEY)).toContain("ax:a1");
     });
 });

@@ -1,8 +1,13 @@
 // 시트의 **열 구성** — 무슨 열이 어느 자리에 얼마나 넓게 서고, 어디서 그룹이 나뉘나.
 //
-// 네 가지 로컬 설정이 한 덩어리인 이유는 성격이 아니라 **위험**이 같아서다: 넷 다 키에 축 id 를 담고
+// 로컬 설정 여러 벌이 한 덩어리인 이유는 성격이 아니라 **위험**이 같아서다: 전부 키에 축 id 를 담고
 // 있어서(`ax:<id>`), 축이 지워지면 유령 키가 남는다. 청소는 한 번에 해야 규칙이 어긋나지 않는다 —
-// 그래서 그룹 컷(cuts)도 여기 산다. 컷을 소비하는 건 정렬 쪽이지만, 그 키가 죽는 사정은 나머지 셋과 같다.
+// 그래서 그룹 컷(cuts)도 여기 산다. 컷을 소비하는 건 정렬 쪽이지만, 그 키가 죽는 사정은 나머지와 같다.
+//
+// **순서·고정·숨김·폭은 저장물 하나씩, 성질도 하나씩이다**(2026-09-10): 순서(colOrder)는 값의 출처와
+// 무관하게 **열 전부**를 정렬하고, 고정(frozenCols)은 "왼쪽에 붙나"만 말하는 집합이다. 옛 구조에선
+// 고정 배열이 좌측 스택 순서까지 겸하고 축 열만 store `rankAxisOrder` 로 따로 서열이 있어서, 결과·차이
+// 열은 순서 저장물이 아예 없었다(= 사용자가 못 옮겼다). 그 셋을 하나로 접은 자리다.
 //
 // ⚠ **로딩 중엔 절대 청소하지 않는다.** 판단 축과 계산 축은 별도 요청이라, 판단 축만 도착한 순간에
 // 청소가 돌면 아직 안 온 계산 축 열의 고정·숨김·폭을 유령으로 오인해 지운다. 사용자 설정이 조용히
@@ -12,13 +17,18 @@ import { isComputedAxis } from "../../lib/computedAxis.js";
 import type { AxisRef } from "../../lib/computedAxis.js";
 import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import { hotAxisId, hotInstancesOf } from "../../lib/hotAxis.js";
-import { usePersistedState } from "../../store/persist.js";
+import { retainHidden } from "../../lib/axisPrefs.js";
+import { loadJson, usePersistedState } from "../../store/persist.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
 import { OUTCOME_BASE_COL_IDS, OUTCOME_COL_IDS } from "./outcomeColumns.js";
-import { layoutColumns, colKey, pruneAxisKeys, pruneDifKeys, pruneOutKeys, reorderFrozenCols, type Col, type OutScope } from "./sheetColumns.js";
+import { layoutColumns, colKey, dropSide, orderCols, placeCol, pruneAxisKeys, pruneDifKeys, pruneOutKeys, type Col, type OutScope } from "./sheetColumns.js";
 import { matchPresetCols, parseSheetPresets, presetHidden, prunePresets, type SheetPreset } from "./sheetPresets.js";
 
 const FROZEN_KEY = "wb.rankSheetFrozenCols";
+/** 열 순서 — 종류(축·결과·차이·기본 메타) 무관 **시트 순서의 유일한 저장물**. 값이 어디서 오든 시트에선 열이다. */
+const ORDER_KEY = "wb.rankSheetColOrder";
+/** 폐지된 축 서열 pref — 순서를 열 단위로 통일하면서 시딩 재료로만 읽는다(쓰지 않는다). */
+const LEGACY_AXIS_ORDER_KEY = "wb.rankAxisOrder";
 const HIDDEN_KEY = "wb.rankSheetHiddenCols";
 const WIDTHS_KEY = "wb.rankSheetColWidths";
 /** 축 열 그룹 컷 — colKey(`ax:<id>`) → slotId[]. 시트 전용(축의 속성이 아님)이라 로컬. */
@@ -33,6 +43,20 @@ const dayKey = (k: string): string => `${k}.day`;
 
 /** 되짚기 강조가 남는 시간(ms) — 스크롤이 멎고 눈이 따라잡을 만큼. */
 const FLASH_MS = 1400;
+
+const parseKeys = (o: unknown): string[] | null => (Array.isArray(o) && o.every((k) => typeof k === "string") ? (o as string[]) : null);
+
+/**
+ * 옛 두 저장물 → 열 순서 **1회 시딩**(colOrder 키가 이미 있으면 안 쓰인다). 옛 화면 순서가 [종목, 고정 스택
+ * (frozenCols 배열 순서), 나머지 기본 순서]였으므로 그 앞부분만 실으면 된다 — 빠진 키는 `orderCols` 가
+ * 기본 순서 자리에 되끼우므로 시딩이 전 목록을 알 필요가 없다.
+ */
+function seedColOrder(day: boolean): string[] {
+    const frozen = loadJson(day ? dayKey(FROZEN_KEY) : FROZEN_KEY, parseKeys) ?? [];
+    const axes = loadJson(LEGACY_AXIS_ORDER_KEY, parseKeys) ?? [];
+    const seed = [...frozen, ...axes.map((id) => `ax:${id}`)];
+    return seed.filter((k, i) => seed.indexOf(k) === i);
+}
 
 /** 차이 열 하나 — 피연산자는 **결과 열의 colKey**(붙박이·부품·인스턴스 어느 갈래든 같은 접근자를 지난다). */
 export interface DifCol { id: string; a: string; b: string }
@@ -59,8 +83,8 @@ export interface SheetColumns {
     /** 손으로 조절한 폭이 하나라도 있나 — "폭 원위치" 손잡이를 띄울지. */
     hasManualWidths: boolean;
     toggleFrozen: (k: string) => void;
-    /** 고정 그룹 **안에서만** 순서를 바꾼다(축 서열은 안 건드린다 — 순서 소스가 둘이라 규칙을 갈랐다). */
-    reorderFrozen: (dragged: string, target: string) => void;
+    /** 열 순서 변경 — 종류·고정 여부를 안 가린다(시트의 순서 저장물은 하나다). */
+    reorderCol: (dragged: string, target: string) => void;
     toggleHidden: (k: string) => void;
     showAllHidden: () => void;
     /** 드래그 중 폭 미리보기 — **메모리로만** 그린다(영속 없음). 확정은 commitWidth 가 한다. */
@@ -123,6 +147,9 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     const [hiddenCols, setHiddenCols] = usePersistedState<string[]>(day ? dayKey(HIDDEN_KEY) : HIDDEN_KEY, (o) => (Array.isArray(o) ? (o as string[]) : null), []);
     const [colWidths, setColWidths] = usePersistedState<Record<string, number>>(day ? dayKey(WIDTHS_KEY) : WIDTHS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, number>) : null), {});
     const [cuts, setCuts] = usePersistedState<Record<string, string[]>>(CUTS_KEY, (o) => (o && typeof o === "object" ? (o as Record<string, string[]>) : null), {});
+    // 순서 — 행 모드별 주머니(고정·숨김·폭과 같은 규칙). 없으면 옛 저장물에서 1회 시딩한다.
+    const orderSeed = useMemo(() => seedColOrder(day), [day]);
+    const [colOrder, setColOrder] = usePersistedState<string[]>(day ? dayKey(ORDER_KEY) : ORDER_KEY, parseKeys, orderSeed);
     const [presets, setPresets] = usePersistedState<SheetPreset[]>(day ? dayKey(PRESETS_KEY) : PRESETS_KEY, parseSheetPresets, []);
     const [difs, setDifs] = usePersistedState<DifCol[]>(day ? dayKey(DIFS_KEY) : DIFS_KEY, parseDifs, []);
     // 드래그 중 폭의 **미리보기 층**(영속 밖) — pointermove 마다 localStorage 에 동기 기록하면 이벤트
@@ -180,6 +207,8 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         setFrozenCols(prune);
         setHiddenCols(prune);
         setColWidths(prune);
+        // 순서도 같은 체인 — **키를 지우는 건 여기 하나뿐이다**(드래그는 순서만 바꾼다, reorderCol 주석).
+        setColOrder(prune);
         setCuts((c) => pruneAxisKeys(c, ids)); // 컷 키는 축뿐 — 갈라진 결과 열엔 컷이 없다
         setPresets((p) => prunePresets(p, ids, liveSetIds, liveStageIds));
         // 차이 열도 **저장물 기준**으로 판정한다 — "지금 화면에 선 열"로 재면 조립↔일반 뷰를 오가는
@@ -247,12 +276,14 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     /** 결과 열만(숨김 이전) — 차이 열 값이 무는 재료. */
     const baseOutCols = useMemo(() => baseCols.filter((c) => c.key === "out"), [baseCols]);
 
-    const layout = useMemo(
-        () => layoutColumns({ baseCols, frozenCols, hiddenCols, colWidths: effectiveWidths, containerW, axisMin }),
-        [baseCols, frozenCols, hiddenCols, effectiveWidths, containerW, axisMin],
-    );
-
+    // 사용자 순서를 입힌 목록 — 여기서부터 아래는 baseCols 대신 이걸 본다(기본 순서는 pref 에 없는 열의 자리일 뿐).
+    const orderedCols = useMemo(() => orderCols(baseCols, colOrder), [baseCols, colOrder]);
     const frozenSet = useMemo(() => new Set(frozenCols), [frozenCols]);
+
+    const layout = useMemo(
+        () => layoutColumns({ baseCols: orderedCols, frozenKeys: frozenSet, hiddenCols, colWidths: effectiveWidths, containerW, axisMin }),
+        [orderedCols, frozenSet, hiddenCols, effectiveWidths, containerW, axisMin],
+    );
 
     return {
         ...layout,
@@ -260,7 +291,18 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         hiddenCols,
         hasManualWidths: Object.keys(colWidths).length > 0,
         toggleFrozen: (k) => setFrozenCols((f) => (f.includes(k) ? f.filter((x) => x !== k) : [...f, k])),
-        reorderFrozen: (dragged, target) => setFrozenCols((f) => reorderFrozenCols(f, dragged, target)),
+        // 두 목록을 나눠 쓴다: **방향은 화면 순서**(손이 움직인 줄)로 읽고, **이동은 저장 순서** 위에서
+        // 한 칸만 한다(placeCol). 화면 순서를 통째로 베끼면 고정 스택이 앞으로 올려세운 배치가 저장물에
+        // 각인돼 손 안 댄 열의 자리가 바뀌고, 반대로 방향까지 저장 순서로 읽으면 두 목록의 앞뒤가 다른
+        // 열에서 드롭이 반대편에 꽂힌다.
+        // ⚠ 드래그는 **순서만** 바꾸고 키를 절대 안 지운다 — 지금 없는 열(격자 로딩 중의 격자 축 · 갈래가
+        //   갈린 결과 열 3종)의 자리는 되끼운다. 생사 판정은 저장물 기준을 아는 청소 effect 한 곳뿐이다.
+        reorderCol: (dragged, target) => setColOrder((prev) => {
+            const side = dropSide(layout.displayCols.map(colKey), dragged, target);
+            if (side === null) return prev;
+            const next = placeCol(orderedCols.map(colKey), dragged, target, side);
+            return next === null ? prev : retainHidden(next, prev, new Set(prev));
+        }),
         toggleHidden: (k) => setHiddenCols((h) => (h.includes(k) ? h.filter((x) => x !== k) : [...h, k])),
         showAllHidden: () => setHiddenCols([]),
         previewWidth: (k, w) => setPreviewWidths((m) => ({ ...m, [k]: w })),

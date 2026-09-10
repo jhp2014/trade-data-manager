@@ -1,19 +1,16 @@
 // 축 목록 + 축별 줄 — 시트·필터·작업셋·차트가 공유하는 한 벌. 축은 전부 **계산 축**이다
 // (판단축은 2026-08-25 폐지 — 값은 서버 피드, 줄(orderKey)은 여기서 값으로 조립한다: computedAxisView).
 // 파생 모양은 소비자마다 다르므로(순위 인덱스 / raw) **raw 라인까지만** 여기서 준다.
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { PlacedPoint } from "@trade-data-manager/wire";
 import { computedAxesQuery } from "../api/queries.js";
 import { computedAxisView, type AxisRef } from "./computedAxis.js";
 import { derivedOfAuto } from "./defDerived.js";
-import { gridFeatureFeeds, GRID_AXIS_IDS } from "./gridFeatures.js";
+import { gridFeatureFeeds } from "./gridFeatures.js";
 import { useAutoPoints, usePointGrids } from "./PointGridsContext.js";
 import { selectFilterStages, useWorkbench } from "../store/workbench.js";
-import { hotAxisFeeds, hotAxisId, hotInstancesKeyOf, hotInstancesOf } from "./hotAxis.js";
-import { retainHidden } from "./axisPrefs.js";
-
-const GRID_AXIS_ID_SET = new Set(GRID_AXIS_IDS);
+import { hotAxisFeeds, hotInstancesKeyOf, hotInstancesOf } from "./hotAxis.js";
 
 /** 계산 축의 화면용 메타 — 값 자체가 아니라 값을 어떻게 놓고 어떻게 읽는지. */
 export interface ComputedAxisMeta {
@@ -26,8 +23,9 @@ export interface ComputedAxisMeta {
 
 export interface RankAxesView {
     /**
-     * 시트 축 서열(store rankAxisOrder) 적용. pref 에 없는 새 축은 뒤로, 동률은 키 안정 정렬.
-     * ⚠ 집합 편성 보드는 이 순서 **위에** 제 순서를 한 겹 더 입힌다(패널 로컬 — panels/filter/axisOrder.ts).
+     * 축 목록 — **키 안정 정렬**(전역 순서 pref 는 없다). 보는 순서는 화면의 것이라 각 화면이 제 저장물을
+     * 위에 입힌다: 시트는 열 순서(`wb.rankSheetColOrder` — 축만이 아니라 결과·차이 열까지 한 벌),
+     * 집합 편성 보드는 레일 순서(`wb.filterAxisOrder`). 옛 store `rankAxisOrder` 는 2026-09-10 폐지.
      */
     axes: AxisRef[];
     axisIds: string[];
@@ -38,8 +36,6 @@ export interface RankAxesView {
     /** 축 키 → 강한 방향(레일 좌표 매핑) + 값 표시 함수(단위가 축마다 다르다 — %·일…). */
     computedMeta: Map<string, ComputedAxisMeta>;
     isLoading: boolean;
-    /** dragged 축을 target 축 자리로 옮긴다 — **시트 서열**을 만진다(집합 편성 보드는 제 순서를 따로 든다). */
-    reorder: (draggedId: string, targetId: string) => void;
 }
 
 /**
@@ -48,9 +44,6 @@ export interface RankAxesView {
  * 부르는 화면 수만큼 그대로 는다.
  */
 export function useRankAxesValue(): RankAxesView {
-    const orderPref = useWorkbench((s) => s.rankAxisOrder);
-    const setRankAxisOrder = useWorkbench((s) => s.setRankAxisOrder);
-
     const computedQ = useQuery(computedAxesQuery());
     // 격자 특징(클라 파생) — 서버 피드 뒤에 같은 모양으로 이어 붙인다(축 종류를 하류가 구분하지 않게).
     // 피드 4개 중 둘(`baseline-position`·`daily-change-un`)은 **옛 서버 축에서 승계한 키**다(서버는 그
@@ -67,13 +60,6 @@ export function useRankAxesValue(): RankAxesView {
     const stages = useWorkbench(selectFilterStages);
     const hotInstances = useMemo(() => hotInstancesOf(stages), [stages]);
     const hotKey = hotInstancesKeyOf(hotInstances);
-    // 축 id 목록도 **내용 키**로 문다 — 배열 신원을 물면 아무 조건이나 만질 때마다 reorder 신원이
-    // 갈리고, 그 참조가 반환 객체(RankAxesView)까지 흘러 구독자 전원을 깨운다(값 memo 만 막으면 반쪽).
-    const hotAxisIds = useMemo(
-        () => hotInstances.map((h) => hotAxisId(h.stageId)),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [hotKey],
-    );
     const computed = useMemo(() => {
         const server = computedQ.data ?? [];
         // 정의별 캐시 산출물이면 피드도 캐시(정의를 오가도 재계산 없음) — 아니면(테스트 주입 등) 직접 계산.
@@ -94,31 +80,17 @@ export function useRankAxesValue(): RankAxesView {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [computedQ.data, autoView, gridsView, hotKey]);
 
-    const axes = useMemo<AxisRef[]>(() => {
-        const idx = new Map(orderPref.map((k, i) => [k, i]));
-        return computed
-            .map((c) => c.axis)
-            .sort((a, b) => (idx.get(a.key) ?? Infinity) - (idx.get(b.key) ?? Infinity) || (a.key < b.key ? -1 : 1));
-    }, [computed, orderPref]);
+    // 키 안정 정렬 하나 — 화면 순서는 각 화면의 저장물이 입힌다(위 axes 주석).
+    const axes = useMemo<AxisRef[]>(
+        () => computed.map((c) => c.axis).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0)),
+        [computed],
+    );
     const axisIds = useMemo(() => axes.map((a) => a.key), [axes]);
 
     const linesByAxis = useMemo(() => {
         const feed = new Map(computed.map((c) => [c.axis.key, c.line]));
         return new Map(axes.map((a) => [a.key, feed.get(a.key) ?? []]));
     }, [axes, computed]);
-
-    const reorder = useCallback((draggedId: string, targetId: string): void => {
-        if (draggedId === targetId) return;
-        const ids = axes.map((a) => a.key);
-        const from = ids.indexOf(draggedId);
-        const to = ids.indexOf(targetId);
-        if (from < 0 || to < 0) return;
-        ids.splice(to, 0, ids.splice(from, 1)[0]);
-        // 화면 목록으로 덮어쓰기 전에 잠깐 숨은 축의 자리를 되살린다 — 격자 축(격자 로딩 전)과
-        // **급타점 축**(조건은 살아 있는데 격자가 아직 없어 축이 안 선 창)이 그 대상이다.
-        const keep = new Set([...GRID_AXIS_ID_SET, ...hotAxisIds]);
-        setRankAxisOrder(retainHidden(ids, orderPref, keep));
-    }, [axes, orderPref, setRankAxisOrder, hotAxisIds]);
 
     const computedValues = useMemo(() => new Map(computed.map((c) => [c.axis.key, c.values])), [computed]);
     const computedMeta = useMemo(() => new Map(computed.map((c) => [c.axis.key, { strongerWhen: c.strongerWhen, scale: c.scale, fmt: c.fmt }])), [computed]);
@@ -127,7 +99,7 @@ export function useRankAxesValue(): RankAxesView {
     // 반환 객체도 참조를 고정한다(useGroups 와 같은 이유) — Provider 가 이걸 context value 로 그대로 넘기므로,
     // 매 렌더 새 객체면 셸이 렌더될 때마다 **구독자 전원**이 따라 렌더된다.
     return useMemo(
-        () => ({ axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading, reorder }),
-        [axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading, reorder],
+        () => ({ axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading }),
+        [axes, axisIds, linesByAxis, computedValues, computedMeta, isLoading],
     );
 }

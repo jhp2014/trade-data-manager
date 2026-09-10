@@ -73,10 +73,6 @@ describe("gridFeatureFeeds", () => {
         ]);
     });
 
-    it("직전 마디 수 — levelIdx 그대로(0 = 기준선 돌파)", () => {
-        expect(feed("grid-prior-levels").values.map((v) => v.value)).toEqual([0, 1]);
-    });
-
     it("눌림 깊이 — 마디→Point 창의 최저 저점 피벗, breakout 은 결손(값 없음)", () => {
         expect(feed("grid-pullback-pct").values).toEqual([
             { stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 1.94 },
@@ -114,7 +110,7 @@ describe("gridFeatureFeeds", () => {
         const noBase: PointGrid = { ...grid, base: null };
         const feeds2 = gridFeatureFeeds(view, () => noBase);
         expect(feeds2.find((f) => f.key === "baseline-position")!.values).toHaveLength(0);
-        expect(feeds2.find((f) => f.key === "grid-prior-levels")!.values).toHaveLength(2);
+        expect(feeds2.find((f) => f.key === "grid-point-bar-pct")!.values).toHaveLength(2);
     });
 
     it("창 안에 저점 피벗이 여럿이면 최저가 뽑힌다", () => {
@@ -163,8 +159,9 @@ describe("gridFeatureFeeds", () => {
         expect(f.find((x) => x.key === "grid-point-tv")!.values).toHaveLength(2); // 대금은 산다
     });
 
-    it("피드는 9개 — 고점·다리 축(grid-high-·grid-leg-)은 은퇴했다(시그널 이후 값은 결과 패널 몫)", () => {
-        expect(feeds).toHaveLength(9);
+    it("피드는 8개 — 고점·다리 축(grid-high-·grid-leg-)과 직전 마디 수는 은퇴했다", () => {
+        expect(feeds).toHaveLength(8);
+        expect(feeds.some((f) => f.key === "grid-prior-levels")).toBe(false);
         expect(feeds.some((f) => f.key.startsWith("grid-high-") || f.key.startsWith("grid-leg-"))).toBe(false);
     });
 

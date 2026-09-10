@@ -46,7 +46,7 @@ const GRAINS: Grain[] = ["day", "point"];
 
 /**
  * 레일 순서·서랍 pref — **이 패널의 로컬 저장물**. 키 이름은 보드에 살던 시절 그대로 둔다(개명 =
- * 사용자가 맞춰 둔 순서·서랍이 이유 없이 리셋). 시트 축 서열(store rankAxisOrder)·시트 숨김 열
+ * 사용자가 맞춰 둔 순서·서랍이 이유 없이 리셋). 시트 열 순서(wb.rankSheetColOrder)·시트 숨김 열
  * (`wb.rankSheetHiddenCols`)과는 다른 주머니다 — axisOrder.ts·axisDrawer.ts 참조.
  *
  * ⚠ `usePersistedState` 는 마운트 때 한 번 읽는다 — 이 키들의 **소유 컴포넌트는 하나여야 한다**.

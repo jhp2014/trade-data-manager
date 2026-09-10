@@ -1,4 +1,4 @@
-// 시트의 열 헤더 한 줄 — 정렬(클릭/Shift+클릭) · 열 드래그 재정렬 두 종류 · 폭 손잡이 · 우클릭 메뉴 열기.
+// 시트의 열 헤더 한 줄 — 정렬(클릭/Shift+클릭) · 열 드래그 재정렬 · 폭 손잡이 · 우클릭 메뉴 열기.
 // 그리기만 한다: 정렬 상태·열 구성은 본체가 주고, 우클릭은 payload 를 만들어 올려보낸다(메뉴는 SheetMenusHost 가).
 import type { CSSProperties } from "react";
 import { colHelp, colJustify, colKey, colLabel, colPart, type Col } from "./sheetColumns.js";
@@ -7,8 +7,8 @@ import { ResizeHandle } from "./SheetMenus.js";
 import { ROW_H } from "./SheetRowView.js";
 import type { SheetColumns } from "./useSheetColumns.js";
 
-// 열 헤더 드래그의 두 종류 — 미디어타입으로 갈라 서로의 드롭을 안 받는다(고정 그룹 재정렬 vs 축 서열 변경).
-const AXIS_DND = "application/x-rank-axis";
+/** 열 드래그의 미디어타입 — **집합 편성 보드의 레일 드래그**(`x-filter-axis`)와 갈라 둔다:
+ *  같으면 시트 열을 보드에 떨어뜨렸을 때 엉뚱한 순서가 바뀐다(순서는 화면마다 별개 저장물). */
 const COL_DND = "application/x-rank-col";
 
 /** 열 이름 우클릭의 payload — 메뉴(SheetMenusHost)가 소비한다. */
@@ -17,12 +17,10 @@ export interface HdrCtxPayload {
     sortKey: SortKey; step: number; x: number; y: number;
 }
 
-export function SheetHeaderRow({ displayCols, cols, sort, reorderAxis, onSort, onHeaderCtx }: {
+export function SheetHeaderRow({ displayCols, cols, sort, onSort, onHeaderCtx }: {
     displayCols: Col[];
     cols: SheetColumns;
     sort: SortChain;
-    /** 비고정 축 열의 서열 변경(store rankAxisOrder — 시트 전용. 집합 편성 보드는 제 순서를 따로 든다). */
-    reorderAxis: (draggedId: string, targetId: string) => void;
     /** 평클릭=리셋 · Shift+클릭=단 추가 — 규칙은 본체(sheetSort)가 든다. */
     onSort: (key: SortKey, shift: boolean) => void;
     onHeaderCtx: (v: HdrCtxPayload) => void;
@@ -37,22 +35,14 @@ export function SheetHeaderRow({ displayCols, cols, sort, reorderAxis, onSort, o
                 const left = leftOf.get(colKey(c));
                 const justify = colJustify(c);
                 const help = colHelp(c); // 결과 열만 설명 한 줄이 붙는다(축·기본 열은 라벨이 곧 설명)
-                // 드래그 재정렬 두 종류 — **고정 여부로 갈린다**(순서 소스가 둘이기 때문).
-                //   고정 열  = 시트 전용 자리 → frozenCols 배열만 재배치(배치 보드 무관)
-                //   비고정 축 = 축 서열 그 자체 → reorderAxis(store rankAxisOrder)
-                // 종목 열은 언제나 맨 앞 붙박이라 어느 쪽도 아니다.
-                const frozenHere = c.key !== "name" && frozenSet.has(colKey(c));
-                const dnd = frozenHere ? {
+                // 드래그 재정렬 — **종류·고정 여부를 안 가린다**(시트의 순서 저장물은 하나다).
+                // 종목 열만 예외: 언제나 맨 앞 붙박이라 잡이도 드롭 자리도 없다.
+                const dnd = c.key === "name" ? {} : {
                     draggable: true,
                     onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData(COL_DND, colKey(c)); e.dataTransfer.effectAllowed = "move"; },
                     onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes(COL_DND)) e.preventDefault(); },
-                    onDrop: (e: React.DragEvent) => { const k = e.dataTransfer.getData(COL_DND); if (k) cols.reorderFrozen(k, colKey(c)); },
-                } : c.key === "axis" ? {
-                    draggable: true,
-                    onDragStart: (e: React.DragEvent) => { e.dataTransfer.setData(AXIS_DND, (c as { axisId: string }).axisId); e.dataTransfer.effectAllowed = "move"; },
-                    onDragOver: (e: React.DragEvent) => { if (e.dataTransfer.types.includes(AXIS_DND)) e.preventDefault(); },
-                    onDrop: (e: React.DragEvent) => { const id = e.dataTransfer.getData(AXIS_DND); if (id) reorderAxis(id, (c as { axisId: string }).axisId); },
-                } : {};
+                    onDrop: (e: React.DragEvent) => { const k = e.dataTransfer.getData(COL_DND); if (k) cols.reorderCol(k, colKey(c)); },
+                };
                 return (
                     <div key={colKey(c)} {...dnd} title={`${colLabel(c)} — ${help ? `${help}\n` : ""}클릭=이 열로 정렬 · Shift+클릭=정렬 단 추가`}
                         ref={(el) => {
