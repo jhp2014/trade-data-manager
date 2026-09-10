@@ -16,7 +16,7 @@ const GRID_A = gridOf([hi(510, 10300), lo(520, 9700), hi(540, 10600)], { min: 54
 const GRID_B = gridOf([hi(510, 10200), lo(530, 9400), hi(550, 10800)], { min: 550, price: 10800 });
 
 const point = (min: number, close: number): DerivedPoint =>
-    ({ kind: "breakout", ordinal: 0, min, high: close, close, tv: "0", levelPrice: close, levelIdx: 0, levelMin: null });
+    ({ kind: "breakout", ordinal: 0, min, open: close, high: close, close, tv: "0", levelPrice: close, levelIdx: 0, levelMin: null });
 
 const auto = {
     points: [

@@ -18,6 +18,9 @@ import type { AutoPointsView } from "./usePointGrids.js";
 
 const r2 = (x: number): number => Math.round(x * 100) / 100;
 
+/** 원 → 억원. */
+const EOK = 1e8;
+
 /**
  * 축 **정의**(키·이름·표시) — 값은 `gridFeatureFeeds` 가 채운다. 키 목록은 여기서 **파생**한다: 격자 축은 잠깐 숨을 수
  * 있어서(고점 렌즈 축은 갱신 렌즈에서, 격자 축 전부는 격자 로딩 전에 목록에 없다) 서랍 청소(`pruneDrawer`)·시트 열
@@ -38,6 +41,11 @@ const BASE_SPECS = [
     { key: "grid-renewal-elapsed", name: "재돌파 경과", strongerWhen: "higher", display: { suffix: "분", decimals: 0, signed: false } },
     // 1 에 가까울수록 = 늦게까지 눌리다 곧장 갱신(V자, 잠정)
     { key: "grid-pullback-pos", name: "눌림 저점 위치", strongerWhen: "higher", display: { suffix: "", decimals: 2, signed: false } },
+    // 값이 30억~수천억으로 갈린다 — 선형 레일이면 전 구간이 왼쪽 몇 픽셀에 뭉갠다(시총 축과 같은 처방).
+    // 0 이하를 결손으로 내보내 로그의 정의역(양수)을 계산이 보장한다.
+    { key: "grid-point-tv", name: "타점 대금", strongerWhen: "higher", display: { suffix: "억", decimals: 0, signed: false, scale: "log" } },
+    // 분모가 **그 봉 시가**라 "2% 봉" 어휘 그대로다 — 전일 종가 분모인 "당일 %" 와 다른 자(이름에 분모를 박은 이유).
+    { key: "grid-point-bar-pct", name: "봉 진폭(시→고)", strongerWhen: "higher", display: { suffix: "%", decimals: 1, signed: false } },
 ] as const satisfies readonly Omit<ComputedAxisFeed, "values">[];
 type BaseKey = (typeof BASE_SPECS)[number]["key"];
 
@@ -63,7 +71,7 @@ function pullbackLowPivot(grid: PointGrid, levelMin: number | null, pointMin: nu
 }
 
 /**
- * 자동 Point 전체 → 특징 피드 7개. 자리는 useRankAxesValue 가 서버 피드 뒤에 이어 붙인다.
+ * 자동 Point 전체 → 특징 피드 9개. 자리는 useRankAxesValue 가 서버 피드 뒤에 이어 붙인다.
  * 값 없는 Point 는 values 에 없다 = 그 축에 미배치(계산 축 계약 그대로).
  */
 export function gridFeatureFeeds(
@@ -90,6 +98,15 @@ export function gridFeatureFeeds(
         pushBase("grid-prior-levels", { ...key, value: a.point.levelIdx });
         const low = pullbackLowPivot(grid, a.point.levelMin, a.point.min);
         if (low !== null && a.point.levelPrice > 0) pushBase("grid-pullback-pct", { ...key, value: r2(((a.point.levelPrice - low.price) / a.point.levelPrice) * 100) });
+        // 타점 대금 = **자기 봉 대금**(게이트 판정에 쓴 그 값). ⚠ 게이트와 같은 재료를 다른 손잡이가 만진다 —
+        // 게이트는 모수를 바꾸고(올리면 Point 가 같은 레벨의 뒤 캔들로 이동하거나 소멸), 이 축의 레일은 행을
+        // 거르기만 한다(decisions.md 「타점 정의 vs 깔때기 경계」). 그래서 축 도메인의 왼쪽 끝은 게이트고,
+        // 게이트가 종류별로 갈리면(기준선 50 / 재돌파 30) 그 사이 구간엔 재돌파 Point 만 산다 — 정의의 그림자다.
+        const tvEok = Number(a.point.tv) / EOK;
+        if (Number.isFinite(tvEok) && tvEok > 0) pushBase("grid-point-tv", { ...key, value: r2(tvEok) });
+        // 봉 진폭 — 그 봉이 시가에서 위로 얼마나 뻗었나. 고가 ≥ 시가라 값은 항상 ≥ 0(bullOnly 를 꺼도 그렇다).
+        // 윗꼬리 여부는 이 축이 말하지 않는다(종가 위치는 별도 축감).
+        if (a.point.open > 0) pushBase("grid-point-bar-pct", { ...key, value: r2(((a.point.high - a.point.open) / a.point.open) * 100) });
         // 재돌파 전용 둘 — breakout(= levelMin null: 기준선 슬롯 1)은 자연 결손("기준선 돌파는 해당 없음").
         // ⚠ 슬롯 2(2026-09-06 눌림 확정 요건)부터 이 축들의 모수에 **확정 고점 재돌파**가 들어온다:
         // levelMin = 눌림이 확정시킨 고점 피벗 봉이라 "넘은 고가 발생 → 재돌파까지"라는 정의 그대로인데,

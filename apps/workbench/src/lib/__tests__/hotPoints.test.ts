@@ -11,7 +11,7 @@ const pt = (stockCode: string, date: string, min: number, close: number): AutoPo
     date,
     time: `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}:00`,
     point: {
-        kind: "renewal", ordinal: 0, min, high: close, close, tv: "0",
+        kind: "renewal", ordinal: 0, min, open: close, high: close, close, tv: "0",
         levelPrice: close, levelIdx: 0, levelMin: null,
     } as AutoPoint["point"],
 });

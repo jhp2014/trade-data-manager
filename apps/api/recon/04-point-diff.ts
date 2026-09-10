@@ -71,6 +71,7 @@ function pointsOfV8(grid: OldGrid, def: PointDefinition): DerivedPoint[] {
             kind: li === 0 ? "breakout" : "renewal",
             ordinal: out.length,
             min: e.min,
+            open: e.open,
             high: e.high,
             close: e.close,
             tv: e.tv,
@@ -133,7 +134,7 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
             if (BigInt(e.tv) < gate(top.l.renewal)) continue;
             const crossedTop = top.l.renewal ? e.high > top.l.price : e.high >= top.l.price;
             slot1.set(top.i, { high: e.high, min: e.min, crossedTop, slot2Done: false });
-            out.push({ kind: top.i === 0 ? "breakout" : "renewal", ordinal: out.length, min: e.min, high: e.high, close: e.close, tv: e.tv, levelPrice: top.l.price, levelIdx: top.i, levelMin: top.l.min });
+            out.push({ kind: top.i === 0 ? "breakout" : "renewal", ordinal: out.length, min: e.min, open: e.open, high: e.high, close: e.close, tv: e.tv, levelPrice: top.l.price, levelIdx: top.i, levelMin: top.l.min });
             continue;
         }
         // 슬롯 2 — 슬롯 1 상단 미달 + 눌림 확정(W 존재) + W 밴드 하단 넘음 + 재돌파 게이트.
@@ -151,7 +152,7 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
         if (!(e.high > w.price * bandK)) continue;
         if (BigInt(e.tv) < gate(true)) continue;
         s.slot2Done = true;
-        out.push({ kind: "renewal", ordinal: out.length, min: e.min, high: e.high, close: e.close, tv: e.tv, levelPrice: w.price, levelIdx: top.i, levelMin: w.min });
+        out.push({ kind: "renewal", ordinal: out.length, min: e.min, open: e.open, high: e.high, close: e.close, tv: e.tv, levelPrice: w.price, levelIdx: top.i, levelMin: w.min });
     }
     return out;
 }

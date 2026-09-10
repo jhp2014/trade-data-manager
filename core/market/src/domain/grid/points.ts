@@ -117,6 +117,9 @@ export interface DerivedPoint {
     ordinal: number;
     /** Point 캔들 시각(자정기준 분). */
     min: number;
+    /** Point 캔들 시가(원주가) — 봉 진폭(시→고)·몸통 같은 **봉 자체의 크기**를 재는 분모.
+     *  격자 캔들에서 그대로 옮겨 실은 사실이라 재굽기 없이 든다(양봉 요건 `bullOnly` 가 보는 그 시가). */
+    open: number;
     /** Point 캔들 고가(원주가). 상단 돌파 Point 는 그 시점 러닝 최고가, 밴드 Point(m'>0)는 밴드 안 고가. */
     high: number;
     /** Point 캔들 종가(원주가) — 값 축("기준선 대비 %"·"당일 %")의 분자다. 서버 축이 쓰던
@@ -359,6 +362,7 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
         kind: c.kind,
         ordinal: i,
         min: c.e.min,
+        open: c.e.open,
         high: c.e.high,
         close: c.e.close,
         tv: c.e.tv,

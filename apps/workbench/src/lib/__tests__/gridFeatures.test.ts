@@ -23,9 +23,9 @@ const view = {
     byChart: new Map(),
     points: [
         // 돌파 Point — 종가 10,020 → 기준선 대비 +0.2%(고가로 재면 +0.5% 라 분자 바꿔치기가 걸린다)
-        { stockCode: "A", date: "2026-07-01", time: "09:20:00", point: { kind: "breakout", ordinal: 0, min: 560, high: 10050, close: 10020, tv: "0", levelPrice: 10000, levelIdx: 0, levelMin: null } },
+        { stockCode: "A", date: "2026-07-01", time: "09:20:00", point: { kind: "breakout", ordinal: 0, min: 560, open: 9800, high: 10050, close: 10020, tv: "6000000000", levelPrice: 10000, levelIdx: 0, levelMin: null } },
         // 재돌파 Point — 마디(10300, min 575) 갱신. 종가 10,300 → 기준선 대비 +3%. 눌림 = (10300−10100)/10300 ≈ 1.94%
-        { stockCode: "A", date: "2026-07-01", time: "10:00:00", point: { kind: "renewal", ordinal: 1, min: 600, high: 10350, close: 10300, tv: "0", levelPrice: 10300, levelIdx: 1, levelMin: 575 } },
+        { stockCode: "A", date: "2026-07-01", time: "10:00:00", point: { kind: "renewal", ordinal: 1, min: 600, open: 10150, high: 10350, close: 10300, tv: "3500000000", levelPrice: 10300, levelIdx: 1, levelMin: 575 } },
     ],
 } as unknown as AutoPointsView;
 
@@ -89,7 +89,7 @@ describe("gridFeatureFeeds", () => {
         const slot2View = {
             ...view,
             points: [
-                { stockCode: "A", date: "2026-07-01", time: "10:00:00", point: { kind: "renewal", ordinal: 0, min: 600, high: 10050, close: 10040, tv: "0", levelPrice: 9960, levelIdx: 0, levelMin: 565 } },
+                { stockCode: "A", date: "2026-07-01", time: "10:00:00", point: { kind: "renewal", ordinal: 0, min: 600, open: 9900, high: 10050, close: 10040, tv: "0", levelPrice: 9960, levelIdx: 0, levelMin: 565 } },
             ],
         } as unknown as AutoPointsView;
         const g: PointGrid = {
@@ -135,8 +135,36 @@ describe("gridFeatureFeeds", () => {
         expect(deepFeeds.find((f) => f.key === "grid-pullback-pos")!.values.map((v) => v.value)).toEqual([0.8]);
     });
 
-    it("피드는 7개 — 고점·다리 축(grid-high-·grid-leg-)은 은퇴했다(시그널 이후 값은 결과 패널 몫)", () => {
-        expect(feeds).toHaveLength(7);
+    it("타점 대금 — 자기 봉 대금을 억원으로(게이트가 본 그 값)", () => {
+        expect(feed("grid-point-tv").values).toEqual([
+            { stockCode: "A", date: "2026-07-01", time: "09:20:00", value: 60 },
+            { stockCode: "A", date: "2026-07-01", time: "10:00:00", value: 35 },
+        ]);
+        // 로그 척도 선언 — 값이 30억~수천억으로 갈려 선형 레일이면 왼쪽에 뭉갠다.
+        expect(feed("grid-point-tv").display).toMatchObject({ suffix: "억", scale: "log" });
+    });
+
+    it("타점 대금 0 이하는 결손 — 로그 정의역(양수)을 계산이 보장한다", () => {
+        const zero = { ...view, points: view.points.map((p) => ({ ...p, point: { ...p.point, tv: "0" } })) } as unknown as AutoPointsView;
+        const f = gridFeatureFeeds(zero, () => grid);
+        expect(f.find((x) => x.key === "grid-point-tv")!.values).toHaveLength(0);
+        expect(f.find((x) => x.key === "grid-point-bar-pct")!.values).toHaveLength(2); // 진폭은 산다(독립)
+    });
+
+    it("봉 진폭(시→고) — 분모는 **그 봉 시가**(전일 종가도 기준선도 아니다)", () => {
+        // 9,800→10,050 = +2.55% · 10,150→10,350 = +1.97%. 전일 종가(8,000) 분모면 +25/+29 라 분모 바꿔치기가 걸린다.
+        expect(feed("grid-point-bar-pct").values.map((v) => v.value)).toEqual([2.55, 1.97]);
+    });
+
+    it("시가가 0 이하면 봉 진폭만 결손", () => {
+        const noOpen = { ...view, points: view.points.map((p) => ({ ...p, point: { ...p.point, open: 0 } })) } as unknown as AutoPointsView;
+        const f = gridFeatureFeeds(noOpen, () => grid);
+        expect(f.find((x) => x.key === "grid-point-bar-pct")!.values).toHaveLength(0);
+        expect(f.find((x) => x.key === "grid-point-tv")!.values).toHaveLength(2); // 대금은 산다
+    });
+
+    it("피드는 9개 — 고점·다리 축(grid-high-·grid-leg-)은 은퇴했다(시그널 이후 값은 결과 패널 몫)", () => {
+        expect(feeds).toHaveLength(9);
         expect(feeds.some((f) => f.key.startsWith("grid-high-") || f.key.startsWith("grid-leg-"))).toBe(false);
     });
 
