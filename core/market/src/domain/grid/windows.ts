@@ -80,8 +80,9 @@ export function legStartOf(grid: PointGrid, point: Pick<DerivedPoint, "min" | "l
     }
     if (point.levelMin === null) return null;
     // 기준선 슬롯 2(levelIdx 0 + levelMin ≠ null — 이 조합은 슬롯 2 뿐이다)는 확정 결손: 자(확정 고점
-    // 피벗)가 기준선 아래인데 levelViewOf 는 기준선을 몰라 sub-base 세션 최고가 피벗이 **쌍으로 설 수
-    // 있다** — 일치가 곧 의미 동치라는 보장을 여기서 검증하지 않는다(보수, 눌림 규칙 이후 재검토 여지).
+    // 피벗)가 기준선 아래 **또는 동가**(정확 터치 케이스, 2026-09-10 crossedTop 개정)인데 levelViewOf 는
+    // 기준선을 몰라 sub-base(동가 포함) 세션 최고가 피벗이 **쌍으로 설 수 있다** — 일치가 곧 의미
+    // 동치라는 보장을 여기서 검증하지 않는다(보수, 눌림 규칙 이후 재검토 여지).
     if (point.levelIdx === 0) return null;
     // 마디 슬롯 2 의 자 W(확정 고점 피벗)는 귀속 레벨보다 앞선 더 높은 피벗(그 레벨 자신)이 있어 레벨
     // 쌍이 아니다 — 아래 시각·가격 매칭이 자연 결손을 준다(가격까지 맞추는 건 시각 우연 일치 차단).

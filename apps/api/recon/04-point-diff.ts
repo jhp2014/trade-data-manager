@@ -3,6 +3,8 @@
 // 왜 grid-diff 로 안 되나: 03 은 **격자** 비교기다. Point 는 격자 + 판정 규칙의 함수라, 격자 개정(v9)의
 // 회귀 증명은 "옛 격자에 옛 규칙 / 새 격자에 새 규칙"을 나란히 돌려 Point 가 안 움직였는지로 닫는다.
 // v9 1단계 게이트(명세 §7): 이동·신설·소멸·재라벨이 **클래스 ①(선행 국면 — 첫 레벨이 갈린 차트) 밖에서 0**.
+// ⚠ 2026-09-10 crossedTop 승격 자 통일 이후엔 --approach 0 에서도 **기준선 정확 터치 슬롯 2 신설**이
+// v8 대조에 added 로 선다(예고된 갈림 — 정지 신호 아님, decisions.md 「자동 타점 격자」 crossedTop 항목).
 //
 // 분류(캔들 min 매칭 → 레벨 존재로 이동/신설/소멸): 클래스 ① 차트의 행은 따로 센다(예고된 갈림 — 게이트 아님).
 // 셋째 절은 **독립 재계산 대조**(⚠ 판정 정의를 고치면 `naivePoints` 도 다시 진술해야 한다 — 베끼면 동어반복):
@@ -87,10 +89,11 @@ function pointsOfV8(grid: OldGrid, def: PointDefinition): DerivedPoint[] {
  * 정의의 브루트포스 재진술 — 검출 구현(단조 커서 claimedLevel·입력 순서 신뢰)과 **다른 형태**라 전제
  * 위반을 잡는다: 레벨은 마디 뷰의 prefix max 로 재계산, 캔들은 min 으로 **정렬해서** 돌고, 사건은
  * `high > maxBefore×(1−m')`, 레벨당 슬롯은 커서가 아니라 **레벨별 슬롯 맵**으로 센다.
- * 슬롯 모델(2026-09-05 저녁 신설 → 2026-09-06 눌림 확정 요건): 슬롯 1 = 레벨 밴드 첫 자격 캔들,
- * 슬롯 2(재돌파·게이트 30) = 슬롯 1 이 상단 미달일 때만 — 눌림이 확정시킨 고점 W(슬롯 1 이후·그 고가
- * 이상·캔들 이전 확정 고점 피벗의 최대)의 밴드 하단을 넘는 다음 자격 캔들. 눌림 미확정 재상승은 연장
- * (Point 아님), 연장이 상단 관통하면 슬롯 2 영구 소멸. touch 게이트 없음(폐지).
+ * 슬롯 모델(2026-09-05 저녁 신설 → 2026-09-06 눌림 확정 요건 → 2026-09-10 승격 자 통일): 슬롯 1 =
+ * 레벨 밴드 첫 자격 캔들, 슬롯 2(재돌파·게이트 30) = 슬롯 1 고가가 레벨로 승격 불가능(strict > 미달 —
+ * 기준선 정확 터치 포함)일 때만 — 눌림이 확정시킨 고점 W(슬롯 1 이후·그 고가 이상·캔들 이전 확정 고점
+ * 피벗의 최대)의 밴드 하단을 넘는 다음 자격 캔들. 눌림 미확정 재상승은 연장(Point 아님), 연장이 상단을
+ * strict 관통하면 슬롯 2 영구 소멸. touch 게이트 없음(폐지).
  * 갈리면 귀속 단조성·목록 정렬성 위반(정지 신호).
  */
 function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
@@ -132,7 +135,7 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
         const s = slot1.get(top.i);
         if (s === undefined) {
             if (BigInt(e.tv) < gate(top.l.renewal)) continue;
-            const crossedTop = top.l.renewal ? e.high > top.l.price : e.high >= top.l.price;
+            const crossedTop = e.high > top.l.price; // 승격 자(strict >) — 기준선·마디 공통(2026-09-10)
             slot1.set(top.i, { high: e.high, min: e.min, crossedTop, slot2Done: false });
             out.push({ kind: top.i === 0 ? "breakout" : "renewal", ordinal: out.length, min: e.min, open: e.open, high: e.high, close: e.close, tv: e.tv, levelPrice: top.l.price, levelIdx: top.i, levelMin: top.l.min });
             continue;
@@ -144,8 +147,8 @@ function naivePoints(grid: PointGrid, def: PointDefinition): DerivedPoint[] {
             (p) => p.kind === "high" && p.confirmedMin !== null && p.confirmedMin < e.min && p.min >= s.min && p.price >= s.high,
         );
         if (ws.length === 0) {
-            // 눌림 미확정 — 연장. 상단까지 관통하면 그 돌파가 레벨을 완결(슬롯 2 영구 소멸).
-            if (top.l.renewal ? e.high > top.l.price : e.high >= top.l.price) s.slot2Done = true;
+            // 눌림 미확정 — 연장. strict 관통이면 그 돌파가 레벨을 완결(슬롯 2 영구 소멸).
+            if (e.high > top.l.price) s.slot2Done = true;
             continue;
         }
         const w = ws.reduce((a, b) => (b.price > a.price ? b : a));
@@ -258,7 +261,7 @@ async function main(): Promise<void> {
                 }
                 slot2Stats.count++;
                 const lv = lvls[p.levelIdx];
-                if (lv !== undefined && (lv.renewal ? p.high > lv.price : p.high >= lv.price)) slot2Stats.topCrossed++;
+                if (lv !== undefined && p.high > lv.price) slot2Stats.topCrossed++; // 관통 자 = 승격 자(strict >, 2026-09-10 통일)
                 if (p.levelMin !== null) slot2Stats.gapMinutes.push(p.min - p.levelMin);
             }
             if (entry.grid.touch === null && now.length > 0) touchRelax.noTouchDays++, (touchRelax.noTouchPoints += now.length);
@@ -291,7 +294,6 @@ async function main(): Promise<void> {
             const brief = (p: DerivedPoint): { min: number; kind: string; levelIdx: number } => ({ min: p.min, kind: p.kind, levelIdx: p.levelIdx });
             const oldByMin = new Map(old.map((p) => [p.min, p]));
             const nowByMin = new Map(now.map((p) => [p.min, p]));
-            const oldLevels = new Set(old.map((p) => p.levelIdx));
             const nowLevels = new Set(now.map((p) => p.levelIdx));
             const rowBucket = (b: "relabeled" | "moved" | "added" | "removed", row: DiffRow): void => {
                 if (class1) push("class1Rows", row);
@@ -311,9 +313,14 @@ async function main(): Promise<void> {
                     rowBucket("removed", { code, date, levelIdx: p.levelIdx, old: brief(p) });
                 }
             }
+            // 이동의 도착점 dedupe 는 **트윈 없는 옛 Point 의 레벨**로 좁힌다 — 옛 레벨 전체로
+            // 걸면 트윈(equal)된 슬롯 1 과 같은 레벨의 슬롯 2 신설이 조용히 빠져 added=0 으로 위장한다
+            // (2026-09-10 crossedTop 개정의 정확 터치 슬롯 2 가 정확히 그 모양 — v8 대조에선 **예고된
+            // 갈림**으로 added 에 서야 한다).
+            const movedLevels = new Set(old.filter((q) => !nowByMin.has(q.min)).map((q) => q.levelIdx));
             for (const p of now) {
                 if (oldByMin.has(p.min)) continue; // 위에서 equal/재라벨로 처리됨
-                if (oldLevels.has(p.levelIdx)) continue; // 이동의 도착점 — 옛 쪽에서 한 번 셌다
+                if (movedLevels.has(p.levelIdx)) continue; // 이동의 도착점 — 옛 쪽에서 한 번 셌다
                 rowBucket("added", { code, date, levelIdx: p.levelIdx, now: brief(p) });
             }
         }

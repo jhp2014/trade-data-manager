@@ -285,8 +285,10 @@ function confirmedHighSince(pivots: readonly GridPivot[], anchorMin: number, anc
  * 재돌파의 통일 정의 = "**눌림으로 확정된** 고점을 다시 넘음, 넘음 = 밴드 하단 넘음". 레벨당 Point 는
  * 최대 2개다 —
  *   슬롯 1 = 그 레벨 밴드의 첫 자격 사건 캔들(kind·게이트 기존 그대로).
- *   슬롯 2 = 슬롯 1 이 **상단(정확 선)을 못 넘었을 때만** 열린다(기준선 미달 = high < base, 마디 미달 =
- *   high ≤ L). 발화 3요건: ① 확정 고점 W 존재 — 슬롯 1 이후(피벗 min ≥ 슬롯 1 봉·가격 ≥ 슬롯 1 고가)
+ *   슬롯 2 = 슬롯 1 고가가 **레벨로 승격 불가능할 때만**(strict `>` 미달, 즉 high ≤ L — 기준선·마디
+ *   공통, 2026-09-10) 열린다. 기준선 **정확 터치**(high == base)도 개방 — 터치는 돌파(슬롯 1 ≥)지만
+ *   그 고가는 승격 자(strict >)에 미달해 레벨 승격 경로가 재돌파를 못 잡기 때문(crossedTop 본문 주석).
+ *   발화 3요건: ① 확정 고점 W 존재 — 슬롯 1 이후(피벗 min ≥ 슬롯 1 봉·가격 ≥ 슬롯 1 고가)
  *   zigzag 2% 눌림이 확정시킨 고점 피벗의 최대가(캔들 **이전에 확정** — confirmedMin strict, 확정 봉
  *   자신은 봉 내부 순서 증명 불가라 배제) ② 캔들 고가 > W×(1−m')(확정 고점의 밴드 하단 넘음)
  *   ③ 재돌파 게이트 30억. levelPrice/levelMin = W 의 가격/피벗 봉. kind renewal.
@@ -295,8 +297,9 @@ function confirmedHighSince(pivots: readonly GridPivot[], anchorMin: number, anc
  * 연장이 상단까지 관통하면 슬롯 2 영구 소멸(그 돌파가 레벨을 완결) — 손실 없음: 그 고가가 눌림 후
  * 마디(새 레벨)로 확정되면 진짜 재돌파는 그 레벨의 슬롯 1 로 선다. 피벗은 볼륨 무관이라 저대금 연장이
  * 세운 고가도 눌림이 확정시키는 순간 자로 선다(밴드 상태가 볼륨 무관인 것과 같은 원칙 — grid.ts).
- * 슬롯 1 이 처음부터 상단을 넘었으면(전형) 슬롯 2 없음 — 그리고 m'=0 에선 미달 자체가 불가능해
- * 슬롯 2 가 영영 안 열린다(v8 동치 보존).
+ * 슬롯 1 이 처음부터 상단을 strict 로 넘었으면(전형) 슬롯 2 없음. ⚠ m'=0 의 v8 동치는 이제
+ * **기준선 정확 터치만 예외**다(2026-09-10) — 마디는 귀속이 strict 라 m'=0 에서 동가 슬롯 1 이
+ * 불가능하지만, 기준선은 터치 귀속(≥)이라 high == base 슬롯 1 이 서고 슬롯 2 가 열린다.
  * ⚠ "kind = levelIdx===0 파생" 정리는 폐기 유지 — 기준선 슬롯 2 는 levelIdx 0 인데 kind renewal 이다.
  */
 export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEFINITION): DerivedPoint[] {
@@ -331,8 +334,12 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
             if (BigInt(e.tv) < (levels[li].renewal ? gateRenewal : gateBase)) continue;
             claimedLevel = li;
             const lv = levels[li];
-            // 상단(정확 선) 미달이면 슬롯 2 개방 — 접근이 기준을 훼손했고, 눌림이 고점을 확정하면 재돌파 국면.
-            const crossedTop = lv.renewal ? e.high > lv.price : e.high >= lv.price;
+            // 슬롯 2 개방 판정 = "이 고가가 눌림 후 새 레벨로 설 수 있는가"(strict > — 레벨 승격과 같은 자).
+            // 설 수 있으면 레벨 승격 경로가 재돌파를 잡으니 슬롯 2 불필요, 못 서면(기준선 정확 터치
+            // high == base 포함 — 터치는 돌파(슬롯 1 ≥)지만 승격은 strict 라 문이 없다) 슬롯 2 가 받는다.
+            // ⚠ "미달 여부"가 아니다 — 기준선 분기를 ≥ 로 쓰면 정확 터치의 재돌파가 양쪽 문 모두에서
+            // 새는 경계 구멍이 된다(2026-09-10 대한광통신 09:18, decisions.md).
+            const crossedTop = e.high > lv.price;
             slot2 = crossedTop ? null : { level: li, anchorMin: e.min, anchorHigh: e.high };
             chosen.push({ kind: li === 0 ? "breakout" : "renewal", levelIdx: li, levelPrice: lv.price, levelMin: lv.min, e });
             continue;
@@ -342,10 +349,11 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
             // ── 슬롯 2(재돌파): 확정 고점 W(머리 주석 ①)를 피벗에서 읽는다.
             const w = confirmedHighSince(grid.pivots, slot2.anchorMin, slot2.anchorHigh, e.min);
             if (w === null) {
-                // 눌림 미확정 — 같은 돌파의 연장(Point 아님, 후보로만 남는다). 상단까지 관통하면 그
+                // 눌림 미확정 — 같은 돌파의 연장(Point 아님, 후보로만 남는다). strict 관통이면 그
                 // 돌파가 레벨을 완결한 것 — 슬롯 2 영구 소멸(이후 진짜 재돌파는 이 고가가 눌림 후
-                // 새 마디로 확정돼 그 레벨의 슬롯 1 로 선다 — 손실 없음).
-                if (lv.renewal ? e.high > lv.price : e.high >= lv.price) slot2 = null;
+                // 새 마디로 확정돼 그 레벨의 슬롯 1 로 선다 — 손실 없음). 개방 판정과 같은 자(strict >):
+                // 연장이 또 정확 터치에 그치면 그 고가도 레벨로 못 서므로 슬롯 2 를 닫지 않는다.
+                if (e.high > lv.price) slot2 = null;
                 continue;
             }
             // 눌림 확정 — 재돌파 국면. 게이트 미달 캔들은 자도 국면도 안 바꾼다(슬롯 1 과 같은 문법:
