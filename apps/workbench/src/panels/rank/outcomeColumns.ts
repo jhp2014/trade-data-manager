@@ -9,6 +9,7 @@
 import type { SimResult } from "@trade-data-manager/market/domain";
 import type { OutcomeRecord } from "../../lib/useOutcomes.js";
 import { OUTCOME_METRICS, type OutcomeMetric } from "../../lib/outcomeMetric.js";
+import { LEG_HIGH } from "../../styles/palette.js";
 import { SIM_STATUS_META } from "../sim/simStatusMeta.js";
 
 /** 시뮬 열 id — 분류·요구 타점·최고/최저 도달(2026-09-06, decisions.md 트레이드 시뮬 항목).
@@ -82,3 +83,62 @@ export function outcomeSortValue(rec: OutcomeRecord | undefined, sim: SimResult 
  * 달고 서는 줄에서 결과 열만 맨 숫자면 그 넷이 무슨 단위인지 매번 헤더로 되돌아가 확인하게 된다.
  */
 export const fmtOutcomePct = (v: number): string => `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
+
+/**
+ * 결과 값 한 칸의 표기(순수) — 글자·색·배지 여부. **시트 셀과 타점 정보 패널이 같은 함수를 본다**:
+ * 두 벌이면 같은 타점의 같은 값이 두 화면에서 다른 글자·다른 색으로 서고, 그건 "정렬은 X 순인데 칸은 Y"와
+ * 같은 종류의 침묵 사고다(이 파일 머리 주석의 규율을 표기 쪽으로 넓힌 것).
+ *
+ * 값 없음(`—`)은 **두 사정을 겸한다**: 결손(격자 미도착·레코드 없음)과 무사건(무눌림의 낙폭·회복).
+ * 어느 쪽인지는 상태 칸이 말한다 — 그래서 `missing` 을 겉으로 내서 호출부가 그 둘을 가를 수 있게 한다.
+ */
+export interface OutcomeCellView {
+    text: string;
+    /** 글자색 — CSS 토큰 문자열 또는 팔레트 hex. */
+    color: string;
+    /** 테두리 배지로 그릴 색(상태 "이내" · 시뮬 분류). null = 맨 글자. */
+    badge: string | null;
+    /** 숫자 표기인가 — tabular 글꼴 대상. */
+    numeric: boolean;
+    /** 레코드 자체가 없다(격자 미도착) — 무사건과 구별해야 하는 호출부용. */
+    missing: boolean;
+}
+
+const MUTED = "var(--text-tertiary)";
+const dash = (missing: boolean): OutcomeCellView => ({ text: "—", color: MUTED, badge: null, numeric: false, missing });
+
+export function outcomeCellView(id: OutcomeColId, rec: OutcomeRecord | undefined, sim: SimResult | undefined): OutcomeCellView {
+    if (isSimColId(id)) {
+        if (sim === undefined) return dash(true);
+        if (id === "simStatus") {
+            const m = SIM_STATUS_META[sim.status];
+            return { text: m.label, color: m.color, badge: m.color, numeric: false, missing: false };
+        }
+        const v = id === "simRequired" ? sim.requiredPct : id === "simPeak" ? sim.peakPct : sim.troughPct;
+        if (v === null) return dash(false);
+        // 도달↑/↓만 부호색(성과/진단의 결) — 요구 타점은 깊이 값이라 중립(음수 = 종가 아래로 안 옴만 흐리게).
+        const color = id === "simPeak" && v > 0 ? "var(--rise)"
+            : id === "simTrough" && v < 0 ? "var(--fall)"
+                : id === "simRequired" && v < 0 ? MUTED : "var(--text-primary)";
+        return { text: id === "simRequired" ? `${v.toFixed(1)}%` : fmtOutcomePct(v), color, badge: null, numeric: true, missing: false };
+    }
+    if (id === "recovered") {
+        const r = rec?.slice.recovered ?? null;
+        return {
+            text: r === true ? "○" : r === false ? "✕" : "—",
+            color: r === true ? "var(--rise)" : r === false ? "var(--fall)" : MUTED,
+            badge: null, numeric: false, missing: rec === undefined,
+        };
+    }
+    if (id === "status") {
+        if (rec === undefined) return dash(true);
+        if (rec.slice.status === "exceeded") return { text: "초과", color: "var(--text-secondary)", badge: null, numeric: false, missing: false };
+        if (rec.slice.status === "contained") return { text: "이내", color: LEG_HIGH, badge: LEG_HIGH, numeric: false, missing: false };
+        return { text: "무눌림", color: MUTED, badge: null, numeric: false, missing: false };
+    }
+    const v = rec?.eval[id]; // 정렬(outcomeSortValue)과 같은 출처 — 두 벌이면 "정렬은 X 순, 칸은 Y" 사고
+    if (v === undefined) return dash(rec === undefined);
+    // +를 빨갛게 칠하는 건 연장 고점만(옛 결과 시트의 plusRed) — 낙폭 2종의 양수는 "종가 위 저가"라 성질이 다르다.
+    const color = id === "extHigh" && v > 0 ? "var(--rise)" : v < 0 ? "var(--fall)" : "var(--text-primary)";
+    return { text: fmtOutcomePct(v), color, badge: null, numeric: true, missing: false };
+}

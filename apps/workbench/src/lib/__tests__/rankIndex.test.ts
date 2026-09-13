@@ -36,7 +36,7 @@ describe("buildAxisIndex", () => {
 describe("placementsOf", () => {
     const axes = [axis("ax1", "속도"), axis("ax2", "매물대"), axis("ax3", "수급")];
 
-    it("배치된 축은 강한 순(frac 내림차순) — 축마다 분모가 달라도 비교된다. 미배치는 축 순서 그대로.", () => {
+    it("배치는 **축 목록 순서** 그대로 — 정렬은 화면(사람 손)의 몫이라 여기서 안 섞는다.", () => {
         // ax1: A 가 3개 중 최약(frac 0) / ax2: A 가 2개 중 최강(frac 1)
         const indexByAxis = new Map<string, AxisIndex>([
             ["ax1", buildAxisIndex([pp("A", 10), pp("B", 20), pp("C", 30)])],
@@ -44,16 +44,14 @@ describe("placementsOf", () => {
             ["ax3", buildAxisIndex([pp("B", 10)])], // A 는 여기 미배치
         ]);
         const got = placementsOf(ref("A"), axes, indexByAxis);
-        expect(got.placed.map((g) => g.axisName)).toEqual(["매물대", "속도"]); // frac 1 → 0
-        expect(got.placed[0].cell).toMatchObject({ rank: 1, total: 2 });
-        expect(got.placed[1].cell).toMatchObject({ rank: 3, total: 3 });
-        expect(got.unplaced.map((a) => a.name)).toEqual(["수급"]);
+        expect(got.placed.map((g) => g.axisName)).toEqual(["속도", "매물대"]); // 축 순서(ax1, ax2)
+        expect(got.placed[0].cell).toMatchObject({ rank: 3, total: 3 });
+        expect(got.placed[1].cell).toMatchObject({ rank: 1, total: 2 });
+        expect(got.placed).toHaveLength(2); // 값 없는 축(수급)은 목록에 없다 — 줄 세우기는 화면이 축 전체로 한다
     });
 
-    it("어디에도 안 꽂힌 타점은 전 축이 미배치.", () => {
-        const got = placementsOf(ref("Z"), axes, new Map());
-        expect(got.placed).toEqual([]);
-        expect(got.unplaced).toHaveLength(3);
+    it("어디에도 안 꽂힌 타점은 배치가 비어 있다.", () => {
+        expect(placementsOf(ref("Z"), axes, new Map()).placed).toEqual([]);
     });
 
     // "저 축 보여줘"(타점 정보 → 시트) 배선의 계약 — 이름이 아니라 **축 키**가 나가야 시트 열 키
@@ -66,7 +64,5 @@ describe("placementsOf", () => {
         ]);
         const got = placementsOf(ref("A"), keyed, indexByAxis);
         expect(got.placed.map((g) => g.axisKey).sort()).toEqual(["c:gap", "p:속도"]);
-        // 미배치 쪽도 AxisRef 그대로라 key 가 산다(타점 정보 패널이 둘 다 같은 손잡이로 지목한다).
-        expect(placementsOf(ref("Z"), keyed, indexByAxis).unplaced.map((a) => a.key)).toEqual(["p:속도", "c:gap"]);
     });
 });

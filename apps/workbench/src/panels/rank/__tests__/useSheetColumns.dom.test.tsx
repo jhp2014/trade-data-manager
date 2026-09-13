@@ -38,8 +38,8 @@ const BASE: Args = { axes: LIVE, axesLoading: false, containerW: 1200, axisMin: 
 const setup = (over: Partial<Args> = {}): ReturnType<typeof renderHook<ReturnType<typeof useSheetColumns>, Args>> =>
     renderHook((a: Args) => useSheetColumns(a), { initialProps: { ...BASE, ...over } });
 
-beforeEach(() => { localStorage.clear(); useWorkbench.setState({ revealAxis: null }); });
-afterEach(() => { localStorage.clear(); useWorkbench.setState({ revealAxis: null }); });
+beforeEach(() => { localStorage.clear(); useWorkbench.setState({ revealCol: null }); });
+afterEach(() => { localStorage.clear(); useWorkbench.setState({ revealCol: null }); });
 
 describe("픽스처 자신 — 죽은 키가 실제로 심겼나", () => {
     // 안 심겼으면 아래 "안 지운다" 검사가 통째로 헛돈다.
@@ -226,7 +226,7 @@ describe("축 보여줘 — 숨긴 열이면 먼저 꺼낸다", () => {
         act(() => result.current.toggleHidden("ax:a2"));
         expect(result.current.hiddenCols).toContain("ax:a2");
 
-        act(() => { useWorkbench.setState({ revealAxis: { axisId: "a2", at: Date.now() } }); });
+        act(() => { useWorkbench.setState({ revealCol: { key: "ax:a2", at: Date.now() } }); });
         expect(result.current.hiddenCols).not.toContain("ax:a2");
         expect(result.current.flashCol).toBe("ax:a2");
     });
@@ -235,20 +235,20 @@ describe("축 보여줘 — 숨긴 열이면 먼저 꺼낸다", () => {
         expect(setup().result.current.flashCol).toBeNull();
     });
 
-    // store 는 소비 후에도 revealAxis 를 남긴다(마지막 요청 상태) — at 가드 없이는 프리셋 전환(재마운트)마다
+    // store 는 소비 후에도 revealCol 을 남긴다(마지막 요청 상태) — at 가드 없이는 프리셋 전환(재마운트)마다
     // 지난 요청이 다시 재생돼 번쩍임 + 스크롤 점프가 난다.
     it("재마운트는 지난 요청을 재생하지 않는다 — 마운트 시점에 이미 있던 요청은 소비된 것", () => {
-        act(() => { useWorkbench.setState({ revealAxis: { axisId: "a2", at: Date.now() - 1000 } }); });
+        act(() => { useWorkbench.setState({ revealCol: { key: "ax:a2", at: Date.now() - 1000 } }); });
         const { result } = setup();
         expect(result.current.flashCol).toBeNull();
     });
 
     it("재마운트 뒤에도 **새** 요청(at 증가)은 발화한다", () => {
-        act(() => { useWorkbench.setState({ revealAxis: { axisId: "a1", at: Date.now() - 1000 } }); });
+        act(() => { useWorkbench.setState({ revealCol: { key: "ax:a1", at: Date.now() - 1000 } }); });
         const { result } = setup();
         expect(result.current.flashCol).toBeNull();
 
-        act(() => { useWorkbench.setState({ revealAxis: { axisId: "a2", at: Date.now() + 1 } }); });
+        act(() => { useWorkbench.setState({ revealCol: { key: "ax:a2", at: Date.now() + 1 } }); });
         expect(result.current.flashCol).toBe("ax:a2");
     });
 });

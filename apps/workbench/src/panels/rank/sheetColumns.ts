@@ -200,13 +200,18 @@ export function layoutColumns({ baseCols, frozenKeys, hiddenCols, colWidths, con
  * 소수 자리**를 준다(같은 틈의 키끼리는 기본 순서 유지). 그 값으로 한 번 정렬하면 끝이다.
  */
 export function orderCols(baseCols: readonly Col[], pref: readonly string[]): Col[] {
-    if (pref.length === 0) return [...baseCols];
+    return orderByPref(baseCols, colKey, pref);
+}
+
+/** 위 규칙의 일반형 — 키를 가진 목록이면 무엇이든(시트 열 · 타점 정보 줄). 셈은 orderCols 주석 참조. */
+export function orderByPref<T>(items: readonly T[], keyOf: (it: T) => string, pref: readonly string[]): T[] {
+    if (pref.length === 0) return [...items];
     const rank = new Map(pref.map((k, i) => [k, i]));
     const eff = new Map<string, number>();
     let last = -1; // 지금까지 본 pref 순위의 **최댓값**(-1 = 아직 하나도 못 봤다 = 첫 pref 키보다 앞)
     let gap = 0;
-    for (const c of baseCols) {
-        const k = colKey(c);
+    for (const it of items) {
+        const k = keyOf(it);
         const r = rank.get(k);
         if (r !== undefined) {
             last = Math.max(last, r); // **최대**여야 한다: pref 가 기본 순서를 거스르면(축 하나를 앞으로
@@ -214,10 +219,10 @@ export function orderCols(baseCols: readonly Col[], pref: readonly string[]): Co
             eff.set(k, r);            // 열들이 그만큼 앞으로 끼어든다.
         } else {
             gap += 1;
-            eff.set(k, last + gap / (baseCols.length + 1)); // < last+1 이라 다음 pref 키를 못 넘는다
+            eff.set(k, last + gap / (items.length + 1)); // < last+1 이라 다음 pref 키를 못 넘는다
         }
     }
-    return [...baseCols].sort((a, b) => eff.get(colKey(a))! - eff.get(colKey(b))!);
+    return [...items].sort((a, b) => eff.get(keyOf(a))! - eff.get(keyOf(b))!);
 }
 
 /**

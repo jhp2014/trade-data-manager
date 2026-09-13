@@ -9,6 +9,17 @@ import { allThemeMembersQuery } from "../api/queries.js";
 
 const EMPTY_INDEX: ThemeIndex = buildThemeIndex([]);
 
+/**
+ * **모듈 1-엔트리 캐시**(키 = RQ data 참조) — 인덱스는 앱에 한 벌이어야 한다. `useMemo` 만 쓰면
+ * 컴포넌트 인스턴스마다 다른 객체가 서고, 그 참조를 키로 삼는 하류 캐시(useThemeProjection)가
+ * 소비자 수만큼 미스를 낸다(= 모수 전체를 도는 패스가 화면 수만큼 돈다).
+ */
+let cache: { data: unknown; index: ThemeIndex } | null = null;
+const indexOf = (data: Parameters<typeof buildThemeIndex>[0]): ThemeIndex => {
+    if (!cache || cache.data !== data) cache = { data, index: buildThemeIndex(data) };
+    return cache.index;
+};
+
 export interface ThemeIndexView {
     index: ThemeIndex;
     isLoading: boolean;
@@ -26,7 +37,7 @@ export function useThemeIndex(): ThemeIndexView {
     const q = useQuery(allThemeMembersQuery());
     return useMemo(
         () => ({
-            index: q.data ? buildThemeIndex(q.data) : EMPTY_INDEX,
+            index: q.data ? indexOf(q.data) : EMPTY_INDEX,
             isLoading: q.isLoading,
             ready: q.data !== undefined,
             error: (q.error as Error | null) ?? null,

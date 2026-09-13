@@ -12,15 +12,14 @@ import { memo, type CSSProperties, type ReactNode } from "react";
 import type { SimResult } from "@trade-data-manager/market/domain";
 import { COL_META, colJustify, colKey, type Col, type ColKind, type OutScope } from "./sheetColumns.js";
 import type { OutScopeRef } from "./sheetSort.js";
-import { fmtOutcomePct, isSimColId, OUTCOME_COL_META, type OutcomeColId, type SimColId } from "./outcomeColumns.js";
+import { fmtOutcomePct, isSimColId, outcomeCellView, OUTCOME_COL_META, type OutcomeColId } from "./outcomeColumns.js";
 import { isComputedAxis } from "../../lib/computedAxis.js";
-import { SIM_STATUS_META } from "../sim/simStatusMeta.js";
 import type { OutcomeRecord } from "../../lib/useOutcomes.js";
 import { rowKey } from "../../lib/pointKey.js";
 import type { SheetRow } from "./rankSheet.js";
 import type { RankCell } from "../../lib/rankIndex.js";
-import { LEG_HIGH, PIN, heatOf } from "../../styles/palette.js";
-import { cellView, type CellMode, type ValuedCell } from "./sheetCell.js";
+import { PIN, heatOf } from "../../styles/palette.js";
+import { cellView, toneColor, type CellMode, type ValuedCell } from "./sheetCell.js";
 
 // 행 피치 두 종류 — **가상화기의 estimateSize 가 이 상수를 그대로 쓴다**(측정 안 함).
 // 그래서 행/그룹 머리 둘 다 box-sizing:border-box 로 테두리까지 이 안에 넣는다 — 실제 높이가
@@ -202,7 +201,7 @@ function SheetRowViewImpl({
                     // 체결가 E 는 열이 아니라 툴팁(사용자 확정 — 행마다 종가×(1−n)이라 비교 정보가 없다).
                     title: rec?.entryPrice != null ? `${OUTCOME_COL_META[metric].help}\n체결가 E = ${rec.entryPrice.toLocaleString()}` : OUTCOME_COL_META[metric].help,
                     style: { cursor: "pointer" },
-                    body: <SimCell metric={metric} rec={rec} />,
+                    body: <OutcomeCell metric={metric} rec={undefined} sim={rec} />,
                 };
             }
             const rec = outcomeOf(row, scope);
@@ -210,7 +209,7 @@ function SheetRowViewImpl({
                 onClick: () => h.onNav(row),
                 title: OUTCOME_COL_META[metric].help,
                 style: { cursor: "pointer" },
-                body: <OutcomeCell metric={metric} rec={rec} />,
+                body: <OutcomeCell metric={metric} rec={rec} sim={undefined} />,
             };
         },
         // 차이 열 — 값 하나짜리 셀. 부호색은 결과 숫자 셀과 같은 어휘(양수 = 연장 쪽이라 빨강).
@@ -270,55 +269,14 @@ export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,
 );
 
-/** 부호 색 한 벌 — 축 숫자 셀과 결과 셀이 같은 어휘를 쓴다(한 줄에 나란히 서므로). */
-const toneColor = (tone: "rise" | "fall" | null): string =>
-    tone === "rise" ? "var(--rise)" : tone === "fall" ? "var(--fall)" : "var(--text-primary)";
-
-// ── 결과 셀 — 숫자 4종(부호색, Δ>0 은 옅은 배경) · 회복 ○/✕/— · 상태 배지.
-// — 표기는 값 없음(격자 미도착)과 무사건(무눌림의 낙폭·회복)이 같다: 상태 열이 그 사정을 말한다(옛 결과 시트 승계).
-function OutcomeCell({ metric, rec }: { metric: Exclude<OutcomeColId, SimColId>; rec: OutcomeRecord | undefined }): JSX.Element {
-    if (metric === "recovered") {
-        const r = rec?.slice.recovered ?? null;
-        return (
-            <span style={{ color: r === true ? "var(--rise)" : r === false ? "var(--fall)" : "var(--text-tertiary)" }}>
-                {r === true ? "○" : r === false ? "✕" : "—"}
-            </span>
-        );
+// ── 결과·시뮬 셀 — 표기 규칙은 outcomeCellView(순수) 한 곳이고 여기는 그리기만 한다.
+//    (타점 정보 패널이 같은 함수를 본다 — 두 화면이 같은 값을 다른 글자로 말하면 안 된다.)
+function OutcomeCell({ metric, rec, sim }: { metric: OutcomeColId; rec: OutcomeRecord | undefined; sim: SimResult | undefined }): JSX.Element {
+    const v = outcomeCellView(metric, rec, sim);
+    if (v.badge !== null) {
+        return <span style={{ color: v.color, border: `1px solid ${v.badge}`, borderRadius: 3, padding: "0 3px", fontSize: 10 }}>{v.text}</span>;
     }
-    if (metric === "status") {
-        if (rec === undefined) return <span style={{ color: "var(--text-tertiary)" }}>—</span>;
-        return rec.slice.status === "exceeded"
-            ? <span style={{ color: "var(--text-secondary)" }}>초과</span>
-            : rec.slice.status === "contained"
-                ? <span style={{ color: LEG_HIGH, border: `1px solid ${LEG_HIGH}`, borderRadius: 3, padding: "0 3px", fontSize: 10 }}>이내</span>
-                : <span style={{ color: "var(--text-tertiary)" }}>무눌림</span>;
-    }
-    const v = rec?.eval[metric]; // 정렬(outcomeSortValue)과 같은 출처 — 두 벌이면 "정렬은 X 순, 칸은 Y" 사고
-    // +를 빨갛게 칠하는 건 연장 고점만(옛 결과 시트의 plusRed) — 낙폭 2종의 양수는 "종가 위 저가"라 성질이 다르다.
-    const tone = v === undefined ? null : metric === "extHigh" && v > 0 ? "rise" : v < 0 ? "fall" : null;
-    return (
-        <span className="tabular" style={{
-            color: v === undefined ? "var(--text-tertiary)" : toneColor(tone),
-        }}>
-            {v === undefined ? "—" : fmtOutcomePct(v)}
-        </span>
-    );
-}
-
-// ── 시뮬 셀 — 분류 배지(simStatusMeta 색·라벨 = 패널 띠와 같은 출처) · 숫자 3종(요구/도달↑/도달↓).
-function SimCell({ metric, rec }: { metric: SimColId; rec: SimResult | undefined }): JSX.Element {
-    if (rec === undefined) return <span style={{ color: "var(--text-tertiary)" }}>—</span>;
-    if (metric === "simStatus") {
-        const m = SIM_STATUS_META[rec.status];
-        return <span style={{ color: m.color, border: `1px solid ${m.color}`, borderRadius: 3, padding: "0 3px", fontSize: 10 }}>{m.label}</span>;
-    }
-    const v = metric === "simRequired" ? rec.requiredPct : metric === "simPeak" ? rec.peakPct : rec.troughPct;
-    if (v === null) return <span style={{ color: "var(--text-tertiary)" }}>—</span>;
-    // 도달↑/↓만 부호색(성과/진단의 결) — 요구 타점은 깊이 값이라 중립(음수 = 종가 아래로 안 옴만 흐리게).
-    const color = metric === "simPeak" && v > 0 ? "var(--rise)"
-        : metric === "simTrough" && v < 0 ? "var(--fall)"
-            : metric === "simRequired" && v < 0 ? "var(--text-tertiary)" : "var(--text-primary)";
-    return <span className="tabular" style={{ color }}>{metric === "simRequired" ? `${v.toFixed(1)}%` : fmtOutcomePct(v)}</span>;
+    return <span className={v.numeric ? "tabular" : undefined} style={{ color: v.color }}>{v.text}</span>;
 }
 
 // ── 순위 셀(숫자 `rank/total` 또는 위치 눈금 틱). 미배치 = 흐린 점. prominent(선택 행) = 불릿처럼 굵게.

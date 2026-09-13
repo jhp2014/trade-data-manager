@@ -157,7 +157,7 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     // commitWidth 가 한 번 영속에 적는다(최종 저장값 의미는 종전과 동일).
     const [previewWidths, setPreviewWidths] = useState<Record<string, number>>({});
     // 청소 effect 가 읽는 최신값 — deps 에 넣으면 차이 열 편집마다 축 청소가 통째로 도는데, 이 effect 의
-    // 트리거는 어디까지나 "축·자리 목록이 바뀌었나" 하나여야 한다(revealAxis 의 flatRef 와 같은 규율).
+    // 트리거는 어디까지나 "축·자리 목록이 바뀌었나" 하나여야 한다(revealCol 의 flatRef 와 같은 규율).
     const difsRef = useRef<DifCol[]>(difs);
     difsRef.current = difs;
 
@@ -220,27 +220,27 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [axes, axesLoading, pruneAxisIds, liveSetIds, liveStageIds, liveHotAxisIds]);
 
-    // ── "저 축 보여줘"(타점 정보 → 여기) — 그 축 **열**로 가로 스크롤하고 잠깐 강조한다.
-    //    시트에서는 열이 곧 축이고 축이 많으면 가로로 넘치므로 찾아 주는 일이 필요하다.
-    //    숨긴 열이면 먼저 꺼내 준다 — 안 그러면 눌러도 아무 일이 없다.
-    const revealAxis = useWorkbench((s) => s.revealAxis);
+    // ── "저 열 보여줘"(타점 정보 → 여기) — 그 **열**로 가로 스크롤하고 잠깐 강조한다.
+    //    열이 많으면 가로로 넘치므로 찾아 주는 일이 필요하다. 숨긴 열이면 먼저 꺼내 준다 —
+    //    안 그러면 눌러도 아무 일이 없다. (갈래가 갈려 그 열이 지금 안 서 있으면 숨김 해제까지만 된다.)
+    const revealCol = useWorkbench((s) => s.revealCol);
     const thRefs = useRef<Map<string, HTMLElement>>(new Map());
     const [flashCol, setFlashCol] = useState<string | null>(null);
-    // 재발화 가드 — store 는 소비 후에도 revealAxis 를 남기므로(요청 큐가 아니라 마지막 요청 상태),
+    // 재발화 가드 — store 는 소비 후에도 revealCol 을 남기므로(요청 큐가 아니라 마지막 요청 상태),
     // at 비교 없이는 재마운트(프리셋 전환 등)가 지난 요청을 다시 재생한다(번쩍임 + 스크롤 점프).
     // 마운트 시점에 이미 있던 요청 = 이미 처리된 것으로 본다(ref 초기값).
-    const lastRevealAt = useRef(revealAxis?.at ?? 0);
+    const lastRevealAt = useRef(revealCol?.at ?? 0);
     useEffect(() => {
-        if (!revealAxis || revealAxis.at <= lastRevealAt.current) return;
-        lastRevealAt.current = revealAxis.at;
-        const key = `ax:${revealAxis.axisId}`;
+        if (!revealCol || revealCol.at <= lastRevealAt.current) return;
+        lastRevealAt.current = revealCol.at;
+        const key = revealCol.key;
         setHiddenCols((h) => h.filter((k) => k !== key));
         setFlashCol(key);
         // 숨김 해제가 렌더된 뒤에 스크롤해야 대상이 존재한다.
         const raf = requestAnimationFrame(() => thRefs.current.get(key)?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" }));
         const t = setTimeout(() => setFlashCol(null), FLASH_MS);
         return () => { cancelAnimationFrame(raf); clearTimeout(t); };
-    }, [revealAxis, setHiddenCols]);
+    }, [revealCol, setHiddenCols]);
 
     // 기본 순서 → 숨김 제외 → 고정 먼저(기본순 유지, 좌측 스택) → 비고정. 종목은 항상 표시·고정.
     // day 모드: 시간(타점 소유)은 아예 없고, 타점 수(자동 파생)·코멘트(존재 지도)가 뒤에 선다.

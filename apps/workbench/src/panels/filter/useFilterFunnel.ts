@@ -25,7 +25,7 @@ import type { OutcomesView } from "../../lib/useOutcomes.js";
 import type { HotCounts } from "../../lib/hotPoints.js";
 import { useRankSections } from "../../lib/useRankSections.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
-import { themeProjectionOf } from "../../lib/themeStrength.js";
+import { projectionOf } from "../../lib/useThemeProjection.js";
 import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import { unionNames } from "../../lib/groupIndex.js";
 import type { SetRef } from "../../lib/setRef.js";
@@ -138,8 +138,9 @@ export function useFilterFunnel(): FunnelView {
     // ready(데이터 실도착)로 접는다 — isLoading 만 보면 paused 류에서 빈 인덱스가 "전부 탈락"으로 위장한다.
     const sections = useRankSections();
     const themes = useThemeIndex();
+    // 투영은 **공용 모듈 캐시**(인덱스 참조 키) — 제 사본을 만들면 전 테마 × 전 종목 배열이 앱에 두 벌 산다.
     const themeProj = useMemo(
-        () => (!themes.ready || themes.error !== null ? null : themeProjectionOf(themes.index)),
+        () => (!themes.ready || themes.error !== null ? null : projectionOf(themes.index)),
         [themes.ready, themes.error, themes.index],
     );
     // 테마 술어가 **어디에도 없으면**(활성 단계 ∪ 저장 집합) 재료를 상수로 끊는다 — 안 그러면 30분

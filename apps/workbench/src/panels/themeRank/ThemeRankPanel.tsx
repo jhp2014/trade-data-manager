@@ -32,7 +32,8 @@ import { useChartPoints } from "../../lib/useChartPoints.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { useThemeStrengthStats } from "../../lib/useThemeStrengthStats.js";
-import { anyConditionOn, DEFAULT_THEME_STRENGTH, themeProjectionOf, themeVerdicts, type ThemeStrengthParams, type ThemeVerdict } from "../../lib/themeStrength.js";
+import { anyConditionOn, DEFAULT_THEME_STRENGTH, themeVerdicts, type ThemeStrengthParams, type ThemeVerdict } from "../../lib/themeStrength.js";
+import { projectionOf } from "../../lib/useThemeProjection.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { scatterLayer } from "./scatterLayer.js";
 import { themeColorMap } from "./themeColor.js";
@@ -179,7 +180,7 @@ export function ThemeRankPanel(): JSX.Element {
     // 헤더 카운트(모수 전체 ∃)와 층이 다르다: 저건 "몇 개가 통과하나", 이건 "지금 이 종목을 어느 테마가
     // 통과시키나". eff(컷선 미리보기 포함)를 쓴다 — 끌면 ✓/✗ 가 그 자리에서 따라와야 손이 맥락을 잃지 않는다.
     // 활성 조건이 없으면 전부 참이라 표식이 소음이 된다 → null(칩은 이름만).
-    const proj = useMemo(() => themeProjectionOf(themesView.index), [themesView.index]);
+    const proj = projectionOf(themesView.index); // 공용 모듈 캐시(인덱스 참조 키) — 투영 사본이 화면마다 서지 않게
     const verdicts = useMemo((): ReadonlyMap<string, ThemeVerdict> | null => {
         if (!subject || !section || linkedParams === null || !anyConditionOn(eff)) return null;
         return new Map(themeVerdicts(subject.code, section, eff, proj).map((v) => [v.theme, v] as const));

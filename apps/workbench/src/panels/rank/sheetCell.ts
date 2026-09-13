@@ -59,7 +59,12 @@ export function cellView(cell: RankCell, mode: CellMode, valued?: ValuedCell): C
         : { text: String(cell.rank), sub: `/${cell.total}`, frac, title: rank, tone: null };
 }
 
-const toneOf = (text: string): CellView["tone"] => (text.startsWith("+") ? "rise" : text.startsWith("-") ? "fall" : null);
+/** 포맷된 값의 부호 → tone. 축 값이 서는 **모든 화면**이 이 한 줄을 지난다(시트 셀·타점 정보 줄). */
+export const toneOf = (text: string): CellView["tone"] => (text.startsWith("+") ? "rise" : text.startsWith("-") ? "fall" : null);
+
+/** 부호 색 한 벌 — 축 숫자 셀·결과 셀·타점 정보 줄이 같은 어휘를 쓴다(한 줄에 나란히 서므로). */
+export const toneColor = (tone: CellView["tone"]): string =>
+    tone === "rise" ? "var(--rise)" : tone === "fall" ? "var(--fall)" : "var(--text-primary)";
 
 /**
  * 영속값 읽기 — 옛 저장본은 `posBar: boolean`(true=눈금 / false=숫자)이었다.

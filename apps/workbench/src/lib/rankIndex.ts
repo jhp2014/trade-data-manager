@@ -68,27 +68,24 @@ export interface AxisPlacement {
     cell: RankCell;
 }
 
-/** 한 타점을 축 전체에 비춘 결과 — 꽂힌 축(강한 순)과 안 꽂힌 축(축 순서). */
+/** 한 타점을 축 전체에 비춘 결과 — **값이 있는 축만**(축 목록 순서). */
 export interface PointPlacements {
     placed: AxisPlacement[];
-    unplaced: AxisRef[];
 }
 
 /**
- * 한 타점의 배치 상세. 정렬 키는 rank 가 아니라 **frac**:
- * rank 는 축마다 분모가 달라(3개 중 1위 vs 200개 중 2위) 축을 가로질러 비교할 수 없다.
- * frac(0..1 상대 위치)이라야 "이 타점의 강점 축 → 약점 축" 순으로 읽힌다. 동률은 축 순서(안정 정렬).
- * 미배치 축도 함께 돌려준다 — "무엇을 아직 안 꽂았나"가 곧 다음 할 일이라 목록의 일부다.
+ * 한 타점의 배치 상세 — **축 목록 순서 그대로**다. 옛 frac 내림차순(강점 축 → 약점 축) 자동 정렬은
+ * 2026-09-13 폐지: 타점 정보 패널이 사용자 손 순서를 쓰게 되면서 정렬 규칙이 두 곳에 생기기 때문이다
+ * (여기서 미리 섞으면 그 패널의 "기본 순서 = 축 순서"가 깨진다).
+ * 옛 `unplaced`(값 없는 축)도 같이 폐지 — 그 목록의 소비자였던 패널이 이제 **축 전체**를 제 손으로
+ * 훑어 줄을 세우므로(rows.ts), 여기서 또 채우면 아무도 안 읽는 배열이 시선마다 새로 선다.
  * 보고 있는 타점 하나에만 도는 온디맨드 계산이라 축 수만큼의 Map 조회로 끝난다.
  */
 export function placementsOf(point: PointRef, axes: AxisRef[], indexByAxis: Map<string, AxisIndex>): PointPlacements {
     const placed: AxisPlacement[] = [];
-    const unplaced: AxisRef[] = [];
     for (const a of axes) {
         const cell = rowLookup(indexByAxis.get(a.key), point); // day 축은 차트 행 — 폴백이 닿는다
         if (cell) placed.push({ axisKey: a.key, axisName: a.name, cell });
-        else unplaced.push(a);
     }
-    placed.sort((x, y) => y.cell.frac - x.cell.frac);
-    return { placed, unplaced };
+    return { placed };
 }
