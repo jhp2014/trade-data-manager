@@ -63,10 +63,15 @@ function tipOf(kind: PresenceKindDef, n: number): string {
     return n > 1 ? `${kind.name} ${n}` : kind.name;
 }
 
-/** 그룹 hover 카드 내용 — groupColor 로 묶임이 읽히는 이름들, **세로 나열**(가로 한 줄은 여럿일 때 안 읽힌다). */
-export function GroupNamesCard({ names }: { names: readonly string[] }): JSX.Element {
+/**
+ * 그룹 hover 카드 내용 — groupColor 로 묶임이 읽히는 이름들, **세로 나열**(가로 한 줄은 여럿일 때 안 읽힌다).
+ * head = 낟알 머리("이 타점") — 같은 그림·같은 색의 아이콘이 종목 행과 타점 행에 세로로 나란히 서는
+ * 자리에서 **어느 낟알의 것인지**를 카드가 말한다(그림을 안 가르기로 한 결정의 보강, 2026-09-13).
+ */
+export function GroupNamesCard({ names, head }: { names: readonly string[]; head?: string }): JSX.Element {
     return (
         <span style={{ display: "flex", flexDirection: "column", gap: 2, fontWeight: 600 }}>
+            {head && <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-tertiary)" }}>{head}</span>}
             {names.map((n) => (
                 <span key={n} style={{ color: groupColor(n) }}>{n}</span>
             ))}
@@ -101,7 +106,9 @@ export function PresenceBadges({ presence, mono = false, style }: {
                     </span>
                 );
                 return names
-                    ? <HoverCard key={kind.key} card={<GroupNamesCard names={names} />}>{icon}</HoverCard>
+                    // 머리 "이 하루" — 타점 행 카드("이 타점")와 **짝**이다. 한쪽만 머리를 달면 머리 없는
+                    // 카드가 하루인지 머리를 안 단 타점인지 hover 한 자리를 기억해야 갈린다.
+                    ? <HoverCard key={kind.key} card={<GroupNamesCard head="이 하루" names={names} />}>{icon}</HoverCard>
                     : icon;
             })}
         </span>

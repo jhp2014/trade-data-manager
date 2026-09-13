@@ -27,17 +27,12 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     const pointTime = useMemo(() => (time && points.includes(time) ? time : null), [points, time]);
 
     const placements = usePlacements();
-    const { chartGroupsOf, pointGroupNamesOf, groupByName, pathLabel } = useGroups();
+    const { chartGroupsOf, pointGroupsOf, pathLabel } = useGroups();
     // 그룹 두 줄 — 타점(좌표 라벨, 2026-09-09 재도입)과 그 날. grain 이 달라 칩 줄을 섞지 않는다.
     const groups = useMemo(() => chartGroupsOf({ stockCode: code, date: viewDate }), [code, viewDate, chartGroupsOf]);
     const pointGroups = useMemo(
-        () =>
-            pointTime === null
-                ? []
-                : pointGroupNamesOf({ stockCode: code, date: viewDate, time: pointTime })
-                      .map((n) => groupByName.get(n))
-                      .filter((g): g is NonNullable<typeof g> => g != null),
-        [pointTime, code, viewDate, pointGroupNamesOf, groupByName],
+        () => (pointTime === null ? [] : pointGroupsOf({ stockCode: code, date: viewDate, time: pointTime })),
+        [pointTime, code, viewDate, pointGroupsOf],
     );
     const detail = useMemo(
         () => (pointTime ? placements.detailOf({ stockCode: code, date: viewDate, time: pointTime }) : null),

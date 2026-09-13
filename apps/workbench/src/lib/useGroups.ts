@@ -86,6 +86,11 @@ export interface GroupsView {
     // ── 좌표 라벨(타점 grain) — day 판과 대칭. 소비자 = 배정 팝오버·깔때기 판정.
     /** 이 좌표에 붙은 그룹 이름들(직접만 — 표시·편집 판정). */
     pointGroupNamesOf: (ref: GroupPointItemRef) => string[];
+    /**
+     * 이 좌표에 붙은 그룹(이름순) — 칩·아이콘 표시는 전부 이걸 쓴다(day 의 chartGroupsOf 와 대칭).
+     * 사전에 없는 이름(지워진 그룹)은 떨군다 — 그 규칙이 호출부마다 복제되면 화면끼리 어긋난다.
+     */
+    pointGroupsOf: (ref: GroupPointItemRef) => Group[];
     /** 판정용 적용 이름 — **직접 ∪ 조상**(계층 상속). day 의 appliedGroupNamesOf 와 대칭. */
     appliedPointGroupNamesOf: (ref: GroupPointItemRef) => string[];
     /** 이 좌표에 이 그룹이 계층 상속으로만 적용되나 — day 의 inheritedViaOf 와 대칭(⚠ 그건 day 전용이다). */
@@ -237,6 +242,7 @@ export function useGroupsValue(): GroupsView {
                 toggleMut.mutate({ item: { stockCode: c.stockCode, date: c.date }, groupName, on: on ?? !chartOf(c).includes(groupName) }),
             memberships,
             pointGroupNamesOf: pointOf,
+            pointGroupsOf: (p) => pointOf(p).map((n) => groupByName.get(n)).filter((g): g is Group => g != null),
             pointCountOf: (groupName) => pointCounts.get(groupName) ?? 0,
             togglePoint: (p, groupName, on) =>
                 pointToggleMut.mutate({

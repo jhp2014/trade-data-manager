@@ -195,3 +195,46 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
         expect(divider?.textContent).toContain("1"); // 그룹만(DDDDD) 하루
     });
 });
+
+// ── 타점 행 그룹 아이콘 — **낟알은 좌표 라벨 하나**다(2026-09-13). 옛 코드는 이 자리에 그 날의 하루
+// 그룹을 그려서, 종목 행이 이미 말한 것을 타점마다 반복하면서 정작 좌표 라벨은 한 번도 안 보였다.
+// 여기서 잠그는 것: ① 라벨 붙은 타점에만 아이콘 ② 하루 그룹은 타점 행으로 안 내려온다(층위 상속은
+// 깔때기 판정에만 살아 있고 화면은 종목 행이 맡는다) ③ 같은 그림·색이 두 행에 서므로 **카드 머리**가
+// 낟알을 말한다.
+describe("작업셋 — 타점 행 그룹 아이콘(좌표 라벨)", () => {
+    const PD = "2026-08-07";
+    const PT: Seed = {
+        points: [
+            { stockCode: "FFFFF", date: PD, time: "09:30:00", name: "타점날" },
+            { stockCode: "FFFFF", date: PD, time: "10:30:00", name: "타점날" },
+        ],
+        memberships: [{ stockCode: "FFFFF", date: PD, groupNames: ["하루것"] }],
+        pointMemberships: [{ stockCode: "FFFFF", date: PD, time: "10:30:00", groupNames: ["눌림"] }],
+        groups: [{ name: "하루것", parentName: null }, { name: "눌림", parentName: null }],
+    };
+    const pointRow = (time: string): HTMLElement | null => document.querySelector(`[data-row='${PD}|FFFFF|${time}']`);
+    const pointBadge = (time: string): Element | null | undefined => pointRow(time)?.querySelector("[data-point-group]");
+
+    beforeEach(() => {
+        localStorage.clear();
+        useWorkbench.setState({ selectedSetRef: null, savedSets: [] });
+    });
+
+    it("라벨 붙은 타점에만 아이콘이 선다 — 하루 그룹은 타점 행으로 안 내려온다", () => {
+        renderWithProviders(<WorksetPanel />, PT);
+        expect(pointRow("09:30:00")).toBeTruthy(); // 행 자체는 둘 다 선다(아이콘 유무만 갈린다)
+        expect(pointBadge("09:30:00")).toBeNull();
+        expect(pointBadge("10:30:00")).toBeTruthy();
+        // 하루 그룹은 종목 행 배지가 말한다 — 같은 화면에 한 번만.
+        expect(screen.getByText("타점날").closest("button")?.querySelector("[data-presence-kind='group-day']")).toBeTruthy();
+    });
+
+    it("hover 카드가 낟알 머리(이 타점)와 그룹 이름을 말한다", () => {
+        renderWithProviders(<WorksetPanel />, PT);
+        fireEvent.mouseEnter(pointBadge("10:30:00")!.parentElement!);
+        const card = document.querySelector("[data-hover-card]");
+        expect(card?.textContent).toContain("이 타점");
+        expect(card?.textContent).toContain("눌림");
+        expect(card?.textContent).not.toContain("하루것");
+    });
+});

@@ -67,7 +67,7 @@ export function WorksetPanel(): JSX.Element {
     const setGazeMonths = useWorkbench((s) => s.setGazeMonths);
 
     const { nameOf } = useStockNames();
-    const { chartGroupsOf, pathLabel } = useGroups();
+    const { pointGroupsOf, pathLabel } = useGroups();
     const subject = useSubject();
     const funnel = useFunnel();
 
@@ -309,7 +309,9 @@ export function WorksetPanel(): JSX.Element {
                     focus={{ code: focusCode, date: focusDate, time: focusTime }}
                     lens={lens}
                     nameOf={nameOf}
-                    groupsOf={(p) => chartGroupsOf({ stockCode: p.stockCode, date: p.date })}
+                    // 타점 행 아이콘의 낟알 = **좌표 라벨**(직접 소속만 — 표시 규칙은 day 쪽과 대칭).
+                    // 하루 그룹은 종목 행 배지가 말한다(붙는 머리라 스크롤 중에도 남는다).
+                    pointGroupsOf={pointGroupsOf}
                     pathOf={(id) => pathLabel(id, "(지워짐)")}
                     // goToDay — 하루를 고르는 손짓이라 시각을 **명시적으로 푼다**(time: null).
                     // 안 그러면 옛 시각이 남아 그 차트의 자동 타점을 우연히 가리키는 순간 하루 선택이 아니게 된다.
