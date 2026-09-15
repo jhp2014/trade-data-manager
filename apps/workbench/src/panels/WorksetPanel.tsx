@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useWorkbench } from "../store/workbench.js";
 import { usePublishRowNav } from "../lib/rowNav.js";
+import { RowNavBadge } from "../components/RowNavBadge.js";
 
 import { usePointRows } from "../lib/usePointRows.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
@@ -189,9 +190,8 @@ export function WorksetPanel(): JSX.Element {
     }, [focusCode, focusDate, focusTime]);
 
     // ── w/s 타점 순회 — 보이는 타점(필터·좁히기 통과분)만 걷는다.
-    //    **시트가 없을 때의 폴백**이다: 키 등록은 App 한 곳(lib/rowNav)이고, 시트 패널이 배치에 있으면
-    //    시트가 제 행을 걷는다(정렬·컷·깔때기를 통과한 "지금 보는 순서"라 그쪽이 뜻이 크다).
-    //    여기선 순회 함수만 얹는다 — 등록/해제 타이밍은 소유권 규칙이 진다.
+    //    여기선 순회 함수만 얹는다: 키 등록은 App 한 곳이고, **누가 걷는지는 사람이 고른다**
+    //    (머리글 `w/s` 배지 · `q` 순환). 규칙 본문은 lib/rowNav 머리 주석.
     type NavPoint = { code: string; date: string; time: string };
     const flatPoints = useMemo<NavPoint[]>(() => {
         const out: NavPoint[] = [];
@@ -270,6 +270,7 @@ export function WorksetPanel(): JSX.Element {
                     }}>
                     {setLabel}
                 </button>
+                <RowNavBadge owner="workset" />
                 <span className="tabular" style={{ flexShrink: 0, fontSize: 11, color: "var(--text-secondary)" }}>
                     {shownCount} 표시{hasActiveDnf(dnf) || narrowOn ? ` · ${hiddenCount} 숨김` : ""}
                 </span>

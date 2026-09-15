@@ -5,6 +5,15 @@ import { CSS } from "@dnd-kit/utilities";
 import { relatedThemes, type Grouped, type ThemeGroup } from "@trade-data-manager/market/domain";
 import { ThemeCard, BoardCenter, type BoardStock, type RelatedInfo } from "./BoardCard.js";
 import { NavRail, HiddenRail, type FocusBadge } from "./BoardRails.js";
+import { boardNavOrder, stepInList } from "./boardNavOrder.js";
+import type { BoardNav } from "./boardNav.js";
+
+// 꼬리 카드(개별·미분류) — 머리 문구와 **스크롤 주소를 갈라 둔다**: 주소를 테마 이름 그대로 쓰면
+// 큐레이션에 같은 이름의 테마가 실제로 있을 때 cardRefs 에서 서로를 덮어 엉뚱한 카드로 스크롤한다.
+const INDIVIDUAL_CARD = "개별 종목";
+const UNCLASSIFIED_CARD = "미분류";
+const INDIVIDUAL_REF = "tail:individuals";
+const UNCLASSIFIED_REF = "tail:unclassified";
 
 // 보드 본문 공용 — NavRail + 카드(현재 종목 밴드 / 즐겨찾기 / 나머지 / 개별·미분류) + 숨김 Rail. 두 보드 공유.
 // 즐겨찾기(★)·숨김(👁)은 세션 휘발 로컬 상태. 자동숨김=현재 시점 포함관계(비sticky — 복기 스크럽에
@@ -22,6 +31,7 @@ export function BoardLayout({
     absentLabel,
     showIndividuals = true,
     showUnclassified = true,
+    nav,
 }: {
     grouped: Grouped<BoardStock>;
     parents: Map<string, string[]>;
@@ -33,6 +43,7 @@ export function BoardLayout({
     absentLabel: string; // 로스터에 아예 없을 때 배지 문구(복기="랭킹 밖" / 테마="보드 밖").
     showIndividuals?: boolean;
     showUnclassified?: boolean;
+    nav?: BoardNav; // 주면 w/s 순회의 후보가 된다(카드 순서대로 걷기 — boardNavOrder).
 }): JSX.Element {
     const cardRefs = useRef(new Map<string, HTMLElement>());
     const [selected, setSelected] = useState<string | null>(null);
@@ -76,11 +87,26 @@ export function BoardLayout({
         unhide(theme);
         gotoTheme(theme);
     };
+    // 꼬리 카드(개별·미분류)도 **스크롤 대상**이다 — 순회가 목록 끝으로 걸어 들어가면 여기서 멈춘다.
+    // 테마 카드와 같은 이름 공간(cardRefs 키)을 쓴다: 카드 머리에 적히는 그 문구가 곧 주소다.
+    const inTail = (list: readonly BoardStock[]): boolean => !!focusCode && list.some((s) => s.code === focusCode);
+    const focusInIndividuals = showIndividuals && inTail(grouped.individuals);
+    const focusInUnclassified = showUnclassified && inTail(grouped.unclassified);
     // 자동숨김 = 현재 시점 포함관계(상위 테마에 통째 포함). 사용자 override 우선.
     const isHidden = (theme: string): boolean =>
         userHidden.has(theme) ? userHidden.get(theme)! : (parents.get(theme)?.length ?? 0) > 0;
     // 관련테마 칩 클릭: 숨김이면 해제하고 그 카드로, 아니면 그냥 이동.
     const gotoRelated = (theme: string): void => (isHidden(theme) ? unhideGoto : gotoTheme)(theme);
+
+    // ── w/s 순회 — 카드 순서 × 멤버 순서(첫 등장만). 승격 밴드는 순서에 안 들어간다(boardNavOrder 머리 주석).
+    //    고른 종목은 **바깥 출처**로 넘긴다(nav.pick) — 그래야 아래 승격 effect 가 그 카드를 펼치고 스크롤한다.
+    if (nav) {
+        nav.navRef.current = (dir): void => {
+            const order = boardNavOrder(grouped, { favorites, isHidden, showIndividuals, showUnclassified });
+            const next = stepInList(order, focusCode || null, dir);
+            if (next) nav.pick(next);
+        };
+    }
 
     // 외부(다른 패널) 선택이면 그 종목이 속한 '보이는' 테마 전부를 상단 밴드로 승격 + 스크롤.
     // 내부(이 보드에서 클릭)면 밴드 유지·스크롤 X(제자리). 코드 변경 시에만 그 시점 스냅샷으로 재계산.
@@ -92,7 +118,9 @@ export function BoardLayout({
         if (focusOrigin === selfOrigin) return; // 내부 선택 → 제자리(밴드 불변)
         const themes = grouped.themes.filter((g) => !isHidden(g.theme) && g.stocks.some((s) => s.code === focusCode)).map((g) => g.theme);
         setPromoted(themes);
-        if (themes.length > 0) setScrollTarget(themes[0]);
+        // 테마 카드에 없으면 꼬리 카드(개별·미분류)로 — 없었다면 순회가 목록 끝에서 아무 말도 안 한다.
+        const target = themes[0] ?? (focusInIndividuals ? INDIVIDUAL_REF : focusInUnclassified ? UNCLASSIFIED_REF : null);
+        if (target) setScrollTarget(target);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focusCode]);
 
@@ -103,6 +131,8 @@ export function BoardLayout({
         if (themes.length > 0) {
             setPromoted(themes);
             setScrollTarget(themes[0]);
+        } else if (focusInIndividuals || focusInUnclassified) {
+            setScrollTarget(focusInIndividuals ? INDIVIDUAL_REF : UNCLASSIFIED_REF); // 꼬리에 있으면 거기로(걷기 경로와 같은 사다리)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -216,10 +246,14 @@ export function BoardLayout({
                     )}
                     {restCards.map((g) => renderCard(g))}
                     {showIndividuals && grouped.individuals.length > 0 && (
-                        <ThemeCard theme="개별 종목" stocks={grouped.individuals} focusCode={focusCode} onPick={onPick} showRank={false} subordinate />
+                        <div key={`ind-${focusInIndividuals}`} ref={(el) => register(INDIVIDUAL_REF, el)} style={{ scrollMarginTop: 8 }}>
+                            <ThemeCard theme={INDIVIDUAL_CARD} stocks={grouped.individuals} focusCode={focusCode} onPick={onPick} showRank={false} subordinate initialMode={focusInIndividuals ? "all" : "collapsed"} />
+                        </div>
                     )}
                     {showUnclassified && grouped.unclassified.length > 0 && (
-                        <ThemeCard theme="미분류" stocks={grouped.unclassified} focusCode={focusCode} onPick={onPick} showRank={false} subordinate />
+                        <div key={`unc-${focusInUnclassified}`} ref={(el) => register(UNCLASSIFIED_REF, el)} style={{ scrollMarginTop: 8 }}>
+                            <ThemeCard theme={UNCLASSIFIED_CARD} stocks={grouped.unclassified} focusCode={focusCode} onPick={onPick} showRank={false} subordinate initialMode={focusInUnclassified ? "all" : "collapsed"} />
+                        </div>
                     )}
                     {empty && <BoardCenter text="표시할 종목 없음" />}
                 </div>

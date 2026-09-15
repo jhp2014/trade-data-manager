@@ -18,6 +18,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { GROUP_H, ROW_H, SheetRowView, type SheetRowHandlers } from "./rank/SheetRowView.js";
 import { flatIndexOfRow, flattenSheetGroups, stepFlatRow } from "./rank/sheetFlatRows.js";
 import { usePublishRowNav } from "../lib/rowNav.js";
+import { RowNavBadge } from "../components/RowNavBadge.js";
 import { useGroupAssign } from "../store/groupAssign.js";
 import { SheetHeaderRow } from "./rank/SheetHeaderRow.js";
 import { SheetMenusHost, useSheetMenus } from "./rank/SheetMenusHost.js";
@@ -77,7 +78,7 @@ export function RankSheetPanel(): JSX.Element {
     const [rowMode, setRowMode] = usePersistedState<RowMode>(ROWMODE_KEY, parseRowMode, "point");
     // w/s 행 순회 — **publish 는 바깥(여기)에서** 한다: 안쪽은 `key={rowMode}` 로 리마운트되므로
     // 거기서 얹으면 모드를 바꾸는 순간 순회 함수가 잠깐 사라진다(바깥은 안 리마운트된다).
-    // 키 등록·소유권(시트 우선·작업셋 폴백)은 App 한 곳이 진다 — lib/rowNav 머리 주석.
+    // 키 등록은 App 한 곳, 소유자는 **명시 선택**(머리글 `w/s` 배지 · `q` 순환) — lib/rowNav 머리 주석.
     const navRef = usePublishRowNav("rank-sheet");
     return <SheetBody key={rowMode} rowMode={rowMode} setRowMode={setRowMode} navRef={navRef} />;
 }
@@ -528,6 +529,7 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
             <PanelHeader gap={8}>
                 <ScrollRow gap={9}>
                     <SetBindingLabel linked={linked} members={setMembers} />
+                    <RowNavBadge owner="rank-sheet" />
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 값 없음 ${unplacedOnSort}` : ""}</span>
                     {/* 선택이 이 표에 없을 때만 그 이유를 말한다 — 필터 밖(좁히기로 빠짐)과 타점 없음(하루 선택 등)은 다른 문제다. */}
                     <SubjectBadge subject={subject} status={status} name={subject ? nameOf(subject.code) : undefined} absentLabel="타점 없음" />
