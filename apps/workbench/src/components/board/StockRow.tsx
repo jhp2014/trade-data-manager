@@ -53,6 +53,7 @@ export function StockRow({
     const showReasons = useUi((st) => st.boardShowReasons); // dim 종목: 제외사유 뱃지 vs 테마칩
     return (
         <button
+            className="row-self-marked"
             onClick={() => onPick(s.code)}
             title={s.excludedBy ? `제외 사유: ${s.excludedBy.join(", ")}` : undefined}
             style={{
@@ -63,11 +64,15 @@ export function StockRow({
                 width: "100%",
                 textAlign: "left",
                 border: "none",
+                // 선택 = **왼쪽 액센트 바 + accent-soft 배경**. 배경 한 겹(옛 bg-active)은 흰 바탕에서 거의 안 떴고,
+                // 시트의 선택(.sheet-row[data-focus] = accent-soft)과 색이 갈려 "지금 이것"이 패널마다 달랐다.
+                // 안 고른 행도 **투명 바를 같은 두께로** 들어 글자가 좌우로 안 밀린다(선택이 옮겨갈 때 줄이 출렁이면 그게 더 시끄럽다).
+                borderLeft: `3px solid ${selected ? "var(--accent-primary)" : "transparent"}`,
                 borderTop: boundary ? "2px solid var(--border-strong)" : undefined,
                 borderBottom: "1px solid var(--border-subtle)",
-                padding: "3px 10px",
+                padding: "3px 10px 3px 7px",
                 cursor: "pointer",
-                background: selected ? "var(--bg-active)" : "transparent",
+                background: selected ? "var(--accent-soft)" : "transparent",
                 font: "inherit",
                 overflow: "hidden",
                 opacity: s.dim ? 0.5 : 1,
@@ -116,7 +121,8 @@ export function StockRow({
                     style={{
                         flexShrink: 1,
                         minWidth: 0,
-                        color: "var(--text-primary)",
+                        // 선택 행만 액센트색 — 굵기는 안 건드린다(600 고정): 굵어지면 폭이 갈려 뒤의 테마 칩이 밀린다.
+                        color: selected ? "var(--accent-hover)" : "var(--text-primary)",
                         fontWeight: 600,
                         fontSize: 13,
                         overflow: "hidden",

@@ -59,6 +59,20 @@ button {
     font: inherit;
 }
 
+/* 포커스 링 — **앱 전역 규칙 한 벌**. 지금까지 규칙이 아예 없어 크롬 기본 링이 그대로 나왔고, 그게
+   "클릭했던 종목에 테두리 흔적이 남는" 정체였다(클릭으로 잡힌 포커스가 남아 있다가, 다음 키 입력에
+   크롬의 :focus-visible 판정이 켜지면서 링이 뜬다 — 선택 표시와 경쟁하는 두 번째 강조).
+   그래서 ① 키보드 이동은 우리 액센트 링으로 보이게 하고, ② **선택을 제 손으로 그리는 목록 행**만
+   끈다. blur() 로 흔적을 지우는 처방은 기각했다 — 증상만 지우고 규칙은 여전히 없기 때문. */
+:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: -2px;
+}
+/* 이 행은 선택 상태를 스스로 칠한다(보드 StockRow: 왼쪽 액센트 바 + accent-soft) — 링은 군더더기다. */
+.row-self-marked:focus-visible {
+    outline: none;
+}
+
 .tabular {
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";
