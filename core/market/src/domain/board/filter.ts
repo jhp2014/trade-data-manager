@@ -57,6 +57,12 @@ export interface ParamSpec {
     step?: number;
     /** 있으면 select — 값은 옵션 인덱스(number). 없으면 숫자 입력. */
     options?: string[];
+    /**
+     * 있으면 택1인데 **값 자체를 저장**한다(options 는 인덱스 저장). 데이터가 그 값들에서만 성립하는
+     * 파라미터용 — 예: 분봉 대금 구간(AMOUNT_BUCKETS_EOK). 배열이 바뀌어도 저장값의 뜻이 안 밀린다
+     * (amount.ts 가 경고하는 "인덱스 영속" 함정을 피한다).
+     */
+    choices?: number[];
     unit?: ParamUnit;
 }
 
@@ -94,7 +100,8 @@ export interface BoardPredicateDef {
 
 /**
  * 술어 3치 평가 — 정본 진입점. requires 필드가 하나라도 결손이면 undefined(미결), 아니면 test3 ?? test.
- * 소비자별 결손 정책: 보드 필터(groupMatches)·유니버스 탐지 = undefined→false / watchlist = 틱 스킵.
+ * 소비자별 결손 정책: 보드 필터(groupMatches3 + evalBoardFilter 의 방향 분기 — 배제는 undefined→false,
+ * 선택은 undefined→통과)·유니버스 탐지 = undefined→false / watchlist = 틱 스킵.
  */
 export function evalPredicate(def: BoardPredicateDef, m: BoardMetrics, pi: BoardPredicateInstance): boolean | undefined {
     for (const f of def.requires) if (m[f] == null) return undefined;
@@ -106,7 +113,7 @@ export function predicateEvidence(def: BoardPredicateDef, m: BoardMetrics, pi: B
     return def.evidence?.(m, pi.params, pi.textParams) ?? def.label(pi.params, pi.textParams);
 }
 
-/** ≥eok억 분봉 횟수 — buckets 하한이 eok 이상인 구간 카운트 합(고정 구간이라 경계값에서 정확). */
+/** ≥eok억 분봉 횟수 — buckets 하한이 eok 이상인 구간 카운트 합(경계값 택1이라 항상 정확, ParamSpec.choices). */
 function countAtLeastEok(buckets: number[] | undefined, eok: number): number {
     if (!buckets) return 0;
     let n = 0;
@@ -143,12 +150,21 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
         title: "분봉 대금",
         requires: ["buckets"],
         params: [
-            { key: "eok", label: "억", def: 50, min: 1 },
-            { key: "maxCount", label: "회 이하", def: 0, min: 0 },
+            // eok 는 **구간 경계 택1**(자유 숫자 금지) — bucketCounts 는 8칸뿐이라 경계 사이 값은 표현 자체가 없다.
+            // 옛 자유 입력은 60 을 넣으면 라벨만 "60억+"이고 실제로는 70억+ 를 셌다(조용한 거짓말).
+            { key: "eok", label: "억", def: 50, choices: [...AMOUNT_BUCKETS_EOK] },
+            // op = 부등호 방향. 값=인덱스라 미지정(옛 저장 필터)=0=`≤`(배제 방향 기존 동작 무손상).
+            // 강조(mark)·AND 그룹 안에서 "많이 터진 종목"을 직접 쓰려면 `≥` 가 필요하다(weakHigh 와 같은 패턴).
+            { key: "op", label: "방향", def: 0, options: ["≤", "≥"] },
+            { key: "maxCount", label: "회", def: 0, min: 0 },
         ],
         // buckets 없으면 false(매칭 안 함) — 라이브 등 분봉 결손 소스에서 전 종목 오검출 방지(capability 와 이중 방어).
-        test: (m, p) => m.buckets != null && countAtLeastEok(m.buckets, p.eok) <= p.maxCount,
-        label: () => "분봉 대금",
+        test: (m, p) => {
+            if (m.buckets == null) return false;
+            const n = countAtLeastEok(m.buckets, p.eok);
+            return (p.op ?? 0) === 1 ? n >= p.maxCount : n <= p.maxCount;
+        },
+        label: (p) => `분봉 ${p.eok ?? 50}억+ 대금 ${(p.op ?? 0) === 1 ? "≥" : "≤"} ${p.maxCount ?? 0}회`,
     },
     {
         kind: "smallAmount",
@@ -156,7 +172,7 @@ export const BOARD_PREDICATES: BoardPredicateDef[] = [
         requires: ["amount"],
         params: [{ key: "ltEok", label: "억 미만", def: 100, min: 1 }],
         test: (m, p) => m.amount / 1e8 < p.ltEok,
-        label: () => "일봉 대금",
+        label: (p) => `일봉 대금 < ${p.ltEok ?? 100}억`,
     },
     {
         kind: "weakHigh",
@@ -302,8 +318,19 @@ export const LIVE_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount
 export const LIVE_ALARM_FIELDS: ReadonlySet<MetricField> = new Set(["highPct", "amount", "trailingHighs", "marketCap", "deltas", "themeRanks", "price", "themeRankMap"]);
 
 // ── 필터식(DNF, 그룹별 mode) ──
-/** dim/hide = 배제(흐리게/숨김) / mark = 강조(🔥 — 돈유입 등 "눈에 띄게"는 배제의 반대 방향). */
-export type BoardFilterMode = "dim" | "hide" | "mark";
+/**
+ * 그룹 매칭을 어떻게 쓸지. **방향(누구에게)** × **처리(무엇을)** 를 한 축에 편 목록이다.
+ *  · 배제(블랙리스트) — dim/hide: 매칭된 종목을 흐리게/숨김
+ *  · 선택(화이트리스트) — dimRest/hideRest: 매칭 **안 된 나머지**를 흐리게/숨김("이것만 보기")
+ *  · 강조 — mark: 🔥(돈유입 등 "눈에 띄게")
+ * 색은 처리(흐리게=액센트·숨김=빨강·강조=앰버)가 정하고, "나머지"라는 말이 방향을 말한다.
+ */
+export type BoardFilterMode = "dim" | "hide" | "dimRest" | "hideRest" | "mark";
+
+/** 선택(화이트리스트) 방향인가 — 매칭이 아니라 **미매칭**에 처리를 건다. */
+export function isRestMode(mode: BoardFilterMode): boolean {
+    return mode === "dimRest" || mode === "hideRest";
+}
 export interface BoardPredicateInstance {
     kind: string;
     params: Record<string, number>;
@@ -318,15 +345,26 @@ export interface BoardFilterExpr {
     groups: BoardFilterGroup[];
 }
 
-/** 그룹 매칭 = 비어있지 않고 술어 전부 참(AND). 보드 소비자의 결손 정책 = false(미결이면 제외 안 함). */
-export function groupMatches(g: BoardFilterGroup, m: BoardMetrics): boolean {
-    return (
-        g.predicates.length > 0 &&
-        g.predicates.every((pi) => {
-            const def = boardPredicateDef(pi.kind);
-            return def ? evalPredicate(def, m, pi) === true : false;
-        })
-    );
+/**
+ * 그룹 3치 판정(AND) — 거짓인 술어가 하나라도 있으면 false / 거짓은 없고 미결이 섞였으면 undefined / 전부 참이면 true.
+ *
+ * **왜 3치가 여기서 필요한가**: 배제(dim/hide)에선 미결을 false 로 깎는 게 안전한 방향이다(못 판단하면 안 지운다).
+ * 선택(dimRest/hideRest)에선 **같은 깎기가 뒤집힌다** — 미결 → 미매칭 → "나머지" → 종목이 조용히 사라진다.
+ * 그래서 판정은 3치로 내고, 깎는 방향은 방향별로 evalBoardFilter 가 정한다.
+ *
+ * 빈 그룹은 undefined(미결) — 배제에선 예전처럼 매칭 안 함이고, 선택에선 빈 껍데기가 보드를 통째로
+ * 지우지 않는다. 미등록 kind 는 false(데이터 결손이 아니라 식의 문제 — testThemeRank 의 테마 미지정과 같다).
+ */
+export function groupMatches3(g: BoardFilterGroup, m: BoardMetrics): boolean | undefined {
+    if (g.predicates.length === 0) return undefined;
+    let pending = false;
+    for (const pi of g.predicates) {
+        const def = boardPredicateDef(pi.kind);
+        const v = def ? evalPredicate(def, m, pi) : false;
+        if (v === false) return false;
+        if (v === undefined) pending = true;
+    }
+    return pending ? undefined : true;
 }
 
 export interface BoardFilterVerdict {
@@ -337,23 +375,75 @@ export interface BoardFilterVerdict {
     markReasons: string[]; // 매칭된 mark 그룹 술어 라벨(🔥 툴팁)
 }
 
-/** 종목 판정 — 배제: hide 우선 > dim > show. 강조(mark)는 별도 축. reasons/markReasons = 매칭 술어 라벨(dedup). */
+/**
+ * 종목 판정 — 처리: hide 우선 > dim > show. 강조(mark)는 별도 축. reasons/markReasons = 사유 라벨(dedup).
+ *
+ * 그룹은 각각 독립 규칙이고 효과는 누적된다. ⚠ 그래서 **선택(나머지) 그룹이 여럿이면 교집합(AND)** 이다
+ * ("그룹끼리 OR" 은 배제 방향의 읽기다 — 드모르간). 선택 그룹은 판정이 **거짓일 때만** 나머지로 보낸다
+ * (미결은 통과 — 결손이 종목을 조용히 지우지 않는다, groupMatches3 주석).
+ */
 export function evalBoardFilter(expr: BoardFilterExpr, m: BoardMetrics): BoardFilterVerdict {
     let effect: "show" | "dim" | "hide" = "show";
     let marked = false;
     const reasons: string[] = [];
     const markReasons: string[] = [];
     for (const g of expr.groups) {
-        if (!groupMatches(g, m)) continue;
+        const rest = isRestMode(g.mode);
+        const v = groupMatches3(g, m);
+        if (rest ? v !== false : v !== true) continue;
         if (g.mode === "mark") marked = true;
-        else if (g.mode === "hide") effect = "hide";
+        else if (g.mode === "hide" || g.mode === "hideRest") effect = "hide";
         else if (effect !== "hide") effect = "dim";
         for (const pi of g.predicates) {
             const def = boardPredicateDef(pi.kind);
-            if (def) (g.mode === "mark" ? markReasons : reasons).push(def.label(pi.params, pi.textParams));
+            if (!def) continue;
+            // 선택 방향의 사유는 **실제로 거짓인 술어만** — AND 그룹은 하나만 어긋나도 나머지로 가므로,
+            // 전부에 "아님"을 붙이면 통과한 조건까지 탈락 사유로 말하는 거짓 툴팁이 된다.
+            if (rest && evalPredicate(def, m, pi) !== false) continue;
+            const text = def.label(pi.params, pi.textParams);
+            (g.mode === "mark" ? markReasons : reasons).push(rest ? `${text} 아님` : text);
         }
     }
     return { effect, marked, reasons: [...new Set(reasons)], markReasons: [...new Set(markReasons)] };
+}
+
+/** 값이 그 스펙에서 허용되나 — choices 있으면 그 목록, 없으면 min/max. 정규화·검증 공용(술어별 if 금지). */
+export function paramAllowed(spec: ParamSpec, v: number): boolean {
+    if (!Number.isFinite(v)) return false;
+    if (spec.choices) return spec.choices.includes(v);
+    return !((spec.min != null && v < spec.min) || (spec.max != null && v > spec.max));
+}
+
+/**
+ * 저장된 필터식을 현재 술어 정의에 맞춘다(앱 경계에서 로드 직후 1회). 지금 규칙은 하나 — choices 스냅.
+ * 옛 자유 입력 `eok:60` → 70 으로 올린다: countAtLeastEok 은 경계 단위라 **그 값이 이미 평가되던 그대로**이고
+ * (경계 **사이** 값은 무손실), 라벨만 비로소 참이 된다. 모르는 kind·파라미터는 손대지 않는다.
+ *
+ * 두 자리만 무손실이 아니고, 둘 다 표현 자체가 없어서 그렇다:
+ *  · 최대 경계 초과(eok:300) — 옛 평가는 "항상 0회"였는데 그런 칸이 없다 → 최대 칸(200)으로 클램프.
+ *  · 값이 숫자가 아님(손상 저장물) — 최대 칸으로 밀지 않고 **기본값**으로 되돌린다.
+ */
+export function normalizeBoardFilter(expr: BoardFilterExpr): BoardFilterExpr {
+    return {
+        groups: expr.groups.map((g) => ({
+            ...g,
+            predicates: g.predicates.map((pi) => {
+                const def = boardPredicateDef(pi.kind);
+                if (!def) return pi;
+                let params = pi.params;
+                for (const spec of def.params) {
+                    if (!spec.choices?.length) continue;
+                    const v = Number(params[spec.key] ?? spec.def);
+                    if (paramAllowed(spec, v)) continue;
+                    const snapped = !Number.isFinite(v)
+                        ? (spec.choices.find((c) => c >= spec.def) ?? spec.choices[0])
+                        : (spec.choices.find((c) => c >= v) ?? spec.choices[spec.choices.length - 1]);
+                    params = { ...params, [spec.key]: snapped };
+                }
+                return params === pi.params ? pi : { ...pi, params };
+            }),
+        })),
+    };
 }
 
 /** 활성(비어있지 않은 그룹) 여부. */

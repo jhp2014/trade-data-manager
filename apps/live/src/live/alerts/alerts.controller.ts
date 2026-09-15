@@ -10,7 +10,7 @@
 //  POST   /universe/blacklist   {code,scope?} — 당일 블랙리스트(telegram=텔레그램만/all=로그까지)
 //  DELETE /universe/blacklist/:code
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, Inject, BadRequestException, NotFoundException } from "@nestjs/common";
-import { boardPredicateDef, isCanonicalStockCode, predicateAvailable, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
+import { boardPredicateDef, isCanonicalStockCode, paramAllowed, predicateAvailable, LIVE_ALARM_FIELDS } from "@trade-data-manager/market/domain";
 import type { AlarmPredicateInstance, AlarmRule, AlertLogView, UniverseView, WatchlistView } from "./types.js";
 import { AlertConfigStore } from "./configStore.js";
 import type { AlertsRuntime } from "./alertsRuntime.js";
@@ -33,6 +33,12 @@ function parsePredicate(raw: unknown, at: string): AlarmPredicateInstance {
     for (const spec of def.params) {
         const v = rawParams[spec.key] ?? spec.def;
         if (typeof v !== "number" || !Number.isFinite(v)) throw new BadRequestException(`${at}.params.${spec.key} 는 숫자`);
+        // choices 규칙은 core(paramAllowed) 소유 — 여기서 손으로 다시 쓰면 워크벤치 검증과 갈린다.
+        if (spec.choices?.length) {
+            if (!paramAllowed(spec, v)) throw new BadRequestException(`${at}.params.${spec.key} 는 ${spec.choices.join("·")} 중 하나`);
+            params[spec.key] = v;
+            continue;
+        }
         if (spec.min != null && v < spec.min) throw new BadRequestException(`${at}.params.${spec.key} ≥ ${spec.min}`);
         if (spec.max != null && v > spec.max) throw new BadRequestException(`${at}.params.${spec.key} ≤ ${spec.max}`);
         params[spec.key] = v;

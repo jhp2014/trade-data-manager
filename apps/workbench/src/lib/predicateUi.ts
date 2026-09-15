@@ -3,7 +3,7 @@
 // 왜 한 곳인가: 술어 파라미터는 숫자 인덱스로 저장된다(op:0 = "≥", market:1 = "UN"). 그 인덱스의 뜻은
 // core 의 ParamSpec.options 에만 있어야 한다. 예전엔 워치리스트가 0/1 을 인코딩·디코딩 양쪽에서
 // 손으로 알고 있어서, core 에서 옵션 순서를 뒤집으면 알람이 조용히 반대로 울릴 수 있었다.
-import { boardPredicateDef, type BoardPredicateInstance } from "@trade-data-manager/market/domain";
+import { boardPredicateDef, paramAllowed, type BoardPredicateInstance } from "@trade-data-manager/market/domain";
 
 /** 옵션 파라미터의 현재 라벨(예: price.op → "≥"). 호출부가 인덱스를 외우지 않게. */
 export function optionLabel(kind: string, paramKey: string, params: Record<string, number>): string | undefined {
@@ -29,6 +29,7 @@ export function validatePredicates(predicates: BoardPredicateInstance[]): string
         for (const s of def.params) {
             const v = Number(p.params[s.key]);
             if (!Number.isFinite(v)) return `${def.title} — ${s.label} 값을 입력하세요`;
+            if (s.choices?.length) { if (!paramAllowed(s, v)) return `${def.title} — ${s.label} 은 ${s.choices.join("·")} 중 하나여야 합니다`; continue; }
             if (s.min != null && v < s.min) return `${def.title} — ${s.label} 은 ${s.min} 이상이어야 합니다`;
             if (s.max != null && v > s.max) return `${def.title} — ${s.label} 은 ${s.max} 이하여야 합니다`;
         }

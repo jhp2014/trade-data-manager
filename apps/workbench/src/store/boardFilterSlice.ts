@@ -1,7 +1,7 @@
 // 보드 배제 필터 슬라이스 — 이슈/복기 보드가 각자 인스턴스(상태 독립), 편집 로직은 makeFilterActions 1벌 공유.
 // DNF(그룹별 dim/hide), 술어 = domain 레지스트리. 매 변경 localStorage 저장.
 import type { StateCreator } from "zustand";
-import { type BoardFilterExpr, type BoardFilterMode, type BoardFilterGroup, defaultParams } from "@trade-data-manager/market/domain";
+import { type BoardFilterExpr, type BoardFilterMode, type BoardFilterGroup, defaultParams, normalizeBoardFilter } from "@trade-data-manager/market/domain";
 import { loadJson, saveJson } from "./persist.js";
 import type { WorkbenchState } from "./workbench.js";
 
@@ -35,8 +35,10 @@ const LIVE_FILTER_KEY = "wb.liveFilter";
 type FilterField = "boardFilter" | "replayFilter" | "liveFilter";
 type SliceSet = (fn: (s: WorkbenchState) => Partial<WorkbenchState>) => void;
 
+// 로드 직후 domain 정규화 1회 — 옛 저장물의 자유 입력값을 현재 정의(택1 경계)로 스냅한다. 규칙은 core 소유:
+// 여기서 값을 손으로 고치면 "저장물을 아는 곳"이 둘이 된다. 다음 편집 때 스냅된 값으로 덮어써진다.
 const loadFilter = (key: string): BoardFilterExpr =>
-    loadJson(key, (o) => (o && typeof o === "object" && Array.isArray((o as BoardFilterExpr).groups) ? (o as BoardFilterExpr) : null)) ?? { groups: [] };
+    normalizeBoardFilter(loadJson(key, (o) => (o && typeof o === "object" && Array.isArray((o as BoardFilterExpr).groups) ? (o as BoardFilterExpr) : null)) ?? { groups: [] });
 
 // textParams(테마명 등)까지 복사한다 — 예전엔 kind/params 만 옮겨서, 텍스트 파라미터를 가진 술어를
 // 보드 필터에 쓰는 순간 **편집할 때마다 그 값이 조용히 날아갔다**. 레지스트리는 "필드 열면 술어 자동 개방"

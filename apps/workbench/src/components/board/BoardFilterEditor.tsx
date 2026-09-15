@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     availablePredicates,
     isBoardFilterActive,
@@ -6,14 +6,17 @@ import {
     LIVE_FIELDS,
     type BoardFilterExpr,
     type BoardFilterGroup,
+    type BoardFilterMode,
     type BoardPredicateDef,
 } from "@trade-data-manager/market/domain";
 import { useWorkbench, type BoardFilterActions } from "../../store/workbench.js";
 import { AddPredicateBox, PredicateRow } from "../PredicateFormula.js";
 import { TrashIcon } from "../icons.js";
 import { PanelHeader } from "../ControlChrome.js";
+import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
 
-// 배제 필터 에디터 — DNF(그룹 안 AND, 그룹끼리 OR), **그룹별 흐리게/숨김**. 술어는 domain 레지스트리.
+// 보드 필터 에디터 — DNF(그룹 안 AND, 그룹끼리 OR), **그룹별 처리**(배제 흐리게/숨김 · 선택 나머지 흐리게/숨김
+// · 강조). 술어는 domain 레지스트리.
 // 예전엔 독립 dockview 패널 3개("… 필터")였는데, 필터는 특정 보드의 설정이지 작업면이 아니라서
 // 보드 헤더의 필터 버튼 → HeaderPopover 안으로 들어왔다(패널 카탈로그에서 제거).
 // 보기/편집 분리: 완료된 그룹 = 수식 텍스트 한 덩어리(클릭하면 그 그룹만 편집 모드).
@@ -23,7 +26,70 @@ import { PanelHeader } from "../ControlChrome.js";
 
 const xBtn: React.CSSProperties = { border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", fontSize: 13, padding: 0, flexShrink: 0, font: "inherit" };
 
-/** 그룹 카드 — 헤더(흐리게/숨김 좌 · 완료/삭제 우) + 수식 줄들(AND=그리고). 보기 모드에선 수식 클릭=편집. */
+// ── 그룹 처리(mode) — 배제 / 선택(나머지) / 강조를 한 목록으로 ─────────────────────────────
+// **색은 처리(흐리게·숨김·강조)가 정하고, "나머지"라는 말이 방향을 말한다** — 선택 방향에 새 색을 주면
+// 색이 두 가지(처리·방향)를 동시에 말하려다 둘 다 못 말한다. 순환 배지는 5칸이 되어 못 쓰고(택1 3까지가
+// 순환의 한계 — 머리글 컨트롤 규칙), 판이면 항목마다 한 줄 설명을 달 수 있다.
+const MODE_UI: Record<BoardFilterMode, { label: string; desc: string; bg: string; fg: string }> = {
+    dim: { label: "흐리게", desc: "조건에 맞는 종목을 가라앉힘", bg: "var(--accent-soft)", fg: "var(--accent-hover)" },
+    hide: { label: "숨김", desc: "조건에 맞는 종목을 치움", bg: "rgba(239,68,68,0.12)", fg: "var(--rise)" },
+    dimRest: { label: "나머지 흐리게", desc: "맞는 것만 남기고 나머지를 가라앉힘", bg: "var(--accent-soft)", fg: "var(--accent-hover)" },
+    hideRest: { label: "나머지 숨김", desc: "맞는 것만 남김", bg: "rgba(239,68,68,0.12)", fg: "var(--rise)" },
+    mark: { label: "🔥 강조", desc: "조건에 맞는 종목을 눈에 띄게", bg: "rgba(245,158,11,0.15)", fg: "#d97706" },
+};
+const MODE_SECTIONS: { title: string; modes: BoardFilterMode[] }[] = [
+    { title: "배제 — 맞는 것을 뺀다", modes: ["dim", "hide"] },
+    { title: "선택 — 맞는 것만 남긴다", modes: ["dimRest", "hideRest"] },
+    { title: "강조", modes: ["mark"] },
+];
+
+/** 처리 배지 + 택1 판. 판을 여는 앵커는 배지 아래 모서리. */
+function ModeBadge({ mode, onPick }: { mode: BoardFilterMode; onPick: (m: BoardFilterMode) => void }): JSX.Element {
+    const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
+    const ui = MODE_UI[mode] ?? MODE_UI.dim; // 모르는 mode(옛 저장물·손편집) 는 흐리게로 읽는다
+
+    // 판이 열려 있는 동안 Esc 는 **안쪽 판이 먹는다** — 캡처 단계로 가로채 바깥 HeaderPopover(필터 편집 판)까지
+    // 같이 닫히는 걸 막는다. 필터 판은 "열어둔 채 뒤의 보드를 확인"이 본론이라 함께 닫히면 그 자체로 손해다.
+    // (둘 다 document 에 거는 구조라 React 핸들러의 stopPropagation 으로는 못 막는다.)
+    useEffect(() => {
+        if (!anchor) return;
+        const onKey = (e: KeyboardEvent): void => {
+            if (e.key !== "Escape") return;
+            e.stopImmediatePropagation();
+            setAnchor(null);
+        };
+        document.addEventListener("keydown", onKey, true);
+        return () => document.removeEventListener("keydown", onKey, true);
+    }, [anchor]);
+    return (
+        <>
+            <button
+                onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setAnchor({ x: r.left, y: r.bottom + 4 }); }}
+                title="매칭 종목을 어떻게 할지"
+                style={{ border: "none", borderRadius: 8, padding: "1px 9px", font: "inherit", fontSize: 11, fontWeight: 600, cursor: "pointer", background: ui.bg, color: ui.fg, display: "inline-flex", alignItems: "center", gap: 3 }}
+            >
+                {ui.label}<span style={{ fontSize: 8, opacity: 0.7 }}>▾</span>
+            </button>
+            {anchor && (
+                <AnchoredPopover anchor={anchor} onClose={() => setAnchor(null)} minWidth={248} padding={0}>
+                    {MODE_SECTIONS.map((sec, si) => (
+                        <div key={sec.title} style={si > 0 ? { borderTop: "1px solid var(--border-subtle)" } : undefined}>
+                            <MenuLabel>{sec.title}</MenuLabel>
+                            {sec.modes.map((m) => (
+                                <MenuItem key={m} onClick={() => { onPick(m); setAnchor(null); }} style={m === mode ? { background: "var(--bg-secondary)" } : undefined}>
+                                    <span style={{ fontWeight: 600, color: m === mode ? "var(--accent-primary)" : undefined }}>{MODE_UI[m].label}</span>
+                                    <span style={{ display: "block", fontSize: 10.5, color: "var(--text-tertiary)", marginTop: 1 }}>{MODE_UI[m].desc}</span>
+                                </MenuItem>
+                            ))}
+                        </div>
+                    ))}
+                </AnchoredPopover>
+            )}
+        </>
+    );
+}
+
+/** 그룹 카드 — 헤더(처리 배지 좌 · 완료/삭제 우) + 수식 줄들(AND=그리고). 보기 모드에선 수식 클릭=편집. */
 function GroupCard({ g, gi, actions, predicates, editing, onEdit, onDone, onRemoveGroup }: {
     g: BoardFilterGroup;
     gi: number;
@@ -38,17 +104,7 @@ function GroupCard({ g, gi, actions, predicates, editing, onEdit, onDone, onRemo
     return (
         <div style={{ border: `1px solid ${editing ? "var(--accent-primary)" : "var(--border-default)"}`, borderRadius: 8, background: "var(--bg-secondary)", padding: "6px 10px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                <button
-                    onClick={() => actions.setGroupMode(gi, g.mode === "dim" ? "hide" : g.mode === "hide" ? "mark" : "dim")}
-                    title="매칭 종목 처리 순환: 흐리게 → 숨김 → 강조(🔥)"
-                    style={{
-                        border: "none", borderRadius: 8, padding: "1px 9px", font: "inherit", fontSize: 11, fontWeight: 600, cursor: "pointer",
-                        background: g.mode === "hide" ? "rgba(239,68,68,0.12)" : g.mode === "mark" ? "rgba(245,158,11,0.15)" : "var(--accent-soft)",
-                        color: g.mode === "hide" ? "var(--rise)" : g.mode === "mark" ? "#d97706" : "var(--accent-hover)",
-                    }}
-                >
-                    {g.mode === "hide" ? "숨김" : g.mode === "mark" ? "🔥 강조" : "흐리게"}
-                </button>
+                <ModeBadge mode={g.mode} onPick={(m) => actions.setGroupMode(gi, m)} />
                 <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
                     {editing && (
                         <button onClick={onDone} style={{ border: "none", background: "var(--accent-primary)", color: "#fff", borderRadius: 5, padding: "2px 11px", cursor: "pointer", font: "inherit", fontSize: 11.5, fontWeight: 600 }}>완료</button>
@@ -119,6 +175,8 @@ function FilterEditor({
                     <div style={{ color: "var(--text-tertiary)", fontSize: 12.5, lineHeight: 1.7, padding: "6px 2px" }}>
                         {emptyHelp}
                         <br />조건 안 <b style={{ color: "var(--text-secondary)" }}>그리고(AND)</b> · 조건끼리 <b style={{ color: "var(--text-secondary)" }}>또는(OR)</b>. 완료된 조건은 클릭해서 편집.
+                        <br />배지로 처리를 고른다 — 맞는 것을 빼거나(흐리게·숨김), 맞는 것만 남기거나(나머지 …), 강조.
+                        <br /><span style={{ fontSize: 11.5 }}>「나머지」 조건이 여럿이면 <b style={{ color: "var(--text-secondary)" }}>전부 만족</b>해야 남는다(또는가 아니다).</span>
                     </div>
                 )}
 
@@ -162,12 +220,12 @@ export function BoardFilterEditor({ onClose }: { onClose: () => void }): JSX.Ele
     return (
         <FilterEditor
             title="이슈 필터"
-            subtitle="매칭 종목 제외"
+            subtitle="종목 제외·선택"
             filter={filter}
             actions={actions}
             predicates={EOD_BOARD_PREDICATES}
             onClose={onClose}
-            emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>이슈정리</b> 보드에서 종목을 흐리게/숨김.</>}
+            emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>이슈정리</b> 보드에서 종목을 빼거나 그것만 남기기.</>}
         />
     );
 }
@@ -179,12 +237,12 @@ export function ReplayFilterEditor({ onClose }: { onClose: () => void }): JSX.El
     return (
         <FilterEditor
             title="복기 필터"
-            subtitle="매칭 종목 제외"
+            subtitle="종목 제외·선택"
             filter={filter}
             actions={actions}
             predicates={EOD_BOARD_PREDICATES}
             onClose={onClose}
-            emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>복기</b> 보드에서 현재 시점 종목을 흐리게/숨김.</>}
+            emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>복기</b> 보드에서 현재 시점 종목을 빼거나 그것만 남기기.</>}
         />
     );
 }
@@ -201,12 +259,12 @@ export function LiveFilterEditor({ onClose }: { onClose: () => void }): JSX.Elem
     return (
         <FilterEditor
             title="실시간 필터"
-            subtitle="매칭 종목 제외"
+            subtitle="종목 제외·선택"
             filter={filter}
             actions={actions}
             predicates={LIVE_BOARD_PREDICATES}
             onClose={onClose}
-            emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>실시간</b> 보드에서 종목을 흐리게/숨김(매물대·시그널·시총·테마순위·고가·일봉대금).</>}
+            emptyHelp={<>조건을 만들어 <b style={{ color: "var(--text-secondary)" }}>실시간</b> 보드에서 종목을 빼거나 그것만 남기기(매물대·시그널·시총·테마순위·고가·일봉대금).</>}
         />
     );
 }

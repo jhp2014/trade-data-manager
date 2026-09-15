@@ -6,12 +6,14 @@ import {
     evalBoardFilter,
     evalPredicate,
     isBoardFilterActive,
+    normalizeBoardFilter,
     predicateAvailable,
     predicateEvidence,
     EOD_FIELDS,
     LIVE_FIELDS,
     LIVE_ALARM_FIELDS,
     type BoardFilterExpr,
+    type BoardFilterGroup,
     type BoardMetrics,
     type MetricField,
 } from "../filter.js";
@@ -23,7 +25,7 @@ const grp = (kind: string, params: Record<string, number>, mode: "dim" | "hide" 
 describe("board filter (순수)", () => {
     it("defaultParams — 레지스트리 기본값", () => {
         expect(defaultParams("smallAmount")).toEqual({ ltEok: 100 });
-        expect(defaultParams("minAmtFew")).toEqual({ eok: 50, maxCount: 0 });
+        expect(defaultParams("minAmtFew")).toEqual({ eok: 50, op: 0, maxCount: 0 });
         expect(defaultParams("newHighFar")).toEqual({ market: 1, window: 20, tol: 2, side: 0 }); // market 기본 UN, side 기본 내부
     });
 
@@ -114,6 +116,35 @@ describe("board filter (순수)", () => {
         expect(evalBoardFilter(expr, metrics({ buckets: undefined })).effect).toBe("show");
     });
 
+    it("minAmtFew op — ≥ 방향(강조·AND 그룹에서 '많이 터진 종목'을 직접 쓴다)", () => {
+        const at = (...eoks: number[]): number[] => AMOUNT_BUCKETS_EOK.map((lo) => (eoks.includes(lo) ? 1 : 0));
+        const expr: BoardFilterExpr = { groups: [grp("minAmtFew", { eok: 50, op: 1, maxCount: 2 })] };
+        expect(evalBoardFilter(expr, metrics({ buckets: at(50, 70) })).effect).toBe("dim"); // 2회 ≥ 2 → 매칭
+        expect(evalBoardFilter(expr, metrics({ buckets: at(50) })).effect).toBe("show"); // 1회 → 아님
+        // 라벨이 값을 말한다(옛 상수 "분봉 대금" 은 사유 툴팁에서 파라미터를 잃었다)
+        expect(evalBoardFilter(expr, metrics({ buckets: at(50, 70) })).reasons).toEqual(["분봉 50억+ 대금 ≥ 2회"]);
+    });
+
+    it("normalizeBoardFilter — 옛 자유 입력 eok 를 구간 경계로 스냅(평가는 그대로, 라벨만 참이 된다)", () => {
+        const at = (...eoks: number[]): number[] => AMOUNT_BUCKETS_EOK.map((lo) => (eoks.includes(lo) ? 1 : 0));
+        const legacy: BoardFilterExpr = { groups: [grp("minAmtFew", { eok: 60, maxCount: 0 })] };
+        const normalized = normalizeBoardFilter(legacy);
+        expect(normalized.groups[0].predicates[0].params.eok).toBe(70);
+        // 무손실: 60 은 이미 "70억+ 를 세는" 식이었다 — 스냅 전후 판정이 같다
+        for (const buckets of [at(50), at(70), at(20, 30), []]) {
+            expect(evalBoardFilter(normalized, metrics({ buckets })).effect).toBe(evalBoardFilter(legacy, metrics({ buckets })).effect);
+        }
+        expect(normalizeBoardFilter({ groups: [grp("minAmtFew", { eok: 50, maxCount: 0 })] }).groups[0].predicates[0].params.eok).toBe(50);
+    });
+
+    it("normalizeBoardFilter — 표현 자체가 없는 두 자리(최대 경계 초과·비숫자)", () => {
+        const top = AMOUNT_BUCKETS_EOK[AMOUNT_BUCKETS_EOK.length - 1];
+        // 최대 경계 초과: 옛 뜻("항상 0회")을 담을 칸이 없다 → 최대 칸으로 클램프(판정이 바뀐다, 주석에 명시)
+        expect(normalizeBoardFilter({ groups: [grp("minAmtFew", { eok: 300, maxCount: 0 })] }).groups[0].predicates[0].params.eok).toBe(top);
+        // 손상 저장물: 최대 칸으로 밀지 않고 기본값으로
+        expect(normalizeBoardFilter({ groups: [grp("minAmtFew", { eok: Number.NaN, maxCount: 0 })] }).groups[0].predicates[0].params.eok).toBe(50);
+    });
+
     it("newHighFar side — 내부(기본)=매물대 안 매칭 / 돌파=창최고 근접 매칭", () => {
         const inside = { krx: [5, 30, 3], un: [5, 30, 3] }; // 당일 5 vs 최고 30 = 내부
         const breakout = { krx: [20, 5, 3], un: [20, 5, 3] }; // 당일=창최고 = 돌파
@@ -123,6 +154,61 @@ describe("board filter (순수)", () => {
         const breakoutExpr: BoardFilterExpr = { groups: [grp("newHighFar", { window: 20, tol: 2, side: 1 })] };
         expect(evalBoardFilter(breakoutExpr, metrics({ trailingHighs: breakout })).effect).toBe("dim"); // 돌파 매칭(알람이 쓰는 방향)
         expect(evalBoardFilter(breakoutExpr, metrics({ trailingHighs: inside })).effect).toBe("show");
+    });
+});
+
+// ── 선택(화이트리스트) 방향 — 매칭이 아니라 **미매칭**에 처리를 건다 ──
+describe("선택 방향(나머지 흐리게/숨김)", () => {
+    const wl = (kind: string, params: Record<string, number>, mode: "dimRest" | "hideRest" = "hideRest"): BoardFilterGroup => ({ predicates: [{ kind, params }], mode });
+
+    it("맞는 종목은 남고 나머지가 처리된다", () => {
+        const expr: BoardFilterExpr = { groups: [wl("weakHigh", { op: 1, ltPct: 10 })] }; // 고가 등락률 ≥ 10%
+        expect(evalBoardFilter(expr, metrics({ highPct: 20 })).effect).toBe("show");
+        expect(evalBoardFilter(expr, metrics({ highPct: 5 })).effect).toBe("hide");
+        expect(evalBoardFilter({ groups: [wl("weakHigh", { op: 1, ltPct: 10 }, "dimRest")] }, metrics({ highPct: 5 })).effect).toBe("dim");
+    });
+
+    it("결손(미결)은 통과 — 데이터 없는 종목이 조용히 사라지지 않는다", () => {
+        // 배제 방향에선 미결→false 로 깎아도 안전하지만(안 지운다), 선택 방향에선 같은 깎기가 '나머지'로 몰아 지운다.
+        const expr: BoardFilterExpr = { groups: [wl("minAmtFew", { eok: 50, op: 1, maxCount: 1 })] };
+        expect(evalBoardFilter(expr, metrics({ buckets: undefined })).effect).toBe("show");
+    });
+
+    it("빈 그룹은 아무도 안 지운다(편집 중 빈 껍데기)", () => {
+        expect(evalBoardFilter({ groups: [{ predicates: [], mode: "hideRest" }] }, metrics({})).effect).toBe("show");
+    });
+
+    it("선택 그룹이 여럿이면 교집합 — '그룹끼리 OR' 은 배제 방향의 읽기다", () => {
+        const expr: BoardFilterExpr = { groups: [wl("weakHigh", { op: 1, ltPct: 10 }), wl("smallAmount", { ltEok: 100 })] };
+        // 등락률 ≥10 ✓ · 대금 < 100억 ✓ → 둘 다 만족해야 남는다
+        expect(evalBoardFilter(expr, metrics({ highPct: 20, amount: 50e8 })).effect).toBe("show");
+        expect(evalBoardFilter(expr, metrics({ highPct: 20, amount: 500e8 })).effect).toBe("hide"); // 두 번째 탈락
+        expect(evalBoardFilter(expr, metrics({ highPct: 5, amount: 50e8 })).effect).toBe("hide"); // 첫 번째 탈락
+    });
+
+    it("사유는 '… 아님' — 왜 나머지로 갔는지", () => {
+        const expr: BoardFilterExpr = { groups: [wl("weakHigh", { op: 1, ltPct: 10 }, "dimRest")] };
+        expect(evalBoardFilter(expr, metrics({ highPct: 5 })).reasons).toEqual(["고가 등락률 ≥ 10% 아님"]);
+    });
+
+    it("사유에 **실제로 어긋난 술어만** 담긴다 — 통과한 조건을 탈락 사유로 말하지 않는다", () => {
+        const expr: BoardFilterExpr = {
+            groups: [{ mode: "dimRest", predicates: [{ kind: "weakHigh", params: { op: 1, ltPct: 10 } }, { kind: "smallAmount", params: { ltEok: 100 } }] }],
+        };
+        // 등락률 ≥10 ✓ · 대금 500억(<100억 아님) ✗ → 둘째만 사유
+        expect(evalBoardFilter(expr, metrics({ highPct: 20, amount: 500e8 })).reasons).toEqual(["일봉 대금 < 100억 아님"]);
+    });
+
+    it("배제와 섞이면 처리 우선순위 그대로(hide > dim > show)", () => {
+        const expr: BoardFilterExpr = { groups: [wl("weakHigh", { op: 1, ltPct: 10 }, "dimRest"), grp("smallAmount", { ltEok: 100 }, "hide")] };
+        expect(evalBoardFilter(expr, metrics({ highPct: 5, amount: 50e8 })).effect).toBe("hide");
+        expect(evalBoardFilter(expr, metrics({ highPct: 5, amount: 500e8 })).effect).toBe("dim");
+    });
+
+    it("강조(mark)는 방향이 없다 — 매칭된 쪽만 🔥", () => {
+        const expr: BoardFilterExpr = { groups: [{ predicates: [{ kind: "weakHigh", params: { op: 1, ltPct: 10 } }], mode: "mark" }] };
+        expect(evalBoardFilter(expr, metrics({ highPct: 20 })).marked).toBe(true);
+        expect(evalBoardFilter(expr, metrics({ highPct: 5 })).marked).toBe(false);
     });
 });
 
