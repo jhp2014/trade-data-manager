@@ -108,11 +108,11 @@ export function ThemeCard({
                 {mode !== "collapsed" && (
                     <div>
                         {movers.map((s) => (
-                            <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} home={theme} />
+                            <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} home={theme} inCard />
                         ))}
                         {mode === "all" &&
                             rest.map((s, i) => (
-                                <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} boundary={i === 0 && movers.length > 0} home={theme} />
+                                <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} boundary={i === 0 && movers.length > 0} home={theme} inCard />
                             ))}
                     </div>
                 )}

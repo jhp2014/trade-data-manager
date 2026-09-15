@@ -18,6 +18,7 @@ export function StockRow({
     home,
     selectedTheme,
     onThemeClick,
+    inCard = false,
 }: {
     s: BoardStock;
     rank: number | null; // null = 순위 미표시(개별/미분류)
@@ -27,6 +28,7 @@ export function StockRow({
     home?: string; // 카드 테마(칩에서 제외). 개별/미분류는 undefined → 전체 테마 칩.
     selectedTheme?: string; // 강조할 테마 칩(실시간 모니터링: 어느 테마 순위를 등수로 보여줄지)
     onThemeClick?: (theme: string) => void; // 테마 칩 클릭(보드 미사용) — 순위 표시 테마 선택
+    inCard?: boolean; // 테마 카드 안의 행 — 왼쪽 선택 바를 안 그린다(카드가 이미 제 왼쪽 변을 가졌다)
 }): JSX.Element {
     const up = s.changeRate >= 0;
     const chips = home ? s.themes.filter((t) => t !== home) : s.themes;
@@ -67,7 +69,9 @@ export function StockRow({
                 // 선택 = **왼쪽 액센트 바 + accent-soft 배경**. 배경 한 겹(옛 bg-active)은 흰 바탕에서 거의 안 떴고,
                 // 시트의 선택(.sheet-row[data-focus] = accent-soft)과 색이 갈려 "지금 이것"이 패널마다 달랐다.
                 // 안 고른 행도 **투명 바를 같은 두께로** 들어 글자가 좌우로 안 밀린다(선택이 옮겨갈 때 줄이 출렁이면 그게 더 시끄럽다).
-                borderLeft: `3px solid ${selected ? "var(--accent-primary)" : "transparent"}`,
+                // ⚠ **테마 카드 안에서는 바를 안 그린다**(inCard) — 카드가 이미 제 왼쪽 변을 그어 두 세로선이 나란히 서면
+                //   그것 자체가 소음이다. 거기선 배경만으로 충분하다(카드가 좁아 배경 띠가 잘 보이고, 카드 승격도 함께 말한다).
+                borderLeft: `3px solid ${selected && !inCard ? "var(--accent-primary)" : "transparent"}`,
                 borderTop: boundary ? "2px solid var(--border-strong)" : undefined,
                 borderBottom: "1px solid var(--border-subtle)",
                 padding: "3px 10px 3px 7px",
