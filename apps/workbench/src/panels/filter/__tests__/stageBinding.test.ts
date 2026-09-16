@@ -16,7 +16,7 @@ describe("railKeyOf — 그룹만 레일이 없다", () => {
     });
 
     it("그룹은 순서가 없어 레일이 아니다", () => {
-        expect(railKeyOf({ kind: "group", expr: { groups: [] } })).toBeNull();
+        expect(railKeyOf({ kind: "group", expr: { groups: [] }, scope: "day" })).toBeNull();
     });
 });
 

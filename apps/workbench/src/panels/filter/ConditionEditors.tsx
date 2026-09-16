@@ -7,7 +7,7 @@ import type { GroupExpr } from "../rank/groupFilter.js";
 import { GroupFilterEditor } from "./GroupFilterEditor.js";
 import { RangeTextEditor } from "./RangeTextEditor.js";
 import { predicateOfKind, type RailKey } from "./stageBinding.js";
-import type { AxisValueRange, DateRange, FilterPredicate, FilterStage, TimeRange } from "./stage.js";
+import type { AxisValueRange, DateRange, FilterPredicate, FilterStage, Grain, TimeRange } from "./stage.js";
 
 /** 레일 줄에서 여는 편집기 하나 — null 이면 아무 팝오버도 없다.
  *  날짜/시간을 한 멤버("date" | "time")로 접지 않는 이유: kind 가 합집합인 멤버는 판별 검사로
@@ -18,8 +18,9 @@ export type RailEditor =
     | { kind: "axisValue"; axisId: string; x: number; y: number };
 
 /** 그룹 팔레트 — 편집(stageId 있음)과 생성(draft)이 같은 팝오버를 쓴다.
- *  층위를 안 든다: 그룹은 하루(차트) 하나뿐이라 팝오버가 칸의 층위를 볼 이유가 없다(2026-09-01). */
-export type GroupEditorAnchor = { stageId?: string; x: number; y: number };
+ *  scope 를 든다(2026-09-16): 술어 payload 와 같은 값 — 편집이면 그 술어의 scope, 생성이면 입구가
+ *  정한 것. 팔레트의 목록(point = 타점 그룹만)과 커밋 시 보존이 이 값을 쓴다. */
+export type GroupEditorAnchor = { stageId?: string; scope: Grain; x: number; y: number };
 
 export function GroupEditors({ editor, stages, draft, onDraftChange, onCloseCreate, removeStage, setPredicates, onClose }: {
     editor: GroupEditorAnchor | null;
@@ -36,15 +37,16 @@ export function GroupEditors({ editor, stages, draft, onDraftChange, onCloseCrea
     const editingStage = editor?.stageId ? stages.find((s) => s.id === editor.stageId) : undefined;
     if (editor === null) return null;
     return editor.stageId && editingStage
-        ? <GroupFilterEditor anchor={editor}
+        ? <GroupFilterEditor anchor={editor} scope={editor.scope}
             expr={(editingStage.predicates.find((p) => p.kind === "group") as Extract<FilterPredicate, { kind: "group" }> | undefined)?.expr ?? { groups: [] }}
             onChange={(next) => {
                 // 식을 다 비우면 조건이 없어진 것 — 빈 필터를 남기지 않는다(레일에서 구간을 다 지운 것과 같다).
                 if (next.groups.length === 0) { removeStage(editor.stageId!); onClose(); return; }
-                setPredicates(editor.stageId!, [{ kind: "group", expr: next }]);
+                // scope 보존 — 빠뜨리면 편집 한 번에 point 조건이 day 로 되돌아간다(조용한 손실).
+                setPredicates(editor.stageId!, [{ kind: "group", expr: next, scope: editor.scope }]);
             }}
             onClose={onClose} />
-        : <GroupFilterEditor anchor={editor} expr={draft} onChange={onDraftChange} onClose={onCloseCreate} />;
+        : <GroupFilterEditor anchor={editor} scope={editor.scope} expr={draft} onChange={onDraftChange} onClose={onCloseCreate} />;
 }
 
 export function RailEditors({ editor, stages, write, onClose }: {

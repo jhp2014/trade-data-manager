@@ -3,7 +3,7 @@ import { useGroupAssign } from "../store/groupAssign.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { rowKey } from "../lib/pointKey.js";
 import { groupColor } from "../styles/palette.js";
-import { canReparent, expandWithAncestors } from "../lib/groupTree.js";
+import { canReparent } from "../lib/groupTree.js";
 import { AnchoredPopover } from "../ui/Dialog.js";
 import { TextInput } from "../ui/controls.js";
 import type { Group } from "../api/groups.js";
@@ -46,18 +46,8 @@ function Body(): JSX.Element {
     const pointRef = isPointEntry ? { stockCode: target.stockCode, date: target.date, time: target.time! } : null;
 
     // grain 후보 — 멤버(자손 포함 롤업)가 있으면 그 grain, 어느 쪽도 없으면 빈 그룹 = 양쪽 후보.
-    // 직접 멤버만 보면 자식만 멤버인 조상이 "빈 그룹"으로 오판돼 반대 grain 섹션에 뜬다 —
-    // 계층은 한 grain 을 공유해야 하므로(그룹당 한 grain 관례) 조상 전개로 묶어서 판정한다.
-    const dayGrain = useMemo(() => {
-        const s = new Set<string>();
-        for (const m of gv.memberships) for (const n of expandWithAncestors(m.groupNames, gv.groupByName)) s.add(n);
-        return s;
-    }, [gv.memberships, gv.groupByName]);
-    const pointGrain = useMemo(() => {
-        const s = new Set<string>();
-        for (const m of gv.pointMemberships) for (const n of expandWithAncestors(m.groupNames, gv.groupByName)) s.add(n);
-        return s;
-    }, [gv.pointMemberships, gv.groupByName]);
+    // 롤업 잣대는 lib/groupGrain 한 벌(그룹 필터 피커와 공유) — 여기서 다시 굽지 않는다.
+    const { dayGrain, pointGrain } = gv.grainSets;
     const dayGroups = useMemo(
         () => gv.groups.filter((g) => dayGrain.has(g.name) || !pointGrain.has(g.name)),
         [gv.groups, dayGrain, pointGrain],

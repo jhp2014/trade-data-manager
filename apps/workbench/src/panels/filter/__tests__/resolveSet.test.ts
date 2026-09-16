@@ -33,7 +33,7 @@ const stage = (id: string, predicates: FilterStage["predicates"], enabled = true
 const dateStage = (id: string, from: string, to: string): FilterStage =>
     stage(id, [{ kind: "date", ranges: [{ from, to }] }]);
 const groupStage = (id: string, groupId: string): FilterStage =>
-    stage(id, [{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }]);
+    stage(id, [{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] }, scope: "day" }]);
 
 // 작업 깔때기 = 날짜 ≤ 07-02. 저장 집합 둘 — 같은 조건에서 나온 형제(생존/칸)도 각자 사본이다.
 const activeStages: FilterStage[] = [dateStage("d1", "2026-07-01", "2026-07-02")];

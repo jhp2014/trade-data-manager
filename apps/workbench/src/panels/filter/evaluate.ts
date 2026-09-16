@@ -122,8 +122,19 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
             return p.ranges.some((r) => hm >= r.from && hm <= r.to);
         }
 
-        case "group":
-            return evalGroupExpr3(p.expr, item, look);
+        case "group": {
+            // scope = **질문의 층위**(stage.ts 머리 주석의 예외 항목). day 질문은 항목의 시각을 벗겨
+            // 그 **하루**에 묻는다 — 깔때기 해상도가 타점으로 내려가도(다른 point 조건 탓) "라벨 타점을
+            // 하나라도 가진 날"(∃ 상향) 약속이 유지되고, 하루 답이 그날 타점 전부에 적용된다(층위 상속과
+            // 같은 방향). 안 벗기면 grain 이 내려가는 순간 뜻이 "이 타점 자신이 라벨됨"으로 조용히 바뀐다.
+            // point 질문은 시각 없는 항목(타점 0인 후보 하루)에 답할 수 없다 — 안 접으면 ∃ day 의미의
+            // 확답이 새어 나와 "라벨 붙은 타점이 행"인 집합에 시각 없는 하루 행이 섞인다. 다른 point
+            // 술어(time·theme·outcome·hot)와 같은 결손(3치).
+            if (p.scope === "point" && item.time === undefined) return undefined;
+            const at: FunnelItem = p.scope === "day" && item.time !== undefined
+                ? { stockCode: item.stockCode, date: item.date } : item;
+            return evalGroupExpr3(p.expr, at, look);
+        }
 
         case "axisBand": {
             // 경계는 **타점 앵커**다. 지정한 경계가 안 풀리면 밴드가 깨진 것이라 판단 불가.

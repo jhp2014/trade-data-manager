@@ -28,6 +28,7 @@ import {
 } from "../api/groups.js";
 import { groupsQuery, groupMembershipsQuery, pointGroupMembershipsQuery } from "../api/queries.js";
 import { useWorkbench } from "../store/workbench.js";
+import { groupGrainSets, type GroupGrainSets } from "./groupGrain.js";
 import { applyGroupToggle, buildGroupIndex, countByGroup, foldPointIndexToDay } from "./groupIndex.js";
 import { ancestorsOf, expandWithAncestors, groupPathLabel, inheritanceSources } from "./groupTree.js";
 import { chartKey, pointKey } from "./pointKey.js";
@@ -82,6 +83,12 @@ export interface GroupsView {
     toggleChart: (chart: ChartGroupRef, groupName: string, on?: boolean) => void;
     /** 전 항목 멤버십 원본 — 겹침(징검다리) 계산처럼 접지 않은 피드가 필요한 곳에서 쓴다. */
     memberships: GroupMembership[];
+    /**
+     * 그룹의 grain 분류(자손 포함 롤업, lib/groupGrain) — 배정 팝오버 섹션과 그룹 필터 피커가
+     * **같은 Set** 을 본다(잣대가 갈리면 두 화면이 같은 그룹을 다른 층위로 말한다). 빈 그룹은 어느
+     * 쪽에도 없다.
+     */
+    grainSets: GroupGrainSets;
 
     // ── 좌표 라벨(타점 grain) — day 판과 대칭. 소비자 = 배정 팝오버·깔때기 판정.
     /** 이 좌표에 붙은 그룹 이름들(직접만 — 표시·편집 판정). */
@@ -145,6 +152,11 @@ export function useGroupsValue(): GroupsView {
         const folded = foldPointIndexToDay(pointMemberships);
         return new Map([...folded].map(([k, names]) => [k, expandWithAncestors(names, groupByName)]));
     }, [pointMemberships, groupByName]);
+    // grain 분류(자손 포함 롤업) — Provider 한 벌에서 굽는다(소비 화면마다 전량 롤업이 돌지 않게).
+    const grainSets = useMemo(
+        () => groupGrainSets(memberships, pointMemberships, groupByName),
+        [memberships, pointMemberships, groupByName],
+    );
 
     // 옛 nameOf(id→이름) 조회가 사라졌다 — 이름이 곧 키라 정렬 기준이 키 자신이고,
     // "막 만든 그룹이 사전에 아직 없어 id 로 정렬되는" 경계 조건도 함께 없어졌다.
@@ -241,6 +253,7 @@ export function useGroupsValue(): GroupsView {
             toggleChart: (c, groupName, on) =>
                 toggleMut.mutate({ item: { stockCode: c.stockCode, date: c.date }, groupName, on: on ?? !chartOf(c).includes(groupName) }),
             memberships,
+            grainSets,
             pointGroupNamesOf: pointOf,
             pointGroupsOf: (p) => pointOf(p).map((n) => groupByName.get(n)).filter((g): g is Group => g != null),
             pointCountOf: (groupName) => pointCounts.get(groupName) ?? 0,
@@ -262,5 +275,5 @@ export function useGroupsValue(): GroupsView {
         };
         // mutation 은 매 렌더 새 객체(useMutation) — 의존성에 넣으면 매번 재생성되므로 제외(mutate 는 안정).
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [groups, groupByName, chartIndex, counts, memberships, pointIndex, pointCounts, pointMemberships, pointDayApplied, createGroupAndAttach, renameGroupCb, deleteGroupCb, setParentCb, groupsQ.isLoading, memberQ.isLoading, pointMemberQ.isLoading]);
+    }, [groups, groupByName, chartIndex, counts, memberships, grainSets, pointIndex, pointCounts, pointMemberships, pointDayApplied, createGroupAndAttach, renameGroupCb, deleteGroupCb, setParentCb, groupsQ.isLoading, memberQ.isLoading, pointMemberQ.isLoading]);
 }

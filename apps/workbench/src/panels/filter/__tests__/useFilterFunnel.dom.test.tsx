@@ -164,7 +164,7 @@ describe("그룹 계층 상속 — '테마'를 걸면 '테마 ▸ 2차전지' �
         memberships: [{ stockCode: A, date: D1, groupNames: ["2차전지"] }], // A 는 자식에만 직접 부착
     };
     const groupStage = (groupId: string): FilterStage =>
-        ({ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }] });
+        ({ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] }, scope: "day" }] });
 
     it("부모 그룹 필터가 자식 소속을 통과시킨다", () => {
         setStages([groupStage("테마")]);
@@ -177,7 +177,7 @@ describe("그룹 계층 상속 — '테마'를 걸면 '테마 ▸ 2차전지' �
     });
 
     it("부모 부정(!테마)은 자식 소속도 떨군다 — 적용 집합 기준의 대칭", () => {
-        setStages([{ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "테마", neg: true }] }] } }] }]);
+        setStages([{ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "테마", neg: true }] }] }, scope: "day" }] }]);
         expect(read(HIER).viewOf(null).viewedItems.map((i) => i.stockCode).sort()).toEqual([B, C].sort());
     });
 });
@@ -192,7 +192,7 @@ describe("그룹의 층위 상속 — 하루 그룹이 그날 타점 전부에 �
         memberships: [{ stockCode: A, date: D1, groupNames: ["테마"] }], // 차트에만 붙는다(타점 아님)
     };
     const groupStage = (groupId: string): FilterStage =>
-        ({ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] } }] });
+        ({ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] }, scope: "day" }] });
     /** 해상도를 타점으로 끌어내리는 단계 — 시각 조건은 사전을 안 봐서 배선만 재기에 좋다. */
     const timeStage: FilterStage =
         { id: "st", enabled: true, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }] };
@@ -207,10 +207,72 @@ describe("그룹의 층위 상속 — 하루 그룹이 그날 타점 전부에 �
 
     it("부정도 같은 잣대 — 그 하루가 아닌 타점만 남는다", () => {
         setStages([
-            { id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "테마", neg: true }] }] } }] },
+            { id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "테마", neg: true }] }] }, scope: "day" }] },
             timeStage,
         ]);
         expect(read(DAY_GROUP).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([B]);
+    });
+});
+
+// 2026-09-16 술어 scope 명시화의 수용 기준 — day scope 는 ∃ 상향(옛 행동 그대로), point scope 는
+// 좌표 라벨이 행을 고른다(전엔 grain 이 늘 day 로 접혀 이 화면 자체가 없었다).
+describe("그룹 술어 scope — 같은 좌표 라벨을 두 층위로 묻는다", () => {
+    const LABELED: Seed = {
+        ...SEED,
+        groups: [{ name: "눌림", parentName: null }],
+        // A 의 09:30 타점 하나에만 라벨 — A 의 09:35, B 의 10:00 은 무라벨.
+        pointMemberships: [{ stockCode: A, date: D1, time: "09:30:00", groupNames: ["눌림"] }],
+    };
+    const labelStage = (scope: "day" | "point"): FilterStage =>
+        ({ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "눌림", neg: false }] }] }, scope }] });
+
+    it("day scope + 타점 그룹 = ∃ 상향 — 라벨 타점을 하나라도 가진 **날**이 행으로 남는다", () => {
+        setStages([labelStage("day")]);
+        const v = read(LABELED);
+        expect(v.grain).toBe("day");
+        expect(v.viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([A]);
+    });
+
+    it("point scope = 라벨 붙은 **타점만** 행이 된다 — 해상도가 그룹 조건 하나로 타점까지 내려간다", () => {
+        setStages([labelStage("point")]);
+        const v = read(LABELED);
+        expect(v.grain).toBe("point");
+        expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`)).toEqual([`${A}@09:30:00`]);
+    });
+
+    // ⚠ 리뷰 F1 — scope 는 행 낟알만이 아니라 **평가의 층위**다. 다른 point 조건이 해상도를 타점으로
+    // 끌어내려도 day scope 조건은 여전히 하루에 묻는다(시각 벗김) — 안 그러면 "∃ 로 잰다"는 메뉴의
+    // 약속이 깔때기 구성에 따라 조용히 깨진다(라벨 시각 밖의 타점이 전부 탈락).
+    it("day scope 는 해상도가 타점이어도 하루에 묻는다 — 라벨된 날의 타점 **전부**가 통과한다", () => {
+        setStages([
+            labelStage("day"),
+            { id: "st", enabled: true, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }] },
+        ]);
+        const v = read(LABELED);
+        expect(v.grain).toBe("point");
+        // 라벨은 09:30 하나지만 ∃ 는 하루 질문 — A 의 09:35 도 산다. B 는 라벨 없는 날이라 탈락.
+        expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`))
+            .toEqual([`${A}@09:30:00`, `${A}@09:35:00`]);
+    });
+
+    // ⚠ 리뷰 F2 — 타점 0인 후보 하루는 point 해상도에서 시각 없는 항목 하나로 남는다. point 질문은
+    // 거기 답할 수 없다(결손) — 확답을 주면 "라벨 붙은 타점이 행"인 집합에 시각 없는 하루 행이 섞인다.
+    it("point scope 는 시각 없는 항목(타점 0인 하루)에 결손 — 라벨이 있어도 생존자가 안 된다", () => {
+        const withOrphanDay: Seed = {
+            ...LABELED,
+            // C(D2)는 격자 타점이 0인데 좌표 라벨만 있다 — "모수 밖/고아" 상태의 극단.
+            pointMemberships: [
+                ...(LABELED.pointMemberships ?? []),
+                { stockCode: C, date: D2, time: "10:00:00", groupNames: ["눌림"] },
+            ],
+        };
+        setStages([labelStage("point")]);
+        const v = read(withOrphanDay);
+        expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`)).toEqual([`${A}@09:30:00`]);
+        // **탈락이 아니라 결손이다** — 생존자 목록만 보면 false 로 떨궈도 통과해 버린다(이 파일 머리
+        // 주석의 핵심 규칙). C 는 미배치 칸에 서야 한다.
+        act(() => { useWorkbench.setState({ funnelSelection: { stageId: "sg", cells: ["pending"] } }); });
+        expect(read(withOrphanDay).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([C]);
     });
 });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-    activeStages, addStage, autoGrain, canAddGroupLiteral, canAddPredicate,
+    activeStages, addStage, autoGrain, canAddPredicate,
     funnelOrder, isPredicateDead, isPredicateEmpty, moveStage, parseStages, predicateGrain, removeStage,
     renameGroupInStages, renameStage, resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
     type FilterPredicate, type FilterStage, type Grain, type GrainLookup,
@@ -18,7 +18,7 @@ const look: GrainLookup = {
 
 describe("isPredicateEmpty — 빈 조건은 평가에서 빠져야 한다", () => {
     it("빈 식·빈 배열·빈 밴드는 비었다", () => {
-        expect(isPredicateEmpty({ kind: "group", expr: { groups: [] } })).toBe(true);
+        expect(isPredicateEmpty({ kind: "group", expr: { groups: [] }, scope: "day" })).toBe(true);
         expect(isPredicateEmpty({ kind: "axisBand", axisId: "a1", band: {} })).toBe(true);
         expect(isPredicateEmpty({ kind: "date", ranges: [] })).toBe(true);
     });
@@ -39,7 +39,7 @@ describe("activeStages — 켜져 있고 빈 술어가 아닌 게 있어야 센�
     });
 });
 
-describe("predicateGrain — 알갱이는 저장하지 않고 파생한다", () => {
+describe("predicateGrain — 알갱이는 파생한다(예외: 그룹은 저장된 scope)", () => {
     it("날짜는 하루, 시간은 타점(시각 없이는 판정 불가)", () => {
         expect(predicateGrain({ kind: "date", ranges: [] }, look)).toBe("day");
         expect(predicateGrain({ kind: "time", ranges: [] }, look)).toBe("point");
@@ -54,17 +54,19 @@ describe("predicateGrain — 알갱이는 저장하지 않고 파생한다", () 
         expect(predicateGrain({ kind: "axisBand", axisId: "없는축", band: {} }, look)).toBeUndefined();
     });
 
-    it("그룹은 전부 하루 층위 — 여럿이 섞여도 하루", () => {
-        expect(predicateGrain({ kind: "group", expr: expr("g1", "g2") }, look)).toBe("day");
+    it("그룹은 저장된 scope 를 그대로 읽는다 — day scope 는 타점 그룹(∃ 상향)이 섞여도 day", () => {
+        expect(predicateGrain({ kind: "group", expr: expr("g1", "g2"), scope: "day" }, look)).toBe("day");
+        expect(predicateGrain({ kind: "group", expr: expr("g1"), scope: "point" }, look)).toBe("point");
     });
 
-    it("모르는 그룹이 섞이면 모름 — 그 모름이 실은 무엇이었는지 말할 수 없다", () => {
-        expect(predicateGrain({ kind: "group", expr: expr("g1", "없는그룹") }, look)).toBeUndefined();
+    it("모르는 그룹이 섞여도 알갱이는 안 흔들린다 — 죽음은 isPredicateDead 가 따로 잰다(옛 규칙의 정반대)", () => {
+        expect(predicateGrain({ kind: "group", expr: expr("g1", "없는그룹"), scope: "day" }, look)).toBe("day");
+        expect(predicateGrain({ kind: "group", expr: expr("없는그룹"), scope: "point" }, look)).toBe("point");
     });
 
-    it("'그룹 없음'도 제 층위(하루)를 말한다 — 그것만 있어도 칸이 안 튄다", () => {
-        expect(predicateGrain({ kind: "group", expr: expr(NONE_GROUP) }, look)).toBe("day");
-        expect(predicateGrain({ kind: "group", expr: expr(NONE_GROUP, "g1") }, look)).toBe("day");
+    it("'그룹 없음'도 술어의 scope 를 따른다 — 층위는 리터럴이 아니라 술어가 든다", () => {
+        expect(predicateGrain({ kind: "group", expr: expr(NONE_GROUP), scope: "day" }, look)).toBe("day");
+        expect(predicateGrain({ kind: "group", expr: expr(NONE_GROUP, "g1"), scope: "day" }, look)).toBe("day");
     });
 });
 
@@ -79,6 +81,13 @@ describe("isPredicateDead — 사전이 온 뒤에도 모르면 죽은 참조", 
 
     it("살아있는 참조는 죽지 않았다", () => {
         expect(isPredicateDead({ kind: "axisBand", axisId: "a1", band: { lo: "s1" } }, look)).toBe(false);
+    });
+
+    it("그룹은 리터럴이 직접 사전을 본다 — **하나라도** 지워졌으면 죽었다(scope 저장으로 grain 경유가 끊겨서)", () => {
+        expect(isPredicateDead({ kind: "group", expr: expr("g1", "없는그룹"), scope: "day" }, look)).toBe(true);
+        expect(isPredicateDead({ kind: "group", expr: expr("없는그룹"), scope: "point" }, look)).toBe(true);
+        expect(isPredicateDead({ kind: "group", expr: expr("g1", "g2"), scope: "day" }, look)).toBe(false);
+        expect(isPredicateDead({ kind: "group", expr: expr(NONE_GROUP), scope: "day" }, look)).toBe(false); // 없음은 사전 밖
     });
 });
 
@@ -104,9 +113,13 @@ describe("stageGrain / autoGrain — 가장 가는 것으로", () => {
     it("꺼진 타점 단계는 해상도를 못 끌어내린다", () => {
         const stages = [
             stage("a", [{ kind: "date", ranges: [{ from: "x", to: "y" }] }]),
-            stage("b", [{ kind: "group", expr: expr("g2") }], false),
+            stage("b", [{ kind: "group", expr: expr("g2"), scope: "point" }], false),
         ];
         expect(autoGrain(stages, look)).toBe("day");
+    });
+
+    it("point scope 그룹 조건 하나로 해상도가 타점으로 내려간다 — 이 설계의 알맹이", () => {
+        expect(autoGrain([stage("a", [{ kind: "group", expr: expr("g2"), scope: "point" }])], look)).toBe("point");
     });
 
     it("아무것도 안 걸렸으면 하루", () => {
@@ -125,7 +138,7 @@ describe("stageGrain / autoGrain — 가장 가는 것으로", () => {
 });
 
 describe("단계 구성 — 한 종류·한 층위", () => {
-    const dayGroup: FilterPredicate = { kind: "group", expr: expr("g1") };
+    const dayGroup: FilterPredicate = { kind: "group", expr: expr("g1"), scope: "day" };
     const dayAxis: FilterPredicate = { kind: "axisBand", axisId: "a1", band: { lo: "s1" } };
     const pointAxis: FilterPredicate = { kind: "axisBand", axisId: "a2", band: { lo: "s1" } };
 
@@ -148,35 +161,21 @@ describe("단계 구성 — 한 종류·한 층위", () => {
         expect(canAddPredicate(stage("a", [dayAxis]), { kind: "axisBand", axisId: "a1", band: { hi: "s2" } }, look)).toBe(true);
     });
 
-    it("모름은 막지 않는다 — 알 수 없는 것으로 손을 막으면 사전이 늦을 때 멀쩡한 편집이 거부된다", () => {
-        const unknown: FilterPredicate = { kind: "group", expr: expr("없는그룹") };
+    it("같은 그룹 종류라도 scope 가 다르면 한 단계에 못 든다 — 한 단계 = 한 층위", () => {
+        const pointGroup: FilterPredicate = { kind: "group", expr: expr("g2"), scope: "point" };
+        expect(canAddPredicate(stage("a", [dayGroup]), pointGroup, look)).toBe(false);
+        expect(canAddPredicate(stage("a", [dayGroup]), { kind: "group", expr: expr("g2"), scope: "day" }, look)).toBe(true);
+    });
+
+    it("지워진 그룹이 섞여도 편집은 막지 않는다 — scope 가 저장돼 있어 층위는 안다", () => {
+        const unknown: FilterPredicate = { kind: "group", expr: expr("없는그룹"), scope: "day" };
         expect(canAddPredicate(stage("a", [dayGroup]), unknown, look)).toBe(true);
         expect(canAddPredicate(stage("a", [unknown]), dayGroup, look)).toBe(true);
     });
 });
 
-describe("canAddGroupLiteral — 그룹은 전부 하루 층위라 서로 막지 않는다", () => {
-    it("살아있는 그룹끼리는 언제나 받는다", () => {
-        expect(canAddGroupLiteral(expr("g1"), "g1", look)).toBe(true);
-        expect(canAddGroupLiteral(expr("g1"), "g2", look)).toBe(true);
-    });
-
-    it("빈 식도 받는다", () => {
-        expect(canAddGroupLiteral({ groups: [] }, "g2", look)).toBe(true);
-    });
-
-    it("'그룹 없음'도 같은 층위라 섞인다", () => {
-        expect(canAddGroupLiteral(expr("g2"), NONE_GROUP, look)).toBe(true);
-        expect(canAddGroupLiteral(expr(NONE_GROUP), "g2", look)).toBe(true);
-    });
-
-    it("모르는 그룹은 막지 않는다", () => {
-        expect(canAddGroupLiteral(expr("g1"), "없는그룹", look)).toBe(true);
-    });
-});
-
 describe("funnelOrder — 하루 단계가 타점 단계보다 앞", () => {
-    const dayS = stage("d1", [{ kind: "group", expr: expr("g1") }]);
+    const dayS = stage("d1", [{ kind: "group", expr: expr("g1"), scope: "day" }]);
     const ptS = stage("p1", [{ kind: "axisBand", axisId: "a2", band: { lo: "s1" } }]);
     const ptS2 = stage("p2", [{ kind: "time", ranges: [{ from: "09:00", to: "10:00" }] }]);
 
@@ -191,6 +190,13 @@ describe("funnelOrder — 하루 단계가 타점 단계보다 앞", () => {
         const out = funnelOrder([ptS, deadS], look);
         expect(out.map((e) => e.stage.id)).toEqual(["x", "p1"]);
         expect(out[0].grain).toBe("day");
+    });
+
+    it("point scope 그룹 단계는 타점 칸에 선다 — 그룹이 지워져도 칸을 옮겨 다니지 않는다", () => {
+        const pg = stage("pg", [{ kind: "group", expr: expr("없는그룹"), scope: "point" }]);
+        const out = funnelOrder([pg, dayS], look);
+        expect(out.map((e) => e.stage.id)).toEqual(["d1", "pg"]);
+        expect(out[1].grain).toBe("point");
     });
 });
 
@@ -256,10 +262,14 @@ describe("parseStages — 반쯤 살아난 조건은 없느니만 못하다", ()
         expect(parseStages([{ id: "a", predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: 7 }] }] } }] }])).toBeNull();
     });
 
-    it("멀쩡한 그룹 술어는 그대로 산다", () => {
+    it("그룹 술어 scope 승계 — 부재·오염은 day(옛 저장물의 ∃ day 행동 보존), point 는 보존", () => {
         const expr = { groups: [{ literals: [{ groupId: "g1", neg: true }] }] };
-        const out = parseStages([{ id: "a", predicates: [{ kind: "group", expr }] }]);
-        expect(out?.[0]?.predicates[0]).toEqual({ kind: "group", expr });
+        const noScope = parseStages([{ id: "a", predicates: [{ kind: "group", expr }] }]);
+        expect(noScope?.[0]?.predicates[0]).toEqual({ kind: "group", expr, scope: "day" });
+        const pt = parseStages([{ id: "a", predicates: [{ kind: "group", expr, scope: "point" }] }]);
+        expect(pt?.[0]?.predicates[0]).toEqual({ kind: "group", expr, scope: "point" });
+        const junk = parseStages([{ id: "a", predicates: [{ kind: "group", expr, scope: "쓰레기" }] }]);
+        expect(junk?.[0]?.predicates[0]).toEqual({ kind: "group", expr, scope: "day" });
     });
 
     it("값 구간의 속이 깨졌으면 버린다 — 경계는 point 문자열 또는 유한 수", () => {
@@ -399,7 +409,7 @@ describe("hotPoints 술어 — 파라미터가 payload 에 산다", () => {
 
 describe("renameGroupInStages — 그룹 개명 승계(리터럴 id = 이름)", () => {
     const stages: FilterStage[] = [
-        stage("s1", [{ kind: "group", expr: expr("눌림", "테마") }]),
+        stage("s1", [{ kind: "group", expr: expr("눌림", "테마"), scope: "day" }]),
         stage("s2", [{ kind: "date", ranges: [{ from: "2026-07-01", to: "2026-07-02" }] }]),
     ];
 
@@ -416,7 +426,13 @@ describe("renameGroupInStages — 그룹 개명 승계(리터럴 id = 이름)", 
     });
 
     it("없음 리터럴(@none:day)은 안 닿는다", () => {
-        const s = [stage("s", [{ kind: "group" as const, expr: expr(NONE_GROUP) }])];
+        const s = [stage("s", [{ kind: "group" as const, expr: expr(NONE_GROUP), scope: "day" as const }])];
         expect(renameGroupInStages(s, NONE_GROUP, "이상한짓")).toBe(s);
+    });
+
+    it("point scope 술어도 승계에서 scope 가 보존된다 — 스프레드가 리터럴 재조립으로 바뀌면 여기가 잡는다", () => {
+        const s = [stage("p", [{ kind: "group" as const, expr: expr("눌림"), scope: "point" as const }])];
+        const out = renameGroupInStages(s, "눌림", "눌림A");
+        expect(out[0]!.predicates[0]).toMatchObject({ kind: "group", scope: "point" });
     });
 });

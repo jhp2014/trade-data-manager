@@ -112,16 +112,66 @@ describe("＋ 조건 — 생성 입구 하나", () => {
         expect(stages()).toHaveLength(0);
     });
 
-    it("그룹은 그 자리에서 팔레트를 연다 — 판이 없는 유일한 종류라", () => {
+    // 2026-09-16 술어 scope 명시화 — 옛 "입구 하나"(2026-09-01, 그룹이 하루 층위 하나뿐이던 시절)를
+    // 뒤집었다: scope 는 태어나는 자리에서 확정되므로 입구가 곧 층위다.
+    it("그룹 입구는 둘(하루/타점) — 팔레트만 열고, 식을 쓰기 전엔 필터가 아니다(draft)", () => {
         const { container, baseElement } = renderBoard();
         openMenu(container);
-        // 진입점은 **하나**다 — 그룹이 하루 층위 하나뿐이라(2026-09-01) 옛 "(하루)/(타점)" 두 항목은
-        // 같은 팝오버로 가는 죽은 중복이었다. 층위 어휘가 메뉴에 다시 생기면 여기서 걸린다.
-        expect(byText(container, "그룹 조건 (하루)")).toBeUndefined();
-        expect(byText(container, "그룹 조건 (타점)")).toBeUndefined();
-        act(() => { fireEvent.click(byText(container, "그룹 조건")!); });
-        expect(stages()).toHaveLength(0); // 식을 쓰기 전엔 필터가 아니다(draft)
-        expect(baseElement.textContent).toContain("그룹");
+        expect(byText(container, "그룹 조건")).toBeUndefined(); // 옛 단일 입구는 없다
+        expect(byText(container, "그룹 (하루)")).toBeDefined();
+        expect(byText(container, "그룹 (타점)")).toBeDefined();
+        act(() => { fireEvent.click(byText(container, "그룹 (하루)")!); });
+        expect(stages()).toHaveLength(0);
+        expect(baseElement.textContent).toContain("그룹 조건 (하루)"); // 팔레트 머리가 층위를 말한다
+    });
+
+    it("그룹 (타점) — 팔레트엔 타점 그룹만 서고(∅·day 그룹 없음), 닫으면 point scope 조건이 된다", () => {
+        const seed: Seed = {
+            ...SEED,
+            groups: [{ name: "눌림", parentName: null }, { name: "돌파형", parentName: null }],
+            memberships: [{ stockCode: A, date: DATES[0], groupNames: ["돌파형"] }], // 돌파형 = day 그룹
+            pointMemberships: [{ stockCode: A, date: DATES[0], time: "09:30:00", groupNames: ["눌림"] }], // 눌림 = 타점 그룹
+        };
+        const { container, baseElement } = render(<ConditionBoard barsOpen={false} />, {
+            wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
+        });
+        openMenu(container);
+        act(() => { fireEvent.click(byText(container, "그룹 (타점)")!); });
+        const palette = (): string[] => [...baseElement.querySelectorAll("button")].map((b) => b.textContent ?? "");
+        expect(palette().some((t) => t.includes("눌림"))).toBe(true);
+        expect(palette().some((t) => t.includes("돌파형"))).toBe(false); // day 그룹은 point 질문을 못 받는다
+        expect(baseElement.textContent).not.toContain("그룹 없음"); // ∅ 은 하루 질문 하나뿐
+        // 고르고 Escape 로 닫으면 draft 가 point scope 조건으로 커밋된다(scope 는 입구가 정한 값).
+        act(() => { fireEvent.click([...baseElement.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("눌림"))!); });
+        act(() => { fireEvent.keyDown(baseElement.querySelector('input[placeholder="그룹 검색"]')!, { key: "Escape" }); });
+        expect(stages()).toHaveLength(1);
+        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "group", scope: "point" });
+    });
+
+    // ⚠ 리뷰 F4 — "scope 보존" 주석(ConditionEditors)이 지목한 조용한 손실 경로의 그물. 편집 쓰기에서
+    // scope 를 빠뜨리거나 openEditor 가 "day" 로 단순화되면 여기가 잡는다(타입·다른 테스트는 통과한다).
+    it("point 조건 재편집 — 팔레트에서 칩을 추가해도 scope 가 유지된다", () => {
+        const seed: Seed = {
+            ...SEED,
+            groups: [{ name: "눌림", parentName: null }, { name: "재돌파", parentName: null }],
+            pointMemberships: [{ stockCode: A, date: DATES[0], time: "09:30:00", groupNames: ["눌림", "재돌파"] }],
+        };
+        useWorkbench.setState({
+            filterStages: [{
+                id: "pg", enabled: true,
+                predicates: [{ kind: "group" as const, expr: { groups: [{ literals: [{ groupId: "눌림", neg: false }] }] }, scope: "point" as const }],
+            }],
+        });
+        const { container, baseElement } = render(<ConditionBoard barsOpen={false} />, {
+            wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
+        });
+        act(() => { fireEvent.click(byText(container, "눌림")!); }); // 줄 이름 → 그 자리 팔레트(편집)
+        const addRow = [...baseElement.querySelectorAll("button")]
+            .find((b) => (b.textContent ?? "").includes("재돌파") && !container.contains(b))!; // 팔레트 쪽 행만
+        act(() => { fireEvent.click(addRow); });
+        const p = stages()[0]!.predicates[0]!;
+        expect(p).toMatchObject({ kind: "group", scope: "point" });
+        expect(p.kind === "group" ? p.expr.groups : []).toHaveLength(2);
     });
 });
 

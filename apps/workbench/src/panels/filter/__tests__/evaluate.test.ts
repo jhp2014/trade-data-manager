@@ -197,7 +197,7 @@ describe("evalStage / toFunnelStages — 단계는 술어들의 AND", () => {
     });
 
     it("core 깔때기가 먹는 모양으로 넘긴다", () => {
-        const stages = [stage([{ kind: "group", expr: lit("g1") }])];
+        const stages = [stage([{ kind: "group", expr: lit("g1"), scope: "day" }])];
         const out = toFunnelStages(stages, look());
         expect(out[0].id).toBe("s1");
         expect(out[0].verdictOf(item)).toBe(true);

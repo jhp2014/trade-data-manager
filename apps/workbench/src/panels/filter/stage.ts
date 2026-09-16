@@ -12,6 +12,13 @@
 // **지워지기는 한다** — 단계는 로컬이고 축은 DB라 죽은 참조가 남는다. 계산 축에 day 알갱이가 들어오면
 // 저장본은 옛 값을 든 채 남는다). 파생하면 사전 하나뿐이라 어긋날 수가 없다.
 //
+// ⚠ 예외 하나 — **그룹 술어는 scope 를 저장한다**(2026-09-16, decisions.md 「그룹 편집 출구」).
+// 그룹의 grain 은 사전(스키마)에 없고 멤버십 관례뿐이라 "파생할 사전"이 애초에 없다 — 멤버십에서
+// 유도하면 빈 그룹 모호성·로딩 중 보류·멤버 변동에 따른 화면 해상도 뒤집힘 세 갈래가 생긴다.
+// scope 는 그룹의 성질이 아니라 **질문의 층위**다: day scope 는 point 그룹 리터럴도 받고(∃ 상향 —
+// "라벨 타점을 하나라도 가진 날") point scope 는 point 그룹만 받으므로, 리터럴에서 층위를 유도할
+// 수도 없다. 어긋남 걱정의 대상(지워짐)은 isPredicateDead 가 리터럴 단위로 따로 잰다.
+//
 // ⚠ 알갱이는 **3치**다: day · point · undefined(모름). "모른다"를 "하루다"로 뭉개면 사전이 로딩 중일 때도
 // 확답을 주게 되어, 사전이 도착하는 순간 해상도가 튀고 결과 목록이 통째로 다시 그려진다. 이 앱이 이미
 // 쓰는 규칙과 같다(evalPredicate·and3) — "아니다"와 "모른다"는 섞지 않는다. 모름을 어떻게 다룰지는
@@ -54,7 +61,9 @@ export interface AxisValueRange { from?: AxisBound; to?: AxisBound }
  * 뜻이 달라진 게 아니라 놓이는 자리가 달라진 것뿐이라, 여기서 새 표현을 발명하면 편집 UI 를 통째로 다시 짜야 한다.
  */
 export type FilterPredicate =
-    | { kind: "group"; expr: GroupExpr }
+    // 그룹 식 — **scope(질문의 층위) 필수**(머리 주석의 예외 항목). 옵셔널로 두면 "부재=day" 규칙이
+    // 파서 밖 여러 곳에서 각자 자라므로, 승계 흡수는 parsePredicate 한 곳에 두고 타입은 필수로 못 박는다.
+    | { kind: "group"; expr: GroupExpr; scope: Grain }
     | { kind: "axisBand"; axisId: string; band: RankBand }
     | { kind: "axisValue"; axisId: string; ranges: AxisValueRange[] }
     | { kind: "date"; ranges: DateRange[] }
@@ -123,7 +132,10 @@ export function activeStages(stages: readonly FilterStage[]): FilterStage[] {
 
 /** 알갱이 판정에 필요한 바깥 지식 — 사전이 답한다(없는 id = 지워진 그룹·축). */
 export interface GrainLookup {
-    /** 사전에 있는 그룹인가 — 없으면 죽은 참조(그 술어의 알갱이를 못 정한다). */
+    /**
+     * 사전에 있는 그룹인가 — 없으면 죽은 참조. 그룹의 알갱이는 저장된 scope 라 여기서 알갱이가
+     * 흔들리지는 않는다 — 이 조회의 소비자는 isPredicateDead(죽음 **표시**)뿐이다.
+     */
     hasGroup: (groupId: string) => boolean;
     axisScope: (axisId: string) => Grain | undefined;
 }
@@ -145,9 +157,9 @@ function finest(grains: Iterable<Grain | undefined>): Grain | undefined {
  * 이 술어를 판정하려면 어느 알갱이까지 내려가야 하나. **모르면 모른다고 한다**(undefined).
  *   · 날짜 = 하루 · 시간 = 타점(시각 없이는 판정 자체가 불가)
  *   · 축 = 그 축의 scope. 사전에 없으면 모름 — 로딩 중인지 지워진 건지는 여기서 알 수 없다.
- *   · 그룹 = 리터럴 중 가장 가는 것. "…그룹 없음"도 **제 층위를 말한다**(리터럴에 실려 있다) —
- *     한때 층위 없는 `@none` 하나뿐이라 "없음"만 든 필터가 늘 하루로 접혔고, 타점 칸에서 만들어도
- *     다시 열면 하루 칸에 서 있었다. 층위를 실으면서 그 자리도 같이 닫혔다.
+ *   · 그룹 = **저장된 scope 그대로**(머리 주석의 예외 — 질문의 층위라 사전과 무관하게 안다).
+ *     리터럴이 지워졌어도 알갱이는 안 흔들린다: 죽음은 isPredicateDead 가 리터럴 단위로 따로 재고,
+ *     그 덕에 그룹 조건 행은 로딩·삭제로 칸(층위)을 옮겨 다니지 않는다.
  */
 export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | undefined {
     switch (p.kind) {
@@ -155,7 +167,7 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
         case "time": return "point";
         case "axisBand":
         case "axisValue": return look.axisScope(p.axisId);
-        case "group": return finest(literalIds(p.expr).map((id) => literalScope(id, look)));
+        case "group": return p.scope;
         case "themeStrength": return "point"; // 단면 조회에 시각이 필수 — 행 정체성은 타점(보드 테마 칸은 UI 그룹핑)
         case "outcome": return "point"; // 결과 걷기의 앵커가 시그널(타점)이다 — 시각 없이는 판정 불가
         case "outcomeRecovery": return "point";
@@ -164,17 +176,9 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
     }
 }
 
-/** 식 안의 리터럴 id 전부(없음 리터럴 포함 — 그것도 알갱이를 말한다). */
+/** 식 안의 리터럴 id 전부(없음 리터럴 포함) — 죽은 참조 판정이 사전과 대조한다. */
 const literalIds = (expr: GroupExpr): string[] =>
     expr.groups.flatMap((g) => g.literals.map((l) => l.groupId));
-
-/**
- * 리터럴 하나의 층위 — 그룹은 **point 그룹(좌표 라벨)이 생긴 뒤에도 전부 "day"로 둔다**(2026-09-10 확정).
- * ∃ 상향(day 행 = "라벨 타점을 하나라도 가진 날") 덕에 day 층위에서도 답이 나오므로, point 로 바꾸면
- * autoGrain 이 화면 해상도를 타점으로 끌어내려 가짜 정밀도만 생긴다. 사전에 없는 id 는 지워진 그룹 = 모름.
- */
-const literalScope = (groupId: string, look: GrainLookup): Grain | undefined =>
-    isNoneLiteral(groupId) || look.hasGroup(groupId) ? "day" : undefined;
 
 /**
  * 그룹 개명 승계 — 단계들의 그룹 술어에서 옛 이름을 새 이름으로. 바뀐 게 없으면 **같은 배열 그대로**
@@ -198,9 +202,16 @@ export function renameGroupInStages(stages: readonly FilterStage[], from: string
     return touched ? out : (stages as FilterStage[]);
 }
 
-/** 사전이 로드된 뒤에도 알갱이를 모르는 술어 = **죽은 참조**(지워진 그룹·축). 화면이 이걸 표시해야 한다. */
+/**
+ * 사전이 로드된 뒤에도 판정 근거를 모르는 술어 = **죽은 참조**(지워진 그룹·축). 화면이 이걸 표시해야 한다.
+ * 그룹은 알갱이(scope)가 저장돼 있어 predicateGrain 경유로는 죽음이 안 보인다 — 리터럴이 직접 사전을
+ * 본다. 기준은 **하나라도**: 판정기(evaluate)가 리터럴 단위로 모름을 내므로 하나만 지워져도 그 절이
+ * 실제로 미배치를 만든다 — 화면이 조용하면 숫자와 화면이 다른 이야기를 한다.
+ */
 export function isPredicateDead(p: FilterPredicate, look: GrainLookup): boolean {
-    return !isPredicateEmpty(p) && predicateGrain(p, look) === undefined;
+    if (isPredicateEmpty(p)) return false;
+    if (p.kind === "group") return literalIds(p.expr).some((id) => !isNoneLiteral(id) && !look.hasGroup(id));
+    return predicateGrain(p, look) === undefined;
 }
 
 /** 단계의 알갱이 = 그 술어들 중 가장 가는 것. 빈 술어는 알갱이를 안 정한다. */
@@ -224,6 +235,10 @@ export function autoGrain(stages: readonly FilterStage[], look: GrainLookup): Gr
  * 사전이 **로드된 뒤**의 자동 해상도 — 남은 모름은 전부 죽은 참조라 하루로 접는다.
  * 죽은 조건 하나가 화면 전체를 타점으로 끌어내리면 아무것도 구분 못 하는 행들이 펼쳐진다(가짜 정밀도).
  * 로딩 중에는 이걸 부르면 안 된다 — 그때의 모름은 "곧 올 것"이지 "없는 것"이 아니다.
+ *
+ * ⚠ 이 접기는 **축**의 이야기다 — 그룹은 scope 가 저장돼 있어 모름이 안 나오고, 죽은 point scope
+ * 그룹 조건은 타점 해상도를 **유지한다**(조건 행이 층위 칸을 옮겨 다니지 않는 대가로, 전 항목 미배치
+ * + 모수 타점 펼침이 생긴다 — 그 단서는 죽은 참조 배지가 진다).
  */
 export const resolveAutoGrain = (stages: readonly FilterStage[], look: GrainLookup): Grain =>
     autoGrain(stages, look) ?? "day";
@@ -292,17 +307,8 @@ const sameFamily = (a: PredicateKind, b: PredicateKind): boolean =>
 
 const isAxisKind = (k: PredicateKind): boolean => k === "axisBand" || k === "axisValue";
 
-/**
- * 이 리터럴을 그룹 술어에 더해도 되나 — 식 안 리터럴들과 **같은 층위** 여야 한다.
- * "…그룹 없음"도 층위를 말하므로 같은 규칙을 받는다(하루 없음과 타점 그룹을 한 필터에 섞지 않는다).
- */
-export function canAddGroupLiteral(expr: GroupExpr, groupId: string, look: GrainLookup): boolean {
-    const theirs = literalScope(groupId, look);
-    if (theirs === undefined) return true; // 모름은 막지 않는다
-    if (literalIds(expr).length === 0) return true; // 빈 식 — 아직 층위 없음
-    const mine = predicateGrain({ kind: "group", expr }, look);
-    return mine === undefined || mine === theirs;
-}
+// (옛 canAddGroupLiteral 은 scope 저장으로 소멸 — "이 scope 에서 고를 수 있는 그룹인가"는 층위가
+//  아니라 멤버십 롤업의 질문이라 재료가 다르다. 팔레트가 lib/groupGrain 의 분류로 목록을 거른다.)
 
 // ── 편집 연산(전부 불변) ────────────────────────────────────────────────────
 
@@ -410,7 +416,7 @@ const isTolerance = (v: unknown): v is number =>
     typeof v === "number" && Number.isFinite(v) && v >= TOLERANCE_MIN_PCT && v <= TOLERANCE_MAX_PCT;
 
 function parsePredicate(o: unknown): FilterPredicate | null {
-    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown; params?: unknown; metric?: unknown; recovered?: unknown; t?: unknown; w?: unknown; r?: unknown };
+    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown; scope?: unknown; params?: unknown; metric?: unknown; recovered?: unknown; t?: unknown; w?: unknown; r?: unknown };
     switch (p?.kind) {
         case "outcome":
             // t 는 **필수**다 — 없는 저장물은 T 가 정의에 살던 시절 것이라 그 기준을 복원할 수 없다
@@ -430,7 +436,9 @@ function parsePredicate(o: unknown): FilterPredicate | null {
         }
         case "group": {
             const expr = parseGroupExpr(p.expr); // 팔레트 저장본과 같은 검증 한 벌 — 여기만 느슨하면 안 된다
-            return expr ? { kind: "group", expr } : null;
+            // scope 승계는 여기 **한 곳**이다(작업 깔때기·저장 집합이 둘 다 parseStages 를 지난다).
+            // 부재·오염 = "day" — scope 없던 시절 저장물의 행동(point 그룹도 ∃ day)이 정확히 보존된다.
+            return expr ? { kind: "group", expr, scope: p.scope === "point" ? "point" : "day" } : null;
         }
         case "axisBand":
             return typeof p.axisId === "string" && p.band && typeof p.band === "object"

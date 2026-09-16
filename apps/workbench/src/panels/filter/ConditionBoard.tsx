@@ -34,7 +34,7 @@ import { HOT_PANEL_ID } from "../hot/hotPanelIds.js";
 import { useLinkedHot } from "../hot/hotLink.js";
 import { useLinkedOutcome } from "../outcome/outcomeLink.js";
 import { stageLabel } from "./label.js";
-import { stageKind, type FilterStage, type Grain } from "./stage.js";
+import { stageKind, type FilterPredicate, type FilterStage, type Grain } from "./stage.js";
 
 const GRAINS: Grain[] = ["day", "point"];
 /** 종류별 편집면 — 줄 이름을 누르면 여기로 데려간다. 결과 패널 id 는 공용 상수(주소가 세 곳이라 잎 모듈). */
@@ -85,9 +85,11 @@ export function ConditionBoard({ barsOpen }: {
                 setLinked(stage.id);
                 openAndFocus(THEME_PANEL);
                 return;
-            case "group":
-                setGroupEditor({ stageId: stage.id, x: e.clientX, y: e.clientY });
+            case "group": {
+                const gp = stage.predicates.find((p): p is Extract<FilterPredicate, { kind: "group" }> => p.kind === "group");
+                setGroupEditor({ stageId: stage.id, scope: gp?.scope ?? "day", x: e.clientX, y: e.clientY });
                 return;
+            }
             // ⚠ default 로 흘리면 필터 레일 패널로 가는데 거기엔 결과 줄이 없다(조용한 무반응) — 명시 분기.
             case "outcome":
                 // 연동을 이 조건으로 옮긴다 — 판의 표시 T 가 그 조건의 T 가 돼야 레일에 그 컷이 보인다.
@@ -201,7 +203,7 @@ export function ConditionBoard({ barsOpen }: {
                         }}
                         canAddHot={canAddHot}
                         nextHot={nextHot}
-                        onGroup={(e) => groupCreate.open(e.clientX, e.clientY)}
+                        onGroup={(scope, e) => groupCreate.open(scope, e.clientX, e.clientY)}
                         onTheme={() => {
                             addStage([{ kind: "themeStrength", params: { ...DEFAULT_THEME_STRENGTH } }]);
                             openAndFocus(THEME_PANEL);
@@ -232,7 +234,8 @@ export function ConditionBoard({ barsOpen }: {
 function AddCondition({ onRails, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot }: {
     onRails: () => void;
     onOutcome: () => void;
-    onGroup: (e: React.MouseEvent) => void;
+    /** 그룹 입구 둘(하루/타점) — scope 는 태어나는 자리에서 확정된다(편집 판에 토글이 없다). */
+    onGroup: (scope: Grain, e: React.MouseEvent) => void;
     onTheme: () => void;
     onHot: () => void;
     /** 급타점 인스턴스 상한(3) — **생성 지점에서만** 막는다(밖에서 온 저장물은 안 자른다). */
@@ -269,7 +272,10 @@ function AddCondition({ onRails, onOutcome, onGroup, onTheme, onHot, canAddHot, 
                 }}>
                     {item("레일 — 계산 축 · 날짜 · 시간", "필터 레일 판으로 — 분포를 보며 그으면 그 자리에서 조건이 됩니다(빈 조건은 안 만듭니다)", onRails)}
                     {item("결과 — 시그널 이후", "시그널 결과 판으로 — 연장 고점·저가(미래 값) 분포를 보며 그으면 조건이 됩니다", onOutcome)}
-                    {item("그룹 조건", "그룹 식 — 여러 개로 나누면 각각의 기여도가 보입니다(그룹은 하루 층위 하나뿐)", onGroup)}
+                    {/* 그룹은 입구가 둘 — scope(질문의 층위)가 여기서 확정된다. 하루 입구는 타점 그룹도
+                        받고(∃ 상향 = "라벨 타점을 하나라도 가진 날"), 타점 입구는 좌표 라벨만 받는다. */}
+                    {item("그룹 (하루)", "그룹 식 — 하루가 행. 타점 그룹을 고르면 \"라벨 타점을 하나라도 가진 날\"(∃)로 잽니다", (e) => onGroup("day", e))}
+                    {item("그룹 (타점)", "그룹 식 — 좌표 라벨이 붙은 타점이 행이 됩니다(타점 그룹만 고를 수 있습니다)", (e) => onGroup("point", e))}
                     {item("테마 강도", "기본값으로 켜진 행을 만들고 테마 순위 패널에서 엽니다", onTheme)}
                     {canAddHot
                         ? item(nextHot === null ? "급타점 수" : `급타점 수 (${nextHot.w}분/${nextHot.r}%)`,
