@@ -125,6 +125,27 @@ describe("＋ 조건 — 생성 입구 하나", () => {
         expect(baseElement.textContent).toContain("그룹 조건 (하루)"); // 팔레트 머리가 층위를 말한다
     });
 
+    // 팔레트 1:1(B안, 2026-09-16 저녁): 그룹의 낟알 = 조건의 scope. 하루 팔레트에 타점 그룹이 다시
+    // 섞이면(오전 안의 ∃ 뜻) 같은 그룹이 입구 따라 다른 질문이 되는 모호함이 재발한다 — 여기서 걸린다.
+    it("그룹 (하루) 팔레트 — 하루 그룹만 선다(타점 그룹·빈 그룹 제외), ∅ 은 있다", () => {
+        const seed: Seed = {
+            ...SEED,
+            groups: [{ name: "눌림", parentName: null }, { name: "돌파형", parentName: null }, { name: "빈그룹", parentName: null }],
+            memberships: [{ stockCode: A, date: DATES[0], groupNames: ["돌파형"] }],
+            pointMemberships: [{ stockCode: A, date: DATES[0], time: "09:30:00", groupNames: ["눌림"] }],
+        };
+        const { container, baseElement } = render(<ConditionBoard barsOpen={false} />, {
+            wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
+        });
+        openMenu(container);
+        act(() => { fireEvent.click(byText(container, "그룹 (하루)")!); });
+        const palette = [...baseElement.querySelectorAll("button")].map((b) => b.textContent ?? "");
+        expect(palette.some((t) => t.includes("돌파형"))).toBe(true);
+        expect(palette.some((t) => t.includes("눌림"))).toBe(false); // 타점 그룹은 하루 질문을 못 받는다
+        expect(palette.some((t) => t.includes("빈그룹"))).toBe(false); // 항상 거짓 리터럴은 노이즈
+        expect(baseElement.textContent).toContain("그룹 없음"); // ∅ 행은 하루 전용으로 남는다
+    });
+
     it("그룹 (타점) — 팔레트엔 타점 그룹만 서고(∅·day 그룹 없음), 닫으면 point scope 조건이 된다", () => {
         const seed: Seed = {
             ...SEED,

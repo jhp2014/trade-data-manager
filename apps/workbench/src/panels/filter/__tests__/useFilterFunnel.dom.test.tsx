@@ -216,6 +216,9 @@ describe("그룹의 층위 상속 — 하루 그룹이 그날 타점 전부에 �
 
 // 2026-09-16 술어 scope 명시화의 수용 기준 — day scope 는 ∃ 상향(옛 행동 그대로), point scope 는
 // 좌표 라벨이 행을 고른다(전엔 grain 이 늘 day 로 접혀 이 화면 자체가 없었다).
+// ⚠ day scope + point 그룹 조합은 팔레트 1:1(B안)로 **새로 못 만든다** — 아래 day scope 테스트들은
+// 승계 저장물(scope 부재=day)의 평가 계약을 재는 것이다. 입구가 닫혔다고 이 계약을 걷으면 옛 저장물의
+// 뜻이 바뀐다(evaluate.ts 주석).
 describe("그룹 술어 scope — 같은 좌표 라벨을 두 층위로 묻는다", () => {
     const LABELED: Seed = {
         ...SEED,

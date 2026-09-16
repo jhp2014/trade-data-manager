@@ -6,10 +6,13 @@
 // 칩 ✕ = 제거. 새 문법을 발명하지 않는 이유는 손이 이미 그걸 알고 있어서다.
 //
 // ⚠ 팔레트는 **넣을 수 있는 것만** 보여준다 — 못 넣을 걸 보여주고 눌렀을 때 거절하면 왜 안 되는지가
-// 화면에 없다. 조건의 scope 가 목록을 거른다: day = 전부(타점 그룹은 ∃ 상향 뜻으로 유효) /
-// point = 좌표 라벨 그룹만(잣대는 lib/groupGrain 롤업 — 배정 팝오버와 같은 Set). point 목록에서는
-// **빈 그룹도 뺀다** — 조건으로선 항상 거짓인 리터럴은 노이즈다(배정 팝오버의 "양쪽 후보"와 갈리는 지점).
-// "그룹 없음"(∅)도 day 전용이다 — 없음은 "이 날을 분류했나"라는 하루 질문 하나뿐(decisions.md).
+// 화면에 없다. 목록 규칙은 **그룹의 낟알 = 조건의 scope, 1:1**(2026-09-16 저녁 B안 — 같은 날 오전의
+// "day 팔레트 = 전부(타점 그룹은 ∃ 뜻)"를 번복): day = 하루 그룹 + ∅ / point = 좌표 라벨 그룹.
+// 같은 그룹이 입구에 따라 다른 질문이 되는 모호함을 입구에서 끊는다 — 긍정 ∃("라벨 있는 날")는
+// 타점 조건 + day 접힘(시트 day 모드·viewedChartKeys)이 대체한다. 잣대는 lib/groupGrain 롤업
+// (배정 팝오버와 같은 Set)이고, **빈 그룹은 양쪽 다 뺀다** — 조건으로선 항상 거짓인 리터럴은 노이즈다
+// (배정 팝오버의 "양쪽 후보"와 갈리는 지점). "그룹 없음"(∅)은 day 전용 — "이 날을 분류했나"라는
+// 하루 질문 하나뿐(decisions.md).
 import { useMemo, useState } from "react";
 import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
 import { GroupPathLabel } from "../../components/GroupPathLabel.js";
@@ -38,11 +41,12 @@ export function GroupFilterEditor({ anchor, scope, expr, onChange, onClose }: {
 
     const needle = q.trim().toLowerCase();
     // 검색은 **경로까지** 본다 — `반도체` 로 그 아래 그룹들을 한 번에 좁힐 수 있어야 부모가 뜻을 갖는다.
+    const grainSet = scope === "day" ? gv.grainSets.dayGrain : gv.grainSets.pointGrain;
     const shown = useMemo(
         () => groups.filter((g) =>
-            (scope === "day" || gv.grainSets.pointGrain.has(g.name))
+            grainSet.has(g.name)
             && (!needle || naming.pathOf(g.name).toLowerCase().includes(needle))),
-        [groups, needle, scope, gv.grainSets, naming],
+        [groups, needle, grainSet, naming],
     );
 
     return (
@@ -77,7 +81,9 @@ export function GroupFilterEditor({ anchor, scope, expr, onChange, onClose }: {
             <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
                 {shown.length === 0 && (
                     <div style={{ ...listRow, color: "var(--text-tertiary)" }}>
-                        {scope === "point" ? "고를 타점 그룹 없음 — 차트/시트 우클릭으로 타점에 라벨을 붙이면 생깁니다" : "고를 그룹 없음"}
+                        {scope === "point"
+                            ? "고를 타점 그룹 없음 — 차트/시트 우클릭으로 타점에 라벨을 붙이면 생깁니다"
+                            : "고를 하루 그룹 없음 — 차트/시트 우클릭으로 하루에 그룹을 붙이면 생깁니다"}
                     </div>
                 )}
                 {shown.map((g) => (
