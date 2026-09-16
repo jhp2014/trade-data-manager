@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useDock, PRESET_COUNT } from "../store/dock.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useUi } from "../store/ui.js";
-import { SEED_SLOT_IDS, planeOf, requirePanelType, slotTitleOf, type PanelPlane } from "../shell/panelCatalog.js";
+import { planeOf, requirePanelType, slotTitleOf, type PanelPlane } from "../shell/panelCatalog.js";
+import { parseSlotId } from "../shell/panelSlots.js";
 import { useStockName } from "../lib/useStockName.js";
 import { DatePicker } from "./DatePicker.js";
 import { StockNameCopy } from "./StockNameCopy.js";
@@ -26,12 +27,14 @@ function timeToMin(time: string): number {
 }
 
 const chipStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
     padding: "1px 8px",
     borderRadius: 4,
     border: "1px dashed var(--border-default)",
     background: "none",
     color: "var(--text-secondary)",
-    cursor: "pointer",
     font: "inherit",
     whiteSpace: "nowrap", // 폭 좁아도 글자 줄바꿈 금지 — 스트립이 대신 가로 스크롤
     flexShrink: 0,
@@ -40,6 +43,16 @@ const chipStyle: React.CSSProperties = {
 function planeChip(plane: PanelPlane): React.CSSProperties {
     return { ...chipStyle, border: `1px dashed var(--plane-${plane})`, color: `var(--plane-${plane})` };
 }
+// 칩 안의 버튼(다시 열기 · 슬롯 소멸) — 껍데기는 칩(span)이 지고 버튼은 글자만 든다(버튼 중첩 금지).
+const chipInnerBtn: React.CSSProperties = {
+    background: "none",
+    border: "none",
+    color: "inherit",
+    cursor: "pointer",
+    font: "inherit",
+    padding: 0,
+    lineHeight: "inherit",
+};
 const sep: React.CSSProperties = { color: "var(--border-default)", flexShrink: 0 };
 function textBtn(active = false): React.CSSProperties {
     return {
@@ -163,6 +176,8 @@ export function Taskbar(): JSX.Element {
     const savedCount = useDock((s) => s.presets.filter(Boolean).length);
     const cyclePreset = useDock((s) => s.cyclePreset);
     const openPanelIds = useDock((s) => s.openPanelIds);
+    const slots = useDock((s) => s.slots);
+    const destroySlot = useDock((s) => s.destroySlot);
     const api = useDock((s) => s.api);
     // 복기 버스(focus) + 실시간 버스(liveFocus) — 둘 다 표시.
     const focusCode = useWorkbench((s) => s.focus.code);
@@ -172,8 +187,8 @@ export function Taskbar(): JSX.Element {
     const setTime = useWorkbench((s) => s.setTime);
     const liveCode = useWorkbench((s) => s.liveFocus.code);
     const openSettings = useUi((s) => s.openSettings);
-    // 실존 슬롯 중 현재 안 열린 = 최소화된 창. dock 미준비(null)면 비움. 플레인별로 나눠 그룹 표시.
-    const closed = openPanelIds === null ? [] : SEED_SLOT_IDS.filter((id) => !openPanelIds.includes(id));
+    // 실존 슬롯(대장) 중 현재 안 열린 = 최소화된 창. dock 미준비(null)면 비움. 플레인별로 나눠 그룹 표시.
+    const closed = openPanelIds === null ? [] : slots.filter((id) => !openPanelIds.includes(id));
     const liveClosed = closed.filter((id) => planeOf(id) === "live");
     const eodClosed = closed.filter((id) => planeOf(id) === "eod");
     const reopen = (id: string): void => {
@@ -181,11 +196,26 @@ export function Taskbar(): JSX.Element {
         api?.addPanel({ id, component: t.component, title: slotTitleOf(id) });
     };
     const chips = (ids: string[], plane: PanelPlane): JSX.Element[] =>
-        ids.map((id) => (
-            <button key={id} onClick={() => reopen(id)} title="다시 열기" style={planeChip(plane)}>
-                {slotTitleOf(id)}
-            </button>
-        ));
+        ids.map((id) => {
+            const n = parseSlotId(id)?.n ?? 1;
+            return (
+                <span key={id} style={planeChip(plane)}>
+                    <button onClick={() => reopen(id)} title="다시 열기" style={chipInnerBtn}>
+                        {slotTitleOf(id)}
+                    </button>
+                    {/* 슬롯 2+ 만 소멸 손잡이 — 슬롯 1 은 상비(destroySlot 도 거부하지만 손잡이 자체를 안 단다). */}
+                    {n >= 2 && (
+                        <button
+                            onClick={() => destroySlot(id)}
+                            title="이 창을 소멸 (설정은 남아서 같은 번호로 다시 만들면 부활)"
+                            style={{ ...chipInnerBtn, opacity: 0.6, fontSize: 13 }}
+                        >
+                            ×
+                        </button>
+                    )}
+                </span>
+            );
+        });
     return (
         <div
             style={{
