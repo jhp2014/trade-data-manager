@@ -80,31 +80,37 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
     // (guides 는 panelId 낟알 panelUi — 보드가 남의 panelUi 를 원격으로 쓰면 소유가 흐려진다).
     const [, setGuides] = usePanelUi<Record<string, number>>(panelId, "guides", {});
     const guideKeys = useMemo(() => ({ x: `x:rank:${win}`, y: "y:rank" }), [win]);
-    const prevLinked = useRef<{ rateN: number; amountN: number; win: 0 | 60 } | null>(null);
+    const prevLinked = useRef<{ rateN: number; amountN: number } | null>(null);
     useEffect(() => {
         if (linkedParams !== null) {
-            prevLinked.current = { rateN: linkedParams.zoneRateN, amountN: linkedParams.zoneAmountN, win };
+            // 연동 중엔 매 변경마다 갱신 — 해제 순간의 스냅샷이 "마지막" 값이어야 한다(연동 시점 값이 아니라).
+            prevLinked.current = { rateN: linkedParams.zoneRateN, amountN: linkedParams.zoneAmountN };
             return;
         }
         const last = prevLinked.current;
         if (last) {
             prevLinked.current = null;
-            setGuides((g) => ({ ...g, [`x:rank:${last.win}`]: last.amountN, "y:rank": last.rateN }));
+            // 해제 후 판은 당일 공간(win 0)으로 돌아가 `x:rank:0` 을 읽는다 — 스냅샷도 그 키에 쓴다
+            // (60분 키에 쓰면 화면이 안 읽는 유령 저장물이 된다).
+            setGuides((g) => ({ ...g, "x:rank:0": last.amountN, "y:rank": last.rateN }));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [linkedParams === null, win]);
+    }, [linkedParams === null, linkedParams?.zoneRateN, linkedParams?.zoneAmountN]);
 
     // ── 카운트 — 열린 바인딩 조건판 중 **최소 슬롯 하나만** 단다(useThemeStrengthStats 의 1-엔트리
     // 모듈 캐시가 물리적 근거 — 서로 다른 params 로 N개가 켜지면 캐시가 프레임마다 서로를 밀어낸다).
     const openPanelIds = useDock((s) => s.openPanelIds);
     const countOwner = useMemo(() => {
         if (linkedParams === null) return false;
-        const boundOpen = Object.values(bindings)
-            .filter((pid) => openPanelIds?.includes(pid))
-            .map((pid) => parseSlotId(pid)?.n ?? Infinity);
+        // 고아 바인딩(행이 죽은 항목)은 후보에서 뺀다 — 끼면 그 판이 최소 슬롯을 차지한 채 카운트를
+        // 안 달아(자기는 미연동) 전 판에서 카운트가 사라진다.
+        const boundOpen = Object.entries(bindings)
+            .filter(([sid, pid]) => openPanelIds?.includes(pid) && stages.some((s) => s.id === sid && s.predicates[0]?.kind === "themeStrength"))
+            .map(([, pid]) => parseSlotId(pid)?.n ?? Infinity);
         const mine = parseSlotId(panelId)?.n ?? Infinity;
         return boundOpen.length === 0 || mine <= Math.min(...boundOpen);
-    }, [bindings, openPanelIds, panelId, linkedParams === null]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [bindings, stages, openPanelIds, panelId, linkedParams === null]);
     const countParams = useDeferredValue(eff);
     const count = useThemeStrengthStats(countParams, linkedParams !== null && countOwner);
 

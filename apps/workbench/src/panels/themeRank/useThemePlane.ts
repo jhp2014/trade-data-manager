@@ -13,7 +13,7 @@ import { useChartPoints } from "../../lib/useChartPoints.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import {
     AMOUNT_VIEW, RANK_VIEW_SPAN, RATE_VIEW,
-    foldedBelowCount, planeSliceAt, rankScaleX, rankScaleY, valueScaleX, valueScaleY,
+    planeSliceAt, rankScaleX, rankScaleY, valueScaleX, valueScaleY,
     type AxisScale, type ThemeRankAxes, type ValueDom,
 } from "./axisModel.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
@@ -189,9 +189,12 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
     const maxRank = Math.max(section?.codes.length ?? 0, 1);
 
     // ── 서수 뷰 도메인 — 기본 [1..200] 고정 창(2026-09-17). 팬 상시, 휠 줌은 서수×서수에서만.
+    // 도메인 읽기는 **서수 축이 하나라도 있으면** 산다 — 혼합 축(예: x 순위 · y 값)에서 x 팬이 쓰는
+    // zoom 을 "둘 다 순위" 게이트로 버리면 팬이 조용히 죽고, 저장물만 남아 모드 복귀 때 뷰가 튄다.
     const zoomable = axes.xMode === "rank" && axes.yMode === "rank";
+    const anyRank = axes.xMode === "rank" || axes.yMode === "rank";
     const rawZoom = useWorkbench((s) => s.sessionUi[panelId]?.["zoom"]) as ZoomDom | undefined;
-    const zoom = zoomable && rawZoom !== undefined && subject !== null && rawZoom.date === subject.date ? rawZoom : null;
+    const zoom = anyRank && rawZoom !== undefined && subject !== null && rawZoom.date === subject.date ? rawZoom : null;
     const defaultSpan = Math.max(Math.min(RANK_VIEW_SPAN, maxRank) - 1, 1);
     const dom = useMemo(() => zoom ?? { x0: 1, x1: 1 + defaultSpan, y0: 1, y1: 1 + defaultSpan }, [zoom, defaultSpan]);
     const domSpan = Math.max(dom.x1 - dom.x0, 1);
@@ -229,10 +232,15 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
         for (let i = 0; i < section.codes.length; i++) {
             const x = slice.x[i];
             const y = slice.y[i];
-            if (x !== null && y !== null) out.push({ code: section.codes[i], rate: y, amount: x });
+            if (x === null || y === null) continue;
+            // 등락 값 축의 기본 창 아래는 **접는다**(그리지도 집히지도 않음) — 클램프로 바닥에 눕히면
+            // 접힘 배지와 같은 점을 이중으로 말한다. 보는 길은 팬(하한 −30).
+            if (axes.yMode === "value" && y < vy.lo) continue;
+            out.push({ code: section.codes[i], rate: y, amount: x });
         }
         return out;
-    }, [section, slice]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [section, slice, axes.yMode, axes.yMode === "value" ? vy.lo : 0]);
     // 집기 대상 = 그려진 것뿐(시선 + 동료) — 안 그린 점에 툴팁이 뜨면 유령을 짚는 셈이다.
     const hitPoints = useMemo(
         () => participants.filter((p) => p.code === subject?.code || peerThemes.has(p.code)),
@@ -251,7 +259,20 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
         [axes, dom, vy, box.left, box.top, box.width, box.height, maxRank],
     );
     const scales = useMemo(() => ({ x: xScale.px, y: yScale.px }), [xScale, yScale]);
-    const foldedRate = axes.yMode === "value" ? foldedBelowCount(hitPoints.map((p) => p.rate), vy.lo) : 0;
+    // 접힌 등락 값의 수 — participants 가 창 아래를 이미 걸러내므로(위) 원본 slice 에서 센다.
+    // 배지의 모수 = 그려질 자격이 있던 것(시선+동료)뿐 — 유니버스 전체를 세면 숫자가 뜻을 잃는다.
+    const foldedRate = useMemo(() => {
+        if (axes.yMode !== "value" || !section || !slice || !subject) return 0;
+        let n = 0;
+        for (let i = 0; i < section.codes.length; i++) {
+            const y = slice.y[i];
+            if (y === null || y >= vy.lo) continue;
+            const code = section.codes[i];
+            if (code === subject.code || peerThemes.has(code)) n++;
+        }
+        return n;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [axes.yMode, section, slice, subject?.code, peerThemes, axes.yMode === "value" ? vy.lo : 0]);
 
     // ── 꼬리 — 상대 오프셋(전역 영속 설정). 꼭짓점도 현재 축 설정의 좌표다.
     const trailOffsets = useWorkbench((s) => s.themeTrailOffsets);
