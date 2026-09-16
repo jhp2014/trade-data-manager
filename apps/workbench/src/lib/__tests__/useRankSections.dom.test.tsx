@@ -8,14 +8,15 @@ import { rankSectionsQuery } from "../../api/queries.js";
 import { useRankSections } from "../useRankSections.js";
 
 const BUNDLE: RankSectionBundle = {
-    version: 1,
+    version: 2,
     dates: [{
         date: "2026-08-14",
         sealed: true,
         codes: ["A", "B", "C"],
+        // stride 4 — [codeIdx, rate, amount, amount60]
         sections: [
-            { time: "09:30", n: 3, rows: [0, 2, 1, 1, 1, 2, 2, 3, 3] },
-            { time: "10:00", n: 2, rows: [0, 1, 2, 1, 2, 1, 2, -1, -1] },
+            { time: "09:30", n: 3, rows: [0, 2, 1, 3, 1, 1, 2, 2, 2, 3, 3, 1] },
+            { time: "10:00", n: 2, rows: [0, 1, 2, 2, 1, 2, 1, 1, 2, -1, -1, -1] },
         ],
     }],
     pending: ["2026-08-28"],
@@ -37,7 +38,7 @@ describe("useRankSections — 번들 접기", () => {
         const v = result.current.sectionAt("2026-08-14", "09:30:45");
         expect(v?.section.time).toBe("09:30");
         expect(v?.sealed).toBe(true);
-        expect(v?.ranksOf("A")).toEqual({ rate: 2, amount: 1 });
+        expect(v?.ranksOf("A")).toEqual({ rate: 2, amount: 1, amount60: 3 });
     });
 
     it("유니버스 밖 코드는 null — 지어내지 않는다. 결손 서수는 null 그대로", async () => {
@@ -46,7 +47,7 @@ describe("useRankSections — 번들 접기", () => {
         const v = result.current.sectionAt("2026-08-14", "10:00")!;
         expect(v.ranksOf("Z")).toBeNull();
         expect(v.indexOf("Z")).toBeNull();
-        expect(v.ranksOf("C")).toEqual({ rate: null, amount: null });
+        expect(v.ranksOf("C")).toEqual({ rate: null, amount: null, amount60: null });
     });
 
     it("없는 (날짜,분)은 null, pending 은 그대로 노출", async () => {

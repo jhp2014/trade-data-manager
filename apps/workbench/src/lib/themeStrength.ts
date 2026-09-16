@@ -22,7 +22,9 @@ import type { ThemeIndex } from "@trade-data-manager/market/domain";
 /** 단면에서 이 모듈이 요구하는 것 — 구운 번들 단면(useRankSections.SectionView)과 스크럽 재계산
  *  단면(scrubSection) 어느 쪽이든 이 모양이면 **같은 함수**에 들어간다(서수 출처가 둘이 되지 않게). */
 export interface SectionRanks {
-    ranksOf(code: string): { rate: number | null; amount: number | null } | null;
+    /** amount60 = 60분 창 대금 서수(BAKED_AMOUNT_WINDOW_MIN). 옵셔널 — 없는 공급자(옛 픽스처)는
+     *  결손과 같게 다룬다(zoneAmountWindow=60 술어에서만 읽힌다). */
+    ranksOf(code: string): { rate: number | null; amount: number | null; amount60?: number | null } | null;
 }
 
 /**

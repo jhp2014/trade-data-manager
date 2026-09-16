@@ -34,7 +34,8 @@ describe("subjectOrdinalTrack — 분당 서수(core rankSectionOf 위임)", () 
         for (let m = RANGE.lo; m <= RANGE.hi; m++) {
             const hhmm = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
             const r = scrubSectionOf(stocks, DATE, hhmm).ranksOf("A");
-            expect(track.get(m)).toEqual(r === null || r.rate === null ? undefined : r);
+            // 트랙은 존 판정 재료(rate·amount)만 든다 — amount60 은 단면에 있지만 트랙의 관심 밖.
+            expect(track.get(m)).toEqual(r === null || r.rate === null ? undefined : { rate: r.rate, amount: r.amount });
         }
     });
 

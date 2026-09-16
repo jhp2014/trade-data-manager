@@ -352,8 +352,8 @@ describe("테마 강도 배선 — 실제 시드(번들·멤버십)로 판정까
         dates: [{
             date: D1, sealed: true, codes: [A, B],
             sections: [
-                { time: "09:30", n: 2, rows: [0, 1, 1, 1, 2, 2] },
-                { time: "10:00", n: 2, rows: [0, 2, 2, 1, 1, 1] },
+                { time: "09:30", n: 2, rows: [0, 1, 1, 1, 1, 2, 2, 2] }, // stride 4
+                { time: "10:00", n: 2, rows: [0, 2, 2, 2, 1, 1, 1, 1] },
             ],
         }],
         pending: [],

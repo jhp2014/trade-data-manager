@@ -23,7 +23,7 @@ const bundle: RankSectionBundle = {
         date: DATE,
         sealed: true,
         codes: ["000001", "000002", "000003"],
-        sections: [{ time: TIME, n: 3, rows: [0, 1, 2, 1, 2, 1, 2, 3, 3] }],
+        sections: [{ time: TIME, n: 3, rows: [0, 1, 2, 2, 1, 2, 1, 1, 2, 3, 3, 3] }], // stride 4 — [codeIdx, rate, amount, amount60]
     }],
     pending: [],
 };

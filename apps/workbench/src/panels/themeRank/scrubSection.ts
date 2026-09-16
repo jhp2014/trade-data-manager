@@ -49,7 +49,7 @@ export function scrubSectionOf(stocks: readonly ReplayStock[], date: string, tim
         ranksOf: (code) => {
             const i = idx.get(code);
             if (i === undefined) return null;
-            return { rate: section.rate[i], amount: section.amount[i] };
+            return { rate: section.rate[i], amount: section.amount[i], amount60: section.amount60[i] };
         },
     };
 }

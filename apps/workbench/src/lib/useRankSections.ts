@@ -21,8 +21,8 @@ export interface SectionView {
     section: WireRankSection;
     /** 종목 → codes 배열 인덱스. 없으면 그 단면의 접힌 행에 없다(후보도 동료도 아님). */
     indexOf(code: string): number | null;
-    /** 종목의 (등락률 서수, 거래대금 서수). 행이 없으면 null, 행이 있고 −1 이면 그 값만 null(결손). */
-    ranksOf(code: string): { rate: number | null; amount: number | null } | null;
+    /** 종목의 (등락률, 당일 대금, 60분 창 대금) 서수. 행이 없으면 null, 행이 있고 −1 이면 그 값만 null(결손). */
+    ranksOf(code: string): { rate: number | null; amount: number | null; amount60: number | null } | null;
 }
 
 export interface RankSectionsView {
@@ -71,14 +71,19 @@ export function useRankSections(): RankSectionsView {
                 ranksOf: (code) => {
                     const i = indexOf(code);
                     if (i === null) return null;
-                    // 행은 codeIdx 오름차순(와이어 계약) — stride 3 이진탐색. 없으면 그 분의 관심 밖.
+                    // 행은 codeIdx 오름차순(와이어 계약) — stride 4 이진탐색. 없으면 그 분의 관심 밖.
                     let lo = 0;
-                    let hi = (hit.to - hit.from) / 3 - 1;
+                    let hi = (hit.to - hit.from) / 4 - 1;
                     while (lo <= hi) {
                         const mid = (lo + hi) >> 1;
-                        const at = hit.from + mid * 3;
+                        const at = hit.from + mid * 4;
                         const k = hit.data[at];
-                        if (k === i) return { rate: hit.data[at + 1] < 0 ? null : hit.data[at + 1], amount: hit.data[at + 2] < 0 ? null : hit.data[at + 2] };
+                        if (k === i)
+                            return {
+                                rate: hit.data[at + 1] < 0 ? null : hit.data[at + 1],
+                                amount: hit.data[at + 2] < 0 ? null : hit.data[at + 2],
+                                amount60: hit.data[at + 3] < 0 ? null : hit.data[at + 3],
+                            };
                         if (k < i) lo = mid + 1;
                         else hi = mid - 1;
                     }

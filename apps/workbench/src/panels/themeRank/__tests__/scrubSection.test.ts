@@ -44,8 +44,8 @@ describe("scrubSectionOf — core 위임 어댑터(자체 계산 0)", () => {
 
     it("carry-forward·결손이 core 규칙대로다", () => {
         const s = scrubSectionOf(stocks, DATE, "09:00");
-        expect(s.ranksOf("A")).toEqual({ rate: 1, amount: 1 });
-        expect(s.ranksOf("B")).toEqual({ rate: null, amount: null }); // 아직 시작 전 = 결손
+        expect(s.ranksOf("A")).toEqual({ rate: 1, amount: 1, amount60: 1 });
+        expect(s.ranksOf("B")).toEqual({ rate: null, amount: null, amount60: null }); // 아직 시작 전 = 결손
         expect(s.ranksOf("Z")).toBeNull(); // 유니버스 밖
         expect(scrubSectionOf(stocks, DATE, "09:07").section.n).toBe(2); // B 가 09:05 값으로 참가
     });

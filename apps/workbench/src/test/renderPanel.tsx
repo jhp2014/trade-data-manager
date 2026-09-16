@@ -149,7 +149,7 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
     qc.setQueryData(pointGroupMembershipsQuery().queryKey, seed.pointMemberships ?? []);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
-    qc.setQueryData(rankSectionsQuery().queryKey, seed.rankSections ?? { version: 1, dates: [], pending: [] });
+    qc.setQueryData(rankSectionsQuery().queryKey, seed.rankSections ?? { version: 2, dates: [], pending: [] });
     // 격자 = 타점의 원천. 명시 격자가 있으면 그대로, 없으면 seed.points 를 최소 격자로 번역한다.
     qc.setQueryData(pointGridsQuery().queryKey, seed.pointGrids ?? gridsFromPoints(seed.points ?? []));
     qc.setQueryData(allThemeMembersQuery().queryKey, seed.themeMembers ?? []);
