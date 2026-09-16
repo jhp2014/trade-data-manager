@@ -35,8 +35,9 @@ import { useThemeStrengthStats } from "../../lib/useThemeStrengthStats.js";
 import { anyConditionOn, DEFAULT_THEME_STRENGTH, themeVerdicts, type ThemeStrengthParams, type ThemeVerdict } from "../../lib/themeStrength.js";
 import { projectionOf } from "../../lib/useThemeProjection.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
+import { useDock } from "../../store/dock.js";
 import { AxisControls } from "./AxisControls.js";
-import { isJudgmentSpace, isZoomable, parseThemeRankAxes, planeSliceAt, rankScaleX, rankScaleY, valueScaleX, valueScaleY } from "./axisModel.js";
+import { isJudgmentSpace, isZoomable, parseThemeRankAxes, planeSliceAt, rankScaleX, rankScaleY, valueScaleX, valueScaleY, windowLabel } from "./axisModel.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { scatterLayer } from "./scatterLayer.js";
 import { themeColorMap } from "./themeColor.js";
@@ -71,7 +72,7 @@ interface ZoomDom { date: string; x0: number; x1: number; y0: number; y1: number
 /** 줌 하한(서수 폭) — 이보다 좁히면 몇 위 안 남아 좌표가 무의미해진다. */
 const ZOOM_MIN_SPAN = 4;
 
-export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
+export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTitle?: string }): JSX.Element {
     const subject = useSubject();
     const { nameOf } = useStockNamesDict();
     // 전역 시각(focus.time) — 표시 분의 1순위 재료(아래 minute)이자, 동료 클릭 이동·되돌아가기의 시각.
@@ -97,6 +98,29 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
     const zoomable = isZoomable(axes);
     // 판정 층의 유일한 파라미터 출처 — 공간 불일치면 연동 행이 있어도 null(순수 산점 + 가이드).
     const judgeParams = judgmentSpace ? linkedParams : null;
+
+    // 탭·칩 라벨 꼬리표 — 설정에서 파생해 dockview title 로 민다("테마 순위 [복기] 2 · 60분 값").
+    // 손 이름 짓기는 없다(decisions.md). baseTitle 이 없으면(테스트 렌더) 아무것도 안 민다.
+    useEffect(() => {
+        if (!baseTitle) return;
+        const tail =
+            axes.windowMin === null && axes.xMode === "rank" && axes.yMode === "rank"
+                ? ""
+                : ` · ${windowLabel(axes.windowMin)}${axes.xMode === "value" || axes.yMode === "value" ? " 값" : ""}`;
+        useDock.getState().api?.getPanel(panelId)?.api.setTitle(baseTitle + tail);
+    }, [panelId, baseTitle, axes]);
+
+    // ── 보기용 가이드 자 — 판정 컷이 접힌 축 설정에서만 서는 드래그 가능한 기준선(술어 일절 무관,
+    // 인스턴스 영속). 점선 + 회색 배지로 판정 컷(FILTER 색 배지)과 시각 어휘를 가른다 — 판정 컷처럼
+    // 보이지 않아야 "움직이는데 아무 일도 안 하는 거짓 손잡이"가 아니라 정직한 자다(decisions.md).
+    // 값은 공간 종류별로 따로 산다(`x:rank` 의 37위와 `x:value` 의 43억은 딴 물건) — 모드를 오가도
+    // 서로를 덮지 않는다.
+    const [guides, setGuides] = usePanelUi<Record<string, number>>(panelId, "guides", {});
+    const [guidePrev, setGuidePrev] = useState<{ k: string; v: number } | null>(null);
+    const gxKey = `x:${axes.xMode}`;
+    const gyKey = `y:${axes.yMode}`;
+    const gx = judgmentSpace ? undefined : guidePrev?.k === gxKey ? guidePrev.v : guides[gxKey];
+    const gy = judgmentSpace ? undefined : guidePrev?.k === gyKey ? guidePrev.v : guides[gyKey];
 
     // ── 그날 스냅샷(복기 파생) — 정규화 패널과 같은 공용 LRU 캐시.
     const snapQ = useDaySnapshot(subject?.date ?? null);
@@ -370,7 +394,8 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
     };
 
     // ── 컷선 드래그(위 SVG 층이 포인터 소유 — 캔버스는 포인터를 안 받는다). 연동 행 없으면 손짓도 없다.
-    const dragRef = useRef<"rate" | "amount" | null>(null);
+    // "gx"/"gy" = 보기용 가이드 자의 배지 드래그(판정 컷과 배타 — 사는 모드가 서로 다르다).
+    const dragRef = useRef<"rate" | "amount" | "gx" | "gy" | null>(null);
     const downRef = useRef<{ x: number; y: number } | null>(null); // 클릭 판정용 누른 자리(끌렸으면 클릭이 아니다)
     // 팬 — 확대 중 빈 곳 좌드래그. 시작 시점의 도메인을 들고 가서 이동량을 절대로 셈한다(누적 오차 없음).
     const panRef = useRef<{ x: number; y: number; dom: ZoomDom } | null>(null);
@@ -396,6 +421,16 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
         amount: { x: clamp(cutX - LBL_W / 2, box.left, box.left + box.width - LBL_W), y: box.top + box.height + 3 },
         rate: { x: box.left + box.width + 4, y: clamp(cutY - LBL_H / 2, box.top, box.top + box.height - LBL_H) },
     };
+    // 가이드 자의 자리 — 컷 배지와 같은 여백(아래·오른쪽)을 쓴다(컷과 같은 모드에 공존하지 않아 안 다툰다).
+    // 도메인 밖(값 축 도메인이 데이터를 따라와 저장값이 벗어난 경우)이면 선·배지를 접는다 — 자 토글로 재배치.
+    const gpxX = gx !== undefined ? scales.x(gx) : null;
+    const gpxY = gy !== undefined ? scales.y(gy) : null;
+    const gxVisible = dragRef.current === "gx" || (gpxX !== null && gpxX >= box.left && gpxX <= box.left + box.width);
+    const gyVisible = dragRef.current === "gy" || (gpxY !== null && gpxY >= box.top && gpxY <= box.top + box.height);
+    const guideLabels = {
+        x: gpxX === null ? null : { x: clamp(gpxX - LBL_W / 2, box.left, box.left + box.width - LBL_W), y: box.top + box.height + 3 },
+        y: gpxY === null ? null : { x: box.left + box.width + 4, y: clamp(gpxY - LBL_H / 2, box.top, box.top + box.height - LBL_H) },
+    };
     const inLabel = (x: number, y: number, l: { x: number; y: number }): boolean =>
         x >= l.x - LBL_PAD && x <= l.x + LBL_W + LBL_PAD && y >= l.y - LBL_PAD && y <= l.y + LBL_H + LBL_PAD;
     const onPointerDown = (e: React.PointerEvent<SVGSVGElement>): void => {
@@ -413,6 +448,15 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
                 return;
             }
         }
+        // 가이드 자 배지 — 판정 컷이 접힌 모드에서만 산다(같은 여백을 쓰지만 같은 화면에 공존하지 않는다).
+        if (!judgmentSpace) {
+            const target = gxVisible && guideLabels.x && inLabel(x, y, guideLabels.x) ? "gx" : gyVisible && guideLabels.y && inLabel(x, y, guideLabels.y) ? "gy" : null;
+            if (target) {
+                dragRef.current = target;
+                e.currentTarget.setPointerCapture(e.pointerId);
+                return;
+            }
+        }
         // 확대 중이면 빈 곳 누름 = 팬 후보. 클릭(무이동)이면 up 의 슬롭 판정이 그대로 점 클릭으로 살린다.
         if (zoom !== null) {
             panRef.current = { x, y, dom: zoom };
@@ -424,7 +468,11 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
         const drag = dragRef.current;
         if (drag) {
             if (drag === "amount") setPreview((p) => ({ ...p, zoneAmountN: ordAtX(e.clientX - rect.left) }));
-            else setPreview((p) => ({ ...p, zoneRateN: ordAtY(e.clientY - rect.top) }));
+            else if (drag === "rate") setPreview((p) => ({ ...p, zoneRateN: ordAtY(e.clientY - rect.top) }));
+            // 가이드는 미리보기 로컬 상태로만 따라오고 커밋(영속 쓰기)은 손 뗄 때 한 번(Rail 규약과 같은 결 —
+            // panelUi 는 set 마다 localStorage 에 쓰므로 pointermove 로 직접 밀면 이동 내내 디스크를 두드린다).
+            else if (drag === "gx") setGuidePrev({ k: gxKey, v: xScale.invert(e.clientX - rect.left) });
+            else setGuidePrev({ k: gyKey, v: yScale.invert(e.clientY - rect.top) });
             return;
         }
         const pan = panRef.current;
@@ -473,8 +521,17 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
         setSessionUi(panelId, "zoom", undefined);
     };
     const commitDrag = (e: React.PointerEvent<SVGSVGElement>): void => {
+        const drag = dragRef.current;
         dragRef.current = null;
         e.currentTarget.releasePointerCapture(e.pointerId);
+        if (drag === "gx" || drag === "gy") {
+            // 가이드 커밋 — 인스턴스 영속(panelUi)으로 한 번. 술어는 일절 안 건드린다(보기용 자).
+            setGuidePrev((p) => {
+                if (p) setGuides((g) => ({ ...g, [p.k]: p.v }));
+                return null;
+            });
+            return;
+        }
         setPreview((p) => {
             // 커밋은 여기 한 번, **연동 행의 술어로** — 보드 행·막대·저장물이 같이 바뀐다.
             if (p && linked !== null && judgeParams !== null) {
@@ -561,6 +618,30 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
                                         : <span style={{ color: "var(--text-tertiary)" }}>조건 없음 — 판정가능 {count.evaluable.toLocaleString()}</span>}
                 </span>
                 <AxisControls axes={axes} onChange={setAxesRaw} />
+                {/* 보기용 자 토글 — 판정 컷이 접힌 모드의 기준선(술어 무관). 켜면 그림 가운데에 서고 배지로 끈다. */}
+                {!judgmentSpace && (
+                    <button
+                        onClick={() => {
+                            if (gx !== undefined || gy !== undefined)
+                                setGuides((g) => {
+                                    const n = { ...g };
+                                    delete n[gxKey];
+                                    delete n[gyKey];
+                                    return n;
+                                });
+                            else
+                                setGuides((g) => ({
+                                    ...g,
+                                    [gxKey]: xScale.invert(box.left + box.width / 2),
+                                    [gyKey]: yScale.invert(box.top + box.height / 2),
+                                }));
+                        }}
+                        title="보기용 자 — 필터와 무관한 기준선(점선). 배지를 끌어 옮긴다"
+                        style={{ ...label, cursor: "pointer", border: "1px solid var(--border-default)", borderRadius: 8, padding: "0 6px", background: gx !== undefined || gy !== undefined ? "var(--bg-tertiary)" : "none" }}
+                    >
+                        자
+                    </button>
+                )}
                 {judgmentSpace && linked !== null && !linked.enabled && (
                     <span title="연동 행이 꺼져 있어 깔때기에 안 낀다 — 위 카운트는 켰을 때의 값(탐색용)"
                         style={{ ...label, color: "var(--text-tertiary)", border: "1px solid var(--border-default)", borderRadius: 8, padding: "0 6px" }}>
@@ -709,6 +790,33 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
                                             <title>끌어서 등락률 컷 옮기기(한 위씩은 위 손잡이 줄의 ±)</title>
                                             <rect x={cutLabels.rate.x} y={cutLabels.rate.y} width={LBL_W} height={LBL_H} rx={3} fill={FILTER} />
                                             <text x={cutLabels.rate.x + LBL_W / 2} y={cutLabels.rate.y + 11} textAnchor="middle">등락 {eff.zoneRateN}</text>
+                                        </g>
+                                    )}
+                                </g>
+                            </>
+                        )}
+                        {/* 보기용 가이드 자 — 판정 컷과 다른 어휘(가는 점선·회색 배지): 술어와 무관한 자일 뿐이다. */}
+                        {!judgmentSpace && (gxVisible || gyVisible) && (
+                            <>
+                                {gxVisible && gpxX !== null && (
+                                    <line x1={gpxX} y1={box.top} x2={gpxX} y2={box.top + box.height} stroke="var(--text-tertiary)" strokeWidth={1} strokeDasharray="2 4" />
+                                )}
+                                {gyVisible && gpxY !== null && (
+                                    <line x1={box.left} y1={gpxY} x2={box.left + box.width} y2={gpxY} stroke="var(--text-tertiary)" strokeWidth={1} strokeDasharray="2 4" />
+                                )}
+                                <g style={{ fontSize: 10, fill: "#fff", fontVariantNumeric: "tabular-nums" }}>
+                                    {gxVisible && guideLabels.x && gx !== undefined && (
+                                        <g style={{ cursor: "ew-resize" }}>
+                                            <title>보기용 자 — 필터와 무관(끌어서 이동)</title>
+                                            <rect x={guideLabels.x.x} y={guideLabels.x.y} width={LBL_W} height={LBL_H} rx={3} fill="var(--text-tertiary)" />
+                                            <text x={guideLabels.x.x + LBL_W / 2} y={guideLabels.x.y + 11} textAnchor="middle">{xScale.fmt(gx)}</text>
+                                        </g>
+                                    )}
+                                    {gyVisible && guideLabels.y && gy !== undefined && (
+                                        <g style={{ cursor: "ns-resize" }}>
+                                            <title>보기용 자 — 필터와 무관(끌어서 이동)</title>
+                                            <rect x={guideLabels.y.x} y={guideLabels.y.y} width={LBL_W} height={LBL_H} rx={3} fill="var(--text-tertiary)" />
+                                            <text x={guideLabels.y.x + LBL_W / 2} y={guideLabels.y.y + 11} textAnchor="middle">{yScale.fmt(gy)}</text>
                                         </g>
                                     )}
                                 </g>
