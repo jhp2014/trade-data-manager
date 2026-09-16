@@ -118,6 +118,12 @@ export function windowedAmounts(
     return out;
 }
 
+/**
+ * 구워지는 창 길이(분) — 검색(깔때기 술어)이 아는 유일한 T-창. 모든 T 를 미리 구울 수 없으므로
+ * 단면에는 이 창의 서수 하나만 싣고, 표시(테마 순위 패널)는 임의 T 를 클라에서 즉석 계산한다.
+ */
+export const BAKED_AMOUNT_WINDOW_MIN = 60;
+
 /** 단면 하나 — 배열들은 입력 stocks 와 같은 길이·같은 순서(코드 테이블은 호출측이 든다). */
 export interface RankSection {
     /** 단면 시각 "HH:MM" — 타점 시각의 분 절단(그 분 봉의 종가 기준). */
@@ -128,6 +134,9 @@ export interface RankSection {
     rate: (number | null)[];
     /** 누적 거래대금 서수(1=최대). null = 결손. */
     amount: (number | null)[];
+    /** 60분 창(BAKED_AMOUNT_WINDOW_MIN) 누적 거래대금 서수(1=최대) — 오후 상승주가 아침 상승주와
+     *  같은 자로 재이지 않게 하는 창. 창 값 규칙은 windowedAmounts(경계 0 기준·결손만 null). */
+    amount60: (number | null)[];
 }
 
 /**
@@ -145,5 +154,11 @@ export function rankSectionOf(
     const rate = descendingOrdinals(vals.rate);
     let n = 0;
     for (const v of rate) if (v !== null) n++;
-    return { time: vals.time, n, rate, amount: descendingOrdinals(vals.cumAmount) };
+    return {
+        time: vals.time,
+        n,
+        rate,
+        amount: descendingOrdinals(vals.cumAmount),
+        amount60: descendingOrdinals(windowedAmounts(stocks, date, time, BAKED_AMOUNT_WINDOW_MIN)),
+    };
 }

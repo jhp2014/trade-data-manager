@@ -219,7 +219,7 @@ describe("RankSections 대사", () => {
             version: RANK_SECTION_CALC_VERSION - 1, // 옛 규칙으로 구운 파일
             date: D1,
             codes: ["A", "B"],
-            sections: [{ time: "09:30", n: 1, rate: [1, null], amount: [1, null] }], // 파일은 접기 전 모양(유니버스 전 종목)
+            sections: [{ time: "09:30", n: 1, rate: [1, null], amount: [1, null], amount60: [1, null] }], // 파일은 접기 전 모양(유니버스 전 종목)
         });
         const b = await sections.bundle();
         expect(derived.snapshotCalls).toEqual([D1]); // 파일 무시 → 재굽기
@@ -255,7 +255,7 @@ describe("RankSections 대사", () => {
             version: RANK_SECTION_CALC_VERSION,
             date: D2,
             codes: ["A", "B", "C"],
-            sections: [{ time: "09:00", n: 3, rate: [1, 2, 3], amount: [3, 2, 1] }],
+            sections: [{ time: "09:00", n: 3, rate: [1, 2, 3], amount: [3, 2, 1], amount60: [3, 2, 1] }],
         });
         sections.invalidate();
         release();
@@ -300,7 +300,7 @@ describe("RankSections 대사", () => {
             version: RANK_SECTION_CALC_VERSION,
             date: D1,
             codes: ["A", "B"],
-            sections: [{ time: "08:00", n: 2, rate: [1, 2], amount: [2, 1] }],
+            sections: [{ time: "08:00", n: 2, rate: [1, 2], amount: [2, 1], amount60: [2, 1] }],
         });
         await sections.bundle();
         expect(store.map.get(D1)?.sections.map((s) => s.time)).toEqual(["09:30"]); // 08:00 프루닝됨
@@ -313,7 +313,7 @@ describe("RankSections 대사", () => {
             version: RANK_SECTION_CALC_VERSION,
             date: D1,
             codes: ["A", "X"], // 스냅샷(["A","B"])과 다른 유니버스
-            sections: [{ time: "09:00", n: 2, rate: [2, 1], amount: [2, 1] }],
+            sections: [{ time: "09:00", n: 2, rate: [2, 1], amount: [2, 1], amount60: [2, 1] }],
         });
         const b = await sections.bundle();
         expect(b.dates[0].codes).toEqual(["A"]); // 접힌 뒤엔 후보뿐 — 파일·메모는 여전히 유니버스 전 종목이다

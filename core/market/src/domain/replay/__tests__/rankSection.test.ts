@@ -92,6 +92,15 @@ describe("rankSectionOf — (날짜,분) 단면", () => {
         expect(rankSectionOf([A, C], DATE, "09:10").rate).toEqual([1, 2]);
     });
 
+    it("amount60 — 60분 창 대금 서수가 당일 누적 서수와 독립으로 선다(오후 급증주가 창에서 앞선다)", () => {
+        // 10:31 기준: D 는 아침에만(총 1000, 창 안 0) · E 는 방금 대량(총 900, 창 안 900).
+        const D = stock("D", [["09:00:00", 1, 1000]]);
+        const E = stock("E", [["09:00:00", 1, 50], ["10:30:00", 1, 900]]);
+        const s = rankSectionOf([D, E], DATE, "10:31");
+        expect(s.amount).toEqual([1, 2]); // 당일 누적: D 1000 > E 900
+        expect(s.amount60).toEqual([2, 1]); // 60분 창: D 0 < E 850
+    });
+
     it("sectionValuesOf — 서수 단면과 같은 carry-forward·절단 규칙의 원값 층", () => {
         const v = rankSectionOf([A, B], DATE, "09:07");
         const vals = sectionValuesOf([A, B], DATE, "09:07:30");
