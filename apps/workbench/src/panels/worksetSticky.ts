@@ -1,6 +1,7 @@
 // 작업셋 목록의 **붙는 머리 두 층**(날짜·종목) 산술 — 순수 함수로 뺀 이유는 jsdom 이 이 로직을
-// 못 재기 때문이다: 스크롤 상자 높이가 0 이라 dom 테스트는 startIndex 0 인 자명한 경로만 지난다
-// (새 날 경계·밀어올리기 회귀가 통째로 안 잡힌다). 화면(WorksetList)은 여기 결과를 그리기만 한다.
+// 못 재기 때문이다: **스크롤이 안 된다**(scrollTop 이 0 에 붙박이다 — 상자 높이는 test/setup.ts 가
+// 물려 준다). 그래서 dom 테스트는 startIndex 0 인 자명한 경로만 지나고, 새 날 경계·밀어올리기
+// 회귀가 통째로 안 잡힌다. 화면(WorksetList)은 여기 결과를 그리기만 한다.
 //
 // 높이가 여기 사는 이유: 가상화기의 estimateSize 와 offset 계산이 **같은 수**를 봐야 한다.
 // 한쪽만 바뀌면 붙는 띠가 행 경계와 어긋나 "머리가 다음 행을 반쯤 먹는" 상태가 조용히 생긴다.
@@ -25,24 +26,36 @@ export function rowStarts(kinds: readonly StickyRowKind[]): number[] {
 }
 
 /**
- * 지금 구간의 붙는 머리 둘 — 날짜(위)·종목(아래). 없으면 -1.
- * 종목은 **그 날짜 머리 뒤의 것만** 붙는다: 새 날이 막 시작한 자리(머리만 보이는 구간)에서
- * 앞 날의 마지막 종목이 따라 붙으면 머리가 거짓말을 한다.
- *
- * ⚠ 이건 **그리기 범위에 넣을 후보**를 고르는 용도다(rangeExtractor). 실제로 붙는 종목은
- * `stickyStockAt` 이 픽셀로 다시 고른다 — 행 지표(startIndex)는 뷰포트 y=0 기준인데 종목 머리가
- * 앉는 자리는 y=24 라, 지표로 갈아끼우면 24px 어긋나 다음 종목 이름이 한 번 깜빡인다.
- * 픽셀로 고른 것은 늘 이 후보이거나 그보다 **뒤**(=이미 보이는 행)라 범위에 이미 들어 있다.
+ * 스크롤 오프셋 y 가 걸친 행의 지표 — starts 오름차순 위 이분 탐색.
+ * ⚠ 빈 목록이면 **0**(없는 지표)이다 — `lib/chartFrame.indexAtOrBefore` 의 -1 과 **반대 계약**이니
+ * 옮겨 쓸 때 주의. 여기가 0 인 이유는 뒤에 오는 `stickyDateOf` 가 어차피 kinds 길이로 자르기 때문.
+ * 가상화기에게 범위를 캐묻는 대신 여기서 재는 이유: 붙는 머리 산술의 입력이 **한 출처**여야
+ * 순수 함수 테스트가 산술을 통째로 잠근다(dom 테스트는 위 머리 주석의 이유로 못 잠근다). 다만 잠기는
+ * 것은 **함수들의 관계**지 화면의 배선이 아니다 — 호출부가 인자를 어긋나게 넘기는 회귀는 실측의 몫이다.
+ * `lib/chartFrame.indexAtOrBefore` 를 안 쓴다 — 그건 봉 배열용 선형 훑기고, 여긴 스크롤 프레임마다
+ * 도는 자리라 행 수(수천)에 비례하면 안 된다.
  */
-export function stickyHeadsOf(kinds: readonly StickyRowKind[], startIndex: number): { date: number; stock: number } {
-    let date = -1;
-    let stock = -1;
-    const end = Math.min(startIndex, kinds.length - 1);
-    for (let i = 0; i <= end; i++) {
-        if (kinds[i] === "date") { date = i; stock = -1; } // 새 날이 열리면 종목 후보를 버린다
-        else if (kinds[i] === "stock") stock = i;
+export function indexAt(starts: readonly number[], y: number): number {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (starts[mid]! <= y) lo = mid;
+        else hi = mid - 1;
     }
-    return { date, stock };
+    return Math.max(lo, 0);
+}
+
+/**
+ * 지금 구간의 붙는 **날짜** 머리 — 없으면 -1.
+ * 종목 머리는 여기서 안 고른다(stickyStockAt 이 픽셀로 고른다): 행 지표(startIndex)는 뷰포트 y=0
+ * 기준인데 종목 머리가 앉는 자리는 y=24 라, 지표로 갈아끼우면 24px 어긋나 다음 종목 이름이 한 번 깜빡인다.
+ */
+export function stickyDateOf(kinds: readonly StickyRowKind[], startIndex: number): number {
+    let date = -1;
+    const end = Math.min(startIndex, kinds.length - 1);
+    for (let i = 0; i <= end; i++) if (kinds[i] === "date") date = i;
+    return date;
 }
 
 /**
