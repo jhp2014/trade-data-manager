@@ -24,7 +24,7 @@ const MIN_SEG = 16;
 export const STAGE_DND = "application/x-funnel-stage";
 
 export function FilterRow({
-    no, stage, tally, universe, label, dead, linked, showBar, pickedCells, dragging, dropTarget,
+    no, stage, tally, universe, label, dead, linked, linkedLabel, onLinkedClick, showBar, pickedCells, dragging, dropTarget,
     onPick, onPickPass, onOpen, onToggle, onRemove, onDragStart, onDragEnd, onDragOver, onDropOn,
 }: {
     no: number;
@@ -36,6 +36,9 @@ export function FilterRow({
     dead: boolean;
     /** 전용 패널이 지금 이 행을 비추는 중(테마) — 어디를 만지면 이 줄이 바뀌는지 알린다. */
     linked?: boolean;
+    /** 테마 행 전용 — 연동된 조건판 라벨(미연동이면 "미연동"). 클릭 = 연동 메뉴(pull 의 유일한 손잡이). */
+    linkedLabel?: string;
+    onLinkedClick?: (e: React.MouseEvent) => void;
     /** 막대와 수치 줄을 편다 — 머리글 토글 하나가 목록 전체를 지배한다(줄마다 접는 손잡이는 없다). */
     showBar: boolean;
     pickedCells: FunnelCell[];
@@ -93,7 +96,13 @@ export function FilterRow({
                     </span>
                 )}
                 <span style={{ marginLeft: "auto", flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
-                    {linked === true && (
+                    {linkedLabel !== undefined ? (
+                        <button onClick={onLinkedClick}
+                            title={linkedLabel === "미연동" ? "연동할 조건판 고르기 — 연동해야 컷선·카운트가 선다" : "연동된 조건판 — 클릭하면 연동 변경/해제 메뉴"}
+                            style={{ fontSize: 9.5, color: linkedLabel === "미연동" ? "var(--text-tertiary)" : "var(--accent-primary)", border: "none", background: "transparent", cursor: "pointer", padding: 0 }}>
+                            {linkedLabel === "미연동" ? "○ 미연동" : `◆ ${linkedLabel}`}
+                        </button>
+                    ) : linked === true && (
                         <span title="전용 패널이 이 행을 비추는 중 — 거기서 만지면 이 줄이 바뀝니다"
                             style={{ fontSize: 9.5, color: "var(--accent-primary)" }}>◆ 연동</span>
                     )}

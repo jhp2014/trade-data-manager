@@ -10,7 +10,6 @@ import { Providers, seededClient, type Seed, type SeedPoint } from "../../../tes
 import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
 import { DEFAULT_THEME_STRENGTH } from "../../../lib/themeStrength.js";
 import { REVEAL_SCOPE, RAIL_REVEAL } from "../boardReveal.js";
-import { THEME_LINK_KEY, THEME_LINK_SCOPE } from "../themeLink.js";
 import { ConditionBoard } from "../ConditionBoard.js";
 
 const A = "005930", B = "000660";
@@ -35,7 +34,7 @@ const stages = (): ReturnType<typeof selectFilterStages> => selectFilterStages(u
 const DATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[0], to: DATES[1] }] }] };
 const THEME_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "themeStrength" as const, params: { ...DEFAULT_THEME_STRENGTH } }] };
 
-const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [], sessionUi: {} };
+const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [], sessionUi: {}, themeBindings: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
@@ -83,12 +82,27 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         expect(signal?.stageId).toBe("d1");
     });
 
-    it("테마 조건은 연동을 그 행으로 옮긴다 — 패널이 비추는 행이 곧 이 줄이다", () => {
+    it("테마 조건 — 미연동 행 이름 클릭 = 연동 메뉴(pull: 이 보드가 유일한 연동 손잡이)", () => {
         useWorkbench.setState({ filterStages: [DATE_STAGE, THEME_STAGE] });
-        const { container } = renderBoard();
-        act(() => { useWorkbench.getState().setSessionUi(THEME_LINK_SCOPE, THEME_LINK_KEY, null); });
+        const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(byText(container, "존 30/40")!); });
-        expect(useWorkbench.getState().sessionUi[THEME_LINK_SCOPE]?.[THEME_LINK_KEY]).toBe("t1");
+        // 자동 연동 폐지 — 세션 포인터 대신 메뉴가 뜬다(미연동 조건판 목록 + 새 조건판).
+        expect(baseElement.textContent).toContain("연동할 조건판");
+        expect(baseElement.textContent).toContain("＋ 새 조건판");
+        // 상비 슬롯 1(테마 순위 [조건])이 후보로 선다 — 고르면 영속 바인딩이 생긴다.
+        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "○ 테마 순위 [조건]")!); });
+        expect(useWorkbench.getState().themeBindings["t1"]).toBe("theme-rank-1");
+    });
+
+    it("연동된 테마 행 — 배지가 판 이름을 말하고, 배지 클릭 = 변경/해제 메뉴", () => {
+        useWorkbench.setState({ filterStages: [THEME_STAGE] });
+        act(() => { useWorkbench.getState().bindTheme("t1", "theme-rank-1"); });
+        const { container, baseElement } = renderBoard();
+        expect(container.textContent).toContain("◆ 테마 순위 [조건]");
+        act(() => { fireEvent.click(byText(container, "◆ 테마 순위 [조건]")!); });
+        expect(baseElement.textContent).toContain("연동 해제");
+        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "연동 해제")!); });
+        expect(useWorkbench.getState().themeBindings["t1"]).toBeUndefined();
     });
 });
 

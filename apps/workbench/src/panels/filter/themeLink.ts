@@ -1,17 +1,11 @@
-// 연동 행 — 테마 조건의 **펼침 ≡ 연동** 상태 하나(세션 수명, sessionUi). 보드 테마 칸의 펼친 행과
-// 테마 순위 패널이 비추는 행이 같은 id 를 본다(decisions.md "조건을 만드는 손은 편성 보드 하나").
-//
-// 왜 세션 수명인가: 연동은 "지금 보고 있는 행"이지 취향이 아니다 — 새로고침 = 새 시작이 정직하고,
-// 프리셋 전환(패널 재마운트)에는 살아남아야 한다(sessionUiSlice 의 갈림길 그대로).
-//
-// 연동 행이 사라지는 경로는 보드 밖에도 있다(막대 목록 삭제·저장 집합 적용의 통째 교체) — 그래서
-// "다음 행으로 자동 이동"은 삭제 핸들러가 아니라 **순수 해석기 + 훅의 관찰**로 푼다.
+// 연동 id 해석의 **범용 코어** — 세션 수명(sessionUi) "펼침 ≡ 연동" 관용구. hot(급타점)·outcome(결과)이
+// 이 훅으로 제 연동을 든다. ⚠ **테마는 2026-09-17 부터 이 관용구를 안 쓴다** — 테마 행↔조건판은
+// 영속 1:1 바인딩(store/themeBindingSlice, pull — 결정권은 보드)이고, 옛 useLinkedThemeStage 는 은퇴했다.
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
-import { stageKind, type FilterStage } from "./stage.js";
+import { useWorkbench } from "../../store/workbench.js";
+import type { FilterStage } from "./stage.js";
 import type { ThemeStrengthParams } from "../../lib/themeStrength.js";
 
-export const THEME_LINK_SCOPE = "themeLink";
 export const THEME_LINK_KEY = "stageId";
 
 /** 행의 테마 술어 params — 테마 행이 아니면 null. */
@@ -33,14 +27,6 @@ export function nextLinkedId(prevIds: readonly string[], curIds: readonly string
         for (let k = i - 1; k >= 0; k--) if (curIds.includes(prevIds[k]!)) return prevIds[k]!;
     }
     return curIds[0]!;
-}
-
-export interface LinkedThemeStage {
-    /** 보드 순서 그대로의 테마 행들. */
-    themeStages: FilterStage[];
-    /** 지금 연동(=펼침)된 행 id — null 은 명시적 접힘(패널은 순수 산점). */
-    linkedId: string | null;
-    setLinked: (id: string | null) => void;
 }
 
 /**
@@ -67,16 +53,4 @@ export function useLinkedStageId(scope: string, curIds: readonly string[]): { li
 
     const setLinked = useCallback((id: string | null) => setSessionUi(scope, THEME_LINK_KEY, id), [scope, setSessionUi]);
     return { linkedId, setLinked };
-}
-
-/**
- * 연동 상태 훅 — 보드 테마 칸과 패널 둘 다 이걸 쓴다.
- * 처음(기록 없음)은 첫 행 자동 연동 — 행이 있는데 패널이 비어 있는 것보다 정직하다.
- */
-export function useLinkedThemeStage(): LinkedThemeStage {
-    const stages = useWorkbench(selectFilterStages);
-    const themeStages = useMemo(() => stages.filter((s) => stageKind(s) === "themeStrength"), [stages]);
-    const curIds = useMemo(() => themeStages.map((s) => s.id), [themeStages]);
-    const { linkedId, setLinked } = useLinkedStageId(THEME_LINK_SCOPE, curIds);
-    return { themeStages, linkedId, setLinked };
 }

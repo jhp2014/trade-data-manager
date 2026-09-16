@@ -14,11 +14,14 @@
 import { useMemo, useRef, useState } from "react";
 import type { FunnelCell } from "@trade-data-manager/market/domain";
 import { useDismiss } from "../../ui/useDismiss.js";
-import { openAndFocus } from "../../lib/openPanel.js";
+import { createPanelSlot, openAndFocus, openPanelExact } from "../../lib/openPanel.js";
 import { DEFAULT_THEME_STRENGTH } from "../../lib/themeStrength.js";
 import { useRankSections } from "../../lib/useRankSections.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { useDock } from "../../store/dock.js";
+import { slotTitleOf } from "../../shell/panelCatalog.js";
+import { parseSlotId } from "../../shell/panelSlots.js";
 import { FILTER } from "../../styles/palette.js";
 import { Legend, PASS_CELLS } from "./cells.js";
 import { FilterRow } from "./FilterRow.js";
@@ -28,7 +31,6 @@ import { GroupEditors, type GroupEditorAnchor } from "./ConditionEditors.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
 import { HOT_REVEAL, OUTCOME_REVEAL, RAIL_REVEAL, useRevealSender } from "./boardReveal.js";
-import { useLinkedThemeStage } from "./themeLink.js";
 import { OUTCOME_PANEL_ID } from "../outcome/outcomePanelIds.js";
 import { HOT_PANEL_ID } from "../hot/hotPanelIds.js";
 import { useLinkedHot } from "../hot/hotLink.js";
@@ -39,7 +41,8 @@ import { stageKind, type FilterPredicate, type FilterStage, type Grain } from ".
 const GRAINS: Grain[] = ["day", "point"];
 /** 종류별 편집면 — 줄 이름을 누르면 여기로 데려간다. 결과 패널 id 는 공용 상수(주소가 세 곳이라 잎 모듈). */
 const RAIL_PANEL = "filter-rails-1";
-const THEME_PANEL = "theme-rank-1";
+/** 조건판 타입 밑동 — 테마 연동 목록·새 조건판 발급이 쓴다(특정 인스턴스는 바인딩이 가리킨다). */
+const THEME_RANK_BASE = "theme-rank";
 const OUTCOME_PANEL = OUTCOME_PANEL_ID;
 
 export function ConditionBoard({ barsOpen }: {
@@ -66,7 +69,12 @@ export function ConditionBoard({ barsOpen }: {
     const sendHotReveal = useRevealSender(HOT_REVEAL);
     const { setLinked: setLinkedOutcome } = useLinkedOutcome(); // 결과 줄 클릭 = 그 조건으로 연동 이동(판의 T 가 따라온다)
     const { setLinked: setLinkedHot, canAdd: canAddHot, nextParams: nextHot } = useLinkedHot(); // 급타점도 같은 규칙(판의 (W,r) 이 따라온다)
-    const { linkedId, setLinked } = useLinkedThemeStage();
+    // ── 테마 연동(pull·1:1·영속) — 이 보드가 유일한 연동 손잡이다(decisions 2026-09-17).
+    const bindings = useWorkbench((s) => s.themeBindings);
+    const bindTheme = useWorkbench((s) => s.bindTheme);
+    const unbindTheme = useWorkbench((s) => s.unbindTheme);
+    const dockSlots = useDock((s) => s.slots);
+    const [themeLink, setThemeLink] = useState<{ stageId: string; x: number; y: number } | null>(null);
     const [groupEditor, setGroupEditor] = useState<GroupEditorAnchor | null>(null);
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
     const groupCreate = useGroupCreateFlow(addStage, setGroupEditor);
@@ -81,10 +89,13 @@ export function ConditionBoard({ barsOpen }: {
      */
     const openEditor = (stage: FilterStage, e: React.MouseEvent): void => {
         switch (stageKind(stage)) {
-            case "themeStrength":
-                setLinked(stage.id);
-                openAndFocus(THEME_PANEL);
+            case "themeStrength": {
+                // 연동돼 있으면 그 판으로(특정 인스턴스 — 타입 리졸버가 아니라 정확 열기), 아니면 연동 목록.
+                const bound = bindings[stage.id];
+                if (bound !== undefined && parseSlotId(bound)?.base === THEME_RANK_BASE) openPanelExact(bound);
+                else setThemeLink({ stageId: stage.id, x: e.clientX, y: e.clientY });
                 return;
+            }
             case "group": {
                 const gp = stage.predicates.find((p): p is Extract<FilterPredicate, { kind: "group" }> => p.kind === "group");
                 setGroupEditor({ stageId: stage.id, scope: gp?.scope ?? "day", x: e.clientX, y: e.clientY });
@@ -164,7 +175,9 @@ export function ConditionBoard({ barsOpen }: {
                                         universe={v.universe}
                                         label={stageLabel(stage, v.labelLook)}
                                         dead={v.deadStageIds.includes(stage.id)}
-                                        linked={stage.id === linkedId}
+                                        linked={false}
+                                        linkedLabel={stageKind(stage) === "themeStrength" ? (bindings[stage.id] !== undefined ? slotTitleOf(bindings[stage.id]) : "미연동") : undefined}
+                                        onLinkedClick={(e) => setThemeLink({ stageId: stage.id, x: e.clientX, y: e.clientY })}
                                         showBar={barsOpen}
                                         pickedCells={selection?.stageId === stage.id ? selection.cells : []}
                                         dragging={dragId === stage.id}
@@ -204,15 +217,42 @@ export function ConditionBoard({ barsOpen }: {
                         canAddHot={canAddHot}
                         nextHot={nextHot}
                         onGroup={(scope, e) => groupCreate.open(scope, e.clientX, e.clientY)}
-                        onTheme={() => {
+                        onTheme={(e) => {
+                            // 행만 만든다 — 판 연동은 별도 결정(pull). 방금 만든 행의 연동 목록을 바로 펼쳐
+                            // 손이 이어지게 한다(무시하면 미연동 행으로 남는다 — 허용 상태).
                             addStage([{ kind: "themeStrength", params: { ...DEFAULT_THEME_STRENGTH } }]);
-                            openAndFocus(THEME_PANEL);
+                            const made = selectFilterStages(useWorkbench.getState()).at(-1);
+                            if (made) setThemeLink({ stageId: made.id, x: e.clientX, y: e.clientY });
                         }}
                     />
                 )}
                 {barsOpen && <Legend />}
                 <div style={{ height: 8 }} />
             </div>
+
+            {/* 테마 연동 메뉴 — 이 보드가 유일한 연동 손잡이(pull). 목록 = 미연동 조건판 + 새 조건판(관찰판 제외). */}
+            {themeLink !== null && (
+                <ThemeLinkMenu anchor={themeLink}
+                    boundId={bindings[themeLink.stageId]}
+                    candidates={dockSlots.filter((id) => parseSlotId(id)?.base === THEME_RANK_BASE
+                        && (!Object.entries(bindings).some(([sid, pid]) => pid === id && sid !== themeLink.stageId)))}
+                    onPick={(panelId) => {
+                        bindTheme(themeLink.stageId, panelId);
+                        openPanelExact(panelId);
+                        setThemeLink(null);
+                    }}
+                    onNew={() => {
+                        const id = createPanelSlot(THEME_RANK_BASE);
+                        bindTheme(themeLink.stageId, id);
+                        openPanelExact(id);
+                        setThemeLink(null);
+                    }}
+                    onUnbind={() => {
+                        unbindTheme(themeLink.stageId);
+                        setThemeLink(null);
+                    }}
+                    onClose={() => setThemeLink(null)} />
+            )}
 
             {/* 그룹 팔레트(팝오버) — 그룹만 전용 판이 없어 그 자리에서 연다. 레일 갈래는 레일 패널이 진다. */}
             <GroupEditors editor={groupEditor} stages={stages}
@@ -236,7 +276,7 @@ function AddCondition({ onRails, onOutcome, onGroup, onTheme, onHot, canAddHot, 
     onOutcome: () => void;
     /** 그룹 입구 둘(하루/타점) — scope 는 태어나는 자리에서 확정된다(편집 판에 토글이 없다). */
     onGroup: (scope: Grain, e: React.MouseEvent) => void;
-    onTheme: () => void;
+    onTheme: (e: React.MouseEvent) => void;
     onHot: () => void;
     /** 급타점 인스턴스 상한(3) — **생성 지점에서만** 막는다(밖에서 온 저장물은 안 자른다). */
     canAddHot: boolean;
@@ -277,7 +317,7 @@ function AddCondition({ onRails, onOutcome, onGroup, onTheme, onHot, canAddHot, 
                         질문이 되는 모호함을 입구에서 끊는다). */}
                     {item("그룹 (하루)", "그룹 식 — 하루가 행. 하루 그룹만 고를 수 있습니다", (e) => onGroup("day", e))}
                     {item("그룹 (타점)", "그룹 식 — 좌표 라벨이 붙은 타점이 행이 됩니다(타점 그룹만 고를 수 있습니다)", (e) => onGroup("point", e))}
-                    {item("테마 강도", "기본값으로 켜진 행을 만들고 테마 순위 패널에서 엽니다", onTheme)}
+                    {item("테마 강도", "기본값으로 켜진 행을 만들고, 어느 조건판에 연동할지 고릅니다(pull)", onTheme)}
                     {canAddHot
                         ? item(nextHot === null ? "급타점 수" : `급타점 수 (${nextHot.w}분/${nextHot.r}%)`,
                             "아직 안 쓰인 자리로 행을 만들고 급타점 판에서 엽니다 — 짧은 시간에 급한 재돌파가 몇 번 지나갔나", onHot)
@@ -305,5 +345,48 @@ function ThemeMaterialBadge(): JSX.Element | null {
             style={{ fontSize: 10, color: FILTER, border: `1px solid ${FILTER}`, borderRadius: 8, padding: "0 6px" }}>
             재료 오류
         </span>
+    );
+}
+
+/**
+ * 테마 행의 연동 메뉴 — 미연동 조건판 목록 + "＋ 새 조건판" + (연동 중이면) 해제. 관찰판은 목록에
+ * 원리적으로 안 나온다(후보 = theme-rank 밑동 슬롯뿐). 다른 행이 쓰는 판도 안 나온다(1:1).
+ */
+function ThemeLinkMenu({ anchor, boundId, candidates, onPick, onNew, onUnbind, onClose }: {
+    anchor: { x: number; y: number };
+    boundId: string | undefined;
+    candidates: readonly string[];
+    onPick: (panelId: string) => void;
+    onNew: () => void;
+    onUnbind: () => void;
+    onClose: () => void;
+}): JSX.Element {
+    const ref = useRef<HTMLDivElement>(null);
+    useDismiss(ref, onClose, true);
+    const item = (label: string, hint: string, run: () => void, accent = false): JSX.Element => (
+        <button key={label} onClick={run} title={hint}
+            style={{
+                display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent",
+                color: accent ? "var(--accent-primary)" : "var(--text-primary)", cursor: "pointer", font: "inherit",
+                fontSize: 11.5, padding: "5px 10px", whiteSpace: "nowrap",
+            }}>
+            {label}
+        </button>
+    );
+    return (
+        <div ref={ref}
+            style={{
+                position: "fixed", top: Math.min(anchor.y + 4, window.innerHeight - 200), left: Math.min(anchor.x, window.innerWidth - 190),
+                zIndex: 300, minWidth: 180, background: "var(--bg-primary)", border: "1px solid var(--border-default)",
+                borderRadius: 8, boxShadow: "0 8px 30px rgba(0,0,0,0.25)", padding: "4px 0",
+            }}>
+            <div style={{ padding: "3px 10px", fontSize: 10, color: "var(--text-tertiary)" }}>연동할 조건판 — 관찰판은 연동 불가</div>
+            {candidates.map((id) =>
+                item(`${boundId === id ? "◉ " : "○ "}${slotTitleOf(id)}`,
+                    boundId === id ? "지금 이 행이 연동된 판" : "이 판에 연동하고 연다",
+                    () => onPick(id), boundId === id))}
+            {item("＋ 새 조건판", "빈 조건판을 만들어 연동하고 연다(설정 사본 없음)", onNew)}
+            {boundId !== undefined && item("연동 해제", "판은 남고 십자선이 자유 자가 된다(마지막 N/M 스냅샷)", onUnbind)}
+        </div>
     );
 }

@@ -14,7 +14,9 @@ import { useOutcomeSlices, useTradeSim } from "../../lib/PointGridsContext.js";
 import { useRankSections } from "../../lib/useRankSections.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { DEFAULT_THEME_STRENGTH, themeVerdicts } from "../../lib/themeStrength.js";
-import { themeParamsOf, useLinkedThemeStage } from "../filter/themeLink.js";
+import { themeParamsOf } from "../filter/themeLink.js";
+import { stageKind } from "../filter/stage.js";
+import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
 import { useDisplayT } from "../outcome/outcomeLink.js";
 import { pointInfoRows, type PointInfoRow } from "./rows.js";
 
@@ -42,13 +44,16 @@ export function usePointInfoRows(point: PointRef | null): PointInfoRowsView {
     const outcomes = sliceAt(displayT);
     const sim = useTradeSim();
 
-    // ── 테마 — 노브는 **테마 순위 패널과 같은 연동 행**(두 화면이 다른 숫자를 말하면 안 된다).
-    //    연동 행이 없으면 기본 노브로 값은 계속 보인다(존 순위 자체는 존 N·기준만 있으면 나온다).
-    const { themeStages, linkedId } = useLinkedThemeStage();
+    // ── 테마 — 노브 출처(2026-09-17 pull 연동 재편): 판이 여럿이라 "패널과 같은 연동 행" 약속은
+    //    성립하지 않는다. 결정론 사다리 — **바인딩된 행 중 보드 순서 첫 행** → 테마 행 첫 행 → 기본값
+    //    (연동 행이 없어도 존 순위 값은 계속 보인다 — 존 N·기준만 있으면 나온다).
+    const stages = useWorkbench(selectFilterStages);
+    const bindings = useWorkbench((s) => s.themeBindings);
     const themeParams = useMemo(() => {
-        const linked = linkedId === null ? null : themeStages.find((s) => s.id === linkedId) ?? null;
-        return (linked ? themeParamsOf(linked) : null) ?? DEFAULT_THEME_STRENGTH;
-    }, [themeStages, linkedId]);
+        const themeStages = stages.filter((s) => stageKind(s) === "themeStrength");
+        const first = themeStages.find((s) => bindings[s.id] !== undefined) ?? themeStages[0] ?? null;
+        return (first ? themeParamsOf(first) : null) ?? DEFAULT_THEME_STRENGTH;
+    }, [stages, bindings]);
     const sections = useRankSections();
     const themes = useThemeProjection();
 

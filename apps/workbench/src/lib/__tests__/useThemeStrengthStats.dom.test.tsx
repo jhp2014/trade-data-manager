@@ -18,7 +18,7 @@ const DATE = "2026-08-14";
 const TIME = "09:30";
 
 const bundle: RankSectionBundle = {
-    version: 1,
+    version: 2,
     dates: [{
         date: DATE,
         sealed: true,

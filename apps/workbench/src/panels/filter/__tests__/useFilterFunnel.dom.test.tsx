@@ -348,7 +348,7 @@ describe("죽은 참조 — 화면이 표시하고 정리는 사용자가 정한
 describe("테마 강도 배선 — 실제 시드(번들·멤버십)로 판정까지", () => {
     // 단면: D1 09:30 에 A(1,1)·B(2,2) — 존(30/40) 안. 09:35 단면은 **없다**(그 타점은 미배치가 돼야 한다).
     const rankSections: Seed["rankSections"] = {
-        version: 1,
+        version: 2,
         dates: [{
             date: D1, sealed: true, codes: [A, B],
             sections: [
