@@ -28,6 +28,34 @@ export function openAndFocus(panelId: string): void {
 }
 
 /**
+ * **특정 인스턴스** 열기/포커스 — openAndFocus(타입 리졸버)와 달리 id 그대로 간다.
+ * pull 연동(보드 행 → 연동 판 열기)의 손 — 연동은 판을 가리키므로 타입 리졸버로는 못 연다.
+ */
+export function openPanelExact(panelId: string): void {
+    const dock = useDock.getState();
+    const api = dock.api;
+    if (!api) return;
+    const t = requirePanelType(panelId);
+    const p = api.getPanel(panelId) ?? (dock.registerSlots([panelId]), api.addPanel({ id: panelId, component: t.component, title: slotTitleOf(panelId) }));
+    p.api.setActive();
+}
+
+/**
+ * 새 슬롯 발급(설정 사본 없음) — 보드의 "새 조건판" 이 쓴다. duplicatePanel(현재 설정 사본)과
+ * 성격이 다르다: 빈 판으로 태어나 행을 비춘다. 발급만 하고 열지는 않는다(열기는 openPanelExact).
+ */
+export function createPanelSlot(idBase: string): string {
+    const dock = useDock.getState();
+    const openIds = dock.api?.panels.map((p) => p.id) ?? [];
+    const newId = slotIdOf(idBase, nextFreeSlot(idBase, [...dock.slots, ...openIds]));
+    // 슬롯 번호는 재사용된다 — 죽은 슬롯을 가리키던 영속 바인딩이 새 판에 조용히 붙지 않게, 태어나는
+    // 시점에 그 id 의 옛 배선을 끊는다(themeBindingSlice 머리 주석의 불변식).
+    useWorkbench.getState().clearBindingsToPanel(newId);
+    dock.registerSlots([newId]);
+    return newId;
+}
+
+/**
  * 패널 복제 — 인스턴스 생성의 유일한 정문(작업표시줄은 "있는 것을 되찾는 곳"으로 남는다).
  * 현재 설정 사본(영속 panelUi + 타입별 cloneSettings 보충)을 다음 빈 슬롯에 각인하고,
  * 원본과 같은 그룹의 이웃 탭으로 연다. sessionUi 는 안 따라간다(지금 항목을 겨냥한 값).
@@ -41,6 +69,8 @@ export function duplicatePanel(fromId: string): void {
     // 대장 ⊇ 열린 패널(자가등록)이지만, 등록 경로가 늦는 경합에 대비해 합집합으로 빈 번호를 찾는다.
     const newId = slotIdOf(t.idBase, nextFreeSlot(t.idBase, [...dock.slots, ...api.panels.map((p) => p.id)]));
     // addPanel(마운트) 전에 설정부터 — 새 패널의 첫 렌더가 사본을 읽게.
+    // 번호 재사용 가드(createPanelSlot 과 같은 불변식) — 복제된 판이 남의 옛 바인딩을 이어받지 않게.
+    useWorkbench.getState().clearBindingsToPanel(newId);
     useWorkbench.getState().clonePanelUi(fromId, newId);
     t.cloneSettings?.(fromId, newId);
     dock.registerSlots([newId]);
