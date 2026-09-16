@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { DockviewApi } from "dockview-react";
-import { PANEL_TYPES } from "../shell/panelCatalog.js";
+import { PANEL_TYPES, SEED_SLOT_IDS, panelTypeOf } from "../shell/panelCatalog.js";
+import { parseSlotId, slotIdOf } from "../shell/panelSlots.js";
 
 // 창 배치(dockview) 상태 버스 — onReady 의 DockviewApi 를 커맨드/작업표시줄이 닿을 수 있게 보관하고,
 // 레이아웃 프리셋(저장 배치)을 관리한다. UI 오버레이(ui 스토어)와 성격이 달라 전용 스토어로 둔다.
@@ -11,6 +12,10 @@ const RINGS_KEY = "wb.tabRings";
 // 프리셋은 "이름 붙여 굳힌 배치"(설정에서 명시적으로 저장할 때만 갱신), 이쪽은 "방금까지 보던 자리".
 // 그래서 자동저장이 프리셋을 덮을 일이 없고, 배치가 꼬이면 Ctrl+숫자로 굳혀 둔 자리에 돌아갈 수 있다.
 const LAST_KEY = "wb.layout.last";
+// 슬롯 대장 — "실존하는 패널 인스턴스" 집합(영속). 작업표시줄 칩 = 대장 − 열린 패널.
+// 옛 모델에서는 카탈로그(인스턴스 열거)가 이 역할을 겸했다 — 첫 로드는 그 열거(SEED_SLOT_IDS)를
+// 그대로 시딩해 사용자가 쓰던 칩이 하나도 사라지지 않게 한다(회귀 방지선). 키는 additive(버전 없음).
+const SLOTS_KEY = "wb.panelSlots";
 /** 자동저장 디바운스(ms) — 드래그 한 번에 onDidLayoutChange 가 수십 번 온다. */
 const REMEMBER_DELAY = 300;
 
@@ -101,6 +106,42 @@ function loadPresets(): PresetSlots {
     return out;
 }
 
+// 대장 정규화 — 유효 슬롯만(미등록 밑동·비슬롯 id 제거) + **상비 슬롯 1**(타입마다 항상 실존 —
+// 새 타입이 생기면 자동 입주하고, 저장물이 부분 손실돼도 자가치유) + 중복 제거 + 정식 정렬.
+// 정렬(타입 선언 순서 → 슬롯 번호)이 곧 작업표시줄 칩의 순서다 — 같은 타입의 슬롯이 이웃해 선다.
+const TYPE_ORDER = new Map(PANEL_TYPES.map((t, i) => [t.idBase, i]));
+export function normalizeSlots(ids: Iterable<string>): string[] {
+    const seen = new Set<string>();
+    for (const t of PANEL_TYPES) seen.add(slotIdOf(t.idBase, 1));
+    for (const id of ids) if (panelTypeOf(id)) seen.add(id);
+    return [...seen].sort((a, b) => {
+        const sa = parseSlotId(a)!;
+        const sb = parseSlotId(b)!;
+        return (TYPE_ORDER.get(sa.base) ?? 0) - (TYPE_ORDER.get(sb.base) ?? 0) || sa.n - sb.n;
+    });
+}
+
+function loadSlots(): string[] {
+    try {
+        const raw = localStorage.getItem(SLOTS_KEY);
+        if (raw) {
+            const arr: unknown = JSON.parse(raw);
+            if (Array.isArray(arr)) return normalizeSlots(arr.filter((x): x is string => typeof x === "string"));
+        }
+    } catch {
+        /* localStorage 없음/파싱 실패 → 시딩 */
+    }
+    return normalizeSlots(SEED_SLOT_IDS);
+}
+
+function persistSlots(slots: string[]): void {
+    try {
+        localStorage.setItem(SLOTS_KEY, JSON.stringify(slots));
+    } catch {
+        /* 영속 실패 무시 */
+    }
+}
+
 function loadRings(): RingSlots {
     const out: RingSlots = Array.from({ length: PRESET_COUNT }, () => [] as string[]);
     try {
@@ -147,8 +188,11 @@ interface DockState {
     activePreset: number | null; // 1-based. null = 프리셋 밖(기본 배치/수동 변경).
     ringSource: number | null; // 1-based. 마지막으로 불러온 화면 = Tab 링 출처. 수동 배치 변경엔 안 바뀜.
     openPanelIds: string[] | null; // 현재 열린 패널 id(작업표시줄 닫힌창 목록용). null = dock 미준비.
+    slots: string[]; // 슬롯 대장 — 실존 인스턴스 집합(정식 정렬 유지). 칩 = slots − openPanelIds.
     setApi: (api: DockviewApi | null) => void;
     setOpenPanels: (ids: string[]) => void;
+    registerSlots: (ids: string[]) => void; // 대장에 합류(합집합) — 열림 동기화·복제가 부른다
+    destroySlot: (id: string) => void; // 슬롯 소멸(칩 정리). 슬롯 1(상비)·열린 창은 거부. 설정은 안 지운다(부활 기능).
     savePreset: (n: number) => void; // 현재 배치를 슬롯 n(1-based)에 저장
     loadPreset: (n: number) => void; // 슬롯 n 배치로 전환(빈 슬롯이면 무시)
     clearPreset: (n: number) => void; // 슬롯 n 저장 배치 삭제(+링 비우기)
@@ -176,8 +220,30 @@ export const useDock = create<DockState>((set, get) => ({
     activePreset: null,
     ringSource: null,
     openPanelIds: null,
+    slots: loadSlots(),
     setApi: (api) => set({ api }),
-    setOpenPanels: (ids) => set({ openPanelIds: ids }),
+    // 열림 동기화가 곧 자가등록 지점이다 — 부팅 복원(loadLastLayout)·프리셋 로드·수동 addPanel 이
+    // 전부 여길 지나므로, 대장 밖 슬롯 id 가 화면에 나타나면 여기서 대장에 합류한다.
+    // sanitize 를 통과한(실제로 열린) 패널만 오므로 걷어낼 패널을 등록할 일이 없다.
+    setOpenPanels: (ids) => {
+        get().registerSlots(ids);
+        set({ openPanelIds: ids });
+    },
+    registerSlots: (ids) => {
+        const cur = get().slots;
+        const next = normalizeSlots([...cur, ...ids]);
+        if (next.length === cur.length && next.every((id, i) => id === cur[i])) return;
+        persistSlots(next);
+        set({ slots: next });
+    },
+    destroySlot: (id) => {
+        const s = parseSlotId(id);
+        if (!s || s.n <= 1) return; // 슬롯 1 은 상비 — 소멸 불가(현재 동작의 특수 사례 보존)
+        if (get().openPanelIds?.includes(id)) return; // 소멸 손잡이는 칩(닫힌 창)에만 있다 — 방어선
+        const next = get().slots.filter((x) => x !== id);
+        persistSlots(next);
+        set({ slots: next });
+    },
     savePreset: (n) => {
         const api = get().api;
         if (!api) return;
