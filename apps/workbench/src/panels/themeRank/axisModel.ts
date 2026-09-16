@@ -210,12 +210,6 @@ function logTicks(lo: number, hi: number): number[] {
     return out.length > 7 ? out.filter((v) => { const l = Math.log10(v); return Math.abs(l - Math.round(l)) < 1e-9; }) : out;
 }
 
-// ── 임시 호환(판 이원화 커밋에서 은퇴) — 옛 단일 패널의 판정 공간/줌 가능 판정. ─────────────
-export function isJudgmentSpace(axes: ThemeRankAxes, zoneWindow: number | null): boolean {
-    return axes.xMode === "rank" && axes.yMode === "rank" && axes.windowMin === zoneWindow;
-}
-export const isZoomable = (axes: ThemeRankAxes): boolean => axes.xMode === "rank" && axes.yMode === "rank";
-
 /** 선형 눈금 — 1/2/5 스텝으로 4~6개. */
 function linearTicks(lo: number, hi: number): number[] {
     const range = Math.max(hi - lo, 1e-9);
