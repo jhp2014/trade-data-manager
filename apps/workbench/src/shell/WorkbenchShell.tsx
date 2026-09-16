@@ -8,7 +8,8 @@ import {
 } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
 import { loadLastLayout, useDock } from "../store/dock.js";
-import { panelComponents, planeOf } from "./panelCatalog.js";
+import { panelComponents, panelTypeOf, planeOf } from "./panelCatalog.js";
+import { duplicatePanel } from "../lib/openPanel.js";
 
 // dockview 도킹 셸 — 패널 목록·렌더는 전부 panelCatalog 가 소유하고, 여기는 셸(탭·헤더 액션·복원)만.
 const components = panelComponents();
@@ -59,9 +60,24 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
     // 플레인 탭 구분(점 없이 UI 색으로) — 실시간=앰버 / 복기=teal. 텍스트색 + 옅은 배경 + 하단 2px 색띠(배경 겹쳐도 또렷).
     const plane = planeOf(props.api.id);
     const color = `var(--plane-${plane})`;
+    // 복제 입구 — 인스턴스 생성의 유일한 정문(복제 가능 타입에만). 헤더 구조가 제각각인 패널들을
+    // 재편하지 않고도 전 타입이 한 번에 정문을 얻는 자리라 탭이다(2026-09-16 확정).
+    const duplicable = panelTypeOf(props.api.id)?.duplicable === true;
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 12, color, background: `var(--plane-${plane}-soft)`, borderBottom: `2px solid ${color}` }}>
             <span style={{ fontWeight: active ? 700 : 400, opacity: active ? 1 : 0.85 }}>{title}</span>
+            {duplicable && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        duplicatePanel(props.api.id);
+                    }}
+                    title="복제 — 지금 설정 사본으로 새 창"
+                    style={{ background: "none", border: "none", color: "inherit", opacity: 0.55, cursor: "pointer", fontSize: 12, lineHeight: 1, padding: "0 2px" }}
+                >
+                    ⧉
+                </button>
+            )}
             <button
                 onClick={(e) => {
                     e.stopPropagation();

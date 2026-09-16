@@ -7,7 +7,8 @@
 // plane = 데이터 평면: live(브로커 실시간, 종목만 구동) / eod(DB 복기·분석, 종목+날짜+시간).
 import type { FunctionComponent } from "react";
 import type { IDockviewPanelProps } from "dockview-react";
-import { ChartPanel } from "../panels/ChartPanel.js";
+import { ChartPanel, defaultChartView } from "../panels/ChartPanel.js";
+import { useWorkbench } from "../store/workbench.js";
 import { ThemeBoardPanel } from "../panels/ThemeBoardPanel.js";
 import { LiveBoardPanel } from "../panels/LiveBoardPanel.js";
 import { RealtimeChartPanel } from "../panels/RealtimeChartPanel.js";
@@ -75,7 +76,21 @@ export const PANEL_TYPES: PanelType[] = [
     { idBase: "telegram-news", component: "telegramNews", title: "텔레그램", plane: "eod", render: () => <TelegramNewsPanel plane="replay" /> },
     { idBase: "theme-board", component: "themeBoard", title: "테마 [장 마감]", plane: "eod", render: (id) => <ThemeBoardPanel panelId={id} /> },
     { idBase: "replay-board", component: "replayBoard", title: "테마 [복기]", plane: "eod", render: (id) => <ReplayBoardPanel panelId={id} /> },
-    { idBase: "chart", component: "chart", title: "차트", plane: "eod", seedSlots: 2, render: (id) => <ChartPanel panelId={id} /> },
+    {
+        idBase: "chart",
+        component: "chart",
+        title: "차트",
+        plane: "eod",
+        seedSlots: 2,
+        duplicable: true,
+        // 차트 뷰(일봉/분봉/둘다)는 panelUi 밖(wb.chartViews)에 산다 — 일반 복사가 못 챙기는 몫.
+        // 미저장이면 id 기본값(chart-1=일봉…)이 곧 "보던 그대로"라 그걸 새 슬롯에 각인한다.
+        cloneSettings: (fromId, toId) => {
+            const st = useWorkbench.getState();
+            st.setChartView(toId, st.chartViews[fromId] ?? defaultChartView(fromId));
+        },
+        render: (id) => <ChartPanel panelId={id} />,
+    },
     { idBase: "workset", component: "workset", title: "작업 대상", plane: "eod", render: () => <WorksetPanel /> },
     { idBase: "history", component: "recentHistory", title: "최근 탐색", plane: "eod", render: () => <RecentHistoryPanel /> },
     { idBase: "rank-sheet", component: "rankSheet", title: "시트", plane: "eod", render: () => <RankSheetPanel /> },
@@ -102,7 +117,7 @@ export const PANEL_TYPES: PanelType[] = [
     // 옛 골격 컴포넌트("rankSkeleton"/"rankSkeletonMinute")는 저장 프리셋에서 sanitizeLayout 이 걷어낸다(맵 패널과 같은 길).
     { idBase: "norm-daily", component: "normDaily", title: "정규화 [일봉]", plane: "eod", render: () => <NormOverlayPanel grain="daily" /> },
     { idBase: "norm-point", component: "normPoint", title: "정규화 [타점]", plane: "eod", render: () => <NormOverlayPanel grain="minute" /> },
-    { idBase: "rank-point", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },
+    { idBase: "rank-point", component: "rankPoint", title: "타점 정보", plane: "eod", duplicable: true, render: (id) => <PointInfoPanel panelId={id} /> },
     // 테마 순위 — 순위 평면(등락×대금 서수)에 테마 동료를 세우는 순수 시선. 조건화(스냅샷)는 집합 편성 보드의 몫.
     { idBase: "theme-rank", component: "themeRank", title: "테마 순위 [복기]", plane: "eod", render: () => <ThemeRankPanel /> },
     // (옛 그룹 목록 패널("groupList")은 2026-09-10 은퇴 — 그룹 편집은 배정 팝오버가 유일 표면.

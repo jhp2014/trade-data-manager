@@ -302,6 +302,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
 }
 
 // 패널별 기본 뷰 — chart-1=일봉, chart-2=분봉, 그 외=둘다. 사용자가 바꾸면 store(영속)가 덮어씀.
-function defaultChartView(panelId: string): ChartView {
+// export 는 복제(cloneSettings)용 — 미저장 패널을 복제할 때 "보던 그대로"의 출처가 이 기본값이다.
+export function defaultChartView(panelId: string): ChartView {
     return panelId === "chart-1" ? "daily" : panelId === "chart-2" ? "minute" : "both";
 }
