@@ -34,6 +34,9 @@ import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { useThemeStrengthStats } from "../../lib/useThemeStrengthStats.js";
 import { anyConditionOn, DEFAULT_THEME_STRENGTH, themeVerdicts, type ThemeStrengthParams, type ThemeVerdict } from "../../lib/themeStrength.js";
 import { projectionOf } from "../../lib/useThemeProjection.js";
+import { usePanelUi } from "../../store/usePanelUi.js";
+import { AxisControls } from "./AxisControls.js";
+import { isJudgmentSpace, isZoomable, parseThemeRankAxes, planeSliceAt, rankScaleX, rankScaleY, valueScaleX, valueScaleY } from "./axisModel.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { scatterLayer } from "./scatterLayer.js";
 import { themeColorMap } from "./themeColor.js";
@@ -67,10 +70,6 @@ const fmtHms = (m: number): string => `${fmtMin(m)}:00`;
 interface ZoomDom { date: string; x0: number; x1: number; y0: number; y1: number }
 /** 줌 하한(서수 폭) — 이보다 좁히면 몇 위 안 남아 좌표가 무의미해진다. */
 const ZOOM_MIN_SPAN = 4;
-/** 도메인 구간 눈금 — 균등 4~5개(정수로 반올림·중복 제거). */
-const tickListOf = (a: number, b: number, maxRank: number): number[] =>
-    [...new Set([a, a + (b - a) * 0.25, a + (b - a) * 0.5, a + (b - a) * 0.75, b].map(Math.round))]
-        .filter((t) => t >= 1 && t <= maxRank);
 
 export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
     const subject = useSubject();
@@ -88,6 +87,16 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
     const linked = useMemo(() => (linkedId === null ? null : themeStages.find((s) => s.id === linkedId) ?? null), [themeStages, linkedId]);
     const linkedParams = useMemo(() => (linked ? themeParamsOf(linked) : null), [linked]);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
+
+    // ── 축 설정 — 인스턴스 영속(panelUi, ⧉ 복제 시 사본이 같이 간다). 판정 층(컷선·존·✓/✗·카운트)은
+    // 축이 술어가 재는 공간(당일 대금 서수 × 등락 서수 — zoneAmountWindow 도입 전엔 창 = 당일 고정)과
+    // **일치할 때만** 선다 — 다른 축에서 살리면 점의 자리와 판정 숫자가 조용히 갈린다(decisions.md).
+    const [axesRaw, setAxesRaw] = usePanelUi<unknown>(panelId, "axes", null);
+    const axes = useMemo(() => parseThemeRankAxes(axesRaw), [axesRaw]);
+    const judgmentSpace = isJudgmentSpace(axes, null);
+    const zoomable = isZoomable(axes);
+    // 판정 층의 유일한 파라미터 출처 — 공간 불일치면 연동 행이 있어도 null(순수 산점 + 가이드).
+    const judgeParams = judgmentSpace ? linkedParams : null;
 
     // ── 그날 스냅샷(복기 파생) — 정규화 패널과 같은 공용 LRU 캐시.
     const snapQ = useDaySnapshot(subject?.date ?? null);
@@ -169,12 +178,13 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
     // ── 컷선 드래그 — 미리보기는 로컬, 커밋은 손 뗄 때 한 번(Rail 규약) **연동 행의 술어로**.
     const [preview, setPreview] = useState<Partial<ThemeStrengthParams> | null>(null);
     const eff: ThemeStrengthParams = useMemo(
-        () => ({ ...(linkedParams ?? DEFAULT_THEME_STRENGTH), ...preview }),
-        [linkedParams, preview],
+        () => ({ ...(judgeParams ?? DEFAULT_THEME_STRENGTH), ...preview }),
+        [judgeParams, preview],
     );
-    // 카운트만 한 프레임 뒤로 — 존 틴트·점은 즉시 따라와야 손이 안 끌린다.
+    // 카운트만 한 프레임 뒤로 — 존 틴트·점은 즉시 따라와야 손이 안 끌린다. 판정 층이 접힌 인스턴스는
+    // 계산 자체를 끈다(enabled) — 전 모수 패스가 인스턴스 수만큼 돌지 않게.
     const countParams = useDeferredValue(eff);
-    const count = useThemeStrengthStats(countParams);
+    const count = useThemeStrengthStats(countParams, judgeParams !== null);
 
     // ── 테마별 진단 — 시선 종목의 테마마다 "그 테마 **단독으로** 활성 조건을 다 만족하나"(∃ 를 접기 전 재료).
     // 헤더 카운트(모수 전체 ∃)와 층이 다르다: 저건 "몇 개가 통과하나", 이건 "지금 이 종목을 어느 테마가
@@ -182,9 +192,9 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
     // 활성 조건이 없으면 전부 참이라 표식이 소음이 된다 → null(칩은 이름만).
     const proj = projectionOf(themesView.index); // 공용 모듈 캐시(인덱스 참조 키) — 투영 사본이 화면마다 서지 않게
     const verdicts = useMemo((): ReadonlyMap<string, ThemeVerdict> | null => {
-        if (!subject || !section || linkedParams === null || !anyConditionOn(eff)) return null;
+        if (!subject || !section || judgeParams === null || !anyConditionOn(eff)) return null;
         return new Map(themeVerdicts(subject.code, section, eff, proj).map((v) => [v.theme, v] as const));
-    }, [subject, section, linkedParams, eff, proj]);
+    }, [subject, section, judgeParams, eff, proj]);
 
     // ── 그림 상자 — **안정 콜백 ref**. 이 div 는 subject && section 일 때만 마운트되는데, 1회성 effect 로
     // 관찰을 붙이면 최초 렌더(시선 없음)에서 ref 가 null 이라 영영 안 붙는다(실측: 캔버스 0×0 고정).
@@ -214,46 +224,60 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
 
     // ── 줌 도메인 — 세션 수명(sessionUi)·날짜 낟알. 읽을 때 거른다(날짜가 다르면 없는 셈 — 지우는 손 없음).
     // x·y 폭은 항상 같다(전체 도메인이 정사각이고, 휠은 균등·팬은 폭 보존이라 불변이 유지된다).
+    // 값 축이 하나라도 있으면 줌 자체를 끈다(1차 확정) — 정사각 불변이 값 공간에선 성립하지 않는다.
     const rawZoom = useWorkbench((s) => s.sessionUi[panelId]?.["zoom"]) as ZoomDom | undefined;
-    const zoom = rawZoom !== undefined && subject !== null && rawZoom.date === subject.date ? rawZoom : null;
+    const zoom = zoomable && rawZoom !== undefined && subject !== null && rawZoom.date === subject.date ? rawZoom : null;
     const dom = useMemo(
         () => zoom ?? { x0: 1, x1: maxRank, y0: 1, y1: maxRank },
         [zoom, maxRank],
     );
     const domSpan = Math.max(dom.x1 - dom.x0, 1);
-    const scales = useMemo(() => {
-        const span = Math.max(dom.x1 - dom.x0, 1);
-        return {
-            x: (ord: number): number => box.left + ((Math.min(ord, maxRank) - dom.x0) / span) * box.width,
-            y: (ord: number): number => box.top + ((Math.min(ord, maxRank) - dom.y0) / span) * box.height,
-        };
-    }, [box.left, box.top, box.width, box.height, maxRank, dom]);
-    const ordAtX = (px: number): number =>
-        Math.max(1, Math.min(maxRank, Math.round(dom.x0 + ((px - box.left) / Math.max(box.width, 1)) * domSpan)));
-    const ordAtY = (py: number): number =>
-        Math.max(1, Math.min(maxRank, Math.round(dom.y0 + ((py - box.top) / Math.max(box.height, 1)) * domSpan)));
     /** 도메인 시작점 클램프 — 폭을 유지한 채 [1, maxRank] 안에 눕힌다(휠·팬 공용). */
     const clampDom0 = (v: number, span: number): number => Math.max(1, Math.min(v, maxRank - span));
 
+    // ── 평면 단면 — 축 설정이 정한 좌표(서수/값·창). 계산 주체는 core 한 벌(sectionSeries 캐시 경유).
+    const slice = useMemo(
+        () => (stocks && subject && minute !== null ? planeSliceAt(stocks, subject.date, minute, axes) : null),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [stocks, subject?.date, minute, axes],
+    );
     const participants = useMemo(() => {
-        if (!section) return [];
+        if (!section || !slice) return [];
         const out: { code: string; rate: number; amount: number }[] = [];
         for (let i = 0; i < section.codes.length; i++) {
-            const r = section.section.rate[i];
-            const a = section.section.amount[i];
-            if (r !== null && a !== null) out.push({ code: section.codes[i], rate: r, amount: a });
+            const x = slice.x[i];
+            const y = slice.y[i];
+            if (x !== null && y !== null) out.push({ code: section.codes[i], rate: y, amount: x });
         }
         return out;
-    }, [section]);
+    }, [section, slice]);
 
-    // 존(틴트·컷선·타임라인 띠)은 연동 행이 있을 때만. 산점의 점은 존을 **표시하지 않는다** — 자리와
-    // 칩 숫자가 이미 말한다(scatterLayer 머리 주석).
-    const zone = linkedParams === null ? null : { rateN: eff.zoneRateN, amountN: eff.zoneAmountN };
+    // 존(틴트·컷선·타임라인 띠)은 판정 층(judgeParams)이 있을 때만. 산점의 점은 존을 **표시하지 않는다** —
+    // 자리와 칩 숫자가 이미 말한다(scatterLayer 머리 주석).
+    const zone = judgeParams === null ? null : { rateN: eff.zoneRateN, amountN: eff.zoneAmountN };
     // 집기 대상 = **그려진 것**뿐(시선 + 동료). 안 그린 점에 툴팁이 뜨면 유령을 짚는 셈이다.
     const hitPoints = useMemo(
         () => participants.filter((p) => p.code === subject?.code || peerThemes.has(p.code)),
         [participants, peerThemes, subject],
     );
+
+    // ── 축 스케일 — 서수는 줌 도메인, 값은 그려진 점(시선+동료)의 스팬을 따른다(스크럽마다 재계산 —
+    // 값 도메인이 데이터를 따라오는 게 의도다). 렌더·판정(nearestAt)·드래그(invert)의 단일 출처.
+    const xScale = useMemo(
+        () => (axes.xMode === "rank"
+            ? rankScaleX(dom, box, maxRank, axes.windowMin)
+            : valueScaleX(hitPoints.map((p) => p.amount), box, axes.windowMin)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [axes, dom, box.left, box.top, box.width, box.height, maxRank, axes.xMode === "value" ? hitPoints : null],
+    );
+    const yScale = useMemo(
+        () => (axes.yMode === "rank" ? rankScaleY(dom, box, maxRank) : valueScaleY(hitPoints.map((p) => p.rate), box)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [axes, dom, box.left, box.top, box.width, box.height, maxRank, axes.yMode === "value" ? hitPoints : null],
+    );
+    const scales = useMemo(() => ({ x: xScale.px, y: yScale.px }), [xScale, yScale]);
+    const ordAtX = (px: number): number => xScale.invert(px);
+    const ordAtY = (py: number): number => yScale.invert(py);
 
     // ── 꼬리 — 상대 오프셋(설정 영속, 빈 배열 = 꺼짐). 재료는 스크럽과 같은 공용 단면 캐시(sectionSeries)라
     // 오프셋 단면 몇 개는 공짜에 가깝다. 장 시작보다 이른 꼭짓점은 거른다(결손은 결손 — 당겨 그리지 않는다).
@@ -264,15 +288,19 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
     }, [trailOffsets, minute, minuteRange]);
     const trails = useMemo((): Trail[] | null => {
         if (trailMinutes.length === 0 || !stocks || !subject || !section) return null;
-        const secs = trailMinutes.map((m) => scrubSectionOf(stocks, subject.date, fmtMin(m)));
+        // 꼬리 꼭짓점도 현재 축 설정의 좌표다 — 산점과 다른 공간을 이으면 머리와 어긋난다.
+        const slices = trailMinutes.map((m) => planeSliceAt(stocks, subject.date, m, axes));
         const peers: Trail[] = [];
         let subjTrail: Trail | null = null;
         for (const p of hitPoints) {
             const isSubj = p.code === subject.code;
             const themes = peerThemes.get(p.code);
-            const pts: (TrailPoint | null)[] = secs.map((s) => {
-                const r = s.ranksOf(p.code);
-                return r !== null && r.rate !== null && r.amount !== null ? { rate: r.rate, amount: r.amount } : null;
+            const idx = section.indexOf(p.code);
+            const pts: (TrailPoint | null)[] = slices.map((s) => {
+                if (idx === null) return null;
+                const x = s.x[idx];
+                const y = s.y[idx];
+                return x !== null && y !== null ? { rate: y, amount: x } : null;
             });
             pts.push({ rate: p.rate, amount: p.amount }); // 머리 = 지금 분(산점의 점과 같은 자리)
             const t: Trail = {
@@ -285,18 +313,13 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
         }
         if (subjTrail) peers.push(subjTrail); // 시선 꼬리가 맨 위(나중에 그린 게 위)
         return peers;
-    }, [trailMinutes, stocks, subject, section, hitPoints, peerThemes, themeColors, lens]);
+    }, [trailMinutes, stocks, subject, section, hitPoints, peerThemes, themeColors, lens, axes]);
 
     const layers = useMemo(() => {
         const scatter = scatterLayer({ points: participants, subject: subject?.code ?? null, peerThemes, colorOf: themeColors, lens, scales, compact: trails !== null });
         return trails !== null ? [trailLayer({ trails, scales }), scatter] : [scatter];
     }, [participants, subject, peerThemes, themeColors, lens, scales, trails]);
-    // 축 눈금 — 배경 점이 하던 좌표 감각을 대신한다(균등 4~5개, 정확한 컷 값은 컷선 라벨이 말한다).
-    // 줌 도메인을 따른다 — 확대하면 그 구간의 서수가 눈금으로 선다(축마다 따로 — 팬으로 중심이 갈린다).
-    const ticks = useMemo(
-        () => ({ x: tickListOf(dom.x0, dom.x1, maxRank), y: tickListOf(dom.y0, dom.y1, maxRank) }),
-        [dom, maxRank],
-    );
+    // 축 눈금·제목은 스케일(axisModel)이 든다 — 서수는 줌 도메인, 값은 데이터 스팬을 따른다.
 
     /** 그 자리에서 가장 가까운 점(HIT_R 안). 호버 툴팁과 클릭 이동이 **같은 판정**을 쓴다.
      *  확대로 클립돼 안 보이는 점은 제외 — 화면과 손이 어긋나면 가장자리에서 유령을 집는다. */
@@ -382,7 +405,7 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         downRef.current = { x, y };
-        if (linkedParams !== null) {
+        if (judgeParams !== null) {
             const target = cutXVisible && inLabel(x, y, cutLabels.amount) ? "amount" : cutYVisible && inLabel(x, y, cutLabels.rate) ? "rate" : null;
             if (target) {
                 dragRef.current = target;
@@ -424,6 +447,7 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
      * norm 패널이 폐기한 "본문 더블클릭 리셋"도 여기선 **빈 곳 한정 + 확대 중 한정**이라 오발이 없다.
      */
     const onWheel = (e: React.WheelEvent<SVGSVGElement>): void => {
+        if (!zoomable) return; // 값 축에선 줌 없음(1차) — 도메인이 데이터를 따라오는 축에 줌을 얹으면 두 손이 싸운다
         if (!subject || maxRank <= ZOOM_MIN_SPAN + 1) return; // 유니버스가 손바닥만 하면 줌이 무의미하다
         const rect = e.currentTarget.getBoundingClientRect();
         const px = e.clientX - rect.left;
@@ -453,8 +477,8 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
         e.currentTarget.releasePointerCapture(e.pointerId);
         setPreview((p) => {
             // 커밋은 여기 한 번, **연동 행의 술어로** — 보드 행·막대·저장물이 같이 바뀐다.
-            if (p && linked !== null && linkedParams !== null) {
-                setPredicates(linked.id, [{ kind: "themeStrength", params: { ...linkedParams, ...p } }]);
+            if (p && linked !== null && judgeParams !== null) {
+                setPredicates(linked.id, [{ kind: "themeStrength", params: { ...judgeParams, ...p } }]);
             }
             return null;
         });
@@ -486,7 +510,7 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
 
     // ── 타임라인 재료 — 트랙(분당 서수, 시선/날짜당 한 번)과 띠 필터(컷 드래그마다 O(분))를 가른다.
     // 띠는 연동 행의 존 기준이므로 연동 없을 땐 트랙 자체를 안 굽는다(~390분 × 정렬 — 공짜가 아니다).
-    const hasLink = linkedParams !== null;
+    const hasLink = judgeParams !== null;
     const track = useMemo(
         () => (hasLink && stocks && subject && minuteRange ? subjectOrdinalTrack(stocks, subject.date, subject.code, minuteRange) : null),
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -521,18 +545,23 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
     return (
         <div style={wrap}>
             <PanelHeader chrome={false} gap={8} style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
-                <span style={label} title="연동 행의 조건을 타점 모수 전체에 적용한 수 — 통과/판정가능. 결손 = 단면 없음(오늘 이후·미수집)">
-                    {linkedParams === null
-                        ? <span style={{ color: "var(--text-tertiary)" }}>
-                            {themeStages.length === 0 ? "테마 조건 행 없음 — 편성 보드에서 ＋ 테마 조건" : "연동 없음 — 아래 칩으로 행을 고르세요"}
-                        </span>
-                        : count.error ? <span style={{ color: FILTER }}>모수 재료 오류</span>
-                            : count.isLoading ? "…"
-                                : anyConditionOn(countParams)
-                                    ? <>통과 {count.passed.toLocaleString()} / {count.evaluable.toLocaleString()}{count.missing > 0 && <span style={{ color: "var(--text-tertiary)" }}> · 결손 {count.missing}</span>}</>
-                                    : <span style={{ color: "var(--text-tertiary)" }}>조건 없음 — 판정가능 {count.evaluable.toLocaleString()}</span>}
+                <span style={label} title={judgmentSpace
+                    ? "연동 행의 조건을 타점 모수 전체에 적용한 수 — 통과/판정가능. 결손 = 단면 없음(오늘 이후·미수집)"
+                    : "이 축 설정에는 컷·존·판정이 없다 — 술어(테마 강도)는 당일 대금 서수 × 등락 서수 위에 정의된 물건이라, 다른 축에서 살리면 화면과 숫자가 갈린다"}>
+                    {!judgmentSpace
+                        ? <span style={{ color: "var(--text-tertiary)" }}>{xScale.chip}×{yScale.chip} 산점 — 컷·판정 없음</span>
+                        : linkedParams === null
+                            ? <span style={{ color: "var(--text-tertiary)" }}>
+                                {themeStages.length === 0 ? "테마 조건 행 없음 — 편성 보드에서 ＋ 테마 조건" : "연동 없음 — 아래 칩으로 행을 고르세요"}
+                            </span>
+                            : count.error ? <span style={{ color: FILTER }}>모수 재료 오류</span>
+                                : count.isLoading ? "…"
+                                    : anyConditionOn(countParams)
+                                        ? <>통과 {count.passed.toLocaleString()} / {count.evaluable.toLocaleString()}{count.missing > 0 && <span style={{ color: "var(--text-tertiary)" }}> · 결손 {count.missing}</span>}</>
+                                        : <span style={{ color: "var(--text-tertiary)" }}>조건 없음 — 판정가능 {count.evaluable.toLocaleString()}</span>}
                 </span>
-                {linked !== null && !linked.enabled && (
+                <AxisControls axes={axes} onChange={setAxesRaw} />
+                {judgmentSpace && linked !== null && !linked.enabled && (
                     <span title="연동 행이 꺼져 있어 깔때기에 안 낀다 — 위 카운트는 켰을 때의 값(탐색용)"
                         style={{ ...label, color: "var(--text-tertiary)", border: "1px solid var(--border-default)", borderRadius: 8, padding: "0 6px" }}>
                         꺼짐
@@ -569,16 +598,18 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
                         : "shown"} />
             </PanelHeader>
 
-            {/* 연동 행의 편집 손잡이 — 컷선으로 못 그리는 값들(존 N/M 은 산점 드래그가 진다). */}
-            {linked !== null && linkedParams !== null && (
-                <ThemeParamControls params={linkedParams}
-                    onPatch={(p) => setPredicates(linked.id, [{ kind: "themeStrength", params: { ...linkedParams, ...p } }])} />
+            {/* 연동 행의 편집 손잡이 — 컷선으로 못 그리는 값들(존 N/M 은 산점 드래그가 진다).
+                판정 층이 접힌 축 설정에선 안 보인다 — 화면에 없는 존을 눈감고 고치게 두지 않는다. */}
+            {linked !== null && judgeParams !== null && (
+                <ThemeParamControls params={judgeParams}
+                    onPatch={(p) => setPredicates(linked.id, [{ kind: "themeStrength", params: { ...judgeParams, ...p } }])} />
             )}
 
-            {/* 칩 스트립 — 테마 행 목록의 파생 뷰(별도 저장물 없음). 클릭 = 연동 전환(보드 요약 줄도 같은 상태를 본다). */}
-            {(themeStages.length > 0 || subjectThemes.length > 0 || (subject !== null && themesStatus !== "ready")) && (
+            {/* 칩 스트립 — 테마 행 목록의 파생 뷰(별도 저장물 없음). 클릭 = 연동 전환(보드 요약 줄도 같은 상태를 본다).
+                조건 칩(왼쪽)은 판정 층과 함께 접힌다 — 렌즈 칩(오른쪽)은 시선 도구라 축 설정과 무관하게 산다. */}
+            {((judgmentSpace && themeStages.length > 0) || subjectThemes.length > 0 || (subject !== null && themesStatus !== "ready")) && (
                 <div style={chipsRow}>
-                    {themeStages.map((s) => {
+                    {judgmentSpace && themeStages.map((s) => {
                         const p = themeParamsOf(s);
                         if (!p) return null;
                         const active = s.id === linkedId;
@@ -612,7 +643,7 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
                 <div ref={wrapRef} style={{ position: "relative", flex: 1, minHeight: 0 }}>
                     {/* 아래 SVG — 축·존 틴트(그림 밑). 존은 연동 행이 있을 때만. */}
                     <svg width={size.w} height={size.h} style={underSvg}>
-                        {linkedParams !== null && (() => {
+                        {judgeParams !== null && (() => {
                             // 존 사각 = 서수 [1..컷] 영역을 그림 상자로 오려낸 것 — 줌 도메인 밖으로 안 넘치게.
                             const zx0 = clamp(scales.x(1), box.left, box.left + box.width);
                             const zy0 = clamp(scales.y(1), box.top, box.top + box.height);
@@ -622,22 +653,22 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
                         })()}
                         {/* 눈금·격자 — 무관 종목 회색 층을 지운 자리(2026-09-07). 점이 성길 때 좌표를 읽을 유일한 근거다.
                             x 눈금 글자는 상자 **안** 바닥에 붙인다 — 축 아래는 컷선 라벨(손잡이)이 이미 쓰고 있다. */}
-                        {ticks.x.map((t) => (
-                            <g key={`x${t}`}>
-                                <line x1={scales.x(t)} y1={box.top} x2={scales.x(t)} y2={box.top + box.height} stroke="var(--border-subtle)" />
-                                <text x={scales.x(t)} y={box.top + box.height - 4} textAnchor="middle" style={axisText}>{t}</text>
+                        {xScale.ticks.map((t) => (
+                            <g key={`x${t.v}`}>
+                                <line x1={xScale.px(t.v)} y1={box.top} x2={xScale.px(t.v)} y2={box.top + box.height} stroke="var(--border-subtle)" />
+                                <text x={xScale.px(t.v)} y={box.top + box.height - 4} textAnchor="middle" style={axisText}>{t.label}</text>
                             </g>
                         ))}
-                        {ticks.y.map((t) => (
-                            <g key={`y${t}`}>
-                                <line x1={box.left} y1={scales.y(t)} x2={box.left + box.width} y2={scales.y(t)} stroke="var(--border-subtle)" />
-                                <text x={box.left - 6} y={scales.y(t) + 3} textAnchor="end" style={axisText}>{t}</text>
+                        {yScale.ticks.map((t) => (
+                            <g key={`y${t.v}`}>
+                                <line x1={box.left} y1={yScale.px(t.v)} x2={box.left + box.width} y2={yScale.px(t.v)} stroke="var(--border-subtle)" />
+                                <text x={box.left - 6} y={yScale.px(t.v) + 3} textAnchor="end" style={axisText}>{t.label}</text>
                             </g>
                         ))}
                         <line x1={box.left} y1={box.top} x2={box.left} y2={box.top + box.height} stroke="var(--border-strong)" />
                         <line x1={box.left} y1={box.top + box.height} x2={box.left + box.width} y2={box.top + box.height} stroke="var(--border-strong)" />
-                        <text x={box.left - 28} y={box.top + box.height / 2} textAnchor="middle" style={axisText} transform={`rotate(-90 ${box.left - 28} ${box.top + box.height / 2})`}>등락률 순위 ↓</text>
-                        <text x={box.left + box.width / 2} y={size.h - 8} textAnchor="middle" style={axisText}>거래대금 순위 →</text>
+                        <text x={box.left - 28} y={box.top + box.height / 2} textAnchor="middle" style={axisText} transform={`rotate(-90 ${box.left - 28} ${box.top + box.height / 2})`}>{yScale.title}</text>
+                        <text x={box.left + box.width / 2} y={size.h - 8} textAnchor="middle" style={axisText}>{xScale.title}</text>
                     </svg>
 
                     <div style={{ position: "absolute", inset: 0 }}>
@@ -655,7 +686,7 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
                         onPointerLeave={() => setHover(null)}
                         onWheel={onWheel}
                         onDoubleClick={onDoubleClick}>
-                        {linkedParams !== null && (
+                        {judgeParams !== null && (
                             <>
                                 {/* 선은 표시만 — 잡는 곳은 아래 배지다(선을 잡게 두면 그 띠 위의 점을 못 집는다).
                                     확대로 컷이 도메인 밖이면 선·배지를 같이 접는다(위 cutXVisible 주석 — 조건 파괴 방지). */}
@@ -687,7 +718,7 @@ export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
                             // 자리는 순수 셈(tooltipBox) — 경계에서 플립·클램프, 폭은 글자에서.
                             // 겹친 동료는 링 하나로 둘째 테마까지만 말한다 — 나머지는 여기서 전부 편다.
                             const ts = peerThemes.get(hover.code);
-                            const text = `${nameOf(hover.code)} · 등락 ${hover.rate}위 · 대금 ${hover.amount}위${ts ? ` · ${ts.join("·")} · 클릭 = 이동` : ""}`;
+                            const text = `${nameOf(hover.code)} · ${yScale.chip} ${yScale.fmt(hover.rate)} · ${xScale.chip} ${xScale.fmt(hover.amount)}${ts ? ` · ${ts.join("·")} · 클릭 = 이동` : ""}`;
                             const tb = tooltipBoxOf(hover, text, { w: size.w, h: size.h });
                             return (
                                 <g style={{ pointerEvents: "none" }}>

@@ -40,7 +40,11 @@ const cachedCount = (points: Points, bundle: unknown, proj: ThemeProjection, par
     return countCache.value;
 };
 
-export function useThemeStrengthStats(params: ThemeStrengthParams): ThemeStrengthStats {
+/**
+ * @param enabled false 면 계산을 아예 안 한다(0/로딩 아님으로 응답) — 판정 층이 접힌 축 설정의
+ *   인스턴스가 전 모수 패스를 공짜로 돌리지 않게. 훅 마운트 자체는 유지된다(훅 규칙).
+ */
+export function useThemeStrengthStats(params: ThemeStrengthParams, enabled = true): ThemeStrengthStats {
     const points = usePointRows();
     const sections = useRankSections();
     const themes = useThemeProjection();
@@ -50,9 +54,9 @@ export function useThemeStrengthStats(params: ThemeStrengthParams): ThemeStrengt
         // `ready === false`(멤버십 data 미도착)도 로딩으로 접는다 — RQ v5 의 paused(pending 인데 fetching
         // 아님)에서 isLoading=false·data=undefined 라, 안 접으면 "통과 0/0" 으로 위장된다.
         const isLoading = points.isLoading || sections.isLoading || themes.isLoading || (error === null && !themes.ready);
-        if (isLoading || error !== null || !themes.ready || points.points.length === 0) {
-            return { passed: 0, evaluable: 0, missing: 0, isLoading, error };
+        if (!enabled || isLoading || error !== null || !themes.ready || points.points.length === 0) {
+            return { passed: 0, evaluable: 0, missing: 0, isLoading: enabled && isLoading, error };
         }
         return { ...cachedCount(points.points, sections.bundle, themes.proj, params, sections.sectionAt), isLoading, error };
-    }, [points.points, points.isLoading, points.error, sections, themes, params]);
+    }, [points.points, points.isLoading, points.error, sections, themes, params, enabled]);
 }
