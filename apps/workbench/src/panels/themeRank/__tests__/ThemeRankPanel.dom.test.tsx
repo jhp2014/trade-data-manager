@@ -12,7 +12,7 @@ import { ThemeRankPanel } from "../ThemeRankPanel.js";
 const SEED: Seed = { points: [] };
 
 const renderPanel = (): ReturnType<typeof render> =>
-    render(<ThemeRankPanel />, {
+    render(<ThemeRankPanel panelId="theme-rank-1" />, {
         wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers>,
     });
 

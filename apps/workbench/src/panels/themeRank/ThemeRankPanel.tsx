@@ -72,7 +72,7 @@ const tickListOf = (a: number, b: number, maxRank: number): number[] =>
     [...new Set([a, a + (b - a) * 0.25, a + (b - a) * 0.5, a + (b - a) * 0.75, b].map(Math.round))]
         .filter((t) => t >= 1 && t <= maxRank);
 
-export function ThemeRankPanel(): JSX.Element {
+export function ThemeRankPanel({ panelId }: { panelId: string }): JSX.Element {
     const subject = useSubject();
     const { nameOf } = useStockNamesDict();
     // 전역 시각(focus.time) — 표시 분의 1순위 재료(아래 minute)이자, 동료 클릭 이동·되돌아가기의 시각.
@@ -143,7 +143,7 @@ export function ThemeRankPanel(): JSX.Element {
     // 렌즈 — 세션 수명(sessionUi). **소속 아니면 전체로 접는 건 순수 파생**이다: 시선이 바뀔 때마다
     // 저장값을 지우는 effect 를 두면 "돌아왔는데 렌즈가 없다"가 되고, 지우는 시점 경쟁도 생긴다.
     // 저장값은 남기고 읽을 때만 거르므로, 그 테마에 속한 종목으로 돌아오면 렌즈도 같이 살아난다.
-    const rawLens = useWorkbench((s) => s.sessionUi["themeRank"]?.["lens"]) as string | undefined;
+    const rawLens = useWorkbench((s) => s.sessionUi[panelId]?.["lens"]) as string | undefined;
     const lens = rawLens !== undefined && subjectThemes.includes(rawLens) ? rawLens : null;
     // 동료 → 시선과 **공유하는 테마들**(칩 줄 순서). 색·겹침·클릭 대상이 전부 이 맵 하나에서 나온다.
     // 렌즈는 여기서 거르지 않는다 — 강조만 바꾸므로(scatterLayer), 옅게 남은 다른 테마 동료도 집힌다.
@@ -214,7 +214,7 @@ export function ThemeRankPanel(): JSX.Element {
 
     // ── 줌 도메인 — 세션 수명(sessionUi)·날짜 낟알. 읽을 때 거른다(날짜가 다르면 없는 셈 — 지우는 손 없음).
     // x·y 폭은 항상 같다(전체 도메인이 정사각이고, 휠은 균등·팬은 폭 보존이라 불변이 유지된다).
-    const rawZoom = useWorkbench((s) => s.sessionUi["themeRank"]?.["zoom"]) as ZoomDom | undefined;
+    const rawZoom = useWorkbench((s) => s.sessionUi[panelId]?.["zoom"]) as ZoomDom | undefined;
     const zoom = rawZoom !== undefined && subject !== null && rawZoom.date === subject.date ? rawZoom : null;
     const dom = useMemo(
         () => zoom ?? { x0: 1, x1: maxRank, y0: 1, y1: maxRank },
@@ -317,7 +317,7 @@ export function ThemeRankPanel(): JSX.Element {
 
     // ── 되돌아가기 앵커 — 이 패널에서 **점을 눌러 떠나기 전** 시선. 세션 수명(sessionUi).
     // 돌아왔으면 앵커는 없는 것이다 — 읽기 시점 파생이라 지우는 손이 따로 없다.
-    const rawAnchor = useWorkbench((s) => s.sessionUi["themeRank"]?.["origin"]) as { code: string; date: string; time: string | null } | undefined;
+    const rawAnchor = useWorkbench((s) => s.sessionUi[panelId]?.["origin"]) as { code: string; date: string; time: string | null } | undefined;
     const anchor = rawAnchor !== undefined && subject && rawAnchor.code !== subject.code ? rawAnchor : null;
     // 남이 시선을 옮겼으면 앵커는 유령이다(내가 떠난 자리가 아니다) — 종목이 실제로 바뀐 순간에만 지운다
     // (마운트에서 지우면 프리셋 전환에 앵커가 날아간다 — sessionUi 를 쓴 이유가 그거다).
@@ -326,7 +326,7 @@ export function ThemeRankPanel(): JSX.Element {
         const c = subject?.code ?? null;
         if (prevCode.current === c) return;
         prevCode.current = c;
-        if (lastFocusOrigin !== originId) setSessionUi("themeRank", "origin", undefined);
+        if (lastFocusOrigin !== originId) setSessionUi(panelId, "origin", undefined);
     }, [subject?.code, lastFocusOrigin, originId, setSessionUi]);
 
     /**
@@ -340,7 +340,7 @@ export function ThemeRankPanel(): JSX.Element {
     const navigate = (code: string): void => {
         if (!subject || code === subject.code || !peerThemes.has(code)) return;
         // 앵커는 처음 떠날 때만 찍는다 — 연쇄로 몇 다리를 건너도 출발점은 하나.
-        if (!anchor) setSessionUi("themeRank", "origin", { code: subject.code, date: subject.date, time: focusTime });
+        if (!anchor) setSessionUi(panelId, "origin", { code: subject.code, date: subject.date, time: focusTime });
         setHover(null); // 옮겨간 평면에 옛 종목 툴팁이 남지 않게(마우스가 멈춰 있으면 정정될 기회가 없다)
         if (focusTime === null && minute !== null) setFocus({ date: subject.date, code, time: fmtHms(minute) }, originId);
         else setCode(code, originId);
@@ -411,7 +411,7 @@ export function ThemeRankPanel(): JSX.Element {
             const span = pan.dom.x1 - pan.dom.x0;
             const x0 = clampDom0(pan.dom.x0 - (dx / Math.max(box.width, 1)) * span, span);
             const y0 = clampDom0(pan.dom.y0 - (dy / Math.max(box.height, 1)) * span, span);
-            setSessionUi("themeRank", "zoom", { date: pan.dom.date, x0, x1: x0 + span, y0, y1: y0 + span });
+            setSessionUi(panelId, "zoom", { date: pan.dom.date, x0, x1: x0 + span, y0, y1: y0 + span });
         }
     };
     /**
@@ -432,21 +432,21 @@ export function ThemeRankPanel(): JSX.Element {
         const f = e.deltaY < 0 ? 1 / 1.25 : 1.25;
         const next = Math.max(domSpan * f, ZOOM_MIN_SPAN);
         if (next >= maxRank - 1) {
-            if (zoom !== null) setSessionUi("themeRank", "zoom", undefined);
+            if (zoom !== null) setSessionUi(panelId, "zoom", undefined);
             return;
         }
         const ux = (px - box.left) / Math.max(box.width, 1);
         const uy = (py - box.top) / Math.max(box.height, 1);
         const x0 = clampDom0(dom.x0 + ux * domSpan - ux * next, next);
         const y0 = clampDom0(dom.y0 + uy * domSpan - uy * next, next);
-        setSessionUi("themeRank", "zoom", { date: subject.date, x0, x1: x0 + next, y0, y1: y0 + next });
+        setSessionUi(panelId, "zoom", { date: subject.date, x0, x1: x0 + next, y0, y1: y0 + next });
     };
     /** 빈 곳 더블클릭 = 원위치. 점 위는 제외 — 그 자리는 이미 클릭(동료 이동)의 손짓이다. */
     const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>): void => {
         if (zoom === null) return;
         const rect = e.currentTarget.getBoundingClientRect();
         if (nearestAt(e.clientX - rect.left, e.clientY - rect.top) !== null) return;
-        setSessionUi("themeRank", "zoom", undefined);
+        setSessionUi(panelId, "zoom", undefined);
     };
     const commitDrag = (e: React.PointerEvent<SVGSVGElement>): void => {
         dragRef.current = null;
@@ -545,7 +545,7 @@ export function ThemeRankPanel(): JSX.Element {
                 )}
                 {/* 확대 배지 — 배율 표시 겸 원위치 버튼(빈 곳 더블클릭과 같은 일). 확대 중에만 선다. */}
                 {zoom !== null && (
-                    <button onClick={() => setSessionUi("themeRank", "zoom", undefined)}
+                    <button onClick={() => setSessionUi(panelId, "zoom", undefined)}
                         title="확대 중 — 클릭하면 원위치(그림 빈 곳 더블클릭과 같다)"
                         style={backBtn}>
                         {(Math.max(maxRank - 1, 1) / domSpan).toFixed(1)}×
@@ -598,7 +598,7 @@ export function ThemeRankPanel(): JSX.Element {
                         여긴 '무엇을 보는 중'. 조건 행이 없어도 이 줄은 선다(갈라 보기는 조건과 무관하다). */}
                     {(subjectThemes.length > 0 || (subject !== null && themesStatus !== "ready")) && (
                         <ThemeLensStrip themes={subjectThemes} lens={lens} verdicts={verdicts} colorOf={themeColors} status={themesStatus}
-                            onPick={(t) => setSessionUi("themeRank", "lens", t ?? undefined)} />
+                            onPick={(t) => setSessionUi(panelId, "lens", t ?? undefined)} />
                     )}
                 </div>
             )}
