@@ -1,14 +1,15 @@
-// 테마 순위 패널의 축 어댑터(순수) — 인스턴스별 축 설정 {x, y, 창} 을 좌표·눈금·라벨로 바꾼다.
+// 테마 순위 평면의 축 어댑터(순수) — 서수/값 스케일·고정 도메인·팬 한계·눈금·라벨을 한 곳에.
 //
-// 같은 패널 타입이 설정만 바꿔 "당일 대금 순위 평면"도 "60분 대금 순위"도 "등락률×대금 값 산점"도
-// 된다(2026-09-16 확정 — 별도 패널 기각, 산점·렌즈·꼬리 기계 한 벌). 두 공간의 차이:
-//  · 순위: 유계 서수 선형, 1 = 강함 = **왼쪽/위**(원점 근처). 줌(정사각 도메인)이 성립한다.
-//  · 값: 등락률 = 선형 %(위 = 큼), 대금 = **로그**(수십 배 스팬 — 오른쪽 = 큼). 줌은 1차에서 끈다
-//    (ZoomDom 이 서수 정사각 불변을 전제 — 값 공간은 축별 스팬이 달라 그 불변이 깨진다).
+// 2026-09-17 화면 규칙(decisions.md 테마 강도 절):
+//  · 순위 축은 **1위 = 오른쪽/위**다(x 반전 — 값 모드의 "큰 값 = 오른쪽"과 일관, y 는 원래 일관).
+//    존 틴트는 오른쪽-위 사각이 된다.
+//  · 순위 기본 도메인 = [1..RANK_VIEW_SPAN(200)] 고정(유니버스가 작으면 그만큼) — 존 사각 크기가
+//    유니버스 크기 따라 달라 보이지 않게, 날짜 건너 같은 픽셀 = 같은 순위 차. 밖은 드래그 팬.
+//  · 값 축 도메인 고정(데이터 추종 폐지 — 스크럽마다 축이 출렁이지 않게): 대금 1억~1조(로그) ·
+//    등락 0~+31%(선형). 기본 창 밖은 팬(등락 하한 −30 · 대금 로그 [1e6, 1e13]). 기본 창 아래로
+//    떨어진 점은 가장자리 접힘 배지(개수)가 말한다 — foldedBelowCount.
 //
-// 판정 층(존 컷선·틴트·✓/✗·카운트)은 **축이 술어가 재는 양과 일치할 때만** 선다(decisions.md 테마
-// 강도 절) — 술어의 존은 "당일 전체 대금 서수 × 등락 서수" 위에 정의된 물건이라, 다른 축에서 살리면
-// 점의 자리와 판정 숫자가 조용히 갈린다.
+// 두 판(조건판·관찰판)이 이 자 하나를 같이 본다 — 도메인 상수의 집은 여기다(패널이 아니라).
 import { formatAxisValue } from "../../lib/computedAxis.js";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { sectionAtMinute, valuesAtMinute, windowedAmountsAt, windowedRanksAt } from "./sectionSeries.js";
@@ -20,13 +21,13 @@ export interface ThemeRankAxes {
     xMode: AxisMode;
     /** 세로 = 등락률 축의 모드. */
     yMode: AxisMode;
-    /** 대금 창(분). null = 당일 전체. 순위/값 모드 공통으로 대금 축에 적용된다. */
+    /** 대금 창(분). null = 당일 전체. 순위/값 모드 공통으로 대금 축에 적용된다(관찰판은 임의 분). */
     windowMin: number | null;
 }
 
 export const DEFAULT_AXES: ThemeRankAxes = { xMode: "rank", yMode: "rank", windowMin: null };
 
-/** 창 선택지(분). null = 당일 전체. 검색(깔때기 술어)이 아는 창은 60분뿐이다 — 표시는 전부 공짜(클라 계산). */
+/** 창 프리셋(분) — 관찰판 "축 ▾"의 빠른 선택지. 입력칸이 본론이고 이건 지름길일 뿐이다. */
 export const WINDOW_CHOICES: readonly (number | null)[] = [null, 120, 60, 30, 10];
 
 /** 관대한 병합 — 필드 증설이 옛 저장물을 죽이지 않게(themeStrength 파서와 같은 결). */
@@ -43,18 +44,43 @@ export function parseThemeRankAxes(raw: unknown): ThemeRankAxes {
 
 export const windowLabel = (windowMin: number | null): string => (windowMin === null ? "당일" : `${windowMin}분`);
 
-/**
- * 판정 층이 설 수 있는 축 설정인가 — 술어(테마 강도)가 재는 공간과 일치하는가.
- * `zoneWindow` = 술어의 존 대금 창(현재는 항상 null(당일) — zoneAmountWindow 도입 시 60 이 온다).
- */
-export function isJudgmentSpace(axes: ThemeRankAxes, zoneWindow: number | null): boolean {
-    return axes.xMode === "rank" && axes.yMode === "rank" && axes.windowMin === zoneWindow;
+// ── 고정 도메인 상수 ────────────────────────────────────────────────────────────
+export interface ValueDom {
+    lo: number;
+    hi: number;
 }
 
-/** 줌은 서수 정사각 도메인 위에서만 성립한다 — 값 축이 하나라도 있으면 끈다(1차 확정). */
-export const isZoomable = (axes: ThemeRankAxes): boolean => axes.xMode === "rank" && axes.yMode === "rank";
+/** 순위 기본 창(위) — 상수, 노브 없음(2026-09-17 사용자 확정). */
+export const RANK_VIEW_SPAN = 200;
+/** 등락률 값 축: 기본 창 [0, +31]% · 팬 하한 −30(가격제한폭). 0 아래는 접힘 배지가 개수로 말한다. */
+export const RATE_VIEW: ValueDom = { lo: 0, hi: 31 };
+export const RATE_PAN_LO = -30;
+/** 대금 값 축(로그): 기본 창 1억~1조 · 팬 한계 [1e6, 1e13]. */
+export const AMOUNT_VIEW: ValueDom = { lo: 1e8, hi: 1e12 };
+export const AMOUNT_PAN: ValueDom = { lo: 1e6, hi: 1e13 };
 
-// ── 평면 단면 — (분, 축 설정) → stocks 순서의 좌표 배열. 재료는 전부 sectionSeries 공용 캐시.
+/** 기본 창 아래로 떨어진(그려지지 않는) 값의 수 — ≤lo 접힘 배지의 재료. */
+export const foldedBelowCount = (values: readonly number[], lo: number): number => {
+    let n = 0;
+    for (const v of values) if (v < lo) n++;
+    return n;
+};
+
+/** 등락 값 축 팬 — 창 폭(31)을 유지한 채 [RATE_PAN_LO, RATE_VIEW.hi] 안에서 미끄러진다. */
+export function panRateDom(dom: ValueDom, dv: number): ValueDom {
+    const span = dom.hi - dom.lo;
+    const lo = Math.max(RATE_PAN_LO, Math.min(dom.lo + dv, RATE_VIEW.hi - span));
+    return { lo, hi: lo + span };
+}
+
+/** 대금 값 축 팬 — 로그 공간에서 미끄러진다(dlog = 데케이드 단위). */
+export function panAmountDom(dom: ValueDom, dlog: number): ValueDom {
+    const span = Math.log10(dom.hi) - Math.log10(dom.lo);
+    const lo = Math.max(Math.log10(AMOUNT_PAN.lo), Math.min(Math.log10(dom.lo) + dlog, Math.log10(AMOUNT_PAN.hi) - span));
+    return { lo: 10 ** lo, hi: 10 ** (lo + span) };
+}
+
+// ── 평면 단면 — (분, 축 설정) → stocks 순서의 좌표 배열. 재료는 전부 sectionSeries 공용 캐시. ──
 export interface PlaneSlice {
     x: (number | null)[];
     y: (number | null)[];
@@ -73,7 +99,7 @@ export function planeSliceAt(stocks: readonly ReplayStock[], date: string, minut
     return { x, y };
 }
 
-// ── 축 스케일 — px/invert/눈금/포맷/제목을 한 물건으로(판 렌더는 이 계약만 본다).
+// ── 축 스케일 — px/invert/눈금/포맷/제목을 한 물건으로(판 렌더는 이 계약만 본다). ────────────
 export interface AxisTick {
     v: number;
     label: string;
@@ -82,13 +108,13 @@ export interface AxisTick {
 export interface AxisScale {
     px(v: number): number;
     invert(px: number): number;
-    /** 값이 현재 도메인 안인가 — 가이드 자의 "밖이면 접는다" 판정용. px 로 재면 안 된다:
+    /** 값이 현재 도메인 안인가 — 컷/자의 "밖이면 접는다" 판정용. px 로 재면 안 된다:
      *  값 스케일의 px 는 클램프라 밖의 값도 상자 안 픽셀을 돌려줘, 자리와 안 맞는 라벨이 선다. */
     inDomain(v: number): boolean;
     ticks: AxisTick[];
     /** 툴팁·배지의 짧은 이름("대금"·"60분 대금"·"등락"). */
     chip: string;
-    /** 축 제목(방향 화살표 포함). */
+    /** 축 제목. */
     title: string;
     fmt(v: number): string;
 }
@@ -105,21 +131,21 @@ const fmtRank = (v: number): string => `${Math.round(v)}위`;
 const fmtWon = (v: number): string => formatAxisValue(v / 1e8, { suffix: "억", decimals: v < 1e9 ? 1 : 0, signed: false });
 const fmtRate = (v: number): string => formatAxisValue(v, { suffix: "%", decimals: 1, signed: true });
 
-/** 서수 축(가로) — 1 = 왼쪽. dom 은 줌 도메인(정사각 불변은 호출측 소유). */
+/** 서수 축(가로) — **1위 = 오른쪽**(2026-09-17 반전). dom 은 뷰 도메인(기본 = 200 창). */
 export function rankScaleX(dom: { x0: number; x1: number }, box: PlotBox, maxRank: number, windowMin: number | null): AxisScale {
     const span = Math.max(dom.x1 - dom.x0, 1);
     return {
-        px: (ord) => box.left + ((Math.min(ord, maxRank) - dom.x0) / span) * box.width,
-        invert: (px) => Math.max(1, Math.min(maxRank, Math.round(dom.x0 + ((px - box.left) / Math.max(box.width, 1)) * span))),
+        px: (ord) => box.left + ((dom.x1 - Math.min(ord, maxRank)) / span) * box.width,
+        invert: (px) => Math.max(1, Math.min(maxRank, Math.round(dom.x1 - ((px - box.left) / Math.max(box.width, 1)) * span))),
         inDomain: (v) => v >= dom.x0 && v <= dom.x1,
         ticks: rankTicks(dom.x0, dom.x1, maxRank),
         chip: windowMin === null ? "대금" : `${windowLabel(windowMin)} 대금`,
-        title: windowMin === null ? "거래대금 순위 →" : `${windowLabel(windowMin)} 대금 순위 →`,
+        title: windowMin === null ? "거래대금 순위 (1위 →)" : `${windowLabel(windowMin)} 대금 순위 (1위 →)`,
         fmt: fmtRank,
     };
 }
 
-/** 서수 축(세로) — 1 = 위. */
+/** 서수 축(세로) — 1위 = 위(원래 일관). */
 export function rankScaleY(dom: { y0: number; y1: number }, box: PlotBox, maxRank: number): AxisScale {
     const span = Math.max(dom.y1 - dom.y0, 1);
     return {
@@ -128,53 +154,40 @@ export function rankScaleY(dom: { y0: number; y1: number }, box: PlotBox, maxRan
         inDomain: (v) => v >= dom.y0 && v <= dom.y1,
         ticks: rankTicks(dom.y0, dom.y1, maxRank),
         chip: "등락",
-        title: "등락률 순위 ↓",
+        title: "등락률 순위 (1위 ↑)",
         fmt: fmtRank,
     };
 }
 
-/** 도메인 구간 눈금 — 균등 4~5개(정수 반올림·중복 제거). 옛 tickListOf 승계. */
+/** 도메인 구간 눈금 — 균등 4~5개(정수 반올림·중복 제거). */
 function rankTicks(a: number, b: number, maxRank: number): AxisTick[] {
     return [...new Set([a, a + (b - a) * 0.25, a + (b - a) * 0.5, a + (b - a) * 0.75, b].map(Math.round))]
         .filter((t) => t >= 1 && t <= maxRank)
         .map((v) => ({ v, label: String(v) }));
 }
 
-/** 값 축(가로 = 대금, 로그) — 큰 값 = 오른쪽. 0·바닥 미만은 왼쪽 끝에 눕는다(0 은 값이다 — 결손 아님). */
-export function valueScaleX(values: readonly number[], box: PlotBox, windowMin: number | null): AxisScale {
-    const pos = values.filter((v) => v > 0);
-    const hiRaw = pos.length > 0 ? Math.max(...pos) : 1e11;
-    const loRaw = pos.length > 0 ? Math.min(...pos) : 1e8;
-    // 바닥은 데이터 최소와 1천만원 중 큰 쪽 — 극소값 하나가 로그 축을 수십 데케이드로 늘이지 않게.
-    const lo = Math.max(Math.min(loRaw, hiRaw / 10), 1e7);
-    const la = Math.log10(lo);
-    const lb = Math.log10(Math.max(hiRaw, lo * 10));
-    const pad = (lb - la) * 0.04;
-    const l0 = la - pad;
-    const l1 = lb + pad;
-    const px = (v: number): number => box.left + ((Math.log10(Math.max(v, lo)) - l0) / (l1 - l0)) * box.width;
+/** 값 축(가로 = 대금, 로그) — 큰 값 = 오른쪽. dom = 뷰 도메인(기본 AMOUNT_VIEW, 팬으로 이동). */
+export function valueScaleX(dom: ValueDom, box: PlotBox, windowMin: number | null): AxisScale {
+    const l0 = Math.log10(dom.lo);
+    const l1 = Math.log10(dom.hi);
+    const px = (v: number): number => box.left + ((Math.log10(Math.max(v, dom.lo)) - l0) / Math.max(l1 - l0, 1e-9)) * box.width;
     return {
         px,
         invert: (x) => 10 ** (l0 + ((x - box.left) / Math.max(box.width, 1)) * (l1 - l0)),
-        // px 클램프와 정확히 같은 경계 — 하한은 lo(px 가 거기서부터 자리를 속인다), 상한은 패딩 끝(l1,
-        // px 가 클램프 없이 정직한 구간). l0 을 쓰면 (10^l0, lo) 띠에서 자리와 안 맞는 라벨이 선다.
-        inDomain: (v) => v >= lo && Math.log10(v) <= l1,
-        ticks: logTicks(lo, hiRaw).map((v) => ({ v, label: fmtWon(v) })),
+        // px 클램프와 같은 경계 — 하한 lo(px 가 거기서부터 자리를 속인다), 상한 hi.
+        inDomain: (v) => v >= dom.lo && v <= dom.hi,
+        ticks: logTicks(dom.lo, dom.hi).map((v) => ({ v, label: fmtWon(v) })),
         chip: windowMin === null ? "대금" : `${windowLabel(windowMin)} 대금`,
         title: windowMin === null ? "누적 대금(억, 로그) →" : `${windowLabel(windowMin)} 대금(억, 로그) →`,
         fmt: fmtWon,
     };
 }
 
-/** 값 축(세로 = 등락률, 선형) — 큰 값 = 위. */
-export function valueScaleY(values: readonly number[], box: PlotBox): AxisScale {
-    const hiRaw = values.length > 0 ? Math.max(...values) : 5;
-    const loRaw = values.length > 0 ? Math.min(...values) : -5;
-    const range = Math.max(hiRaw - loRaw, 0.1);
-    const lo = loRaw - range * 0.05;
-    const hi = hiRaw + range * 0.05;
+/** 값 축(세로 = 등락률, 선형) — 큰 값 = 위. dom = 뷰 도메인(기본 RATE_VIEW, 팬 하한 −30). */
+export function valueScaleY(dom: ValueDom, box: PlotBox): AxisScale {
+    const { lo, hi } = dom;
     return {
-        px: (v) => box.top + ((hi - Math.min(Math.max(v, lo), hi)) / (hi - lo)) * box.height,
+        px: (v) => box.top + ((hi - Math.min(Math.max(v, lo), hi)) / Math.max(hi - lo, 1e-9)) * box.height,
         invert: (py) => hi - ((py - box.top) / Math.max(box.height, 1)) * (hi - lo),
         inDomain: (v) => v >= lo && v <= hi,
         ticks: linearTicks(lo, hi).map((v) => ({ v, label: fmtRate(v) })),
@@ -184,7 +197,7 @@ export function valueScaleY(values: readonly number[], box: PlotBox): AxisScale 
     };
 }
 
-/** 로그 눈금 — 1-2-5 계열 중 [lo, hi] 안의 것(최대 ~7개로 솎는다). */
+/** 로그 눈금 — 1-2-5 계열 중 [lo, hi] 안의 것(넘치면 데케이드만). */
 function logTicks(lo: number, hi: number): number[] {
     const out: number[] = [];
     const d0 = Math.floor(Math.log10(Math.max(lo, 1)));
@@ -194,9 +207,14 @@ function logTicks(lo: number, hi: number): number[] {
             const v = m * 10 ** d;
             if (v >= lo && v <= hi) out.push(v);
         }
-    // 눈금이 넘치면 데케이드(1×10^d)만 남긴다 — 로그 축에서 제일 안 어지러운 솎기.
     return out.length > 7 ? out.filter((v) => { const l = Math.log10(v); return Math.abs(l - Math.round(l)) < 1e-9; }) : out;
 }
+
+// ── 임시 호환(판 이원화 커밋에서 은퇴) — 옛 단일 패널의 판정 공간/줌 가능 판정. ─────────────
+export function isJudgmentSpace(axes: ThemeRankAxes, zoneWindow: number | null): boolean {
+    return axes.xMode === "rank" && axes.yMode === "rank" && axes.windowMin === zoneWindow;
+}
+export const isZoomable = (axes: ThemeRankAxes): boolean => axes.xMode === "rank" && axes.yMode === "rank";
 
 /** 선형 눈금 — 1/2/5 스텝으로 4~6개. */
 function linearTicks(lo: number, hi: number): number[] {

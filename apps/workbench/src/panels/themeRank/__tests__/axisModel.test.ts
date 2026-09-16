@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+    AMOUNT_VIEW,
     DEFAULT_AXES,
-    isJudgmentSpace,
-    isZoomable,
+    RATE_PAN_LO,
+    RATE_VIEW,
+    foldedBelowCount,
+    panAmountDom,
+    panRateDom,
     parseThemeRankAxes,
     rankScaleX,
     rankScaleY,
@@ -10,7 +14,7 @@ import {
     valueScaleY,
 } from "../axisModel.js";
 
-const BOX = { left: 40, top: 10, width: 400, height: 400 };
+const BOX = { left: 60, top: 16, width: 400, height: 400 };
 
 describe("parseThemeRankAxes — 관대한 병합", () => {
     it("빈/깨진 저장물은 기본값", () => {
@@ -19,51 +23,79 @@ describe("parseThemeRankAxes — 관대한 병합", () => {
         expect(parseThemeRankAxes({ xMode: "??", windowMin: -5 })).toEqual(DEFAULT_AXES);
     });
 
-    it("유효 필드만 얹는다", () => {
-        expect(parseThemeRankAxes({ yMode: "value", windowMin: 60 })).toEqual({ xMode: "rank", yMode: "value", windowMin: 60 });
+    it("유효 필드만 얹는다 — 임의 분 창 허용(관찰판)", () => {
+        expect(parseThemeRankAxes({ yMode: "value", windowMin: 45 })).toEqual({ xMode: "rank", yMode: "value", windowMin: 45 });
     });
 });
 
-describe("isJudgmentSpace — 판정 층은 술어 공간과 일치할 때만", () => {
-    it("기본(당일 순위 평면)만 참 — 창·값 모드는 거짓", () => {
-        expect(isJudgmentSpace(DEFAULT_AXES, null)).toBe(true);
-        expect(isJudgmentSpace({ ...DEFAULT_AXES, windowMin: 60 }, null)).toBe(false);
-        expect(isJudgmentSpace({ ...DEFAULT_AXES, xMode: "value" }, null)).toBe(false);
-        // zoneAmountWindow(60) 도입 후 — 창이 술어와 같으면 다시 참이 된다.
-        expect(isJudgmentSpace({ ...DEFAULT_AXES, windowMin: 60 }, 60)).toBe(true);
-    });
-
-    it("줌은 서수×서수에서만(창은 무관 — 여전히 정사각 서수 도메인)", () => {
-        expect(isZoomable(DEFAULT_AXES)).toBe(true);
-        expect(isZoomable({ ...DEFAULT_AXES, windowMin: 60 })).toBe(true);
-        expect(isZoomable({ ...DEFAULT_AXES, yMode: "value" })).toBe(false);
-    });
-});
-
-describe("스케일 — px/invert 왕복과 방향", () => {
-    it("서수 축: 1 = 왼쪽/위, invert 는 정수 클램프", () => {
-        const x = rankScaleX({ x0: 1, x1: 100 }, BOX, 100, null);
-        const y = rankScaleY({ y0: 1, y1: 100 }, BOX, 100);
-        expect(x.px(1)).toBeCloseTo(BOX.left);
-        expect(y.px(1)).toBeCloseTo(BOX.top);
+describe("순위 스케일 — 1위 = 오른쪽/위(2026-09-17 반전), px/invert 왕복", () => {
+    it("x: 1위가 오른쪽 끝, 도메인 끝(약한 쪽)이 왼쪽 끝", () => {
+        const x = rankScaleX({ x0: 1, x1: 200 }, BOX, 600, null);
+        expect(x.px(1)).toBeCloseTo(BOX.left + BOX.width);
+        expect(x.px(200)).toBeCloseTo(BOX.left);
+        expect(x.px(50)).toBeGreaterThan(x.px(150)); // 강할수록 오른쪽
         expect(x.invert(x.px(37))).toBe(37);
-        expect(x.invert(-999)).toBe(1);
-        expect(x.invert(9999)).toBe(100);
         expect(x.fmt(3)).toBe("3위");
+        expect(x.title).toContain("1위 →");
     });
 
-    it("값 축(등락 선형): 큰 값 = 위, 왕복 근사", () => {
-        const y = valueScaleY([-2, 0, 12.5], BOX);
-        expect(y.px(12.5)).toBeLessThan(y.px(-2));
-        expect(y.invert(y.px(5))).toBeCloseTo(5, 6);
-        expect(y.fmt(3.2)).toBe("+3.2%");
+    it("y: 1위 = 위(원래 일관)", () => {
+        const y = rankScaleY({ y0: 1, y1: 200 }, BOX, 600);
+        expect(y.px(1)).toBeCloseTo(BOX.top);
+        expect(y.px(200)).toBeCloseTo(BOX.top + BOX.height);
+        expect(y.invert(y.px(37))).toBe(37);
     });
 
-    it("값 축(대금 로그): 큰 값 = 오른쪽, 0 은 왼쪽 끝(값이지 결손이 아니다)", () => {
-        const x = valueScaleX([5e8, 3e10, 0], BOX, 60);
-        expect(x.px(3e10)).toBeGreaterThan(x.px(5e8));
-        expect(x.px(0)).toBeLessThanOrEqual(x.px(5e8));
-        expect(x.invert(x.px(1e9))).toBeCloseTo(1e9, -3);
+    it("inDomain 은 뷰 도메인 기준 — 200 창 밖의 서수는 밖이다", () => {
+        const x = rankScaleX({ x0: 1, x1: 200 }, BOX, 600, 60);
+        expect(x.inDomain(200)).toBe(true);
+        expect(x.inDomain(201)).toBe(false);
         expect(x.chip).toBe("60분 대금");
+    });
+});
+
+describe("값 스케일 — 고정 도메인(데이터 추종 폐지)", () => {
+    it("등락: 기본 창 [0, 31], 큰 값 = 위, 왕복 근사", () => {
+        const y = valueScaleY(RATE_VIEW, BOX);
+        expect(y.px(31)).toBeCloseTo(BOX.top);
+        expect(y.px(0)).toBeCloseTo(BOX.top + BOX.height);
+        expect(y.px(-5)).toBeCloseTo(BOX.top + BOX.height); // 창 아래는 가장자리 클램프(접힘 배지 몫)
+        expect(y.invert(y.px(12))).toBeCloseTo(12, 6);
+        expect(y.inDomain(-1)).toBe(false);
+    });
+
+    it("대금: 기본 창 [1억, 1조] 로그, 큰 값 = 오른쪽", () => {
+        const x = valueScaleX(AMOUNT_VIEW, BOX, 60);
+        expect(x.px(1e8)).toBeCloseTo(BOX.left);
+        expect(x.px(1e12)).toBeCloseTo(BOX.left + BOX.width);
+        expect(x.px(1e10)).toBeCloseTo(BOX.left + BOX.width / 2);
+        expect(x.invert(x.px(3e9))).toBeCloseTo(3e9, -6);
+        expect(x.inDomain(5e7)).toBe(false);
+    });
+});
+
+describe("값 축 팬 — 폭 보존·한계 클램프", () => {
+    it("등락: 하한 −30 까지, 창 폭 31 유지", () => {
+        const d1 = panRateDom(RATE_VIEW, -10);
+        expect(d1).toEqual({ lo: -10, hi: 21 });
+        const d2 = panRateDom(RATE_VIEW, -999);
+        expect(d2.lo).toBe(RATE_PAN_LO);
+        expect(d2.hi - d2.lo).toBeCloseTo(31);
+        expect(panRateDom(RATE_VIEW, 5)).toEqual(RATE_VIEW); // 위로는 이미 상한
+    });
+
+    it("대금: 로그 공간 이동, [1e6, 1e13] 한계", () => {
+        const d = panAmountDom(AMOUNT_VIEW, -1);
+        expect(d.lo).toBeCloseTo(1e7);
+        expect(d.hi).toBeCloseTo(1e11);
+        const lim = panAmountDom(AMOUNT_VIEW, -99);
+        expect(lim.lo).toBeCloseTo(1e6);
+    });
+});
+
+describe("foldedBelowCount — 창 아래 접힌 값의 수", () => {
+    it("lo 미만만 센다(경계는 포함 안 됨 = 그려진다)", () => {
+        expect(foldedBelowCount([-3, 0, 0.5, 12], 0)).toBe(1);
+        expect(foldedBelowCount([], 0)).toBe(0);
     });
 });

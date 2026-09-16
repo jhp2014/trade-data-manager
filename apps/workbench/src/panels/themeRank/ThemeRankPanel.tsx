@@ -37,7 +37,11 @@ import { projectionOf } from "../../lib/useThemeProjection.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { useDock } from "../../store/dock.js";
 import { AxisControls } from "./AxisControls.js";
-import { isJudgmentSpace, isZoomable, parseThemeRankAxes, planeSliceAt, rankScaleX, rankScaleY, valueScaleX, valueScaleY, windowLabel } from "./axisModel.js";
+import {
+    AMOUNT_VIEW, RANK_VIEW_SPAN, RATE_VIEW,
+    foldedBelowCount, isJudgmentSpace, isZoomable, panAmountDom, panRateDom, parseThemeRankAxes, planeSliceAt,
+    rankScaleX, rankScaleY, valueScaleX, valueScaleY, windowLabel, type ValueDom,
+} from "./axisModel.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { scatterLayer } from "./scatterLayer.js";
 import { themeColorMap } from "./themeColor.js";
@@ -50,9 +54,9 @@ import { trailLayer, type Trail, type TrailPoint } from "./trailLayer.js";
 import { bandSegmentsOf, subjectOrdinalTrack } from "./zoneTrack.js";
 import { ACTIVE, FILTER } from "../../styles/palette.js";
 
-// 오른쪽 여백이 넓은 이유: 등락 컷 **손잡이 배지가 그림 밖에 앉기 때문**이다(안에 두면 그 자리 동료
-// 점의 클릭을 먹고, 바닥으로 클램프되면 x 눈금 글자를 덮는다). 손잡이는 그림 밖에만 산다.
-const PAD = { left: 44, top: 14, right: 60, bottom: 30 };
+// 왼쪽 여백이 넓은 이유: 등락(가로선) **손잡이 배지가 왼쪽 스케일에 가로로 앉기 때문**이다
+// (2026-09-17 확정 — 세로 회전 표기 폐지. 그림 안에 두면 그 자리 점의 클릭을 먹는다는 원칙은 그대로).
+const PAD = { left: 64, top: 16, right: 12, bottom: 30 };
 /** 컷선 라벨 배지 크기(px) — **이게 손잡이다**(선 자체는 안 잡힌다, 아래 cutLabels 주석). */
 const LBL_W = 52;
 const LBL_H = 14;
@@ -257,18 +261,23 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
     // n 이 자라는 아침 구간에서 스크럽 중 축이 계속 늘어나 점들이 출렁인다. 하루 안에서 축은 상수가 낫다.
     const maxRank = Math.max(section?.codes.length ?? 0, 1);
 
-    // ── 줌 도메인 — 세션 수명(sessionUi)·날짜 낟알. 읽을 때 거른다(날짜가 다르면 없는 셈 — 지우는 손 없음).
-    // x·y 폭은 항상 같다(전체 도메인이 정사각이고, 휠은 균등·팬은 폭 보존이라 불변이 유지된다).
-    // 값 축이 하나라도 있으면 줌 자체를 끈다(1차 확정) — 정사각 불변이 값 공간에선 성립하지 않는다.
+    // ── 서수 뷰 도메인 — 세션 수명(sessionUi "zoom")·날짜 낟알. 기본은 **[1..200] 고정 창**(2026-09-17
+    // 확정 — 존 사각 크기가 유니버스 크기 따라 달라 보이지 않게). 팬은 상시(줌 여부 무관), 휠 줌은
+    // 서수×서수에서만. x·y 폭은 항상 같다(정사각 불변 — 휠 균등·팬 폭 보존).
     const rawZoom = useWorkbench((s) => s.sessionUi[panelId]?.["zoom"]) as ZoomDom | undefined;
     const zoom = zoomable && rawZoom !== undefined && subject !== null && rawZoom.date === subject.date ? rawZoom : null;
+    const defaultSpan = Math.max(Math.min(RANK_VIEW_SPAN, maxRank) - 1, 1);
     const dom = useMemo(
-        () => zoom ?? { x0: 1, x1: maxRank, y0: 1, y1: maxRank },
-        [zoom, maxRank],
+        () => zoom ?? { x0: 1, x1: 1 + defaultSpan, y0: 1, y1: 1 + defaultSpan },
+        [zoom, defaultSpan],
     );
     const domSpan = Math.max(dom.x1 - dom.x0, 1);
     /** 도메인 시작점 클램프 — 폭을 유지한 채 [1, maxRank] 안에 눕힌다(휠·팬 공용). */
-    const clampDom0 = (v: number, span: number): number => Math.max(1, Math.min(v, maxRank - span));
+    const clampDom0 = (v: number, span: number): number => Math.max(1, Math.min(v, Math.max(maxRank - span, 1)));
+    // ── 값 축 뷰 도메인(팬) — 세션 수명, 날짜 무관(값의 자는 날짜를 안 탄다). 기본 창은 axisModel 상수.
+    const rawVdom = useWorkbench((s) => s.sessionUi[panelId]?.["vdom"]) as { x?: ValueDom; y?: ValueDom } | undefined;
+    const vx = rawVdom?.x ?? AMOUNT_VIEW;
+    const vy = rawVdom?.y ?? RATE_VIEW;
 
     // ── 평면 단면 — 축 설정이 정한 좌표(서수/값·창). 계산 주체는 core 한 벌(sectionSeries 캐시 경유).
     const slice = useMemo(
@@ -296,21 +305,21 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
         [participants, peerThemes, subject],
     );
 
-    // ── 축 스케일 — 서수는 줌 도메인, 값은 그려진 점(시선+동료)의 스팬을 따른다(스크럽마다 재계산 —
-    // 값 도메인이 데이터를 따라오는 게 의도다). 렌더·판정(nearestAt)·드래그(invert)의 단일 출처.
+    // ── 축 스케일 — 서수는 뷰 도메인(기본 200 창), 값은 고정 도메인(+팬 vdom). 렌더·판정(nearestAt)·
+    // 드래그(invert)의 단일 출처. 데이터-추종 도메인은 폐지(2026-09-17 — 스크럽마다 축이 출렁였다).
     const xScale = useMemo(
-        () => (axes.xMode === "rank"
-            ? rankScaleX(dom, box, maxRank, axes.windowMin)
-            : valueScaleX(hitPoints.map((p) => p.amount), box, axes.windowMin)),
+        () => (axes.xMode === "rank" ? rankScaleX(dom, box, maxRank, axes.windowMin) : valueScaleX(vx, box, axes.windowMin)),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [axes, dom, box.left, box.top, box.width, box.height, maxRank, axes.xMode === "value" ? hitPoints : null],
+        [axes, dom, vx, box.left, box.top, box.width, box.height, maxRank],
     );
     const yScale = useMemo(
-        () => (axes.yMode === "rank" ? rankScaleY(dom, box, maxRank) : valueScaleY(hitPoints.map((p) => p.rate), box)),
+        () => (axes.yMode === "rank" ? rankScaleY(dom, box, maxRank) : valueScaleY(vy, box)),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [axes, dom, box.left, box.top, box.width, box.height, maxRank, axes.yMode === "value" ? hitPoints : null],
+        [axes, dom, vy, box.left, box.top, box.width, box.height, maxRank],
     );
     const scales = useMemo(() => ({ x: xScale.px, y: yScale.px }), [xScale, yScale]);
+    // 기본 창 아래로 접힌 등락 값(값 모드) — 가장자리 배지가 개수로 말한다(그려지진 않는다 — 팬으로 본다).
+    const foldedRate = axes.yMode === "value" ? foldedBelowCount(hitPoints.map((p) => p.rate), vy.lo) : 0;
     const ordAtX = (px: number): number => xScale.invert(px);
     const ordAtY = (py: number): number => yScale.invert(py);
 
@@ -408,8 +417,10 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
     // "gx"/"gy" = 보기용 가이드 자의 배지 드래그(판정 컷과 배타 — 사는 모드가 서로 다르다).
     const dragRef = useRef<"rate" | "amount" | "gx" | "gy" | null>(null);
     const downRef = useRef<{ x: number; y: number } | null>(null); // 클릭 판정용 누른 자리(끌렸으면 클릭이 아니다)
-    // 팬 — 확대 중 빈 곳 좌드래그. 시작 시점의 도메인을 들고 가서 이동량을 절대로 셈한다(누적 오차 없음).
-    const panRef = useRef<{ x: number; y: number; dom: ZoomDom } | null>(null);
+    // 팬 — 빈 곳 좌드래그(**상시**, 2026-09-17 — 기본 창이 200 고정이라 밖은 팬이 유일한 길).
+    // 시작 시점의 도메인 스냅샷을 들고 가서 이동량을 절대로 셈한다(누적 오차 없음). 서수 축은 zoom,
+    // 값 축은 vdom 으로 갈라 쓴다(혼합 축이면 둘 다).
+    const panRef = useRef<{ x: number; y: number; dom: { x0: number; x1: number; y0: number; y1: number }; vx: ValueDom; vy: ValueDom } | null>(null);
     const cutX = scales.x(eff.zoneAmountN); // 세로선(거래대금 컷)
     const cutY = scales.y(eff.zoneRateN); // 가로선(등락률 컷)
     // 확대로 컷이 도메인 밖이면 선과 **배지를 통째로 숨긴다** — 가장자리에 클램프된 배지를 잘못 잡으면
@@ -428,9 +439,11 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
     // 배지는 그림 **밖**(아래·오른쪽 여백)에 앉는다 — 점과 자리를 다투지 않게. 다만 축 방향으로는
     // 상자 범위 안에 머물러야 잡힌다(컷이 끝으로 가면 여백 밖으로 나가 손이 안 닿는다).
     const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(v, hi));
+    // 가로선(등락) 배지는 **왼쪽 스케일**에 가로로 앉는다(2026-09-17) — 대금 배지가 아래 스케일에 앉는 것과 대칭.
+    const rateLabelX = Math.max(2, box.left - LBL_W - 4);
     const cutLabels = {
         amount: { x: clamp(cutX - LBL_W / 2, box.left, box.left + box.width - LBL_W), y: box.top + box.height + 3 },
-        rate: { x: box.left + box.width + 4, y: clamp(cutY - LBL_H / 2, box.top, box.top + box.height - LBL_H) },
+        rate: { x: rateLabelX, y: clamp(cutY - LBL_H / 2, box.top, box.top + box.height - LBL_H) },
     };
     // 가이드 자의 자리 — 컷 배지와 같은 여백(아래·오른쪽)을 쓴다(컷과 같은 모드에 공존하지 않아 안 다툰다).
     // 도메인 밖(값 축 도메인이 데이터를 따라와 저장값이 벗어난 경우)이면 선·배지를 접는다 — 자 토글로 재배치.
@@ -442,7 +455,7 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
     const gyVisible = dragRef.current === "gy" || (gy !== undefined && yScale.inDomain(gy));
     const guideLabels = {
         x: gpxX === null ? null : { x: clamp(gpxX - LBL_W / 2, box.left, box.left + box.width - LBL_W), y: box.top + box.height + 3 },
-        y: gpxY === null ? null : { x: box.left + box.width + 4, y: clamp(gpxY - LBL_H / 2, box.top, box.top + box.height - LBL_H) },
+        y: gpxY === null ? null : { x: rateLabelX, y: clamp(gpxY - LBL_H / 2, box.top, box.top + box.height - LBL_H) },
     };
     const inLabel = (x: number, y: number, l: { x: number; y: number }): boolean =>
         x >= l.x - LBL_PAD && x <= l.x + LBL_W + LBL_PAD && y >= l.y - LBL_PAD && y <= l.y + LBL_H + LBL_PAD;
@@ -470,11 +483,9 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
                 return;
             }
         }
-        // 확대 중이면 빈 곳 누름 = 팬 후보. 클릭(무이동)이면 up 의 슬롭 판정이 그대로 점 클릭으로 살린다.
-        if (zoom !== null) {
-            panRef.current = { x, y, dom: zoom };
-            e.currentTarget.setPointerCapture(e.pointerId);
-        }
+        // 빈 곳 누름 = 팬 후보(상시). 클릭(무이동)이면 up 의 슬롭 판정이 그대로 점 클릭으로 살린다.
+        panRef.current = { x, y, dom: { x0: dom.x0, x1: dom.x1, y0: dom.y0, y1: dom.y1 }, vx, vy };
+        e.currentTarget.setPointerCapture(e.pointerId);
     };
     const onPointerMove = (e: React.PointerEvent<SVGSVGElement>): void => {
         const rect = e.currentTarget.getBoundingClientRect();
@@ -489,13 +500,29 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
             return;
         }
         const pan = panRef.current;
-        if (pan) {
+        if (pan && subject) {
             const dx = e.clientX - rect.left - pan.x;
             const dy = e.clientY - rect.top - pan.y;
-            const span = pan.dom.x1 - pan.dom.x0;
-            const x0 = clampDom0(pan.dom.x0 - (dx / Math.max(box.width, 1)) * span, span);
-            const y0 = clampDom0(pan.dom.y0 - (dy / Math.max(box.height, 1)) * span, span);
-            setSessionUi(panelId, "zoom", { date: pan.dom.date, x0, x1: x0 + span, y0, y1: y0 + span });
+            // 서수 축 — x 는 반전축이라 부호가 값 축과 반대다(px 가 커질수록 서수가 작아진다).
+            if (axes.xMode === "rank" || axes.yMode === "rank") {
+                const span = pan.dom.x1 - pan.dom.x0;
+                const x0 = axes.xMode === "rank" ? clampDom0(pan.dom.x0 + (dx / Math.max(box.width, 1)) * span, span) : pan.dom.x0;
+                const y0 = axes.yMode === "rank" ? clampDom0(pan.dom.y0 - (dy / Math.max(box.height, 1)) * span, span) : pan.dom.y0;
+                setSessionUi(panelId, "zoom", { date: subject.date, x0, x1: x0 + span, y0, y1: y0 + span });
+            }
+            // 값 축 — 등락은 선형(%), 대금은 로그(데케이드) 공간에서 미끄러진다. 한계는 axisModel 상수.
+            if (axes.xMode === "value" || axes.yMode === "value") {
+                const next: { x?: ValueDom; y?: ValueDom } = { ...(rawVdom ?? {}) };
+                if (axes.xMode === "value") {
+                    const L = Math.log10(pan.vx.hi) - Math.log10(pan.vx.lo);
+                    next.x = panAmountDom(pan.vx, -(dx / Math.max(box.width, 1)) * L);
+                }
+                if (axes.yMode === "value") {
+                    const S = pan.vy.hi - pan.vy.lo;
+                    next.y = panRateDom(pan.vy, (dy / Math.max(box.height, 1)) * S);
+                }
+                setSessionUi(panelId, "vdom", next);
+            }
         }
     };
     /**
@@ -515,23 +542,28 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
         const py = e.clientY - rect.top;
         if (px < box.left || px > box.left + box.width || py < box.top || py > box.top + box.height) return;
         const f = e.deltaY < 0 ? 1 / 1.25 : 1.25;
-        const next = Math.max(domSpan * f, ZOOM_MIN_SPAN);
-        if (next >= maxRank - 1) {
-            if (zoom !== null) setSessionUi(panelId, "zoom", undefined);
-            return;
-        }
+        // 줌아웃 상한 = 유니버스 전체(200 창 밖도 휠로 볼 수 있다), 줌인 하한 = ZOOM_MIN_SPAN.
+        const next = Math.min(Math.max(domSpan * f, ZOOM_MIN_SPAN), Math.max(maxRank - 1, 1));
+        if (next === domSpan) return;
+        // x 는 반전축 — 커서 아래 서수를 고정하려면 x1(왼쪽 끝) 기준으로 셈해 x0 을 도로 얻는다.
         const ux = (px - box.left) / Math.max(box.width, 1);
         const uy = (py - box.top) / Math.max(box.height, 1);
-        const x0 = clampDom0(dom.x0 + ux * domSpan - ux * next, next);
+        const cursorOrdX = dom.x1 - ux * domSpan;
+        const x0 = clampDom0(cursorOrdX + ux * next - next, next);
         const y0 = clampDom0(dom.y0 + uy * domSpan - uy * next, next);
         setSessionUi(panelId, "zoom", { date: subject.date, x0, x1: x0 + next, y0, y1: y0 + next });
     };
-    /** 빈 곳 더블클릭 = 원위치. 점 위는 제외 — 그 자리는 이미 클릭(동료 이동)의 손짓이다. */
+    /** 빈 곳 더블클릭 = 원위치(기본 200 창 + 값 축 기본 도메인). 점 위는 제외 — 그 자리는 클릭(이동)의 손짓이다. */
+    const viewMoved = zoom !== null || rawVdom !== undefined;
+    const resetView = (): void => {
+        setSessionUi(panelId, "zoom", undefined);
+        setSessionUi(panelId, "vdom", undefined);
+    };
     const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>): void => {
-        if (zoom === null) return;
+        if (!viewMoved) return;
         const rect = e.currentTarget.getBoundingClientRect();
         if (nearestAt(e.clientX - rect.left, e.clientY - rect.top) !== null) return;
-        setSessionUi(panelId, "zoom", undefined);
+        resetView();
     };
     const commitDrag = (e: React.PointerEvent<SVGSVGElement>): void => {
         const drag = dragRef.current;
@@ -666,12 +698,12 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
                         {nameOf(subject.code)} · {subject.date}{minute !== null && ` ${fmtMin(minute)}`}
                     </span>
                 )}
-                {/* 확대 배지 — 배율 표시 겸 원위치 버튼(빈 곳 더블클릭과 같은 일). 확대 중에만 선다. */}
-                {zoom !== null && (
-                    <button onClick={() => setSessionUi(panelId, "zoom", undefined)}
-                        title="확대 중 — 클릭하면 원위치(그림 빈 곳 더블클릭과 같다)"
+                {/* 뷰 배지 — 기본 창(200/값 기본 도메인)에서 벗어나 있으면 배율 표시 겸 원위치 버튼. */}
+                {viewMoved && (
+                    <button onClick={resetView}
+                        title="뷰 이동/확대 중 — 클릭하면 원위치(그림 빈 곳 더블클릭과 같다)"
                         style={backBtn}>
-                        {(Math.max(maxRank - 1, 1) / domSpan).toFixed(1)}×
+                        {zoom !== null ? `${(defaultSpan / domSpan).toFixed(1)}×` : "원위치"}
                     </button>
                 )}
                 {/* 되돌아가기 — 산점에서 점을 눌러 떠난 출발점. 방문기록(Alt+W/S)과 달리 몇 다리를 건너도 한 번에 온다. */}
@@ -739,12 +771,13 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
                     {/* 아래 SVG — 축·존 틴트(그림 밑). 존은 연동 행이 있을 때만. */}
                     <svg width={size.w} height={size.h} style={underSvg}>
                         {judgeParams !== null && (() => {
-                            // 존 사각 = 서수 [1..컷] 영역을 그림 상자로 오려낸 것 — 줌 도메인 밖으로 안 넘치게.
-                            const zx0 = clamp(scales.x(1), box.left, box.left + box.width);
-                            const zy0 = clamp(scales.y(1), box.top, box.top + box.height);
-                            const zx1 = clamp(cutX, box.left, box.left + box.width);
-                            const zy1 = clamp(cutY, box.top, box.top + box.height);
-                            return <rect x={zx0} y={zy0} width={Math.max(0, zx1 - zx0)} height={Math.max(0, zy1 - zy0)} fill="var(--accent-soft)" opacity={0.7} />;
+                            // 존 사각 = 서수 [1..컷] 영역을 그림 상자로 오려낸 것 — 뷰 도메인 밖으로 안 넘치게.
+                            // x 반전(1위=오른쪽)으로 1위 모서리가 오른쪽이 됐다 — min/max 로 방향 무관하게 세운다.
+                            const zxA = clamp(scales.x(1), box.left, box.left + box.width);
+                            const zxB = clamp(cutX, box.left, box.left + box.width);
+                            const zyA = clamp(scales.y(1), box.top, box.top + box.height);
+                            const zyB = clamp(cutY, box.top, box.top + box.height);
+                            return <rect x={Math.min(zxA, zxB)} y={Math.min(zyA, zyB)} width={Math.abs(zxB - zxA)} height={Math.abs(zyB - zyA)} fill="var(--accent-soft)" opacity={0.7} />;
                         })()}
                         {/* 눈금·격자 — 무관 종목 회색 층을 지운 자리(2026-09-07). 점이 성길 때 좌표를 읽을 유일한 근거다.
                             x 눈금 글자는 상자 **안** 바닥에 붙인다 — 축 아래는 컷선 라벨(손잡이)이 이미 쓰고 있다. */}
@@ -762,18 +795,27 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
                         ))}
                         <line x1={box.left} y1={box.top} x2={box.left} y2={box.top + box.height} stroke="var(--border-strong)" />
                         <line x1={box.left} y1={box.top + box.height} x2={box.left + box.width} y2={box.top + box.height} stroke="var(--border-strong)" />
-                        <text x={box.left - 28} y={box.top + box.height / 2} textAnchor="middle" style={axisText} transform={`rotate(-90 ${box.left - 28} ${box.top + box.height / 2})`}>{yScale.title}</text>
+                        {/* y 제목은 왼쪽-위에 가로로(2026-09-17 — 세로 회전 폐지, 왼 여백은 등락 배지의 자리다). */}
+                        <text x={4} y={box.top - 4} textAnchor="start" style={axisText}>{yScale.title}</text>
                         <text x={box.left + box.width / 2} y={size.h - 8} textAnchor="middle" style={axisText}>{xScale.title}</text>
+                        {/* 기본 창 아래로 접힌 등락 값 — 개수만 말한다(팬으로 내려가면 보인다). */}
+                        {foldedRate > 0 && (
+                            <g>
+                                <rect x={box.left + 4} y={box.top + box.height - 16} width={64} height={13} rx={6} fill="var(--bg-tertiary)" />
+                                <text x={box.left + 36} y={box.top + box.height - 6} textAnchor="middle" style={axisText}>{`≤${vy.lo}% ${foldedRate}`}</text>
+                            </g>
+                        )}
                     </svg>
 
                     <div style={{ position: "absolute", inset: 0 }}>
-                        {/* 클립은 확대 중에만 — 도메인 밖 점·꼬리가 여백(축 글자·손잡이 자리)을 밟지 않게. */}
-                        <CanvasLayers layers={layers} width={size.w} height={size.h} clip={zoom !== null ? box : null} />
+                        {/* 클립 상시 — 기본 창이 200 고정이라 도메인 밖 점·꼬리가 언제든 있을 수 있다(여백의
+                            축 글자·배지 자리를 밟지 않게). */}
+                        <CanvasLayers layers={layers} width={size.w} height={size.h} clip={box} />
                     </div>
 
                     {/* 위 SVG — 컷선·손잡이·호버·줌(포인터 소유). 컷선은 연동 행이 있을 때만. */}
                     <svg width={size.w} height={size.h}
-                        style={{ ...overSvg, cursor: hover && peerThemes.has(hover.code) ? "pointer" : zoom !== null ? "grab" : undefined }}
+                        style={{ ...overSvg, cursor: hover && peerThemes.has(hover.code) ? "pointer" : "grab" }}
                         onPointerDown={onPointerDown}
                         onPointerMove={(e) => { onPointerMove(e); onHoverMove(e); }}
                         onPointerUp={onPointerUp}
