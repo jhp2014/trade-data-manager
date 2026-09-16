@@ -32,8 +32,10 @@ import type { RankSectionBundle, RankSectionDate, WireRankSection } from "@trade
 import type { DerivedCache } from "./derivedCache.js";
 import { RANK_SECTION_FILE_VERSION, type RankSectionFile, type RankSectionStore } from "./rankSectionStore.js";
 
-/** 계산 규칙 버전 — 서수 정의(정렬·동점·carry-forward)나 재료(원주가 재작성 수리)가 바뀌면 올린다(전량 재굽기). */
-export const RANK_SECTION_CALC_VERSION = 1;
+/** 계산 규칙 버전 — 서수 정의(정렬·동점·carry-forward)나 재료(원주가 재작성 수리)가 바뀌면 올린다(전량 재굽기).
+ *  v2(2026-09-16): 단면에 60분 창 서수(amount60) 추가 — 옛 파일엔 그 열이 없어 통째 재굽기.
+ *  ⚠ 상향 반영 후 첫 요청이 전 날짜 재계산이다(day-snapshot 은 있으므로 분 단위 — 낮에 올리지 말 것). */
+export const RANK_SECTION_CALC_VERSION = 2;
 
 /** 날짜 동시 빌드 상한 — 스냅샷 힙 ~11MB/개. */
 const BUILD_CONCURRENCY = 2;
@@ -184,7 +186,7 @@ export class RankSections {
                 if (!want.has(code)) continue;
                 const src = codeIdx.get(code);
                 if (src === undefined) continue; // 유니버스 밖 동료 — 서수가 없다
-                rows.push(out, s.rate[src] ?? -1, s.amount[src] ?? -1);
+                rows.push(out, s.rate[src] ?? -1, s.amount[src] ?? -1, s.amount60[src] ?? -1);
             }
             return { time: s.time, n: s.n, rows };
         });

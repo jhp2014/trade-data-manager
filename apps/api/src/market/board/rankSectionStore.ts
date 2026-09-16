@@ -9,8 +9,10 @@ import type { RankSection } from "@trade-data-manager/market";
 
 const CACHE_ROOT = process.env.RANK_SECTION_CACHE_DIR ?? path.resolve(process.cwd(), ".cache/rank-section");
 
-/** 파일 스키마 버전(파일 모양). 계산 규칙 변경은 RANK_SECTION_CALC_VERSION(rankSections.ts) 쪽. */
-export const RANK_SECTION_FILE_VERSION = 1;
+/** 파일 스키마 버전(파일 모양). 계산 규칙 변경은 RANK_SECTION_CALC_VERSION(rankSections.ts) 쪽.
+ *  v2(2026-09-16): sections[].amount60 추가 — CALC v2 와 같은 변경이지만 파일 모양도 바뀌었으므로 같이 올린다
+ *  (구파일이 CALC 검사 전에 파싱되는 경로는 없지만, 모양이 바뀌면 이 버전을 올리는 게 이 파일의 계약이다). */
+export const RANK_SECTION_FILE_VERSION = 2;
 
 /** 날짜 하나의 단면 파일 — 굳은(sealed) 날짜만 파일이 된다(미완료 날짜는 메모리 서빙뿐). */
 export interface RankSectionFile {
