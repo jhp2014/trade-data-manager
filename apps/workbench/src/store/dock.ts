@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { DockviewApi } from "dockview-react";
-import { PANEL_CATALOG } from "../shell/panelCatalog.js";
+import { PANEL_TYPES } from "../shell/panelCatalog.js";
 
 // 창 배치(dockview) 상태 버스 — onReady 의 DockviewApi 를 커맨드/작업표시줄이 닿을 수 있게 보관하고,
 // 레이아웃 프리셋(저장 배치)을 관리한다. UI 오버레이(ui 스토어)와 성격이 달라 전용 스토어로 둔다.
@@ -21,7 +21,7 @@ type RingSlots = string[][]; // index 0 = 화면 1. 화면별 Tab 순환 링(순
 
 // 렌더 가능한 패널 컴포넌트 집합 — 카탈로그가 곧 등록 패널의 단일 출처(WorkbenchShell components 와 1:1).
 // 프리셋 JSON 에 이 집합 밖 컴포넌트(삭제된 패널)가 하나라도 있으면 dockview fromJSON 이 통째로 실패한다.
-const VALID_COMPONENTS = new Set(PANEL_CATALOG.map((e) => e.component));
+const VALID_COMPONENTS = new Set(PANEL_TYPES.map((t) => t.component));
 
 // 레이아웃 JSON 에서 등록 안 된 컴포넌트의 패널을 제거한다(패널 삭제 시 옛 프리셋이 안 깨지게).
 // panels 맵과 grid 트리·플로팅/팝아웃 그룹을 함께 정리해야 fromJSON 정합이 유지된다(한쪽만 지우면 dangling).

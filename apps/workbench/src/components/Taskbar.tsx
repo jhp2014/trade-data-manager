@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useDock, PRESET_COUNT } from "../store/dock.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useUi } from "../store/ui.js";
-import { PANEL_CATALOG, type PanelEntry, type PanelPlane } from "../shell/panelCatalog.js";
+import { SEED_SLOT_IDS, planeOf, requirePanelType, slotTitleOf, type PanelPlane } from "../shell/panelCatalog.js";
 import { useStockName } from "../lib/useStockName.js";
 import { DatePicker } from "./DatePicker.js";
 import { StockNameCopy } from "./StockNameCopy.js";
@@ -172,17 +172,18 @@ export function Taskbar(): JSX.Element {
     const setTime = useWorkbench((s) => s.setTime);
     const liveCode = useWorkbench((s) => s.liveFocus.code);
     const openSettings = useUi((s) => s.openSettings);
-    // 카탈로그에 있으나 현재 안 열린 = 최소화된 창. dock 미준비(null)면 비움. 플레인별로 나눠 그룹 표시.
-    const closed = openPanelIds === null ? [] : PANEL_CATALOG.filter((p) => !openPanelIds.includes(p.id));
-    const liveClosed = closed.filter((p) => p.plane === "live");
-    const eodClosed = closed.filter((p) => p.plane === "eod");
-    const reopen = (e: PanelEntry): void => {
-        api?.addPanel({ id: e.id, component: e.component, title: e.title });
+    // 실존 슬롯 중 현재 안 열린 = 최소화된 창. dock 미준비(null)면 비움. 플레인별로 나눠 그룹 표시.
+    const closed = openPanelIds === null ? [] : SEED_SLOT_IDS.filter((id) => !openPanelIds.includes(id));
+    const liveClosed = closed.filter((id) => planeOf(id) === "live");
+    const eodClosed = closed.filter((id) => planeOf(id) === "eod");
+    const reopen = (id: string): void => {
+        const t = requirePanelType(id);
+        api?.addPanel({ id, component: t.component, title: slotTitleOf(id) });
     };
-    const chips = (items: PanelEntry[], plane: PanelPlane): JSX.Element[] =>
-        items.map((e) => (
-            <button key={e.id} onClick={() => reopen(e)} title="다시 열기" style={planeChip(plane)}>
-                {e.title}
+    const chips = (ids: string[], plane: PanelPlane): JSX.Element[] =>
+        ids.map((id) => (
+            <button key={id} onClick={() => reopen(id)} title="다시 열기" style={planeChip(plane)}>
+                {slotTitleOf(id)}
             </button>
         ));
     return (

@@ -5,7 +5,7 @@ import { Checkbox, NumberField, Row, SectionLabel, Kbd } from "../ui/controls.js
 import { useWorkbench } from "../store/workbench.js";
 import { useUi, type SettingsScreen } from "../store/ui.js";
 import { useDock, panelIdsInPreset } from "../store/dock.js";
-import { PANEL_CATALOG } from "../shell/panelCatalog.js";
+import { slotTitleOf } from "../shell/panelCatalog.js";
 import { staticCommands, commandsByCategory } from "../keymap/registry.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { formatChord } from "../keymap/keys.js";
@@ -219,7 +219,7 @@ function ShortcutSettings(): JSX.Element {
     );
 }
 
-const panelTitleOf = (id: string): string => PANEL_CATALOG.find((p) => p.id === id)?.title ?? id;
+const panelTitleOf = (id: string): string => slotTitleOf(id);
 
 // 화면별 Tab 순환 링 편집 — 이 화면 배치에 있는 패널 중 순환에 넣을 것을 체크·순서조절.
 // 체크한 것(링)은 순번·↑/↓·이 순서대로 Tab 이 순환. 미체크는 아래에 후보로.
