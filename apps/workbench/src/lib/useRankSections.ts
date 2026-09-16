@@ -38,10 +38,16 @@ export interface RankSectionsView {
 
 const EMPTY_PENDING: string[] = [];
 
+/** 행 stride 가 4([codeIdx, rate, amount, amount60])가 된 계산 버전 — 이 미만이면 옛 서버다.
+ *  레인이 어긋난 서수를 조용히 존 판정·카운트에 넣지 않는다(pointGrids 의 와이어 가드 선례). */
+const MIN_SUPPORTED_VERSION = 2;
+
 export function useRankSections(): RankSectionsView {
     const q = useQuery(rankSectionsQuery());
     return useMemo<RankSectionsView>(() => {
-        const bundle = q.data ?? null;
+        const raw = q.data ?? null;
+        const skew = raw !== null && raw.version < MIN_SUPPORTED_VERSION;
+        const bundle = skew ? null : raw;
         // 날짜|분 → 단면, 날짜 → 코드 인덱스. 번들이 바뀔 때 한 번 접는다(조회는 전부 O(1)).
         const byKey = new Map<string, { date: string; sealed: boolean; codeIdx: Map<string, number>; data: Int32Array; from: number; to: number; section: WireRankSection }>();
         if (bundle) {
@@ -94,7 +100,9 @@ export function useRankSections(): RankSectionsView {
         return {
             bundle,
             isLoading: q.isLoading,
-            error: (q.error as Error | null) ?? null,
+            error: skew
+                ? new Error(`순위 단면 서버 계약이 옛 버전(v${(raw as RankSectionBundle).version})이다 — 서버·클라 동시 배포 필요`)
+                : (q.error as Error | null) ?? null,
             sectionAt,
             pending: bundle?.pending ?? EMPTY_PENDING,
         };

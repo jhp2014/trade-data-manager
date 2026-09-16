@@ -82,6 +82,9 @@ export interface AxisTick {
 export interface AxisScale {
     px(v: number): number;
     invert(px: number): number;
+    /** 값이 현재 도메인 안인가 — 가이드 자의 "밖이면 접는다" 판정용. px 로 재면 안 된다:
+     *  값 스케일의 px 는 클램프라 밖의 값도 상자 안 픽셀을 돌려줘, 자리와 안 맞는 라벨이 선다. */
+    inDomain(v: number): boolean;
     ticks: AxisTick[];
     /** 툴팁·배지의 짧은 이름("대금"·"60분 대금"·"등락"). */
     chip: string;
@@ -108,6 +111,7 @@ export function rankScaleX(dom: { x0: number; x1: number }, box: PlotBox, maxRan
     return {
         px: (ord) => box.left + ((Math.min(ord, maxRank) - dom.x0) / span) * box.width,
         invert: (px) => Math.max(1, Math.min(maxRank, Math.round(dom.x0 + ((px - box.left) / Math.max(box.width, 1)) * span))),
+        inDomain: (v) => v >= dom.x0 && v <= dom.x1,
         ticks: rankTicks(dom.x0, dom.x1, maxRank),
         chip: windowMin === null ? "대금" : `${windowLabel(windowMin)} 대금`,
         title: windowMin === null ? "거래대금 순위 →" : `${windowLabel(windowMin)} 대금 순위 →`,
@@ -121,6 +125,7 @@ export function rankScaleY(dom: { y0: number; y1: number }, box: PlotBox, maxRan
     return {
         px: (ord) => box.top + ((Math.min(ord, maxRank) - dom.y0) / span) * box.height,
         invert: (py) => Math.max(1, Math.min(maxRank, Math.round(dom.y0 + ((py - box.top) / Math.max(box.height, 1)) * span))),
+        inDomain: (v) => v >= dom.y0 && v <= dom.y1,
         ticks: rankTicks(dom.y0, dom.y1, maxRank),
         chip: "등락",
         title: "등락률 순위 ↓",
@@ -151,6 +156,9 @@ export function valueScaleX(values: readonly number[], box: PlotBox, windowMin: 
     return {
         px,
         invert: (x) => 10 ** (l0 + ((x - box.left) / Math.max(box.width, 1)) * (l1 - l0)),
+        // px 클램프와 정확히 같은 경계 — 하한은 lo(px 가 거기서부터 자리를 속인다), 상한은 패딩 끝(l1,
+        // px 가 클램프 없이 정직한 구간). l0 을 쓰면 (10^l0, lo) 띠에서 자리와 안 맞는 라벨이 선다.
+        inDomain: (v) => v >= lo && Math.log10(v) <= l1,
         ticks: logTicks(lo, hiRaw).map((v) => ({ v, label: fmtWon(v) })),
         chip: windowMin === null ? "대금" : `${windowLabel(windowMin)} 대금`,
         title: windowMin === null ? "누적 대금(억, 로그) →" : `${windowLabel(windowMin)} 대금(억, 로그) →`,
@@ -168,6 +176,7 @@ export function valueScaleY(values: readonly number[], box: PlotBox): AxisScale 
     return {
         px: (v) => box.top + ((hi - Math.min(Math.max(v, lo), hi)) / (hi - lo)) * box.height,
         invert: (py) => hi - ((py - box.top) / Math.max(box.height, 1)) * (hi - lo),
+        inDomain: (v) => v >= lo && v <= hi,
         ticks: linearTicks(lo, hi).map((v) => ({ v, label: fmtRate(v) })),
         chip: "등락",
         title: "등락률 % ↑",

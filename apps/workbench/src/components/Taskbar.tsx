@@ -207,7 +207,7 @@ export function Taskbar(): JSX.Element {
                     {n >= 2 && (
                         <button
                             onClick={() => destroySlot(id)}
-                            title="이 창을 소멸 (설정은 남아서 같은 번호로 다시 만들면 부활)"
+                            title="이 창을 소멸 — 다시 만들려면 열린 같은 종류 탭의 ⧉ 복제 (복제는 지금 설정의 사본이다)"
                             style={{ ...chipInnerBtn, opacity: 0.6, fontSize: 13 }}
                         >
                             ×

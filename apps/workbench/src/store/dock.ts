@@ -271,7 +271,11 @@ export const useDock = create<DockState>((set, get) => ({
             const { json } = sanitizeLayout(data);
             api.fromJSON(json);
             // fromJSON 후 열린 패널 재동기화(패널 이벤트 누락 대비). 링 출처도 이 화면으로 갱신.
-            set({ activePreset: n, ringSource: n, openPanelIds: api.panels.map((p) => p.id) });
+            // ⚠ setOpenPanels 를 안 거치는 직접 쓰기라 자가등록을 여기서 따로 한다 — 이벤트가 누락된
+            //   바로 그 경우에 프리셋 속 슬롯이 대장에 못 들어오면 닫는 순간 칩 없이 사라진다.
+            const ids = api.panels.map((p) => p.id);
+            get().registerSlots(ids);
+            set({ activePreset: n, ringSource: n, openPanelIds: ids });
         } catch {
             /* 손상/비호환 레이아웃 → 무시(현 배치 유지) */
         }

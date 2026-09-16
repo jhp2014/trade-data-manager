@@ -98,6 +98,15 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
     const zoneWindow = linkedParams?.zoneAmountWindow === 60 ? 60 : null;
     const judgmentSpace = isJudgmentSpace(axes, zoneWindow);
     const zoomable = isZoomable(axes);
+    // ── 연동 행이 판정 공간의 주인이다 — rank×rank 인스턴스의 창은 행의 창을 따라간다(2026-09-16 재확인
+    // 리뷰). 행을 바꾸는 입구가 셋(파라미터 줄 창 택1·패널 칩·보드 줄 이름)이라 입구마다 래퍼를 다는
+    // 대신 여기 한 곳에서 닫는다. 값 산점은 판정 층 무관이라 자유, 연동을 풀면 축도 자유다 —
+    // "연동 중 다른 창을 순위로 보고 싶다"는 연동 해제가 정답(거울이 원본과 다른 자를 보면 안 된다).
+    useEffect(() => {
+        if (linkedParams === null || axes.xMode !== "rank" || axes.yMode !== "rank") return;
+        if (axes.windowMin !== zoneWindow) setAxesRaw({ ...axes, windowMin: zoneWindow });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [linkedParams === null, zoneWindow, axes.xMode, axes.yMode, axes.windowMin]);
     // 판정 층의 유일한 파라미터 출처 — 공간 불일치면 연동 행이 있어도 null(순수 산점 + 가이드).
     const judgeParams = judgmentSpace ? linkedParams : null;
 
@@ -425,10 +434,12 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
     };
     // 가이드 자의 자리 — 컷 배지와 같은 여백(아래·오른쪽)을 쓴다(컷과 같은 모드에 공존하지 않아 안 다툰다).
     // 도메인 밖(값 축 도메인이 데이터를 따라와 저장값이 벗어난 경우)이면 선·배지를 접는다 — 자 토글로 재배치.
+    // 판정은 px 가 아니라 **inDomain** — 값 스케일의 px 는 클램프라 밖의 값도 상자 안 픽셀을 돌려줘,
+    // px 로 재면 가장자리에 자리와 안 맞는 값 라벨이 붙은 채 선다.
     const gpxX = gx !== undefined ? scales.x(gx) : null;
     const gpxY = gy !== undefined ? scales.y(gy) : null;
-    const gxVisible = dragRef.current === "gx" || (gpxX !== null && gpxX >= box.left && gpxX <= box.left + box.width);
-    const gyVisible = dragRef.current === "gy" || (gpxY !== null && gpxY >= box.top && gpxY <= box.top + box.height);
+    const gxVisible = dragRef.current === "gx" || (gx !== undefined && xScale.inDomain(gx));
+    const gyVisible = dragRef.current === "gy" || (gy !== undefined && yScale.inDomain(gy));
     const guideLabels = {
         x: gpxX === null ? null : { x: clamp(gpxX - LBL_W / 2, box.left, box.left + box.width - LBL_W), y: box.top + box.height + 3 },
         y: gpxY === null ? null : { x: box.left + box.width + 4, y: clamp(gpxY - LBL_H / 2, box.top, box.top + box.height - LBL_H) },
