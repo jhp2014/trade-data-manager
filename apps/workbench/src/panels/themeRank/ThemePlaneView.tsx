@@ -40,8 +40,11 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
     const { box, size, scales, xScale, yScale } = p;
 
     // ── 자유 자 — 상시(저장 전 기본 = 뷰 가운데 파생값). 드래그 미리보기는 로컬, 커밋은 손 뗄 때 한 번.
+    // 커밋은 이벤트 핸들러에서 ref 미러로 — setState 업데이터 안에서 store 를 쓰면 렌더 중 업데이트
+    // React 에러가 난다(조건판 컷 커밋과 같은 함정, 2026-09-17 실측).
     const [guides, setGuides] = usePanelUi<Record<string, number>>(p.panelId, "guides", {});
     const [guidePrev, setGuidePrev] = useState<{ k: string; v: number } | null>(null);
+    const guidePrevRef = useRef<{ k: string; v: number } | null>(null);
     const centerX = xScale.invert(box.left + box.width / 2);
     const centerY = yScale.invert(box.top + box.height / 2);
     const gx = cut !== null ? null : guidePrev?.k === guideKeys.x ? guidePrev.v : guides[guideKeys.x] ?? centerX;
@@ -107,8 +110,13 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
             if (drag === "amount" && cut) cut.onPreview({ zoneAmountN: xScale.invert(e.clientX - rect.left) });
             else if (drag === "rate" && cut) cut.onPreview({ zoneRateN: yScale.invert(e.clientY - rect.top) });
             // 자는 미리보기 로컬로만 따라오고 커밋(영속 쓰기)은 손 뗄 때 한 번(panelUi 는 set 마다 디스크를 두드린다).
-            else if (drag === "gx") setGuidePrev({ k: guideKeys.x, v: xScale.invert(e.clientX - rect.left) });
-            else if (drag === "gy") setGuidePrev({ k: guideKeys.y, v: yScale.invert(e.clientY - rect.top) });
+            else if (drag === "gx" || drag === "gy") {
+                const next = drag === "gx"
+                    ? { k: guideKeys.x, v: xScale.invert(e.clientX - rect.left) }
+                    : { k: guideKeys.y, v: yScale.invert(e.clientY - rect.top) };
+                guidePrevRef.current = next;
+                setGuidePrev(next);
+            }
             return;
         }
         const pan = panRef.current;
@@ -171,10 +179,10 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
         dragRef.current = null;
         e.currentTarget.releasePointerCapture(e.pointerId);
         if (drag === "gx" || drag === "gy") {
-            setGuidePrev((prev) => {
-                if (prev) setGuides((g) => ({ ...g, [prev.k]: prev.v }));
-                return null;
-            });
+            const prev = guidePrevRef.current;
+            guidePrevRef.current = null;
+            setGuidePrev(null);
+            if (prev) setGuides((g) => ({ ...g, [prev.k]: prev.v }));
             return;
         }
         if (drag === "amount" || drag === "rate") cut?.onCommit();

@@ -53,7 +53,11 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
     const { subject, section } = plane;
 
     // ── 컷선 드래그 — 미리보기는 로컬, 커밋은 손 뗄 때 한 번(Rail 규약) 연동 행의 술어로.
+    // ⚠ 커밋을 setPreview 업데이터 안에서 하면 안 된다 — 업데이터는 다음 렌더 중에 돌 수 있어
+    //   "렌더 중 다른 컴포넌트(FunnelProvider) 업데이트" React 에러가 난다(2026-09-17 실측이 잡음).
+    //   최신 미리보기는 ref 미러로 들고, 커밋은 이벤트 핸들러에서 직접 술어를 쓴다.
     const [preview, setPreview] = useState<Partial<ThemeStrengthParams> | null>(null);
+    const previewRef = useRef<Partial<ThemeStrengthParams> | null>(null);
     const eff: ThemeStrengthParams = useMemo(
         () => ({ ...(linkedParams ?? DEFAULT_THEME_STRENGTH), ...preview }),
         [linkedParams, preview],
@@ -66,12 +70,17 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
         return {
             rateN: eff.zoneRateN,
             amountN: eff.zoneAmountN,
-            onPreview: (patch) => setPreview((p) => ({ ...p, ...patch })),
-            onCommit: () =>
-                setPreview((p) => {
-                    if (p) patchLinked(p);
-                    return null;
-                }),
+            onPreview: (patch) => {
+                const next = { ...(previewRef.current ?? {}), ...patch };
+                previewRef.current = next;
+                setPreview(next);
+            },
+            onCommit: () => {
+                const p = previewRef.current;
+                previewRef.current = null;
+                setPreview(null);
+                if (p) patchLinked(p);
+            },
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [linkedParams, eff.zoneRateN, eff.zoneAmountN, linked?.id]);
