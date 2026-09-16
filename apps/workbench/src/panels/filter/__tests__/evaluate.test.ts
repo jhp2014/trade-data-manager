@@ -217,7 +217,7 @@ describe("evalPredicate3 — 테마 강도 묶음", () => {
         look({ sectionRanksAt: () => section, themeProj: proj, ...over });
     const pred = (countMin: number): FilterPredicate => ({
         kind: "themeStrength",
-        params: { zoneRateN: 30, zoneAmountN: 40, basis: "rate", countOn: true, countMin, baseRankOn: false, baseRankMax: 3, zoneRankOn: false, zoneRankMax: 2 },
+        params: { zoneRateN: 30, zoneAmountN: 40, zoneAmountWindow: 0, basis: "rate", countOn: true, countMin, baseRankOn: false, baseRankMax: 3, zoneRankOn: false, zoneRankMax: 2 },
     });
     const sItem: FunnelItem = { stockCode: "s", date: "2025-07-01", time: "09:21:00" };
 

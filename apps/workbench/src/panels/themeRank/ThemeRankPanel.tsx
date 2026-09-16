@@ -94,7 +94,9 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
     // **일치할 때만** 선다 — 다른 축에서 살리면 점의 자리와 판정 숫자가 조용히 갈린다(decisions.md).
     const [axesRaw, setAxesRaw] = usePanelUi<unknown>(panelId, "axes", null);
     const axes = useMemo(() => parseThemeRankAxes(axesRaw), [axesRaw]);
-    const judgmentSpace = isJudgmentSpace(axes, null);
+    // 술어의 존 대금 창 — 연동 행이 60분 창이면 판정 층은 60분 순위 축에서 선다(연동 없으면 당일 기본).
+    const zoneWindow = linkedParams?.zoneAmountWindow === 60 ? 60 : null;
+    const judgmentSpace = isJudgmentSpace(axes, zoneWindow);
     const zoomable = isZoomable(axes);
     // 판정 층의 유일한 파라미터 출처 — 공간 불일치면 연동 행이 있어도 null(순수 산점 + 가이드).
     const judgeParams = judgmentSpace ? linkedParams : null;
@@ -575,9 +577,9 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
     );
     // 의존성은 **원시값**(zone 은 렌더마다 새 객체 — layers 메모와 같은 함정, 호버 move 마다 재계산·재렌더가 된다).
     const segments = useMemo(
-        () => (track && minuteRange && zone !== null ? bandSegmentsOf(track, minuteRange.lo, minuteRange.hi, zone.rateN, zone.amountN) : null),
+        () => (track && minuteRange && zone !== null ? bandSegmentsOf(track, minuteRange.lo, minuteRange.hi, zone.rateN, zone.amountN, eff.zoneAmountWindow) : null),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [track, minuteRange, zone === null, zone?.rateN, zone?.amountN],
+        [track, minuteRange, zone === null, zone?.rateN, zone?.amountN, eff.zoneAmountWindow],
     );
     // 타점의 분들 — ▼ 마커(클릭 = 점프, 옛 ↺ 의 후계).
     const pointMinutes = useMemo(
@@ -687,10 +689,11 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
             )}
 
             {/* 칩 스트립 — 테마 행 목록의 파생 뷰(별도 저장물 없음). 클릭 = 연동 전환(보드 요약 줄도 같은 상태를 본다).
-                조건 칩(왼쪽)은 판정 층과 함께 접힌다 — 렌즈 칩(오른쪽)은 시선 도구라 축 설정과 무관하게 산다. */}
-            {((judgmentSpace && themeStages.length > 0) || subjectThemes.length > 0 || (subject !== null && themesStatus !== "ready")) && (
+                판정 층이 접힌 축 설정에서도 칩은 산다 — 연동이 곧 판정 공간(행의 창)을 정하므로 칩을 접으면
+                60분 행을 연동할 입구가 없다(닭-달걀). 컷·존·카운트만 judgmentSpace 가 접는다. */}
+            {(themeStages.length > 0 || subjectThemes.length > 0 || (subject !== null && themesStatus !== "ready")) && (
                 <div style={chipsRow}>
-                    {judgmentSpace && themeStages.map((s) => {
+                    {themeStages.map((s) => {
                         const p = themeParamsOf(s);
                         if (!p) return null;
                         const active = s.id === linkedId;

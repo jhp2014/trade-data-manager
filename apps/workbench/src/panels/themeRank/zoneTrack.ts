@@ -14,8 +14,9 @@
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { sectionAtMinute } from "./sectionSeries.js";
 
-/** 분 → 시선 종목의 (등락, 대금) 서수. 결손·미참가 분은 키가 없다(지어내지 않는다). */
-export type OrdinalTrack = ReadonlyMap<number, { rate: number; amount: number }>;
+/** 분 → 시선 종목의 (등락, 대금, 60분 창 대금) 서수. 결손·미참가 분은 키가 없다(지어내지 않는다).
+ *  amount60 은 null 일 수 있다 — 존이 60분 창 술어일 때만 읽히고, 그 분의 창 결손은 재적 아님으로 접힌다. */
+export type OrdinalTrack = ReadonlyMap<number, { rate: number; amount: number; amount60: number | null }>;
 
 export function subjectOrdinalTrack(
     stocks: readonly ReplayStock[],
@@ -23,14 +24,14 @@ export function subjectOrdinalTrack(
     code: string,
     range: { lo: number; hi: number },
 ): OrdinalTrack {
-    const out = new Map<number, { rate: number; amount: number }>();
+    const out = new Map<number, { rate: number; amount: number; amount60: number | null }>();
     const i = stocks.findIndex((s) => s.code === code);
     if (i < 0) return out; // 유니버스 밖 — 지어내지 않는다
     for (let m = range.lo; m <= range.hi; m++) {
         const section = sectionAtMinute(stocks, date, m);
         const rate = section.rate[i];
         const amount = section.amount[i];
-        if (rate !== null && amount !== null) out.set(m, { rate, amount });
+        if (rate !== null && amount !== null) out.set(m, { rate, amount, amount60: section.amount60[i] });
     }
     return out;
 }
@@ -41,12 +42,14 @@ export interface BandSegment {
     to: number;
 }
 
-export function bandSegmentsOf(track: OrdinalTrack, lo: number, hi: number, rateN: number, amountN: number): BandSegment[] {
+export function bandSegmentsOf(track: OrdinalTrack, lo: number, hi: number, rateN: number, amountN: number, amountWindow: 0 | 60 = 0): BandSegment[] {
     const out: BandSegment[] = [];
     let start: number | null = null;
     for (let m = lo; m <= hi + 1; m++) {
         const r = m <= hi ? track.get(m) : undefined;
-        const inZone = r !== undefined && r.rate <= rateN && r.amount <= amountN;
+        // 존이 읽는 대금 서수는 술어의 창을 따른다(themeStrength.amountOrd 와 같은 갈래) — 띠와 판정이 다른 자를 보면 안 된다.
+        const amt = r === undefined ? null : amountWindow === 60 ? r.amount60 : r.amount;
+        const inZone = r !== undefined && amt !== null && r.rate <= rateN && amt <= amountN;
         if (inZone && start === null) start = m;
         if (!inZone && start !== null) {
             out.push({ from: start, to: m - 1 });

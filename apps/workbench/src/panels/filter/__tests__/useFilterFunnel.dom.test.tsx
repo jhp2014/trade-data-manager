@@ -366,7 +366,7 @@ describe("테마 강도 배선 — 실제 시드(번들·멤버십)로 판정까
         id: "th1", enabled: true,
         predicates: [{
             kind: "themeStrength",
-            params: { zoneRateN: 30, zoneAmountN: 40, basis: "rate", countOn: true, countMin, baseRankOn: false, baseRankMax: 3, zoneRankOn: false, zoneRankMax: 2 },
+            params: { zoneRateN: 30, zoneAmountN: 40, zoneAmountWindow: 0, basis: "rate", countOn: true, countMin, baseRankOn: false, baseRankMax: 3, zoneRankOn: false, zoneRankMax: 2 },
         }],
     });
 

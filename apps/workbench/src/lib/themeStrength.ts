@@ -37,6 +37,10 @@ export interface SectionRanks {
 export interface ThemeStrengthParams {
     zoneRateN: number;
     zoneAmountN: number;
+    /** 이 술어가 읽는 대금 서수의 창(분). 0 = 당일 전체(기본 — additive, 옛 저장물 옛 뜻 그대로),
+     *  60 = 60분 창(단면의 amount60 — 검색이 아는 유일한 T-창). 존과 basis="amount" 순위가 함께 탄다
+     *  (존은 60분인데 순위는 당일이면 한 행이 두 자를 섞는다). */
+    zoneAmountWindow: 0 | 60;
     /** 순위 조건(②③)의 기준 서수 — 한 벌 공유(사용자 확정: 등락률 기본, 거래대금 옵션). */
     basis: "rate" | "amount";
     /** ① 존 내 테마 종목 수 ≥ countMin (자신 포함). */
@@ -53,6 +57,7 @@ export interface ThemeStrengthParams {
 export const DEFAULT_THEME_STRENGTH: ThemeStrengthParams = {
     zoneRateN: 30,
     zoneAmountN: 40,
+    zoneAmountWindow: 0,
     basis: "rate",
     countOn: true,
     countMin: 3,
@@ -78,6 +83,7 @@ export function parseThemeStrengthParams(o: unknown): ThemeStrengthParams | null
     return {
         zoneRateN: num(r.zoneRateN, d.zoneRateN),
         zoneAmountN: num(r.zoneAmountN, d.zoneAmountN),
+        zoneAmountWindow: r.zoneAmountWindow === 60 ? 60 : 0,
         basis: r.basis === "amount" ? "amount" : "rate",
         countOn: bool(r.countOn, d.countOn),
         countMin: num(r.countMin, d.countMin),
@@ -110,10 +116,18 @@ export function themeProjectionOf(index: ThemeIndex): ThemeProjection {
 }
 
 /** 존 판정에 필요한 조각 — 틱 재료 함수는 임계값 없이 이만큼만 받는다(의존이 좁을수록 캐시가 오래 산다). */
-export type ZoneParams = Pick<ThemeStrengthParams, "zoneRateN" | "zoneAmountN" | "basis">;
+export type ZoneParams = Pick<ThemeStrengthParams, "zoneRateN" | "zoneAmountN" | "zoneAmountWindow" | "basis">;
 
-const inZone = (r: { rate: number | null; amount: number | null }, p: ZoneParams): boolean =>
-    r.rate !== null && r.amount !== null && r.rate <= p.zoneRateN && r.amount <= p.zoneAmountN;
+type Ranks = NonNullable<ReturnType<SectionRanks["ranksOf"]>>;
+
+/** 이 술어가 읽는 대금 서수 — 창 파라미터가 당일/60분을 가른다. amount60 이 없는 공급자(옛 픽스처)는 결손. */
+const amountOrd = (r: Ranks, p: Pick<ThemeStrengthParams, "zoneAmountWindow">): number | null =>
+    p.zoneAmountWindow === 60 ? r.amount60 ?? null : r.amount;
+
+const inZone = (r: Ranks, p: ZoneParams): boolean => {
+    const amt = amountOrd(r, p);
+    return r.rate !== null && amt !== null && r.rate <= p.zoneRateN && amt <= p.zoneAmountN;
+};
 
 /** 테마 하나의 셈 결과 — **임계값을 안 본 숫자만**. 판정(passesTheme)과 표시(themeVerdicts)가 같은 셈을 본다. */
 export interface ThemeStats {
@@ -135,7 +149,7 @@ export function themeStatsOf(code: string, theme: string, section: SectionRanks,
     const members = proj.codesByTheme.get(theme);
     if (!members || members.length === 0) return null;
     const self = section.ranksOf(code);
-    const selfBasis = self === null ? null : zoneParams.basis === "rate" ? self.rate : self.amount;
+    const selfBasis = self === null ? null : zoneParams.basis === "rate" ? self.rate : amountOrd(self, zoneParams);
     const selfInZone = self !== null && inZone(self, zoneParams);
 
     let zoneCount = 0;
@@ -144,7 +158,7 @@ export function themeStatsOf(code: string, theme: string, section: SectionRanks,
     for (const m of members) {
         const r = m === code ? self : section.ranksOf(m);
         if (r === null) continue; // 유니버스 밖·결손 — 분모에서 빠진다
-        const b = zoneParams.basis === "rate" ? r.rate : r.amount;
+        const b = zoneParams.basis === "rate" ? r.rate : amountOrd(r, zoneParams);
         const z = inZone(r, zoneParams);
         if (z) zoneCount++;
         if (m === code) continue; // 자신은 "자기보다 좋은" 셈의 대상이 아니다
@@ -180,7 +194,7 @@ export function passesTheme(code: string, theme: string, section: SectionRanks, 
     if (params.zoneRankOn || params.baseRankOn) {
         const self = section.ranksOf(code);
         if (params.zoneRankOn && !(self !== null && inZone(self, params))) return false;
-        if (params.baseRankOn && (self === null || (params.basis === "rate" ? self.rate : self.amount) === null)) return false;
+        if (params.baseRankOn && (self === null || (params.basis === "rate" ? self.rate : amountOrd(self, params)) === null)) return false;
     }
     return statsPass(themeStatsOf(code, theme, section, params, proj), params);
 }

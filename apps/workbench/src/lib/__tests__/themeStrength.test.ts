@@ -35,6 +35,28 @@ describe("passesPoint — 테마 단위 AND · 테마 간 ∃", () => {
         expect(passesPoint("s", section, P({ countOn: false, baseRankOn: true, baseRankMax: 1 }), proj)).toBe(true);
     });
 
+    it("zoneAmountWindow=60 — 존·대금 기준이 amount60 서수를 탄다(당일 서수와 독립)", () => {
+        const proj = projOf({ T: ["s", "m1"] });
+        // 당일 대금 서수(50, 60)는 존(30/40) 밖 — 60분 창 서수(1, 2)는 존 안.
+        const rows: Record<string, NonNullable<ReturnType<SectionRanks["ranksOf"]>>> = {
+            s: { rate: 1, amount: 50, amount60: 1 },
+            m1: { rate: 2, amount: 60, amount60: 2 },
+        };
+        const section: SectionRanks = { ranksOf: (code) => rows[code] ?? null };
+        const p = P({ countOn: true, countMin: 2, baseRankOn: false });
+        expect(passesPoint("s", section, p, proj)).toBe(false); // 당일 창 — 존 밖
+        expect(passesPoint("s", section, { ...p, zoneAmountWindow: 60 }, proj)).toBe(true); // 60분 창 — 존 안
+        // amount60 을 모르는 공급자(옛 픽스처)는 결손 — 60분 술어에서 존에 못 든다(지어내지 않는다).
+        const noWin = sectionOf({ s: [1, 1], m1: [2, 2] });
+        expect(passesPoint("s", noWin, { ...p, zoneAmountWindow: 60 }, proj)).toBe(false);
+    });
+
+    it("parseThemeStrengthParams — zoneAmountWindow 는 additive(부재 = 0 = 당일, 옛 뜻 그대로)", () => {
+        expect(parseThemeStrengthParams({})!.zoneAmountWindow).toBe(0);
+        expect(parseThemeStrengthParams({ zoneAmountWindow: 60 })!.zoneAmountWindow).toBe(60);
+        expect(parseThemeStrengthParams({ zoneAmountWindow: 45 })!.zoneAmountWindow).toBe(0); // 모르는 창은 당일로
+    });
+
     it("① 존 종목 수는 자신을 포함해 센다", () => {
         const proj = projOf({ T: ["s", "m1"] });
         const section = sectionOf({ s: [1, 1], m1: [2, 2] });

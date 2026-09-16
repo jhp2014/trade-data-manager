@@ -41,6 +41,21 @@ export function ThemeParamControls({ params, onPatch }: {
                 title="테마 내 존 순위 ≤ r (존에 든 멤버 중 — 자신이 존 밖이면 불만족)"
                 onToggle={() => onPatch({ zoneRankOn: !params.zoneRankOn })}
                 onStep={(d) => onPatch({ zoneRankMax: Math.max(1, params.zoneRankMax + d) })} />
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--text-tertiary)" }}>
+                창
+                {([0, 60] as const).map((w) => (
+                    <button key={w} onClick={() => params.zoneAmountWindow !== w && onPatch({ zoneAmountWindow: w })}
+                        title="이 행이 읽는 대금 서수의 창 — 당일 전체 누적 / 직전 60분 누적(오후 상승주가 아침 상승주와 같은 자로 재이지 않게). 존·대금 기준 순위가 함께 탄다"
+                        style={{
+                            ...chip, padding: "0 7px",
+                            ...(params.zoneAmountWindow === w
+                                ? { color: "var(--accent-primary)", borderColor: "var(--accent-primary)", background: "var(--accent-soft)" }
+                                : {}),
+                        }}>
+                        {w === 0 ? "당일" : "60분"}
+                    </button>
+                ))}
+            </span>
             <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--text-tertiary)" }}>
                 기준
                 {(["rate", "amount"] as const).map((b) => (

@@ -61,7 +61,9 @@ export function themeStrengthLabel(p: ThemeStrengthParams): string {
         p.zoneRankOn ? `존순위≤${p.zoneRankMax}` : null,
     ].filter((s): s is string => s !== null);
     const basis = p.basis === "amount" ? "대금" : "등락";
-    return `존 ${p.zoneRateN}/${p.zoneAmountN} · ${basis}${conds.length > 0 ? ` · ${conds.join(" · ")}` : ""}`;
+    // 창 표기 — 60분 창 행이 당일 행과 같은 이름이 되면 어느 자로 재는지 못 읽는다(hotPoints 의 (W,r) 과 같은 이유).
+    const win = p.zoneAmountWindow === 60 ? " · 60분" : "";
+    return `존 ${p.zoneRateN}/${p.zoneAmountN}${win} · ${basis}${conds.length > 0 ? ` · ${conds.join(" · ")}` : ""}`;
 }
 
 /** 단계가 무슨 도구인가 — 막대 아래 한 줄. 한 단계는 한 종류라 첫 술어가 곧 단계의 종류다. */
