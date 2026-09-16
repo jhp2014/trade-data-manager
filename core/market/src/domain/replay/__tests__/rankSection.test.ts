@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { descendingOrdinals, lastIndexAtOrBefore, rankSectionOf } from "../rankSection.js";
+import { descendingOrdinals, lastIndexAtOrBefore, rankSectionOf, sectionValuesOf, windowedAmounts } from "../rankSection.js";
 import { kstToUnix } from "../../kst.js";
 
 describe("lastIndexAtOrBefore — t 이하 마지막 인덱스(carry-forward 의 심장)", () => {
@@ -90,5 +90,51 @@ describe("rankSectionOf — (날짜,분) 단면", () => {
         // 09:09: A 는 09:00 값(1%) < C 3% → A 가 2위. 09:10: A 의 09:10 봉(5%)이 포함돼 1위로 뒤집힌다.
         expect(rankSectionOf([A, C], DATE, "09:09").rate).toEqual([2, 1]);
         expect(rankSectionOf([A, C], DATE, "09:10").rate).toEqual([1, 2]);
+    });
+
+    it("sectionValuesOf — 서수 단면과 같은 carry-forward·절단 규칙의 원값 층", () => {
+        const v = rankSectionOf([A, B], DATE, "09:07");
+        const vals = sectionValuesOf([A, B], DATE, "09:07:30");
+        expect(vals.time).toBe("09:07");
+        expect(vals.rate).toEqual([1, 9]); // A 09:00 봉 / B 09:05 봉
+        expect(vals.cumAmount).toEqual([100, 50]);
+        // 서수 단면은 이 값의 내림차순이다 — 두 층이 한 벌임을 고정.
+        expect(v.rate).toEqual(descendingOrdinals(vals.rate));
+    });
+});
+
+describe("windowedAmounts — T-창 누적 거래대금(경계 = 0 기준)", () => {
+    const DATE = "2026-08-14";
+    const at = (time: string): number => kstToUnix(DATE, time);
+    const stock = (code: string, bars: [string, number][]): { code: string; times: number[]; rate: number[]; cumAmount: number[] } => ({
+        code,
+        times: bars.map(([tm]) => at(tm)),
+        rate: bars.map(() => 0),
+        cumAmount: bars.map(([, a]) => a),
+    });
+
+    // 분당 누적: 09:00=100 · 09:30=400 · 10:30=1000
+    const A = stock("A", [["09:00:00", 100], ["09:30:00", 400], ["10:30:00", 1000]]);
+
+    it("창 안 = cum[t] − cum[t−T] (창 = (t−T, t] — t−T 정각 봉은 창 밖)", () => {
+        // 10:30, T=60: t−T=09:30 → 그 봉(400)까지가 밖. 1000−400=600.
+        expect(windowedAmounts([A], DATE, "10:30", 60)).toEqual([600]);
+        // 10:29, T=60: t−T=09:29 → 09:00 봉(100)이 마지막 밖. carry-forward 로 지금 값은 09:30 봉(400). 400−100=300.
+        expect(windowedAmounts([A], DATE, "10:29", 60)).toEqual([300]);
+    });
+
+    it("시작 경계 0 기준 — t−T 가 첫 봉보다 이르면 당일 누적 전체(장 초반이 결손이 되지 않는다)", () => {
+        expect(windowedAmounts([A], DATE, "09:30", 60)).toEqual([400]);
+        expect(windowedAmounts([A], DATE, "09:00", 60)).toEqual([100]);
+    });
+
+    it("결손(그 분 이전 데이터 없음)만 null — 거래 없는 창은 0(값이다)", () => {
+        expect(windowedAmounts([A], DATE, "08:59", 60)).toEqual([null]);
+        // 12:00, T=60: 창 (11:00,12:00] 에 봉 없음 — carry-forward 값 1000, t−T 이전 마지막도 1000 → 0.
+        expect(windowedAmounts([A], DATE, "12:00", 60)).toEqual([0]);
+    });
+
+    it("당일 전체(창 밖 봉이 없는 T)와 창의 관계 — 큰 T 는 누적 전체로 수렴", () => {
+        expect(windowedAmounts([A], DATE, "10:30", 600)).toEqual([1000]);
     });
 });

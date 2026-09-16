@@ -51,6 +51,73 @@ export function descendingOrdinals(values: readonly (number | null)[]): (number 
     return out;
 }
 
+/** 시점 값 단면 — 서수를 매기기 전의 원값(carry-forward 적용). 배열은 stocks 순서. */
+export interface SectionValues {
+    /** 단면 시각 "HH:MM". */
+    time: string;
+    /** 등락률 %(전일 종가 대비). null = 결손(그 분 이전 데이터 없음). */
+    rate: (number | null)[];
+    /** 당일 누적 거래대금(원). null = 결손. */
+    cumAmount: (number | null)[];
+}
+
+/** 단면에 넣는 종목 모양 — 서버(DaySnapshotFile)·클라(와이어 ReplayStock) 공용 Pick. */
+export type SectionStock = Pick<MinuteDerived, "code" | "times" | "rate" | "cumAmount">;
+
+const truncMin = (time: string): string => time.slice(0, 5);
+
+/**
+ * (날짜, 분)의 시점 값 단면 — rankSectionOf 의 값 층을 그대로 노출한다(값 산점·창 계산의 재료).
+ * carry-forward·분 절단·kstToUnix 규칙은 서수 단면과 한 벌이다(여기서 갈리면 자리와 값이 어긋난다).
+ */
+export function sectionValuesOf(stocks: readonly SectionStock[], date: string, time: string): SectionValues {
+    const hhmm = truncMin(time);
+    const t = kstToUnix(date, `${hhmm}:00`);
+    const rate = new Array<number | null>(stocks.length);
+    const cumAmount = new Array<number | null>(stocks.length);
+    for (let k = 0; k < stocks.length; k++) {
+        const s = stocks[k];
+        const i = lastIndexAtOrBefore(s.times, t);
+        if (i < 0) {
+            rate[k] = null;
+            cumAmount[k] = null;
+            continue;
+        }
+        rate[k] = s.rate[i];
+        cumAmount[k] = s.cumAmount[i];
+    }
+    return { time: hhmm, rate, cumAmount };
+}
+
+/**
+ * T-창 누적 거래대금(원) — 그 분까지의 누적에서 T분 전까지의 누적을 뺀 값(창 = (t−T, t], 봉 T개).
+ * 시작 경계는 **0 기준**(2026-09-16 확정): t−T 가 그 종목 첫 봉보다 이르면 당일 누적 전체다 —
+ * 장 초반을 결손으로 만들면 "아침/오후 공정 비교"라는 창의 존재 이유가 아침을 잃는다.
+ * 결손(그 분 이전 데이터 자체가 없음) = null. 클라 표시와 서버 굽기가 **이 함수 하나**를 쓴다
+ * (서수 출처 단일화의 연장 — 여기서 두 벌이 되면 "타점 분에서만 미묘하게 다른 값"이 재발한다).
+ */
+export function windowedAmounts(
+    stocks: readonly SectionStock[],
+    date: string,
+    time: string,
+    windowMin: number,
+): (number | null)[] {
+    const t = kstToUnix(date, `${truncMin(time)}:00`);
+    const t0 = t - windowMin * 60;
+    const out = new Array<number | null>(stocks.length);
+    for (let k = 0; k < stocks.length; k++) {
+        const s = stocks[k];
+        const i = lastIndexAtOrBefore(s.times, t);
+        if (i < 0) {
+            out[k] = null;
+            continue;
+        }
+        const j = lastIndexAtOrBefore(s.times, t0);
+        out[k] = s.cumAmount[i] - (j >= 0 ? s.cumAmount[j] : 0);
+    }
+    return out;
+}
+
 /** 단면 하나 — 배열들은 입력 stocks 와 같은 길이·같은 순서(코드 테이블은 호출측이 든다). */
 export interface RankSection {
     /** 단면 시각 "HH:MM" — 타점 시각의 분 절단(그 분 봉의 종가 기준). */
@@ -70,27 +137,13 @@ export interface RankSection {
  * stocks 는 쓰는 필드만 Pick — 서버(DaySnapshotFile)와 클라(와이어 ReplayStock) 어느 쪽 모양으로도 호출 가능.
  */
 export function rankSectionOf(
-    stocks: readonly Pick<MinuteDerived, "code" | "times" | "rate" | "cumAmount">[],
+    stocks: readonly SectionStock[],
     date: string,
     time: string,
 ): RankSection {
-    const hhmm = time.slice(0, 5);
-    const t = kstToUnix(date, `${hhmm}:00`);
-    const rateVals = new Array<number | null>(stocks.length);
-    const amountVals = new Array<number | null>(stocks.length);
-    for (let k = 0; k < stocks.length; k++) {
-        const s = stocks[k];
-        const i = lastIndexAtOrBefore(s.times, t);
-        if (i < 0) {
-            rateVals[k] = null;
-            amountVals[k] = null;
-            continue;
-        }
-        rateVals[k] = s.rate[i];
-        amountVals[k] = s.cumAmount[i];
-    }
-    const rate = descendingOrdinals(rateVals);
+    const vals = sectionValuesOf(stocks, date, time);
+    const rate = descendingOrdinals(vals.rate);
     let n = 0;
     for (const v of rate) if (v !== null) n++;
-    return { time: hhmm, n, rate, amount: descendingOrdinals(amountVals) };
+    return { time: vals.time, n, rate, amount: descendingOrdinals(vals.cumAmount) };
 }
