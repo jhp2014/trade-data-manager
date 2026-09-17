@@ -28,13 +28,13 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
     // 자 키는 모드별(창 무시 — 임의 분이라 창을 키에 넣으면 무한히 번진다. 조건판과 키 규칙이 다른 건 의도).
     const guideKeys = useMemo(() => ({ x: `x:${axes.xMode}`, y: `y:${axes.yMode}` }), [axes.xMode, axes.yMode]);
 
-    // 탭 꼬리표 — 축 설정에서 파생("· 30분 값").
+    // 탭 제목 = 카탈로그 이름 그대로 — 축 꼬리표("· 30분 값") 폐지(2026-09-17 사용자: 헤더가 이미
+    // 말한다). 옛 저장 배치에 꼬리 붙은 제목이 남아 있으니 다르면 되돌리는 정규화를 겸한다.
     useEffect(() => {
         if (!baseTitle) return;
-        const anyValue = axes.xMode === "value" || axes.yMode === "value";
-        const tail = axes.windowMin === null && !anyValue ? "" : ` · ${windowLabel(axes.windowMin)}${anyValue ? " 값" : ""}`;
-        useDock.getState().api?.getPanel(panelId)?.api.setTitle(baseTitle + tail);
-    }, [panelId, baseTitle, axes]);
+        const p = useDock.getState().api?.getPanel(panelId);
+        if (p && p.title !== baseTitle) p.api.setTitle(baseTitle);
+    }, [panelId, baseTitle]);
 
     const axisSummary = `${windowLabel(axes.windowMin)} 대금 ${axes.xMode === "rank" ? "순위" : "값"} × 등락 ${axes.yMode === "rank" ? "순위" : "값"}`;
 

@@ -145,11 +145,13 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
         [track, plane.minuteRange, hasLink, eff.zoneRateN, eff.zoneAmountN, eff.zoneAmountWindow],
     );
 
-    // 탭 꼬리표 — 연동 행의 창에서 파생(손 이름 짓기 없음).
+    // 탭 제목 = 카탈로그 이름 그대로 — 설정 꼬리표("· 60분") 폐지(2026-09-17 사용자: 헤더가 이미
+    // 말한다). 옛 저장 배치에 꼬리 붙은 제목이 남아 있으니 다르면 되돌리는 정규화를 겸한다.
     useEffect(() => {
         if (!baseTitle) return;
-        useDock.getState().api?.getPanel(panelId)?.api.setTitle(baseTitle + (win === 60 ? " · 60분" : ""));
-    }, [panelId, baseTitle, win]);
+        const p = useDock.getState().api?.getPanel(panelId);
+        if (p && p.title !== baseTitle) p.api.setTitle(baseTitle);
+    }, [panelId, baseTitle]);
 
     return (
         <div style={wrap}>

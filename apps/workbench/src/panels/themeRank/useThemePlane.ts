@@ -173,22 +173,24 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
     const themeColors = useMemo(() => themeColorMap(subjectThemes), [subjectThemes]);
     const themesStatus = themesView.error ? "error" : themesView.ready ? "ready" : "loading";
 
-    // ── 그림 상자 — 안정 콜백 ref(기존 불변식: 인라인이면 detach/attach 루프).
+    // ── 그림 상자 — 요소는 state 로 들고 **관측은 이펙트에서**(다른 그림 패널들과 같은 패턴).
+    // ⚠ ref 콜백 안에서 RO 를 만들고 언마운트 이펙트가 disconnect 하는 옛 패턴은 StrictMode 함정:
+    //   모의 재마운트가 클린업으로 RO 를 죽이는데 ref 는 재호출되지 않아 복구가 없다. 첫 렌더부터
+    //   wrap 이 서는 경로(최소화 복원 — 시선이 이미 있음)에서만 터져 "복원하면 판이 빈다"로 나타났다
+    //   (2026-09-17 실측). setWrapEl 은 안정 함수라 "인라인 ref = detach/attach 루프" 불변식도 지킨다.
     const [size, setSize] = useState({ w: 0, h: 0 });
-    const roRef = useRef<ResizeObserver | null>(null);
-    const wrapRef = useCallback((el: HTMLDivElement | null): void => {
-        roRef.current?.disconnect();
-        roRef.current = null;
-        if (!el) return;
+    const [wrapEl, setWrapEl] = useState<HTMLDivElement | null>(null);
+    useEffect(() => {
+        if (!wrapEl) return;
         const ro = new ResizeObserver((es) => {
             const w = es[0].contentRect.width;
             const h = es[0].contentRect.height;
             setSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
         });
-        ro.observe(el);
-        roRef.current = ro;
-    }, []);
-    useEffect(() => () => roRef.current?.disconnect(), []);
+        ro.observe(wrapEl);
+        return () => ro.disconnect();
+    }, [wrapEl]);
+    const wrapRef = setWrapEl;
     const box = { left: PAD.left, top: PAD.top, width: Math.max(0, size.w - PAD.left - PAD.right), height: Math.max(0, size.h - PAD.top - PAD.bottom) };
     // 스케일이 실제로 쓰는 안쪽 상자 — 점·눈금·컷이 전부 이만큼 들어와 도메인 끝이 숨을 쉰다.
     const inner = { left: box.left + INNER_PAD, top: box.top + INNER_PAD, width: Math.max(0, box.width - 2 * INNER_PAD), height: Math.max(0, box.height - 2 * INNER_PAD) };
