@@ -37,6 +37,16 @@ export function HeaderPopover({
         const place = (): void => {
             const el = anchorRef.current;
             if (!el) return;
+            // dockview 탭 전환은 비활성 패널의 element 를 DOM 에서 떼어낸다(React 트리는 유지) —
+            // 앵커가 떨어졌는데 열린 채면 portal 된 내용만 남아 다른 패널 위에 겹친다. 닫는 게 맞다.
+            // 판정은 rect 0×0 이 아니라 isConnected 다 — 실측된 메커니즘이 탈착이고 이게 그 직접
+            // 판정이다. rect 는 간접 판정인 데다 테스트 setup 이 rect 를 고정 크기(1000×600)로
+            // 스텁해 테스트가 그 길을 아예 못 밟는다. display:none 계 은닉은 여기 안 걸리지만,
+            // dockview 기본 렌더러는 은닉이 아니라 탈착이다.
+            if (!el.isConnected) {
+                setOpen(false);
+                return;
+            }
             const r = el.getBoundingClientRect();
             const left = Math.max(8, Math.min(align === "start" ? r.left : r.right - width, window.innerWidth - width - 8));
             setPos({ top: r.bottom + 6, left });
@@ -44,9 +54,23 @@ export function HeaderPopover({
         place();
         window.addEventListener("resize", place);
         window.addEventListener("scroll", place, true);
+        // 탭 전환은 resize/scroll 어느 쪽도 안 울려 place 가 안 불린다 — body subtree 의 childList
+        // 변화를 MutationObserver 로 듣고 isConnected 만 재확인한다(관찰은 열려 있는 동안만, 콜백은
+        // 한 줄 — 변이당 레코드 큐잉 비용은 남지만, place/setPos 를 안 불러 리렌더 폭주는 없다).
+        // IntersectionObserver 는 기각: Chrome 은 관찰 대상이 DOM 에서
+        // **제거될 때 통지를 안 쏜다**(2026-09-17 실측 — 탈착 후 콜백이 영영 안 왔다). dock 스토어의
+        // onDidActivePanelChange 구독도 기각: store/dock 은 모듈 최상위에서 panelCatalog 를 쓰고
+        // 패널들이 이 컴포넌트를 쓰므로, 여기서 스토어를 물면 import 순환(TDZ)이 된다. DOM 층에서
+        // 들으면 탭 전환뿐 아니라 그룹 드래그·플로팅 등 어떤 탈착이든 같은 길로 잡힌다.
+        const mo = new MutationObserver(() => {
+            const el = anchorRef.current;
+            if (el && !el.isConnected) setOpen(false);
+        });
+        mo.observe(document.body, { childList: true, subtree: true });
         return () => {
             window.removeEventListener("resize", place);
             window.removeEventListener("scroll", place, true);
+            mo.disconnect();
         };
     }, [open, width, align]);
 
