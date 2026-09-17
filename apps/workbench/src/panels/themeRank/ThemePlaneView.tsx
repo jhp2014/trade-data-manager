@@ -239,6 +239,15 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
                             const zyB = clamp(cutY, box.top, box.top + box.height);
                             return <rect x={Math.min(zxA, zxB)} y={Math.min(zyA, zyB)} width={Math.abs(zxB - zxA)} height={Math.abs(zyB - zyA)} fill="var(--accent-soft)" opacity={0.7} />;
                         })()}
+                        {cut === null && gx !== null && gy !== null && (() => {
+                            // 자 기준의 "강한 쪽"(오른쪽-위) 틴트 — 존과 뜻이 다르니 색도 가른다(자 = 회색 계열,
+                            // 술어 무관·보기용). 강한 모서리 = 순위 축은 1위, 값 축은 도메인 상한(오른쪽/위).
+                            const zxA = clamp(scales.x(p.axes.xMode === "rank" ? 1 : p.vx.hi), box.left, box.left + box.width);
+                            const zxB = clamp(scales.x(gx), box.left, box.left + box.width);
+                            const zyA = clamp(scales.y(p.axes.yMode === "rank" ? 1 : p.vy.hi), box.top, box.top + box.height);
+                            const zyB = clamp(scales.y(gy), box.top, box.top + box.height);
+                            return <rect x={Math.min(zxA, zxB)} y={Math.min(zyA, zyB)} width={Math.abs(zxB - zxA)} height={Math.abs(zyB - zyA)} fill="var(--bg-tertiary)" opacity={0.55} />;
+                        })()}
                         {xScale.ticks.map((t) => (
                             <g key={`x${t.v}`}>
                                 <line x1={xScale.px(t.v)} y1={box.top} x2={xScale.px(t.v)} y2={box.top + box.height} stroke="var(--border-subtle)" />
