@@ -27,7 +27,7 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     const [missingOpen, setMissingOpen] = usePanelUi(panelId, "unplacedOpen", false);
     const [hiddenOpen, setHiddenOpen] = usePanelUi(panelId, "hiddenOpen", false);
 
-    // 이 시각이 타점인가 — 차트의 현재 타점 판정과 같은 소스(자동 타점 파생 한 벌).
+    // 이 시각이 타점인가 — 차트의 현재 타점 판정과 같은 소스(라벨 좌표 한 벌, useChartPoints).
     const points = useChartPoints(code, viewDate);
     const pointTime = useMemo(() => (time && points.includes(time) ? time : null), [points, time]);
     const point = useMemo(

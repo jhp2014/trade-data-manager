@@ -9,7 +9,7 @@
 // 후보 하루(분석 모수)도 이 지도의 파생이다(candidateDaysOf — 경계 차이는 코멘트 하나뿐이라 필터 한 줄).
 // 옛 서버 union(GET /candidate-days)은 이 파생이 흡수하며 은퇴 — 정의가 여기 한 곳이 됐다.
 import { ANCHOR_PARAMS, BASELINE_PARAM, IGNORE_CANDLE_PARAM } from "@trade-data-manager/market/domain";
-import type { ChartAnchor, DailyCommentListItem, GroupMembership } from "@trade-data-manager/wire";
+import type { ChartAnchor, DailyCommentListItem, GroupMembership, PointGroupMembership } from "@trade-data-manager/wire";
 import { chartKeyOf } from "./pointKey.js";
 import { GROUP_PLAIN, IGNORED_CANDLE, PRICE_LINE } from "../styles/palette.js";
 
@@ -19,8 +19,10 @@ export interface DayPresence {
     date: string; // YYYY-MM-DD
     /** 앵커 param key → 개수. 없는 param 은 키 없음(0). */
     marks: ReadonlyMap<string, number>;
-    /** 이 날의 그룹 이름들(dedupe·이름순). 그룹은 하루 층위 하나뿐이다(2026-09-01 타점 그룹 폐지). */
+    /** 이 날의 그룹 이름들(dedupe·이름순) — 하루 층위(day grain). */
     dayGroups: readonly string[];
+    /** 이 날의 좌표 라벨 수(타점 grain, 2026-09-18 합류) — 라벨=타점 진실이라 라벨 붙인 날도 후보 하루다. */
+    pointLabels: number;
     comment: boolean;
 }
 
@@ -54,11 +56,11 @@ export const PRESENCE_KINDS: readonly PresenceKindDef[] = [
         color: ANCHOR_COLORS[p.key] ?? "var(--text-secondary)",
         countOf: (d: DayPresence) => d.marks.get(p.key) ?? 0,
     })),
-    // 타점은 격자 파생이라 사람 편집물이 아니다 → 존재 지도의 종류가 아니다(옛 "타점"·"타점 그룹" 칩 폐지).
-    // 좌표 라벨(group_members_point, 2026-09-09)도 **일부러 안 넣는다** — 존재 지도는 하루 grain 인데
-    // 타점 grain 흔적을 어느 하루 종류로 접을지는 투영·3상 논의(별도 세션)의 결정 사항이다.
+    // 타점(격자 파생)은 사람 편집물이 아니다 → 존재 지도의 종류가 아니다(옛 "타점"·"타점 그룹" 칩 폐지).
+    // **좌표 라벨은 2026-09-18 합류**(라벨=타점 진실 — 「구조 개편」): 하루 접기 = "그 날 라벨 몇 개".
     // 키 "group-day" 는 일부러 그대로 둔다 — 저장된 3상 필터가 이 문자열로 영속돼 있다.
     { key: "group-day", name: "그룹", color: GROUP_PLAIN, countOf: (d) => d.dayGroups.length, namesOf: (d) => d.dayGroups },
+    { key: "point-label", name: "라벨", color: GROUP_PLAIN, countOf: (d) => d.pointLabels },
     { key: "comment", name: "코멘트", color: "var(--text-secondary)", countOf: (d) => (d.comment ? 1 : 0) },
 ];
 
@@ -70,20 +72,21 @@ const EMPTY_NAMES: readonly string[] = [];
  * 여기 있는 이유: 종류가 늘 때 이 빈 값도 같이 늘어야 하는데, 소비자가 제 손으로 만들면 한 곳이 빠진다.
  */
 export const emptyPresence = (stockCode: string, date: string): DayPresence =>
-    ({ stockCode, date, marks: EMPTY_MARKS, dayGroups: EMPTY_NAMES, comment: false });
+    ({ stockCode, date, marks: EMPTY_MARKS, dayGroups: EMPTY_NAMES, pointLabels: 0, comment: false });
 
-/** 테이블 3개 → chartKey("code|date") → DayPresence. 재료 어느 쪽에든 흔적이 있으면 항목이 생긴다. */
+/** 테이블 4개 → chartKey("code|date") → DayPresence. 재료 어느 쪽에든 흔적이 있으면 항목이 생긴다. */
 export function buildPresenceIndex(
     anchors: readonly ChartAnchor[],
     memberships: readonly GroupMembership[],
     comments: readonly Pick<DailyCommentListItem, "stockCode" | "date">[],
+    pointMemberships: readonly Pick<PointGroupMembership, "stockCode" | "date">[] = [],
 ): Map<string, DayPresence> {
-    const idx = new Map<string, { stockCode: string; date: string; marks: Map<string, number>; dayGroups: Set<string>; comment: boolean }>();
+    const idx = new Map<string, { stockCode: string; date: string; marks: Map<string, number>; dayGroups: Set<string>; pointLabels: number; comment: boolean }>();
     const ensure = (stockCode: string, date: string) => {
         const k = chartKeyOf(stockCode, date);
         let e = idx.get(k);
         if (!e) {
-            e = { stockCode, date, marks: new Map(), dayGroups: new Set(), comment: false };
+            e = { stockCode, date, marks: new Map(), dayGroups: new Set(), pointLabels: 0, comment: false };
             idx.set(k, e);
         }
         return e;
@@ -97,6 +100,7 @@ export function buildPresenceIndex(
         const e = ensure(m.stockCode, m.date);
         for (const name of m.groupNames) e.dayGroups.add(name);
     }
+    for (const p of pointMemberships) ensure(p.stockCode, p.date).pointLabels += 1;
     for (const c of comments) ensure(c.stockCode, c.date).comment = true;
 
     const sorted = (s: Set<string>): string[] => [...s].sort((a, b) => a.localeCompare(b));
@@ -106,15 +110,17 @@ export function buildPresenceIndex(
 }
 
 /**
- * 후보 하루(분석의 모수) — 존재 지도에서 **편집물(앵커∪그룹) 있는 날**만 추린 것.
+ * 후보 하루(분석의 모수) — 존재 지도에서 **편집물(앵커 ∪ day 그룹 ∪ 좌표 라벨) 있는 날**만 추린 것.
  * 코멘트만 있는 날은 제외한다: 후보는 "차트를 읽고 판단을 남긴 날"이고 코멘트는 기록이지 판단이 아니다
  * (옛 서버 union 의 정의 그대로 — 소비자는 깔때기 분모·레일 척도라 저장하지 않고 매번 파생한다).
+ * 좌표 라벨의 합류(2026-09-18)는 서버 day 축 모수(computedAxes.dayCharts)와 **같은 정의**여야 한다 —
+ * 한쪽만 넓히면 시트 day 행에 값 없는 열이 생기고 "미계산"인지 "모수 밖"인지 화면에서 안 갈린다.
  * 정렬은 날짜 내림차순 → 종목: 화면마다 순서가 흔들리지 않게 파생이 고정한다(옛 서버 정렬 계승).
  */
 export function candidateDaysOf(index: ReadonlyMap<string, DayPresence>): { stockCode: string; date: string }[] {
     const out: { stockCode: string; date: string }[] = [];
     for (const d of index.values()) {
-        if (d.marks.size > 0 || d.dayGroups.length > 0) {
+        if (d.marks.size > 0 || d.dayGroups.length > 0 || d.pointLabels > 0) {
             out.push({ stockCode: d.stockCode, date: d.date });
         }
     }

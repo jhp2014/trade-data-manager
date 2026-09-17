@@ -258,12 +258,15 @@ describe("그룹 술어 scope — 같은 좌표 라벨을 두 층위로 묻는�
             .toEqual([`${A}@09:30:00`, `${A}@09:35:00`]);
     });
 
-    // ⚠ 리뷰 F2 — 타점 0인 후보 하루는 point 해상도에서 시각 없는 항목 하나로 남는다. point 질문은
-    // 거기 답할 수 없다(결손) — 확답을 주면 "라벨 붙은 타점이 행"인 집합에 시각 없는 하루 행이 섞인다.
-    it("point scope 는 시각 없는 항목(타점 0인 하루)에 결손 — 라벨이 있어도 생존자가 안 된다", () => {
+    // ⚠ 리뷰 F2 개정(2026-09-18 B) — 라벨이 곧 행이라 "라벨은 있는데 행이 없다"는 상태가 소멸했다:
+    // C 에 라벨을 주면 그 좌표가 행이 되어 point 질문에 답한다(생존). 결손이 남는 자리는 **라벨 0인
+    // 후보 하루**(앵커만 그은 날) — point 해상도에서 시각 없는 항목으로 남고, point 질문은 거기 답할
+    // 수 없다(탈락이 아니라 미배치 — 확답을 주면 시각 없는 하루 행이 집합에 섞인다).
+    it("point scope — 라벨 좌표는 행이 되어 생존하고, 라벨 0인 후보 하루는 결손(미배치)이다", () => {
+        const NOLABEL = "111111"; // 앵커만 그은 날(라벨 0) — 시각 없는 항목으로 남는다
         const withOrphanDay: Seed = {
             ...LABELED,
-            // C(D2)는 격자 타점이 0인데 좌표 라벨만 있다 — "모수 밖/고아" 상태의 극단.
+            candidateDays: [...(SEED.candidateDays ?? []), { stockCode: NOLABEL, date: D2 }],
             pointMemberships: [
                 ...(LABELED.pointMemberships ?? []),
                 { stockCode: C, date: D2, time: "10:00:00", groupNames: ["눌림"] },
@@ -271,11 +274,12 @@ describe("그룹 술어 scope — 같은 좌표 라벨을 두 층위로 묻는�
         };
         setStages([labelStage("point")]);
         const v = read(withOrphanDay);
-        expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`)).toEqual([`${A}@09:30:00`]);
-        // **탈락이 아니라 결손이다** — 생존자 목록만 보면 false 로 떨궈도 통과해 버린다(이 파일 머리
-        // 주석의 핵심 규칙). C 는 미배치 칸에 서야 한다.
+        // C 의 라벨 좌표가 행이 되어 생존한다(후보 정렬 = 날짜 내림 → D2 의 C 가 앞).
+        expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`))
+            .toEqual([`${C}@10:00:00`, `${A}@09:30:00`]);
+        // 라벨 0인 날은 **탈락이 아니라 결손** — 미배치 칸에 서야 한다(이 파일 머리 주석의 핵심 규칙).
         act(() => { useWorkbench.setState({ funnelSelection: { stageId: "sg", cells: ["pending"] } }); });
-        expect(read(withOrphanDay).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([C]);
+        expect(read(withOrphanDay).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([NOLABEL]);
     });
 });
 

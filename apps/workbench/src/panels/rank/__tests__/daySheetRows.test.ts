@@ -13,7 +13,7 @@ const chartRow = (stockCode: string, date: string, orderKey: number): PlacedPoin
 const pointRow = (stockCode: string, date: string, time: string, orderKey: number): PlacedPoint => ({ stockCode, date, time, orderKey });
 
 const presence = (comment = false): DayPresence =>
-    ({ stockCode: "", date: "", marks: new Map(), dayGroups: [], comment });
+    ({ stockCode: "", date: "", marks: new Map(), dayGroups: [], pointLabels: 0, comment });
 
 describe("buildDaySheetRows", () => {
     const indexByAxis = new Map([

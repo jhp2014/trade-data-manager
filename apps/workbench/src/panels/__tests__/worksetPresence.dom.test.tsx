@@ -196,16 +196,16 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
     });
 });
 
-// ── 타점 행 그룹 아이콘 — **낟알은 좌표 라벨 하나**다(2026-09-13). 옛 코드는 이 자리에 그 날의 하루
-// 그룹을 그려서, 종목 행이 이미 말한 것을 타점마다 반복하면서 정작 좌표 라벨은 한 번도 안 보였다.
-// 여기서 잠그는 것: ① 라벨 붙은 타점에만 아이콘 ② 하루 그룹은 타점 행으로 안 내려온다(층위 상속은
-// 깔때기 판정에만 살아 있고 화면은 종목 행이 맡는다) ③ 같은 그림·색이 두 행에 서므로 **카드 머리**가
-// 낟알을 말한다.
+// ── 타점 행 그룹 아이콘 — **낟알은 좌표 라벨 하나**다(2026-09-13 → 2026-09-18 B: 행 = 라벨이라
+// "라벨 없는 타점 행"은 이제 존재하지 않는다 — 모든 타점 행이 제 라벨 아이콘을 갖는다).
+// 여기서 잠그는 것: ① 아이콘은 그 좌표의 라벨을 말한다(행마다 제 것) ② 하루 그룹은 타점 행으로 안
+// 내려온다(층위 상속은 깔때기 판정에만 살아 있고 화면은 종목 행이 맡는다) ③ 같은 그림·색이 두 행에
+// 서므로 **카드 머리**가 낟알을 말한다.
 describe("작업셋 — 타점 행 그룹 아이콘(좌표 라벨)", () => {
     const PD = "2026-08-07";
     const PT: Seed = {
         points: [
-            { stockCode: "FFFFF", date: PD, time: "09:30:00", name: "타점날" },
+            { stockCode: "FFFFF", date: PD, time: "09:30:00", name: "타점날" }, // 자동 시드 = "시드라벨" 그룹
             { stockCode: "FFFFF", date: PD, time: "10:30:00", name: "타점날" },
         ],
         memberships: [{ stockCode: "FFFFF", date: PD, groupNames: ["하루것"] }],
@@ -220,11 +220,17 @@ describe("작업셋 — 타점 행 그룹 아이콘(좌표 라벨)", () => {
         useWorkbench.setState({ selectedSetRef: null, savedSets: [] });
     });
 
-    it("라벨 붙은 타점에만 아이콘이 선다 — 하루 그룹은 타점 행으로 안 내려온다", () => {
+    it("아이콘은 그 좌표의 라벨을 말한다 — 하루 그룹은 타점 행으로 안 내려온다", () => {
         renderWithProviders(<WorksetPanel />, PT);
-        expect(pointRow("09:30:00")).toBeTruthy(); // 행 자체는 둘 다 선다(아이콘 유무만 갈린다)
-        expect(pointBadge("09:30:00")).toBeNull();
+        expect(pointRow("09:30:00")).toBeTruthy();
+        expect(pointBadge("09:30:00")).toBeTruthy(); // 행 = 라벨이라 아이콘도 행마다 선다(제 라벨)
         expect(pointBadge("10:30:00")).toBeTruthy();
+        // 09:30 의 카드는 제 라벨(시드라벨)만 — 명시 라벨(눌림)·하루 그룹(하루것)이 안 샌다.
+        fireEvent.mouseEnter(pointBadge("09:30:00")!.parentElement!);
+        const card = document.querySelector("[data-hover-card]");
+        expect(card?.textContent).toContain("시드라벨");
+        expect(card?.textContent).not.toContain("눌림");
+        expect(card?.textContent).not.toContain("하루것");
         // 하루 그룹은 종목 행 배지가 말한다 — 같은 화면에 한 번만.
         expect(screen.getByText("타점날").closest("button")?.querySelector("[data-presence-kind='group-day']")).toBeTruthy();
     });

@@ -26,7 +26,8 @@ import {
     attachGroup, detachGroup, attachPointGroup, detachPointGroup,
     createGroup, renameGroup as apiRenameGroup, deleteGroup as apiDeleteGroup, setGroupParent,
 } from "../api/groups.js";
-import { groupsQuery, groupMembershipsQuery, pointGroupMembershipsQuery } from "../api/queries.js";
+import { groupsQuery, groupMembershipsQuery, pointGroupMembershipsQuery, labeledPointFactsQuery, pointGridsQuery } from "../api/queries.js";
+import type { DecodedPointGrids } from "../api/pointGrids.js";
 import { useWorkbench } from "../store/workbench.js";
 import { groupGrainSets, type GroupGrainSets } from "./groupGrain.js";
 import { applyGroupToggle, buildGroupIndex, countByGroup, foldPointIndexToDay } from "./groupIndex.js";
@@ -165,10 +166,14 @@ export function useGroupsValue(): GroupsView {
         return new Map([...folded].map(([k, names]) => [k, expandWithAncestors(names, groupByName)]));
     }, [pointMemberships, groupByName]);
     // 차트별 좌표 라벨 색인 — 차트 표식(라벨=타점)의 재료. 지워진 그룹은 여기서 떨궈 소비자가 규칙을 모른다.
+    // ⚠ 사전이 아직 안 왔으면(빈 사전 + 멤버십 존재) 거르지 않는다 — 모름은 없음이 아니다. 행 원천
+    //   (useLabelRows)과 **같은 가드**여야 초기 로드·마지막 그룹 삭제의 과도 창에서 행과 표식이
+    //   타점의 존재를 다르게 말하지 않는다.
     const pointLabelsByChart = useMemo(() => {
+        const dictReady = groupByName.size > 0;
         const m = new Map<string, PointLabel[]>();
         for (const p of pointMemberships) {
-            const names = p.groupNames.filter((n) => groupByName.has(n));
+            const names = dictReady ? p.groupNames.filter((n) => groupByName.has(n)) : p.groupNames;
             if (names.length === 0) continue;
             const k = chartKey(p);
             const entry: PointLabel = { time: p.time, names };
@@ -258,8 +263,19 @@ export function useGroupsValue(): GroupsView {
         onMutate: ({ item, groupName, on }) => {
             qc.setQueryData<PointGroupMembership[]>(pointMemberKey, (cur) => applyGroupToggle(cur ?? [], item, groupName, on));
         },
-        onSettled: () => {
-            if (qc.isMutating({ mutationKey: POINT_TOGGLE_KEY }) <= 1) void qc.invalidateQueries({ queryKey: pointMemberKey });
+        onSettled: (_d, _e, { item, on }) => {
+            if (qc.isMutating({ mutationKey: POINT_TOGGLE_KEY }) > 1) return;
+            void qc.invalidateQueries({ queryKey: pointMemberKey });
+            // 좌표 봉 사실 — 라벨 행의 결과 걷기 분모라 라벨 집합과 함께 움직인다(작은 페이로드).
+            void qc.invalidateQueries({ queryKey: labeledPointFactsQuery().queryKey });
+            // 격자 번들은 **그 차트의 격자가 아직 없을 때만** 무효화한다(부착 = 기대집합 입장 가능성).
+            // 매 토글 10~20MB refetch 는 연타 입력에 못 버티고, 이미 구워진 차트는 라벨과 무관하다.
+            if (on) {
+                const grids = qc.getQueryData<DecodedPointGrids>(pointGridsQuery().queryKey);
+                if (grids && !grids.byDate.get(item.date)?.has(item.stockCode)) {
+                    void qc.invalidateQueries({ queryKey: pointGridsQuery().queryKey });
+                }
+            }
         },
     });
 

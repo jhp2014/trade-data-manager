@@ -12,7 +12,8 @@
 import { useMemo } from "react";
 import { pointKeyOf, sliceOutcome, walkOutcome, type OutcomeSlice, type OutcomeWalk } from "@trade-data-manager/market/domain";
 import { OUTCOME_METRICS, type OutcomeMetric } from "./outcomeMetric.js";
-import type { AutoPointsView, PointGridsView } from "./usePointGrids.js";
+import type { LabelSignal } from "./useLabelRows.js";
+import type { PointGridsView } from "./usePointGrids.js";
 
 export type { OutcomeMetric } from "./outcomeMetric.js";
 
@@ -34,23 +35,28 @@ export interface OutcomeWalksView {
     breakDepths: readonly number[];
 }
 
-/** 걷기 조립(순수) — 시그널·격자에만 의존한다(T 무관 계약의 실물). 호출자는 아래 훅과 defDerived 캐시. */
-export function buildWalksView(auto: AutoPointsView, grids: PointGridsView): OutcomeWalksView {
+/**
+ * 걷기 조립(순수) — 시그널·격자에만 의존한다(T 무관 계약의 실물). 호출자는 PointGridsProvider 뿐.
+ * 시그널 = **라벨 좌표 + 봉 사실**(2026-09-18 B — 정의(pointDef) 무관이 됐다: 라벨은 노브의 함수가
+ * 아니다). 걷기(walkOutcome)는 임의 분에서 성립한다 — 피벗 경로는 하루 전체를 담는다.
+ * byKey 미스 = 격자 미굽기(라벨 차트 pending) — 결손은 결손.
+ */
+export function buildWalksView(signals: readonly LabelSignal[], grids: PointGridsView): OutcomeWalksView {
     const byKey = new Map<string, OutcomeWalkRec>();
     const breakDepths: number[] = [];
-    for (const a of auto.points) {
-        const grid = grids.gridOf(a.stockCode, a.date);
+    for (const s of signals) {
+        const grid = grids.gridOf(s.stockCode, s.date);
         if (!grid) continue;
-        const walk = walkOutcome(grid, a.point);
+        const walk = walkOutcome(grid, { min: s.min, high: s.high });
         for (const b of walk.breaks) breakDepths.push(b.depth);
-        byKey.set(pointKeyOf({ stockCode: a.stockCode, date: a.date, time: a.time }), { walk, close: a.point.close });
+        byKey.set(pointKeyOf({ stockCode: s.stockCode, date: s.date, time: s.time }), { walk, close: s.close });
     }
-    return { byKey, total: auto.points.length, breakDepths };
+    return { byKey, total: signals.length, breakDepths };
 }
 
 /** ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(걷기가 인스턴스마다 복제된다). */
-export function useOutcomeWalksValue(auto: AutoPointsView, grids: PointGridsView): OutcomeWalksView {
-    return useMemo<OutcomeWalksView>(() => buildWalksView(auto, grids), [auto, grids]);
+export function useOutcomeWalksValue(signals: readonly LabelSignal[], grids: PointGridsView): OutcomeWalksView {
+    return useMemo<OutcomeWalksView>(() => buildWalksView(signals, grids), [signals, grids]);
 }
 
 /** 시그널 하나의 결과 레코드 — 기준은 이 단면의 허용 폭 T 하나다. */

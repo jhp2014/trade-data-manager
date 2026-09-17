@@ -182,6 +182,22 @@ const toMin = hmsToMinute;
  * 터치 확정·구간 최저가 될 수 있다(거래 없음 ≠ 가격 없음. 넓은 봉 다음 빈 분이 그 종가로 확정하는 케이스).
  * 분봉이 없거나 세션 창에 한 봉도 없으면 null(재료 없음 — 캐시 층이 "무사건 격자"와 구분해 안 굽는다).
  */
+/**
+ * 격자의 봉 우주 — 세션 창 필터 **뒤** densify. 창 필터를 densify 앞에 두는 이유: 뒤에 두면 창 밖 가격이
+ * 채움봉(직전 종가 평탄)으로 창 안에 새어들어 러닝 최고가를 선점한다(프리마켓 배제 설정의 조용한 무력화).
+ * 검출(detectGrid)과 좌표 봉 사실(labeledPointFacts — 라벨 좌표의 종가·고가)이 **같은 이 자**를 쓴다 —
+ * 두 벌이면 같은 행의 축 값과 결과 분모가 다른 봉에서 나온다.
+ */
+export function gridSessionBars(rawMinutes: MinuteCandle[], options: GridDetectOptions = {}): MinuteCandle[] {
+    const o = { ...DEFAULT_GRID_OPTIONS, ...options };
+    return densifyMinutes(
+        rawMinutes.filter((m) => {
+            const t = toMin(m.time);
+            return t >= o.sessionStartMin && t <= o.sessionEndMin;
+        }),
+    );
+}
+
 export function detectGrid(
     rawMinutes: MinuteCandle[],
     prices: GridDayPrices,
@@ -189,14 +205,7 @@ export function detectGrid(
 ): PointGrid | null {
     const { base, prevBase, prevBaseKrx } = prices;
     const o = { ...DEFAULT_GRID_OPTIONS, ...options };
-    // 창 필터를 densify **앞**에 둔다 — 뒤에 두면 창 밖 가격이 채움봉(직전 종가 평탄)으로 창 안에 새어들어
-    // 러닝 최고가를 선점한다(프리마켓 배제 설정이 조용히 무력화되는 함정).
-    const bars = densifyMinutes(
-        rawMinutes.filter((m) => {
-            const t = toMin(m.time);
-            return t >= o.sessionStartMin && t <= o.sessionEndMin;
-        }),
-    );
+    const bars = gridSessionBars(rawMinutes, options);
     if (bars.length === 0) return null;
 
     const n = bars.length;

@@ -53,12 +53,12 @@ describe("defDerivedFor — 신원 계약", () => {
         expect(derivedOfAuto({ isLoading: true, error: null, points: [], rows: [], byChart: new Map() })).toBeUndefined();
     });
 
-    it("게으른 층 — walks·outcomes·sim 단면은 같은 키면 같은 객체", () => {
+    // (걷기·T 단면·시뮬 층은 2026-09-18 B 에서 이 캐시를 떠났다 — 시그널이 라벨(정의 무관)이 되면서
+    //  전역 한 벌(PointGridsProvider)로 이동. 그 신원 계약은 useOutcomes/useTradeSim 쪽 몫.)
+    it("게으른 층 — 급타점 단면은 같은 (W,r)면 같은 객체", () => {
         const d = defDerivedFor(bundle(), def(50));
-        expect(d.walks()).toBe(d.walks());
-        expect(d.outcomes(5)).toBe(d.outcomes(5));
-        expect(d.outcomes(5)).not.toBe(d.outcomes(6));
-        const cancel = { cancelRisePct: null, cancelAfterMin: null };
-        expect(d.simBasis(cancel)).toBe(d.simBasis({ ...cancel }));
+        expect(d.hot(30, 5)).toBe(d.hot(30, 5));
+        expect(d.hot(30, 5)).not.toBe(d.hot(30, 6));
+        expect(d.hotPairs()).toBe(d.hotPairs());
     });
 });

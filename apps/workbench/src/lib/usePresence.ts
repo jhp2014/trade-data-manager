@@ -6,7 +6,7 @@
 // 소비 화면도 서넛이다 — GroupsProvider 처럼 컨텍스트로 올릴 필요가 생기면 그때(선례가 이미 있다).
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { allAnchorsQuery, allCommentsQuery, groupMembershipsQuery } from "../api/queries.js";
+import { allAnchorsQuery, allCommentsQuery, groupMembershipsQuery, pointGroupMembershipsQuery } from "../api/queries.js";
 import { buildPresenceIndex, type DayPresence } from "./presence.js";
 import { chartKeyOf } from "./pointKey.js";
 
@@ -23,18 +23,21 @@ export function usePresenceIndex(): PresenceView {
     const anchorsQ = useQuery(allAnchorsQuery());
     const memberQ = useQuery(groupMembershipsQuery());
     const commentsQ = useQuery(allCommentsQuery());
+    // 좌표 라벨(2026-09-18 합류) — 라벨 붙인 날도 후보 하루다(candidateDaysOf). GroupsProvider 와
+    // 같은 쿼리 키라 캐시 한 벌(추가 왕복 0), 낙관적 토글도 같은 캐시를 고치므로 즉시 반영된다.
+    const pointMemberQ = useQuery(pointGroupMembershipsQuery());
 
     const index = useMemo(
-        () => buildPresenceIndex(anchorsQ.data ?? [], memberQ.data ?? [], commentsQ.data ?? []),
-        [anchorsQ.data, memberQ.data, commentsQ.data],
+        () => buildPresenceIndex(anchorsQ.data ?? [], memberQ.data ?? [], commentsQ.data ?? [], pointMemberQ.data ?? []),
+        [anchorsQ.data, memberQ.data, commentsQ.data, pointMemberQ.data],
     );
     return useMemo(
         () => ({
             index,
-            isLoading: anchorsQ.isLoading || memberQ.isLoading || commentsQ.isLoading,
-            error: (anchorsQ.error ?? memberQ.error ?? commentsQ.error) as Error | null,
+            isLoading: anchorsQ.isLoading || memberQ.isLoading || commentsQ.isLoading || pointMemberQ.isLoading,
+            error: (anchorsQ.error ?? memberQ.error ?? commentsQ.error ?? pointMemberQ.error) as Error | null,
         }),
-        [index, anchorsQ.isLoading, memberQ.isLoading, commentsQ.isLoading, anchorsQ.error, memberQ.error, commentsQ.error],
+        [index, anchorsQ.isLoading, memberQ.isLoading, commentsQ.isLoading, pointMemberQ.isLoading, anchorsQ.error, memberQ.error, commentsQ.error, pointMemberQ.error],
     );
 }
 

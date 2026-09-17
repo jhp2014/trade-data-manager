@@ -110,7 +110,7 @@ export function useFilterFunnel(): FunnelView {
     const gv = useGroups();
     const ax = useRankAxes();
     const cand = useCandidateDays(); // 복제본 파생 — 서버 왕복 없음(candidateDaysOf)
-    const pts = usePointRows(); // point 행 원천(격자 파생 한 벌) — 깔때기 모수가 여기서 온다
+    const pts = usePointRows(); // point 행 원천(라벨 좌표 한 벌 — 라벨=타점 진실) — 깔때기 모수가 여기서 온다
     const grids = usePointGrids(); // 격자 번들 — 부품(저장 집합)의 자기-정의 파생(defDerived)의 재료
     // 현재 정의의 **평가 키**(판정 6노브 — T 가 술어로 내려가 정의는 판정만 남았다). 문자열이라 값이 같으면 리렌더가 없다.
     const curEvalKey = useWorkbench((s) => judgeKeyOf(s.pointDef));
@@ -305,8 +305,10 @@ export function useFilterFunnel(): FunnelView {
     /**
      * 정의 → 판정 재료(materialsFor) — 저장 집합의 자기-정의 평가의 실물. 현재 정의(키 일치)나 정의 없는
      * 옛 저장물은 **현재 재료 그대로**(비용 0·평가 동일성). 다른 정의는 defDerived 캐시를 딛고 정의-종속
-     * 재료 셋(격자 축 줄·값·결과 단면)만 그 정의 것으로 덮어쓴다 — 그룹·테마·서버 day 축은 정의 무관이라 공유.
-     * 결과 단면은 게으르다(부품에 결과 술어가 없으면 걷기 비용 0).
+     * 재료(격자 축 줄·값·급타점 단면)만 그 정의 것으로 덮어쓴다.
+     *
+     * 2026-09-18 B: **행(times)·결과 단면은 정의 무관이 됐다** — 행 = 라벨 좌표(정의가 못 가른다)라
+     * 부품도 현재 timesOf·전역 결과 단면(sliceAt)을 그대로 쓴다. 정의가 가르는 건 격자 축·급타점뿐.
      */
     const materialsFor = useMemo(() => {
         const current: DefMaterials = { timesOf: timesOfCur, evalLook, grainLook };
@@ -321,34 +323,25 @@ export function useFilterFunnel(): FunnelView {
             const hit = cache.get(key);
             if (hit) return hit;
             const derived = defDerivedFor(byDate, def);
-            const times = new Map<string, string[]>();
-            for (const p of derived.auto.points) {
-                const k = chartKey(p);
-                const list = times.get(k);
-                if (list) list.push(p.time);
-                else times.set(k, [p.time]);
-            }
             const views = derived.feeds().map(computedAxisView);
             const oPlace = new Map(views.map((v) => [v.axis.key, buildAxisOrderIndex(v.line)]));
             const oValues = new Map(views.map((v) => [v.axis.key, v.values]));
-            // 부품 정의의 T 단면 — 그 부품 술어들의 T 별로(defDerived 가 LRU 로 받는다).
-            const outcomesOf = (t: number): OutcomesView => derived.outcomes(t);
             // 부품 정의의 급타점 단면 — 모수가 "그 부품의 정의로 뽑은 타점"이라 쌍도 그쪽 것이어야 한다.
             const hotOf = (w: number, r: number): HotCounts => derived.hot(w, r);
             const made: DefMaterials = {
-                timesOf: (c) => times.get(chartKey(c)) ?? [],
+                timesOf: timesOfCur, // 행은 라벨 — 정의 무관(위 주석)
                 grainLook, // 층위 사전은 정의 무관(그룹 scope·축 scope 는 정의가 안 바꾼다)
                 evalLook: makeEvalLook({
                     placementOf: (id) => (gridSet.has(id) ? oPlace.get(id) : placements.get(id)),
                     valuesOf: (id) => (gridSet.has(id) ? oValues.get(id) : ax.computedValues.get(id)),
-                    outcomesOf,
+                    outcomesOf: (t) => outcomesEff?.(t) ?? null, // 걷기도 라벨 위 전역 한 벌
                     hotOf,
                 }),
             };
             cache.set(key, made);
             return made;
         };
-    }, [timesOfCur, evalLook, grainLook, curEvalKey, grids.byDate, makeEvalLook, placements, ax.computedValues]);
+    }, [timesOfCur, evalLook, grainLook, curEvalKey, grids.byDate, makeEvalLook, placements, ax.computedValues, outcomesEff]);
 
     const materialsEpoch = useMemo(
         () => `e${++materialsSeq}`,

@@ -315,7 +315,7 @@ export function WorksetPanel(): JSX.Element {
                     pointGroupsOf={pointGroupsOf}
                     pathOf={(id) => pathLabel(id, "(지워짐)")}
                     // goToDay — 하루를 고르는 손짓이라 시각을 **명시적으로 푼다**(time: null).
-                    // 안 그러면 옛 시각이 남아 그 차트의 자동 타점을 우연히 가리키는 순간 하루 선택이 아니게 된다.
+                    // 안 그러면 옛 시각이 남아 그 차트의 라벨 좌표를 우연히 가리키는 순간 하루 선택이 아니게 된다.
                     onPickDay={(e) => goToDay({ date: e.date, code: e.code })}
                     onPickPoint={(p) => goToPoint({ date: p.date, code: p.stockCode, time: p.time })}
                     jumpTo={jump.code ? jump : undefined}

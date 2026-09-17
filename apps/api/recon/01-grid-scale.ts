@@ -7,7 +7,7 @@
 //   pnpm --filter @trade-data-manager/api recon:grid-scale -- --dir .cache/point-grid-ab --sessionStart 540
 // 플래그: --dir · --zigzag(%) · --floor(억) · --sessionStart/--sessionEnd(분) · --gateBase/--gateRenewal(억) · --from/--to(자격 시각 창, 분) · --merge(%) · --bull(1|0)
 import { gzipSync } from "node:zlib";
-import { createPoolFromEnv } from "@trade-data-manager/persistence";
+import { createDb, createPoolFromEnv, DrizzleGroupRepository } from "@trade-data-manager/persistence";
 import { DEFAULT_GRID_OPTIONS, DEFAULT_POINT_DEFINITION, QUALIFY_MAX_MIN, QUALIFY_MIN_MIN, pointsOf } from "@trade-data-manager/market";
 import { axisDepsOf } from "../src/market/rank/axisDeps.js";
 import { fileGridStore } from "../src/market/grid/gridStore.js";
@@ -34,7 +34,7 @@ async function main(): Promise<void> {
     const pool = createPoolFromEnv();
     const deps = axisDepsOf(pool);
     const store = fileGridStore(strFlag("dir"));
-    const grids = new PointGrids({ deps, store, detect });
+    const grids = new PointGrids({ deps, groups: new DrizzleGroupRepository(createDb(pool)), store, detect });
 
     console.log("⏳ 전수 대사(콜드면 분봉 조회 수천 회 — 수 분 걸릴 수 있음)…");
     const recon = await grids.reconcile();

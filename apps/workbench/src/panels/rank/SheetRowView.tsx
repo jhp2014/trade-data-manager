@@ -70,12 +70,6 @@ export interface SheetRowViewProps {
     outcomeOf: (row: SheetRow, scope?: OutScopeRef) => OutcomeRecord | undefined;
     /** 시뮬 열의 레코드(useTradeSim) — outcomeOf 와 같은 계약(참조 고정, day 행은 undefined). */
     simOf: (row: SheetRow, scope?: OutScopeRef) => SimResult | undefined;
-    /**
-     * 조립 뷰의 부품 열 전용 — 이 행(타점)이 그 부품 정의의 **모수 밖**인가(그 정의엔 이 시그널이 없다).
-     * 빈 칸(미계산·무사건 —)과 구분해야 하는 정보라 셀이 회색 "밖"으로 말한다. 참조 고정 계약 동일.
-     * 인스턴스 자리는 모수가 같으므로(T 만 다르다) 언제나 false 다.
-     */
-    outsideOf: (row: SheetRow, scope: OutScopeRef) => boolean;
     /** 차이 열의 값(A − B) — 한쪽이라도 값 없음이면 null. 정렬과 같은 출처(SortCtx.difOf). */
     difOf: (row: SheetRow, id: string) => number | null;
     sortAxisId: string | null;
@@ -94,7 +88,7 @@ export interface SheetRowViewProps {
 }
 
 function SheetRowViewImpl({
-    row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, outcomeOf, simOf, outsideOf, difOf, sortAxisId,
+    row, cols, leftOf, lastFrozenKey, widthOf, name, mode, valuedOf, outcomeOf, simOf, difOf, sortAxisId,
     focus, pinned, dim, inPinnedBlock = false, isLastPinned = false, top, h,
 }: SheetRowViewProps): JSX.Element {
     const key = rowKey(row);
@@ -164,7 +158,7 @@ function SheetRowViewImpl({
         // day 행 전용 — 타점 수(분봉 작업 진도). 0 은 흐리게(아직 분봉 작업 전인 하루가 한눈에).
         points: () => ({
             onClick: () => h.onNav(row),
-            title: "이 날 자동 타점 수",
+            title: "이 날 타점(라벨) 수",
             style: { cursor: "pointer" },
             body: (row.pointCount ?? 0) > 0
                 ? <span className="tabular" style={{ fontWeight: 600 }}>{row.pointCount}</span>
@@ -184,16 +178,7 @@ function SheetRowViewImpl({
         // 시뮬 4열도 같은 `out:` 이름공간·같은 셀 자리에 서되 소스만 갈린다(simOf — 트레이드 시뮬).
         out: (c) => {
             const { metric, scope } = c as { metric: OutcomeColId; scope?: OutScope };
-            // 부품 열의 "밖" — 그 부품 정의엔 이 시그널이 없다(빈 칸 = 미계산·무사건과 다른 정보다:
-            // 정의가 다르면 시그널이 다르다는 걸 눈으로 보는 자리 — decisions.md 「집합 조립 (OR)」).
-            if (scope && outsideOf(row, scope)) {
-                return {
-                    onClick: () => h.onNav(row),
-                    title: `부품 「${scope.name}」 의 모수 밖 — 그 정의(게이트·자격 시각 등)로는 이 타점이 존재하지 않습니다`,
-                    style: { cursor: "pointer" },
-                    body: <span style={{ color: "var(--text-tertiary)", fontSize: 10 }}>밖</span>,
-                };
-            }
+            // (옛 부품 "밖" 셀은 2026-09-18 B 에서 소멸 — 행이 라벨이라 부품 정의가 모수를 못 가른다.)
             if (isSimColId(metric)) {
                 const rec = simOf(row, scope);
                 return {
@@ -264,7 +249,7 @@ function SheetRowViewImpl({
 export const SheetRowView = memo(SheetRowViewImpl, (a, b) =>
     a.row === b.row && a.cols === b.cols && a.leftOf === b.leftOf && a.lastFrozenKey === b.lastFrozenKey &&
     a.widthOf === b.widthOf && a.name === b.name && a.mode === b.mode && a.valuedOf === b.valuedOf &&
-    a.outcomeOf === b.outcomeOf && a.simOf === b.simOf && a.outsideOf === b.outsideOf && a.difOf === b.difOf && a.sortAxisId === b.sortAxisId && a.focus === b.focus &&
+    a.outcomeOf === b.outcomeOf && a.simOf === b.simOf && a.difOf === b.difOf && a.sortAxisId === b.sortAxisId && a.focus === b.focus &&
     a.pinned === b.pinned && a.dim === b.dim && a.top === b.top &&
     a.inPinnedBlock === b.inPinnedBlock && a.isLastPinned === b.isLastPinned && a.h === b.h,
 );

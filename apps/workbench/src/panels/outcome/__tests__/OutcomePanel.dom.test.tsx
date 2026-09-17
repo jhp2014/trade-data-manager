@@ -54,7 +54,12 @@ const GRIDS = new Map([
     ["035720", gridOf([[118, 111]])],
 ]);
 
-const SEED: Seed = { candidateDays: [...GRIDS.keys()].map((stockCode) => ({ stockCode, date: DATE })) };
+// 라벨 = 행 원천(2026-09-18 B): 시그널 좌표(min 570 = 09:30)를 라벨로 심는다. 봉 사실(close·high 101)은
+// seed.points 의 기본 격자에서 자동 유도되고, 걷기는 아래에서 덮어쓰는 커스텀 격자 위를 돈다.
+const SEED: Seed = {
+    points: [...GRIDS.keys()].map((stockCode) => ({ stockCode, date: DATE, time: "09:30:00" })),
+    candidateDays: [...GRIDS.keys()].map((stockCode) => ({ stockCode, date: DATE })),
+};
 
 const renderPanelUnder = (): ReturnType<typeof render> => {
     const client = seededClient(SEED);

@@ -1,6 +1,11 @@
-// PointGrids — 자동 타점 격자를 대사(reconcile)로 유지하는 캐시. 규칙: .claude/decisions.md "자동 타점 격자" 절.
+// PointGrids — 자동 타점 격자를 대사(reconcile)로 유지하는 캐시. 규칙: .claude/decisions.md "자동 타점 격자"·「구조 개편」 절.
 //
-// 기대집합 = **기준선이 확정되는 앵커 차트 전부**(과거 날짜) — 현재 앵커(큐레이션 미러)가 진실.
+// 기대집합 = **기준선이 확정되는 앵커 차트 ∪ 좌표 라벨(group_members_point)이 있는 차트**(과거 날짜)
+// — 현재 앵커·라벨(둘 다 큐레이션 미러)이 진실. 라벨 차트는 기준선이 없어도 `base: null` 로 굽는다
+// (2026-09-18 A1: 라벨 좌표의 결과 걷기·시뮬이 피벗 경로를 필요로 한다 — 터치·기준선 파생만 결손,
+// `pointsOf` 는 base 가드로 Point 0). **멤버십은 차트 지문에 끼지 않는다** — 라벨 변경은 재굽기가
+// 아니라 차트의 기대집합 출입일 뿐이고, 그 차트에 나중에 기준선이 그어지면 앵커 지문이 갈려 자동 재굽기.
+// market 캐시 대사가 curation(로컬 미러) 멤버십을 읽는 첫 자리다.
 // 요청마다 저장집합(파일)과 대조해 지문 불일치·누락 차트만 굽고, 참조 없는 날짜 파일은 GC 한다
 // (RankSections 와 같은 대조 모델). 다르게 간 두 가지:
 //
@@ -36,6 +41,7 @@ import {
     type ChartAnchor,
     type ChartRef,
     type GridDetectOptions,
+    type GroupReader,
 } from "@trade-data-manager/market";
 import { encodeChartGrid, POINT_GRID_RULE_VERSION } from "@trade-data-manager/market";
 import type { PointGridBundle, PointGridDate } from "@trade-data-manager/wire";
@@ -67,6 +73,8 @@ const MATERIAL_MISSING_TTL_MS = 10 * 60_000;
 
 export interface PointGridsDeps {
     deps: Pick<AxisDeps, "minute" | "rawDaily" | "adjDaily" | "chartAnchor">;
+    /** 좌표 라벨 읽기(로컬 미러) — 기대집합 합집합·단면 분 합류의 재료. ISP: 읽기 한 메서드만. */
+    groups: Pick<GroupReader, "listAllPointMemberships">;
     store: GridStore;
     /** 검출 파라미터 — recon A/B 주입용. 기본값이 곧 CALC_VERSION 에 구워진 규칙이다. */
     detect?: GridDetectOptions;
@@ -186,6 +194,18 @@ export class PointGrids {
             }
             out.set(date, byMinute);
         }
+        // 좌표 라벨 분 합집합(2026-09-18, A2 선행) — 라벨 좌표는 격자 사건 봉이 아닐 수 있어 명시로 넣는다.
+        // 이게 있어야 라벨 행에서 테마 강도·존 순위 술어가 서고, 이 분들이 정확히 A2 가 남길 집합이다.
+        const today = (this.cfg.today ?? kstToday)();
+        for (const m of await this.cfg.groups.listAllPointMemberships()) {
+            if (m.date >= today) continue;
+            const hhmm = m.time.slice(0, 5);
+            let byMinute = out.get(m.date);
+            if (!byMinute) out.set(m.date, (byMinute = new Map()));
+            const set = byMinute.get(hhmm);
+            if (set) set.add(m.stockCode);
+            else byMinute.set(hhmm, new Set([m.stockCode]));
+        }
         return out;
     }
 
@@ -193,7 +213,10 @@ export class PointGrids {
         const gen = this.gen;
         const t0 = (this.cfg.now ?? Date.now)();
         const today = (this.cfg.today ?? kstToday)();
-        const anchors = await this.cfg.deps.chartAnchor.listAll();
+        const [anchors, pointLabels] = await Promise.all([
+            this.cfg.deps.chartAnchor.listAll(),
+            this.cfg.groups.listAllPointMemberships(),
+        ]);
         // 당일 캔들 기준선 배제 — 축(supplyGap)과 같은 규칙. 지문도 이 필터 뒤의 목록으로 만든다(대칭).
         const usable = dropSameDayAnchors(anchors, BASELINE_PARAM);
         const baselineByChart = new Map<string, ChartAnchor[]>();
@@ -218,8 +241,9 @@ export class PointGrids {
         const o = { ...DEFAULT_GRID_OPTIONS, ...this.cfg.detect };
         const optsKey = JSON.stringify(o);
 
-        // 기대집합: 날짜 → (코드 → 확정 기준선). null(확정 불가)은 결손으로 센다.
-        const expected = new Map<string, Map<string, BaselineAnchor>>();
+        // 기대집합: 날짜 → (코드 → 확정 기준선 | null). 기준선 차트는 확정 승자만(확정 불가 = 결손으로 센다),
+        // **라벨 차트는 null 로 합류**(base 없이 굽는다 — 머리 주석). 라벨이 기준선 차트와 겹치면 기준선이 이긴다.
+        const expected = new Map<string, Map<string, BaselineAnchor | null>>();
         let unresolved = 0;
         for (const ref of chartRefs) {
             const winner = resolved.get(chartKeyOf(ref));
@@ -230,6 +254,13 @@ export class PointGrids {
             let byCode = expected.get(ref.date);
             if (!byCode) expected.set(ref.date, (byCode = new Map()));
             byCode.set(ref.stockCode, winner);
+        }
+        for (const m of pointLabels) {
+            if (m.date >= today) continue; // 오늘·미래 라벨은 pending(기준선 차트와 같은 게이트)
+            if (expected.get(m.date)?.has(m.stockCode)) continue; // 기준선 확정 차트 — 그대로
+            let byCode = expected.get(m.date);
+            if (!byCode) expected.set(m.date, (byCode = new Map()));
+            byCode.set(m.stockCode, null);
         }
 
         const nowMs = (this.cfg.now ?? Date.now)();
@@ -254,7 +285,8 @@ export class PointGrids {
         interface Bake {
             date: string;
             code: string;
-            anchor: BaselineAnchor;
+            /** null = 라벨 차트(base 없이 굽는다). */
+            anchor: BaselineAnchor | null;
             f: string;
         }
         const perDate = new Map<string, { prior: Record<string, PointGridEntry>; next: Record<string, PointGridEntry>; dirty: boolean }>();
@@ -270,7 +302,10 @@ export class PointGrids {
             perDate.set(date, state);
             for (const [code, anchor] of byCode) {
                 const chartKey = chartKeyOf({ stockCode: code, date });
-                const f = `${optsKey}#${anchorsFingerprint(baselineByChart.get(chartKey) ?? [], [BASELINE_PARAM])}`;
+                // 라벨(anchor null) 굽기는 지문 이름공간을 가른다(#L) — 기준선 후보가 있는데 확정 불가라
+                // null 로 구운 차트가, 나중에 확정 가능해졌을 때 같은 지문으로 낡은 base-null 격자를 계속
+                // 히트하는 사고 방지(앵커 좌표는 같아도 뜻이 다르다).
+                const f = `${optsKey}#${anchor === null ? "L" : ""}${anchorsFingerprint(baselineByChart.get(chartKey) ?? [], [BASELINE_PARAM])}`;
                 const prev = prior[code];
                 if (prev && prev.f === f) {
                     state.next[code] = prev;
@@ -369,7 +404,7 @@ export class PointGrids {
      * 값(문턱)은 앵커가 지목한 시장(krx 가능)에서 읽고 검출 스캔은 언제나 UN 분봉이다 — supplyGap 과
      * 같은 선택(시장 토글 없음, NXT 오염 캔들의 처방은 무시 캔들·앵커의 시장 지목).
      */
-    private async bake(code: string, date: string, anchor: BaselineAnchor, f: string): Promise<PointGridEntry | null> {
+    private async bake(code: string, date: string, anchor: BaselineAnchor | null, f: string): Promise<PointGridEntry | null> {
         const { minute, rawDaily, adjDaily } = this.cfg.deps;
         // ⚠ 창을 하루로 좁히면 안 된다 — `basePricesOf` 는 **date 보다 이른** 최대 날짜(직전 거래일)를
         //   찾으므로 하루짜리 범위에선 언제나 null 이 나온다(그날 기준가가 통째로 결손). 계산 축이
@@ -384,10 +419,13 @@ export class PointGrids {
 
         // 승자 앵커 값 — 수정주가 스케일로. 읽기 규칙은 기준선 % 축과 공용(baselineAnchorAdjustedPrice) —
         // 두 벌이면 같은 선이 굽기와 축에서 다른 값으로 풀린다.
-        const adjusted = await baselineAnchorAdjustedPrice(anchor, this.cfg.deps);
-        if (adjusted === null) return null;
-
-        const base = Math.round(adjusted * rawScaleOf(rawDay, adjDay, date) * 1e6) / 1e6;
+        // 라벨 차트(anchor null)는 base 없이 굽는다 — 터치·기준선 파생만 결손(detectGrid 의 base 가드).
+        let base: number | null = null;
+        if (anchor !== null) {
+            const adjusted = await baselineAnchorAdjustedPrice(anchor, this.cfg.deps);
+            if (adjusted === null) return null;
+            base = Math.round(adjusted * rawScaleOf(rawDay, adjDay, date) * 1e6) / 1e6;
+        }
         // 그날 기준가 = 차트 D 가격선과 **같은 것**(basePricesOf = 원주가 직전종가 × 이벤트 보정계수).
         // 검출엔 안 쓰이고 격자에 실려 클라가 "당일 %" 를 파생한다 — 없으면 그 값이 결손이다(폴백 없음).
         // KRX 짝도 같은 원칙으로 싣는다(2026-09-02) — "당일 %(KRX)" 특징의 분모.

@@ -57,7 +57,7 @@ function makeAxes(
     memberships: GroupMembership[] = [],
 ): ComputedAxes {
     return new ComputedAxes({
-        groups: { listAllMemberships: () => Promise.resolve(memberships) },
+        groups: { listAllMemberships: () => Promise.resolve(memberships), listAllPointMemberships: () => Promise.resolve([]) },
         axisDeps: makeAxisDeps(anchors),
         defs: [def],
         store,

@@ -9,12 +9,12 @@
 import type { ReactElement, ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, RankSectionBundle, StockMeta, ThemeMember } from "@trade-data-manager/wire";
-import { hmsToMinute, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
+import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, LabeledPointFact, RankSectionBundle, StockMeta, ThemeMember } from "@trade-data-manager/wire";
+import { hmsToMinute, pointKeyOf, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
 import type { Group, GroupMembership, PointGroupMembership } from "../api/groups.js";
 import {
     allAnchorsQuery, allCommentsQuery, allThemeMembersQuery, chartQuery, computedAxesQuery,
-    groupMembershipsQuery, groupsQuery, pointGridsQuery, pointGroupMembershipsQuery, rankSectionsQuery, stockMasterQuery,
+    groupMembershipsQuery, groupsQuery, labeledPointFactsQuery, pointGridsQuery, pointGroupMembershipsQuery, rankSectionsQuery, stockMasterQuery,
 } from "../api/queries.js";
 import type { DecodedPointGrids } from "../api/pointGrids.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
@@ -25,11 +25,16 @@ import { PointGridsProvider } from "../lib/PointGridsContext.js";
 import { StockNamesProvider } from "../lib/StockNamesContext.js";
 
 /**
- * 시드용 타점 행 — 타점은 이제 격자 파생물이라 **심는 것은 격자**다(gridsFromPoints 가 이 목록을
- * 최소 격자로 번역한다 — 픽스처가 (종목,날짜,시각)만 말하면 되게). name 을 함께 적으면 아래
+ * 시드용 타점 행 — 타점의 진실은 **라벨 좌표**다(2026-09-18 「구조 개편」 B). 이 목록은 두 갈래로
+ * 번역된다: ① 라벨 멤버십(그룹 "시드라벨" — 행 원천·subject·차트 시각) ② 최소 격자(gridsFromPoints —
+ * 걷기·시뮬·격자 축의 재료) + ③ 좌표 봉 사실(factsFromGrids — 격자 사건 봉과 같은 값, 실서버의 회귀
+ * 게이트와 같은 계약). 픽스처는 (종목,날짜,시각)만 말하면 된다. name 을 함께 적으면 아래
  * namesFromFeeds 가 사전을 자동 조립해 준다(테스트 편의 전용).
  */
 export type SeedPoint = ReviewPointKey & { name?: string | null };
+
+/** 시드 points 가 자동 배정되는 그룹 이름 — 사전에도 자동 합류한다(pointLabelsOf 가 지워진 그룹을 떨구므로). */
+export const SEED_LABEL_GROUP = "시드라벨";
 
 /**
  * 타점 시드 → 최소 격자. 각 (종목,날짜)의 시각들이 그대로 자동 Point 가 되도록 레벨을 만든다:
@@ -113,6 +118,8 @@ export interface Seed {
     rankSections?: RankSectionBundle;
     /** 자동 타점 격자(디코딩 후 형태 — usePointGrids 재료). 안 주면 빈 번들(자동 Point 0). */
     pointGrids?: DecodedPointGrids;
+    /** 좌표 봉 사실 — 안 주면 라벨 좌표를 격자 사건 봉에서 자동 유도한다(seededClient 주석). */
+    pointFacts?: LabeledPointFact[];
     /** 시트 테마 멤버십 전량(테마 인덱스 재료). 안 주면 빈 목록. */
     themeMembers?: ThemeMember[];
     /**
@@ -145,13 +152,34 @@ export function seededClient(seed: Seed = {}): QueryClient {
     ];
     qc.setQueryData(allAnchorsQuery().queryKey, seededAnchors);
     qc.setQueryData(allCommentsQuery().queryKey, seed.comments ?? []);
-    qc.setQueryData(groupsQuery().queryKey, seed.groups ?? []);
+
+    // ── 라벨 = 타점의 진실(2026-09-18 B) — seed.points 를 라벨 멤버십으로 번역해 합류한다.
+    //    명시 pointMemberships 가 같은 좌표를 들면 그쪽이 이긴다(키 중복 제거).
+    const derivedLabels: PointGroupMembership[] = (seed.points ?? []).map((p) => ({
+        stockCode: p.stockCode, date: p.date, time: p.time, groupNames: [SEED_LABEL_GROUP],
+    }));
+    const explicitKeys = new Set((seed.pointMemberships ?? []).map((m) => pointKeyOf(m)));
+    const allLabels = [...(seed.pointMemberships ?? []), ...derivedLabels.filter((m) => !explicitKeys.has(pointKeyOf(m)))];
+    // 시드라벨 그룹을 사전에 합류 — pointLabelsOf(subject·차트 ◆·useChartPoints)가 지워진 그룹을 떨구므로.
+    const seededGroups = seed.groups ?? [];
+    const groupsFinal = derivedLabels.length > 0 && !seededGroups.some((g) => g.name === SEED_LABEL_GROUP)
+        ? [...seededGroups, { name: SEED_LABEL_GROUP, parentName: null }]
+        : seededGroups;
+    qc.setQueryData(groupsQuery().queryKey, groupsFinal);
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
-    qc.setQueryData(pointGroupMembershipsQuery().queryKey, seed.pointMemberships ?? []);
+    qc.setQueryData(pointGroupMembershipsQuery().queryKey, allLabels);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
     qc.setQueryData(rankSectionsQuery().queryKey, seed.rankSections ?? { version: 2, dates: [], pending: [] });
-    // 격자 = 타점의 원천. 명시 격자가 있으면 그대로, 없으면 seed.points 를 최소 격자로 번역한다.
-    qc.setQueryData(pointGridsQuery().queryKey, seed.pointGrids ?? gridsFromPoints(seed.points ?? []));
+    // 격자 — 명시 격자가 있으면 그대로, 없으면 seed.points 를 최소 격자로 번역한다(걷기·시뮬·격자 축 재료).
+    const grids = seed.pointGrids ?? gridsFromPoints(seed.points ?? []);
+    qc.setQueryData(pointGridsQuery().queryKey, grids);
+    // 좌표 봉 사실 — 라벨 분이 격자 사건 봉과 겹치면 **격자와 같은 값**(실서버의 회귀 게이트와 같은 계약).
+    // 겹치지 않는 좌표는 항목 없음 = pending(결과·시뮬 값이 안 선다 — 그게 실서비스의 정직한 상태다).
+    const facts: LabeledPointFact[] = seed.pointFacts ?? allLabels.flatMap((m) => {
+        const e = grids.byDate.get(m.date)?.get(m.stockCode)?.newHighs.find((nh) => nh.min === hmsToMinute(m.time));
+        return e ? [{ stockCode: m.stockCode, date: m.date, time: m.time, close: e.close, high: e.high }] : [];
+    });
+    qc.setQueryData(labeledPointFactsQuery().queryKey, { facts });
     qc.setQueryData(allThemeMembersQuery().queryKey, seed.themeMembers ?? []);
     qc.setQueryData(stockMasterQuery().queryKey, seed.stockNames ?? namesFromFeeds(seed));
     if (seed.daySnapshot) qc.setQueryData(["day-replay-lru", seed.daySnapshot.date], seed.daySnapshot.data);

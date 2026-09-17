@@ -39,11 +39,13 @@ const isOpenDayAxis = (def: ComputedAxisDef): boolean => def.grain === "day" && 
 
 export interface ComputedAxesDeps {
     /**
-     * 그룹 멤버십 — **앵커 무관 day 축의 모수 재료**(그 축의 계산 재료가 아니다).
+     * 그룹 멤버십(day + 좌표 라벨) — **앵커 무관 day 축의 모수 재료**(그 축의 계산 재료가 아니다).
      * 그룹만 붙여 둔 하루도 후보 하루라(클라 candidateDaysOf) 여기 빠지면 그 행만 값이 비는데,
      * 화면에서는 "미계산"인지 "모수 밖"인지 구분되지 않는다. 읽기는 사람 편집 규모라 무시할 만하다.
+     * 좌표 라벨 차트도 같은 자격이다(2026-09-18 「구조 개편」 A1 — 라벨=타점 진실이라 라벨 붙인 하루는
+     * 후보 하루다). 클라 candidateDaysOf 와 **같은 정의**를 유지할 것(한쪽만 넓히면 두 화면이 갈린다).
      */
-    groups: Pick<GroupReader, "listAllMemberships">;
+    groups: Pick<GroupReader, "listAllMemberships" | "listAllPointMemberships">;
     axisDeps: AxisDeps;
     /** 기본 = 코드 레지스트리 전체. 테스트가 좁힌 목록을 준다. */
     defs?: readonly ComputedAxisDef[];
@@ -76,11 +78,14 @@ export class ComputedAxes {
         const needUniverse = this.defs.some(isOpenDayAxis);
         // 앵커는 지문 + 모수용으로 한 번만 읽는다(축이 compute 안에서 또 읽는 건 축 자신의 몫 —
         // 축끼리 재료 비공유 원칙). 축이 전부 day 그레인이라 앵커는 **언제나** 필요하다(모수가 앵커다).
-        const [anchors, memberships] = await Promise.all([
+        const [anchors, memberships, pointMemberships] = await Promise.all([
             this.deps.axisDeps.chartAnchor.listAll(),
             needUniverse ? this.deps.groups.listAllMemberships() : Promise.resolve([]),
+            needUniverse ? this.deps.groups.listAllPointMemberships() : Promise.resolve([]),
         ]);
-        return Promise.all(this.defs.map((def) => this.feed(def, anchors, memberships)));
+        // 좌표 라벨은 차트 참조로 접어 day 멤버십과 같은 항으로 넣는다(모수 재료 — 시각은 여기서 무의미).
+        const labelRefs: GroupMembership[] = pointMemberships.map((m) => ({ stockCode: m.stockCode, date: m.date, groupNames: m.groupNames }));
+        return Promise.all(this.defs.map((def) => this.feed(def, anchors, [...memberships, ...labelRefs])));
     }
 
     private feed(def: ComputedAxisDef, anchors: ChartAnchor[], memberships: GroupMembership[]): Promise<ComputedAxisFeed> {

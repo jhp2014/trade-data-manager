@@ -12,7 +12,7 @@
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { OUTCOME_METRIC_NAME, type OutcomeMetric } from "../../lib/outcomeMetric.js";
-import { useOutcomeSlices, useOutcomeWalks } from "../../lib/PointGridsContext.js";
+import { useLabelRows, useOutcomeSlices, useOutcomeWalks } from "../../lib/PointGridsContext.js";
 import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
 import { useSubject } from "../../lib/subject.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
@@ -37,6 +37,8 @@ const METRIC_ROWS: readonly { metric: OutcomeMetric; hint: string }[] = [
 export function OutcomePanel(): JSX.Element {
     const sliceAt = useOutcomeSlices();
     const walks = useOutcomeWalks(); // 분포 스트립 재료(T 무관 — 걷기 층 소유)
+    // 봉 사실 미도착 라벨 — 모수(signals)에서 빠진 결손을 화면이 말한다(3치 — 리뷰 B-1, 0이면 침묵).
+    const pendingCount = useLabelRows().pendingKeys.size;
     // 표시 T 와 연동 행 — 이 판의 모든 값이 이 T 단면에서 나온다(단일 출처는 outcomeLink).
     const { outcomeStages, linkedId, setLinked, displayT, setDisplayT, conflictAt } = useLinkedOutcome();
     const outcomes = sliceAt(displayT);
@@ -106,6 +108,12 @@ export function OutcomePanel(): JSX.Element {
                     {" · "}이내 {counts.contained.toLocaleString()}
                     {" · "}무눌림 {counts.none.toLocaleString()}
                 </span>
+                {pendingCount > 0 && (
+                    <span title="봉 사실(종가·고가) 미도착 라벨 — 분봉 미수집·세션 창 밖. 모수에서 빠져 있고, 수집이 채워지면 자동 합류합니다"
+                        style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }} className="tabular">
+                        · 대기 {pendingCount.toLocaleString()}
+                    </span>
+                )}
                 {/* 회복 = 보고 저가 이후 직전 고가 재돌파(세션 최고가 판정, 볼륨 무관). 칩 클릭 = 깔때기 조건 토글. */}
                 <span style={{ display: "inline-flex", gap: 3, flexShrink: 0 }} className="tabular">
                     <button onClick={() => toggleRecovery(true)}
@@ -147,7 +155,7 @@ export function OutcomePanel(): JSX.Element {
             </div>
 
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }}>
-                {counts.total === 0 && <Note>자동 시그널이 아직 없습니다 — 격자 로딩 중이거나 정의 게이트가 전부 걸렀습니다</Note>}
+                {counts.total === 0 && <Note>시그널(라벨 좌표)이 아직 없습니다 — 탐색 후보에서 그룹을 배정하거나, 격자·봉 사실 로딩을 기다리세요</Note>}
                 <ToleranceRail t={displayT} onCommit={setDisplayT} breakDepths={walks.breakDepths}
                     note={conflictAt !== null ? `T ${conflictAt}% 에 같은 조건이 이미 있습니다`
                         : linkedId === null ? "탐색(조건 아님)" : "연동 조건의 T"} />

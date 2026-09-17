@@ -1,6 +1,6 @@
 // PointGrids 대사 — fake store/anchor/minute 주입. 검증 대상은 "언제 굽고·언제 안 읽고·언제 지우나".
 import { describe, expect, it } from "vitest";
-import type { ChartAnchor, DailyBar, DailyCandle, MinuteCandle } from "@trade-data-manager/market";
+import type { ChartAnchor, DailyBar, DailyCandle, MinuteCandle, PointGroupMembership } from "@trade-data-manager/market";
 import { BASELINE_PARAM, decodeChartGrid } from "@trade-data-manager/market";
 import { POINT_GRID_FILE_VERSION, type GridStore, type PointGridFile } from "../grid/gridStore.js";
 import { PointGrids, POINT_GRID_CALC_VERSION, type PointGridsDeps } from "../grid/pointGrids.js";
@@ -45,8 +45,11 @@ function harness(init: {
     rawDaily?: Record<string, DailyCandle[]>;
     /** 분봉 읽기 직전 훅 — gen 가드 테스트가 비행을 문턱에서 세울 때 쓴다. */
     beforeMinutes?: (key: string) => Promise<void>;
+    /** 좌표 라벨(기대집합 합집합 재료) — 기본 없음. */
+    pointLabels?: PointGroupMembership[];
 }) {
     let anchors = init.anchors;
+    let pointLabels = init.pointLabels ?? [];
     let nowMs = 0;
     const minuteCalls: string[] = [];
     const storeReads: string[] = [];
@@ -76,7 +79,7 @@ function harness(init: {
         chartAnchor: { listAll: async () => anchors },
     } as unknown as PointGridsDeps["deps"];
     const make = (detect?: PointGridsDeps["detect"]): PointGrids =>
-        new PointGrids({ deps, store, detect, today: () => TODAY, now: () => nowMs });
+        new PointGrids({ deps, groups: { listAllPointMemberships: async () => pointLabels }, store, detect, today: () => TODAY, now: () => nowMs });
     return {
         grids: make(),
         make,
@@ -84,6 +87,7 @@ function harness(init: {
         minuteCalls,
         storeReads,
         setAnchors: (a: ChartAnchor[]) => (anchors = a),
+        setPointLabels: (l: PointGroupMembership[]) => (pointLabels = l),
         setNow: (ms: number) => (nowMs = ms),
     };
 }
@@ -365,5 +369,82 @@ describe("PointGrids 대사", () => {
         const r = await h.grids.reconcile();
         expect(r.materialMissing).toHaveLength(1);
         expect(h.files.has(D)).toBe(false);
+    });
+});
+
+// ── 좌표 라벨 차트(2026-09-18 A1) — 기대집합 = 기준선 차트 ∪ 라벨 차트. 라벨 차트는 base null 로
+// 구워지고(터치·기준선 파생만 결손), 멤버십은 지문에 안 낀다(라벨 변경 = 차트 출입, 재굽기 아님).
+describe("PointGrids 대사 — 좌표 라벨 차트", () => {
+    const label = (code: string, date: string, time = "09:15:00") =>
+        ({ stockCode: code, date, time, groupNames: ["눌림"] });
+
+    it("기준선 없는 라벨 차트가 기대집합에 들어와 base null 로 구워진다(지문은 #L 이름공간)", async () => {
+        const h = harness({
+            anchors: [],
+            minutes: { [`L|${D}`]: twoBars("L", D) },
+            pointLabels: [label("L", D)],
+        });
+        const r = await h.grids.reconcile();
+        expect(r).toMatchObject({ charts: 1, baked: 1, kept: 0 });
+        const entry = h.files.get(D)!.charts["L"];
+        expect(entry.grid.base).toBeNull(); // 기준선 없음 — 터치·기준선 파생 결손
+        expect(entry.grid.touch).toBeNull();
+        expect(entry.grid.sessionHigh?.price).toBe(10100); // 피벗·사건 산출은 정상(재료는 분봉뿐)
+        expect(entry.f).toContain("#L"); // 확정 불가 기준선 차트가 나중에 확정돼도 지문이 갈리게
+
+        // 두 번째 대사 = 전량 히트(분봉 재조회 0) — 멤버십이 지문을 안 흔든다.
+        const calls = h.minuteCalls.length;
+        const r2 = await h.grids.reconcile();
+        expect(r2).toMatchObject({ charts: 1, baked: 0, kept: 1 });
+        expect(h.minuteCalls.length).toBe(calls);
+    });
+
+    it("오늘 날짜 라벨은 굽지 않는다(기준선 차트와 같은 게이트)", async () => {
+        const h = harness({ anchors: [], pointLabels: [label("L", TODAY)] });
+        const r = await h.grids.reconcile();
+        expect(r.charts).toBe(0);
+        expect(h.minuteCalls).toHaveLength(0);
+    });
+
+    it("라벨 제거 = 다음 대사에서 그 차트만 걷힌다(기준선 차트는 무접촉)", async () => {
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D), [`L|${D}`]: twoBars("L", D) },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 9000)] },
+            pointLabels: [label("L", D)],
+        });
+        const r1 = await h.grids.reconcile();
+        expect(r1.charts).toBe(2);
+        expect(Object.keys(h.files.get(D)!.charts).sort()).toEqual(["A", "L"]);
+
+        h.setPointLabels([]);
+        h.grids.invalidate(); // 라벨 편집 후 컨트롤러가 부르는 그 손
+        const r2 = await h.grids.reconcile();
+        expect(r2).toMatchObject({ charts: 1, removedCharts: 1, baked: 0, kept: 1 }); // A 는 지문 히트(재굽기 0)
+        expect(Object.keys(h.files.get(D)!.charts)).toEqual(["A"]);
+    });
+
+    it("라벨이 기준선 확정 차트와 겹치면 기준선이 이긴다(base 가 선다)", async () => {
+        const h = harness({
+            anchors: [anchor("A", D, "2026-06-20")],
+            minutes: { [`A|${D}`]: twoBars("A", D) },
+            adjDaily: { "A|2026-06-20": [dc("A", "2026-06-20", 9000)] },
+            pointLabels: [label("A", D)],
+        });
+        const r = await h.grids.reconcile();
+        expect(r.charts).toBe(1);
+        expect(h.files.get(D)!.charts["A"].grid.base).toBe(9000);
+    });
+
+    it("sectionMinutes — 라벨 분이 사건 봉이 아니어도 단면 기대집합에 합류한다", async () => {
+        const h = harness({
+            anchors: [],
+            minutes: { [`L|${D}`]: twoBars("L", D) },
+            pointLabels: [label("L", D, "09:15:00")], // 09:15 는 사건 봉(09:10·09:20)이 아니다
+        });
+        const byDate = await h.grids.sectionMinutes();
+        const byMinute = byDate.get(D)!;
+        expect(byMinute.get("09:15")?.has("L")).toBe(true); // 라벨 분 명시 합류
+        expect(byMinute.get("09:10")?.has("L")).toBe(true); // 격자 사건 봉도 그대로
     });
 });

@@ -15,6 +15,7 @@ import { fetchComputedAxes } from "./rank.js";
 import { fetchRankSections } from "./rankSections.js";
 import { fetchPointGrids } from "./pointGrids.js";
 import { fetchGroups, fetchGroupMemberships, fetchPointGroupMemberships } from "./groups.js";
+import { fetchLabeledPointFacts } from "./pointFacts.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext, fetchAllThemeMembers } from "./themes.js";
 import { fetchAllDailyComments } from "./comment.js";
@@ -120,6 +121,11 @@ export const groupMembershipsQuery = () =>
 
 export const pointGroupMembershipsQuery = () =>
     queryOptions({ queryKey: ["group-members-point"], queryFn: ({ signal }) => fetchPointGroupMemberships(signal), staleTime: IMMUTABLE , meta: CURATION });
+
+// 좌표 봉 사실(라벨 좌표의 종가·고가) — 라벨 행의 결과 걷기 분모·걷기 시그널 재료. 라벨 토글이
+// 무효화한다(useGroups onSettled — 멤버십 피드와 같은 마지막-한-건 규칙). 수백 건짜리 작은 페이로드.
+export const labeledPointFactsQuery = () =>
+    queryOptions({ queryKey: ["labeled-point-facts"], queryFn: ({ signal }) => fetchLabeledPointFacts(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 /**
  * 종목 마스터 전량(코드·이름·시장) — 이름 사전의 **단일 출처**. 키가 상수라 어느 화면에서 불러도 한 벌이다.

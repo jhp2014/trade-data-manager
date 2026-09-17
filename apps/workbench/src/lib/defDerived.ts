@@ -1,26 +1,22 @@
-// 정의별 파생 캐시 — 격자 번들 × 타점 정의의 파생물(자동 Point·격자 특징 축·걷기·T 단면·시뮬)을
-// **키드 캐시 한 곳**에서 준다. 규칙: .claude/decisions.md 「집합 조립 (OR)」.
+// 정의별 파생 캐시 — 격자 번들 × 타점 정의의 파생물(자동 Point·격자 특징 축·급타점)을
+// **키드 캐시 한 곳**에서 준다. 규칙: .claude/decisions.md 「집합 조립 (OR)」·「구조 개편」.
 //
-// 층 3개 — 키가 곧 층의 의존성 계약이다(키 생성은 lib/pointDef.ts 한 곳):
-//   · judge(판정 6노브) : 자동 Point + 격자 특징 축 + 모수 키 집합 + 걷기 — T·시뮬을 원리적으로 못 본다
-//     ("T 드래그가 1만 시그널을 안 헛돌린다"는 기존 계약이 키 구조로 보존된다).
-//   · +T               : 결과 단면(OutcomesView) — 결과 조건 인스턴스마다 자기 T
-//   · +시뮬 7노브       : 체결 basis(취소 둘만) · 시뮬 결과
-// 걷기 이하는 **게으르다** — 부품이 결과 술어를 안 쓰면 걷기 비용 0(outcomeInUse 게이트의 부품별 일반화).
+// ⚠ 걷기·T 단면·시뮬은 2026-09-18 B 에서 **이 캐시를 떠났다** — 시그널이 라벨 좌표(정의 무관)가 되면서
+//   judge 키에 걸면 같은 걷기가 정의 수만큼 복제된다. 그 층은 PointGridsProvider 전역 한 벌이다
+//   (useOutcomeSlices·useSimAt). `hasPoint`("모수 밖" 판정)도 함께 소멸 — 모수가 라벨이라 정의가 못 가른다.
 //
+// 남은 층(정의 종속): judge(판정 6노브) → 자동 Point + 격자 특징 축 + 급타점 단면.
 // 무효화 = 번들 객체 WeakMap: 격자 refetch 가 byDate 맵을 갈아 끼우면 캐시가 통째로 떨어져 나간다
-// (세대 토큰 불필요). 안쪽은 LRU 상한 — 정의 1벌당 자동 Point ~1만 + 걷기 ~1만이라 무한히 쌓이면 안 된다.
+// (세대 토큰 불필요). 안쪽은 LRU 상한 — 정의 1벌당 자동 Point ~1만이라 무한히 쌓이면 안 된다.
 import {
-    chartKeyOf, minuteToHms, pointKeyOf, pointsOf,
-    type DerivedPoint, type PointGrid, type PointJudgeDef, type ReviewPointKey, type TradeSimParams,
+    chartKeyOf, minuteToHms, pointsOf,
+    type DerivedPoint, type PointGrid, type PointJudgeDef, type ReviewPointKey,
 } from "@trade-data-manager/market/domain";
 import type { ComputedAxisFeed } from "@trade-data-manager/wire";
 import { gridFeatureFeeds } from "./gridFeatures.js";
-import { cancelKeyOf, hotKeyOf, judgeKeyOf, simKeyOf } from "./pointDef.js";
+import { hotKeyOf, judgeKeyOf } from "./pointDef.js";
 import { hotCountsOf, hotPairsOf, type HotCounts, type HotPairs } from "./hotPoints.js";
-import type { AutoPoint, AutoPointsView, PointGridsView } from "./usePointGrids.js";
-import { buildOutcomesView, buildWalksView, type OutcomesView, type OutcomeWalksView } from "./useOutcomes.js";
-import { buildSimBasisView, buildSimView, type SimBasisView, type SimView } from "./useTradeSim.js";
+import type { AutoPoint, AutoPointsView } from "./usePointGrids.js";
 
 type ByDate = ReadonlyMap<string, ReadonlyMap<string, PointGrid>>;
 
@@ -28,21 +24,11 @@ type ByDate = ReadonlyMap<string, ReadonlyMap<string, PointGrid>>;
 export interface DefDerived {
     /** 자동 Point 파생(즉시) — isLoading/error 는 항상 false/null(번들이 손에 있다는 전제의 산출물). */
     auto: AutoPointsView;
-    /** 격자 특징 축 피드 7개(값 재료) — 게으름. */
+    /** 격자 특징 축 피드(값 재료) — 게으름. */
     feeds: () => ComputedAxisFeed[];
-    /** 이 정의의 모수에 이 타점(pointKey)이 있나 — 조립 시트의 "모수 밖" 판정. */
-    hasPoint: (pointKey: string) => boolean;
-    /** 결과 걷기(T 무관) — 게으름. */
-    walks: () => OutcomeWalksView;
-    /** T 단면 — 허용 폭별 LRU(결과 조건 인스턴스마다 자기 T 를 든다). */
-    outcomes: (t: number) => OutcomesView;
-    /** 체결 basis — 취소 노브 둘 별 LRU. */
-    simBasis: (cancel: Pick<TradeSimParams, "cancelRisePct" | "cancelAfterMin">) => SimBasisView;
-    /** 시뮬 결과 — 노브 7 별 LRU. */
-    sim: (params: TradeSimParams) => SimView;
     /**
      * 급타점 수 단면 — **(W,r) 별 LRU**다. 인스턴스 목록을 통째로 키에 넣지 않는 이유: 그러면
-     * 인스턴스 하나를 만질 때마다 나머지 둘의 값까지 재계산된다(결과의 `outcomes(t)` 와 같은 결).
+     * 인스턴스 하나를 만질 때마다 나머지 둘의 값까지 재계산된다.
      */
     hot: (w: number, r: number) => HotCounts;
     /** 연속 타점 쌍의 간격·상승률 — W·r 레일의 과녁. **노브 무관**이라 judge 층에 산다(게으름). */
@@ -51,11 +37,7 @@ export interface DefDerived {
 
 /** 동시 활성 정의 상한 — 조립 부품 수의 실질 상한(초과분은 가장 오래된 정의부터 재계산으로 대체). */
 const CAP_DEFS = 4;
-/** 정의 하나 안의 단면(T·시뮬) 상한 — 드래그 왕복이 무한히 쌓이지 않게. */
-const CAP_SLICES = 4;
-/** 결과 단면(T)만 더 넉넉히 — **인스턴스 수의 함수**다(동시 필요 = 결과 조건 수 + 표시 T + 드래그 전이값). */
-const CAP_OUTCOME_SLICES = 8;
-/** 급타점 단면도 같은 이유로 넉넉히 — 동시 필요 = 인스턴스 3 + 표시 (W,r) + 드래그 전이값. */
+/** 급타점 단면 상한 — 동시 필요 = 인스턴스 3 + 표시 (W,r) + 드래그 전이값. */
 const CAP_HOT_SLICES = 8;
 
 const cacheByBundle = new WeakMap<ByDate, Map<string, DefDerived>>();
@@ -83,7 +65,7 @@ export function defDerivedFor(byDate: ByDate, def: PointJudgeDef): DefDerived {
 }
 
 /** LRU 한 칸 — 접근이 곧 갱신, 넘치면 가장 오래된 것부터. */
-function lru<V>(m: Map<string, V>, k: string, make: () => V, cap = CAP_SLICES): V {
+function lru<V>(m: Map<string, V>, k: string, make: () => V, cap: number): V {
     const hit = m.get(k);
     if (hit !== undefined) {
         m.delete(k);
@@ -98,26 +80,13 @@ function lru<V>(m: Map<string, V>, k: string, make: () => V, cap = CAP_SLICES): 
 
 function makeDerived(byDate: ByDate, def: PointJudgeDef): DefDerived {
     const gridOf = (code: string, date: string): PointGrid | undefined => byDate.get(date)?.get(code);
-    // 순수 빌더들이 뷰 모양(PointGridsView)을 받으므로 여기서 한 벌 지어 공유한다 — version 은 파생에 안 쓰인다.
-    const gridsView: PointGridsView = { isLoading: false, error: null, gridOf, byDate, version: null };
     const auto = buildAutoView(byDate, def);
     let feeds: ComputedAxisFeed[] | null = null;
-    let pointKeys: Set<string> | null = null;
-    let walks: OutcomeWalksView | null = null;
-    const outcomes = new Map<string, OutcomesView>();
-    const basis = new Map<string, SimBasisView>();
-    const sims = new Map<string, SimView>();
     const hots = new Map<string, HotCounts>();
     let hotPairs: HotPairs | null = null;
-    const walksOf = (): OutcomeWalksView => (walks ??= buildWalksView(auto, gridsView));
     return {
         auto,
         feeds: () => (feeds ??= gridFeatureFeeds(auto, gridOf)),
-        hasPoint: (k) => (pointKeys ??= new Set(auto.points.map((a) => pointKeyOf(a)))).has(k),
-        walks: walksOf,
-        outcomes: (t) => lru(outcomes, `${t}`, () => buildOutcomesView(walksOf(), t), CAP_OUTCOME_SLICES),
-        simBasis: (cancel) => lru(basis, cancelKeyOf(cancel), () => buildSimBasisView(auto, gridsView, cancel)),
-        sim: (params) => lru(sims, simKeyOf(params), () => buildSimView(auto, gridsView, params)),
         hot: (w, r) => lru(hots, hotKeyOf(w, r), () => hotCountsOf(auto.points, w, r), CAP_HOT_SLICES),
         hotPairs: () => (hotPairs ??= hotPairsOf(auto.points)),
     };

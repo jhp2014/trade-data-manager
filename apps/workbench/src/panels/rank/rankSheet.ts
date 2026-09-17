@@ -1,5 +1,5 @@
 // 분석 시트 순수 코어 — 축별 순위 셀(lib/rankIndex)을 행으로 접는다. 행은 두 모드:
-//  · point 행 = 타점(시각 있음) — 자동 타점 파생물이라 사람이 붙인 속성(옛 결과·메모)이 없다.
+//  · point 행 = 타점(시각 있음) — 라벨 좌표(그룹 배정 캔들 좌표, 2026-09-18 B)다.
 //  · day 행 = 후보 하루(시각 없음) — 타점 수·코멘트 유무(존재 지도)가 대신 실린다.
 //  · 셀 조립 자체는 시트 전용이 아니어서 lib/rankIndex 로 옮겼다(작업셋 배지·차트 hover 도 같은 셀을 쓴다).
 import { rowLookup } from "../../lib/pointKey.js";
@@ -13,7 +13,7 @@ export interface SheetRow {
     date: string;
     /** HH:MM:SS — point 행에만 있다. **day 행은 (종목,날짜)가 정체성**(계산 축 day grain 과 같은 어휘). */
     time?: string;
-    /** day 행 전용 — 그날 자동 타점 수(정의 노브를 그대로 따른다). */
+    /** day 행 전용 — 그날 라벨(타점) 수. */
     pointCount?: number;
     /** day 행 전용 — 당일 코멘트 유무. */
     comment?: boolean;
@@ -39,7 +39,7 @@ export function buildDaySheetRows(
     axisIds: string[],
     indexByAxis: Map<string, AxisIndex>,
     presenceOf: (c: { stockCode: string; date: string }) => DayPresence | undefined,
-    /** 그날 타점 수 — 존재 지도가 아니라 자동 타점 파생에서 온다(타점은 사람 편집물이 아니다). */
+    /** 그날 타점 수 = 라벨 수(useLabelRows.byChart — 라벨=타점 진실). */
     pointCountOf: (c: { stockCode: string; date: string }) => number,
 ): SheetRow[] {
     return candidates.map((c) => {

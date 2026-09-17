@@ -14,7 +14,9 @@ import type {
     AttachPointGroupInput,
     SetGroupParentInput,
 } from "@trade-data-manager/wire";
-import { GROUP_REPO } from "../tokens.js";
+import { GROUP_REPO, LABELED_POINT_FACTS, POINT_GRIDS } from "../tokens.js";
+import type { PointGrids } from "../grid/pointGrids.js";
+import type { LabeledPointFacts } from "../grid/labeledPointFacts.js";
 import { assertYmd, assertHms, assertStockCode, assertName, rejectDuplicateName } from "../validation.js";
 
 // 그룹 큐레이션 — 이름 붙인 집합 + 관계(중첩)·위치. 옛 태그 컨트롤러를 흡수했다.
@@ -26,7 +28,11 @@ import { assertYmd, assertHms, assertStockCode, assertName, rejectDuplicateName 
 // ("타입: 돌파" 처럼 공백·콜론, 슬래시까지 가능) — 그래서 삭제도 POST /remove 다(앵커와 같은 규칙).
 @Controller("groups")
 export class GroupController {
-    constructor(@Inject(GROUP_REPO) private readonly repo: GroupReader & GroupStore) {}
+    constructor(
+        @Inject(GROUP_REPO) private readonly repo: GroupReader & GroupStore,
+        @Inject(POINT_GRIDS) private readonly grids: PointGrids,
+        @Inject(LABELED_POINT_FACTS) private readonly facts: LabeledPointFacts,
+    ) {}
 
     @Get()
     list(): Promise<Group[]> {
@@ -80,12 +86,19 @@ export class GroupController {
     @Post("point-members")
     async attachPoint(@Body() body: AttachPointGroupInput): Promise<{ ok: true }> {
         await guard(() => this.repo.attachPoint(assertName(body?.group, "group"), assertPointItem(body?.item)));
+        // 라벨 부착 = 격자 기대집합에 차트가 **들어올 수** 있다(기준선 없는 차트 — decisions 「구조 개편」 A1).
+        // detach 는 grids 를 안 부른다: 기대집합이 줄 뿐이라 다음 대사가 자연히 걷고, in-flight 웜업을 버릴 이유가 없다.
+        // 순위 단면도 안 부른다: 라벨 분은 다음 단면 대사가 격자 경유로 따라온다(토글마다 3.5MB 재접기 방지).
+        this.grids.invalidate();
+        // 봉 사실은 부착·해제 양쪽에서 — 편집 전에 시작된 비행에 합류해 낡은 라벨 목록이 굳지 않게(gen 재시도).
+        this.facts.invalidate();
         return { ok: true };
     }
 
     @Post("point-members/remove")
     async detachPoint(@Body() body: AttachPointGroupInput): Promise<{ ok: true }> {
         await guard(() => this.repo.detachPoint(assertName(body?.group, "group"), assertPointItem(body?.item)));
+        this.facts.invalidate();
         return { ok: true };
     }
 

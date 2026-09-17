@@ -6,23 +6,28 @@
 //
 // ⚠ 이 Provider 는 RankAxesProvider **바깥**에 선다 — 축 합성이 자동 Point 를 재료로 쓴다.
 import { createContext, useContext, type ReactNode } from "react";
+import type { TradeSimParams } from "@trade-data-manager/market/domain";
 import { useAutoPointsValue, usePointGridsValue, type AutoPointsView, type PointGridsView } from "./usePointGrids.js";
+import { useLabelRowsValue, type LabelRowsView } from "./useLabelRows.js";
 import { useOutcomeSlicesValue, useOutcomeWalksValue, type OutcomesView, type OutcomeWalksView } from "./useOutcomes.js";
-import { useSimBasisValue, useTradeSimValue, type SimBasisView, type SimView } from "./useTradeSim.js";
+import { useSimAtValue, useSimBasisValue, useTradeSimValue, type SimBasisView, type SimView } from "./useTradeSim.js";
 import { useHotCountsValue, useHotPairsValue } from "./hotAxis.js";
 import type { HotCounts, HotPairs } from "./hotPoints.js";
 
 // 소비자는 이 파일 하나만 보면 되게 — 훅과 그 모양을 다른 곳에서 가져오게 하지 않는다.
 export type { AutoPoint, AutoPointsView, PointGridsView } from "./usePointGrids.js";
 export { autoPointsOfChart } from "./usePointGrids.js";
+export type { LabelRowsView, LabelSignal } from "./useLabelRows.js";
 export type { OutcomeMetric, OutcomeRecord, OutcomesView, OutcomeWalksView } from "./useOutcomes.js";
 export type { SimBasisView, SimView } from "./useTradeSim.js";
 
 const GridsCtx = createContext<PointGridsView | null>(null);
 const AutoCtx = createContext<AutoPointsView | null>(null);
+const LabelsCtx = createContext<LabelRowsView | null>(null);
 const SlicesCtx = createContext<((t: number) => OutcomesView) | null>(null);
 const WalksCtx = createContext<OutcomeWalksView | null>(null);
 const SimBasisCtx = createContext<SimBasisView | null>(null);
+const SimAtCtx = createContext<((params: TradeSimParams) => SimView) | null>(null);
 const SimCtx = createContext<SimView | null>(null);
 const HotCtx = createContext<((w: number, r: number) => HotCounts) | null>(null);
 const HotPairsCtx = createContext<HotPairs | null>(null);
@@ -30,33 +35,54 @@ const HotPairsCtx = createContext<HotPairs | null>(null);
 export function PointGridsProvider({ children }: { children: ReactNode }): JSX.Element {
     const grids = usePointGridsValue();
     const auto = useAutoPointsValue();
-    // 결과 파생 — 걷기(T 무관)·단면(T 의존) 두 층(useOutcomes 머리 주석). 같은 Provider 에 얹어
-    // main·테스트 배선 무변경 + Provider 순서 규칙(격자 → 축 → 깔때기) 유지.
-    const walks = useOutcomeWalksValue(auto, grids);
+    // 라벨 행 원천(2026-09-18 B) — 종단 point 행·걷기·시뮬의 시그널은 **라벨 좌표**다(라벨=타점 진실).
+    // GroupsProvider 가 이 Provider 바깥이라(main 배선) 여기서 멤버십을 읽을 수 있다.
+    const labels = useLabelRowsValue();
+    // 결과 파생 — 걷기(T 무관)·단면(T 의존) 두 층(useOutcomes 머리 주석). 시그널은 라벨 — 정의 무관.
+    const walks = useOutcomeWalksValue(labels.signals, grids);
     const sliceAt = useOutcomeSlicesValue(walks);
-    // 트레이드 시뮬 파생 — basis(취소 노브만)/결과(전 노브) 두 층(useTradeSim 머리 주석).
-    const simBasis = useSimBasisValue(auto, grids);
-    const sim = useTradeSimValue(auto, grids);
-    // 급타점 파생 — 쌍 분포(노브 무관)·(W,r) 단면 두 층. 결과의 걷기/단면과 같은 층 구조다.
+    // 트레이드 시뮬 파생 — basis(취소 노브만)/파라미터 벌 접근자/전역 결과 세 층(useTradeSim 머리 주석).
+    const simBasis = useSimBasisValue(labels.signals, grids);
+    const simAt = useSimAtValue(labels.signals, grids);
+    const sim = useTradeSimValue(simAt);
+    // 급타점 파생 — 격자 파생(auto) 위의 축(은퇴 예정, 무접촉). 쌍 분포(노브 무관)·(W,r) 단면 두 층.
     const hotAt = useHotCountsValue(auto);
     const hotPairs = useHotPairsValue(auto);
     return (
         <GridsCtx.Provider value={grids}>
             <AutoCtx.Provider value={auto}>
-                <WalksCtx.Provider value={walks}>
-                    <SlicesCtx.Provider value={sliceAt}>
-                        <SimBasisCtx.Provider value={simBasis}>
-                            <SimCtx.Provider value={sim}>
-                                <HotPairsCtx.Provider value={hotPairs}>
-                                    <HotCtx.Provider value={hotAt}>{children}</HotCtx.Provider>
-                                </HotPairsCtx.Provider>
-                            </SimCtx.Provider>
-                        </SimBasisCtx.Provider>
-                    </SlicesCtx.Provider>
-                </WalksCtx.Provider>
+                <LabelsCtx.Provider value={labels}>
+                    <WalksCtx.Provider value={walks}>
+                        <SlicesCtx.Provider value={sliceAt}>
+                            <SimBasisCtx.Provider value={simBasis}>
+                                <SimAtCtx.Provider value={simAt}>
+                                    <SimCtx.Provider value={sim}>
+                                        <HotPairsCtx.Provider value={hotPairs}>
+                                            <HotCtx.Provider value={hotAt}>{children}</HotCtx.Provider>
+                                        </HotPairsCtx.Provider>
+                                    </SimCtx.Provider>
+                                </SimAtCtx.Provider>
+                            </SimBasisCtx.Provider>
+                        </SlicesCtx.Provider>
+                    </WalksCtx.Provider>
+                </LabelsCtx.Provider>
             </AutoCtx.Provider>
         </GridsCtx.Provider>
     );
+}
+
+/** 라벨 행 원천 한 벌 — 종단 point 행(usePointRows)·per-chart 라벨 시각의 출처. */
+export function useLabelRows(): LabelRowsView {
+    const v = useContext(LabelsCtx);
+    if (!v) throw new Error("PointGridsProvider 밖에서 useLabelRows — main 배선을 확인하세요");
+    return v;
+}
+
+/** 파라미터 벌 별 시뮬 접근자 — 조립 부품(payload 의 sim)·전역 노브가 같은 캐시를 지난다. */
+export function useSimAt(): (params: TradeSimParams) => SimView {
+    const v = useContext(SimAtCtx);
+    if (!v) throw new Error("PointGridsProvider 밖에서 useSimAt — main 배선을 확인하세요");
+    return v;
 }
 
 /** 체결 basis 한 벌(취소 노브만 의존 — 체결률 곡선 재료). 시뮬 패널이 본다. */

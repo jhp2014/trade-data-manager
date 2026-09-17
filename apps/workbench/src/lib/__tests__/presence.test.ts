@@ -75,7 +75,7 @@ describe("candidateDaysOf — 후보 하루(분석 모수) 파생", () => {
 
 describe("matchesPresence — 3상 × AND", () => {
     const day = (over: Partial<DayPresence>): DayPresence => ({
-        stockCode: "005930", date: "2026-08-01", marks: new Map(), dayGroups: [], comment: false, ...over,
+        stockCode: "005930", date: "2026-08-01", marks: new Map(), dayGroups: [], pointLabels: 0, comment: false, ...over,
     });
 
     it("빈 필터는 전부 통과(기본값에 필터를 심지 않는다)", () => {
@@ -137,7 +137,7 @@ describe("DNF 편집 연산", () => {
 
 describe("matchesPresenceDnf — 절 사이 OR", () => {
     const day = (over: Partial<DayPresence>): DayPresence => ({
-        stockCode: "005930", date: "2026-08-01", marks: new Map(), dayGroups: [], comment: false, ...over,
+        stockCode: "005930", date: "2026-08-01", marks: new Map(), dayGroups: [], pointLabels: 0, comment: false, ...over,
     });
     const baselineOnly = day({ marks: new Map([["baseline", 2]]) });
     const groupOnly = day({ dayGroups: ["가"] });
@@ -185,8 +185,8 @@ describe("parsePresenceDnf — 영속 복원(옛 형식 승계)", () => {
 });
 
 describe("PRESENCE_KINDS", () => {
-    it("앵커 2종(레지스트리 파생) + 그룹·코멘트 = 4종 — 타점·타점 그룹은 폐지(사람 편집물만 흔적이다)", () => {
-        expect(PRESENCE_KINDS.map((k) => k.key)).toEqual(["baseline", "ignore-candle", "group-day", "comment"]);
+    it("앵커 2종(레지스트리 파생) + 그룹·라벨·코멘트 = 5종 — 좌표 라벨은 2026-09-18 합류(라벨=타점 진실)", () => {
+        expect(PRESENCE_KINDS.map((k) => k.key)).toEqual(["baseline", "ignore-candle", "group-day", "point-label", "comment"]);
     });
 
     it("이름을 가진 종류는 그룹뿐 — 배지의 색 카드가 이걸 보고 선다", () => {

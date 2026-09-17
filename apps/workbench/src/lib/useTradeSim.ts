@@ -20,7 +20,9 @@ import {
     type TradeSimParams,
 } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../store/workbench.js";
-import type { AutoPointsView, PointGridsView } from "./usePointGrids.js";
+import { simKeyOf } from "./pointDef.js";
+import type { LabelSignal } from "./useLabelRows.js";
+import type { PointGridsView } from "./usePointGrids.js";
 
 export interface SimBasisView {
     /** pointKey → 체결 basis. 키가 없는 건 격자 미도착뿐. */
@@ -37,31 +39,60 @@ export interface SimView {
 }
 
 /** ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(소비는 PointGridsContext 의 useSimBasis). */
-export function useSimBasisValue(auto: AutoPointsView, grids: PointGridsView): SimBasisView {
+export function useSimBasisValue(signals: readonly LabelSignal[], grids: PointGridsView): SimBasisView {
     // 취소 노브 2개 **원시값**만 구독 — pointDef.sim 객체를 통째 물면 setPointDef 가 매번 새 객체를
     // 만들어(파서 경유) 게이트 입력 하나에도 basis 전량이 재계산된다(useOutcomes 의 T 구독과 같은 함정).
     const cancelRisePct = useWorkbench((s) => s.pointDef.sim.cancelRisePct);
     const cancelAfterMin = useWorkbench((s) => s.pointDef.sim.cancelAfterMin);
-    return useMemo(() => buildSimBasisView(auto, grids, { cancelRisePct, cancelAfterMin }), [auto, grids, cancelRisePct, cancelAfterMin]);
+    return useMemo(() => buildSimBasisView(signals, grids, { cancelRisePct, cancelAfterMin }), [signals, grids, cancelRisePct, cancelAfterMin]);
 }
 
-/** basis 조립(순수) — 테스트가 이 함수를 직접 잰다. */
+/** basis 조립(순수) — 시그널 = 라벨 좌표 + 봉 사실(simulate 와 같은 재료 — {min, close}). 테스트가 직접 잰다. */
 export function buildSimBasisView(
-    auto: AutoPointsView,
+    signals: readonly LabelSignal[],
     grids: PointGridsView,
     cancel: Pick<TradeSimParams, "cancelRisePct" | "cancelAfterMin">,
 ): SimBasisView {
     const byKey = new Map<string, SimFillBasis>();
-    for (const a of auto.points) {
-        const grid = grids.gridOf(a.stockCode, a.date);
+    for (const s of signals) {
+        const grid = grids.gridOf(s.stockCode, s.date);
         if (!grid) continue;
-        byKey.set(pointKeyOf({ stockCode: a.stockCode, date: a.date, time: a.time }), simFillBasis(grid, a.point, cancel));
+        byKey.set(pointKeyOf({ stockCode: s.stockCode, date: s.date, time: s.time }), simFillBasis(grid, { min: s.min, close: s.close }, cancel));
     }
-    return { byKey, total: auto.points.length };
+    return { byKey, total: signals.length };
 }
 
-/** ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(소비는 PointGridsContext 의 useTradeSim). */
-export function useTradeSimValue(auto: AutoPointsView, grids: PointGridsView): SimView {
+/** 동시 활성 시뮬 파라미터 벌 수 — 전역 노브 1 + 조립 부품 정의들 + 드래그 전이값. */
+const MAX_SIM_SLICES = 4;
+
+/**
+ * ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(소비는 PointGridsContext 의 useSimAt).
+ *
+ * **파라미터 벌 별 시뮬 접근자** — 걷기가 정의 무관이 되면서(라벨 행) 시뮬의 남은 변수는 노브 7뿐이다.
+ * 조립 부품이 제 payload 의 sim 으로 조회하고, 전역(useTradeSim)도 같은 캐시를 지난다(두 벌 안 돈다).
+ * 신원은 시그널·격자에만 매인다 — 노브 드래그가 이 함수를 안 갈아 정산 캐시(materialsEpoch)가 안 터진다.
+ */
+export function useSimAtValue(signals: readonly LabelSignal[], grids: PointGridsView): (params: TradeSimParams) => SimView {
+    return useMemo(() => {
+        const cache = new Map<string, SimView>();
+        return (params: TradeSimParams): SimView => {
+            const key = simKeyOf(params);
+            const hit = cache.get(key);
+            if (hit !== undefined) {
+                cache.delete(key); // LRU 갱신 — Map 삽입 순서가 곧 나이
+                cache.set(key, hit);
+                return hit;
+            }
+            const made = buildSimView(signals, grids, params);
+            cache.set(key, made);
+            if (cache.size > MAX_SIM_SLICES) cache.delete(cache.keys().next().value!);
+            return made;
+        };
+    }, [signals, grids]);
+}
+
+/** ⚠ 직접 부르지 말 것 — 전역 노브 한 벌의 시뮬(시뮬 패널·시트 붙박이 열). simAt 캐시를 지난다. */
+export function useTradeSimValue(simAt: (params: TradeSimParams) => SimView): SimView {
     // 노브 7 전부 **원시값** 구독(위와 같은 이유) — 판정 노브(게이트 등) 편집엔 재계산이 안 돈다.
     const entryPct = useWorkbench((s) => s.pointDef.sim.entry.pct);
     const stopPct = useWorkbench((s) => s.pointDef.sim.stopPct);
@@ -72,7 +103,7 @@ export function useTradeSimValue(auto: AutoPointsView, grids: PointGridsView): S
     const cancelAfterMin = useWorkbench((s) => s.pointDef.sim.cancelAfterMin);
     return useMemo(
         () =>
-            buildSimView(auto, grids, {
+            simAt({
                 entry: { anchor: "close", pct: entryPct },
                 stopPct,
                 takePct,
@@ -81,17 +112,17 @@ export function useTradeSimValue(auto: AutoPointsView, grids: PointGridsView): S
                 cancelRisePct,
                 cancelAfterMin,
             }),
-        [auto, grids, entryPct, stopPct, takePct, trailUpPct, trailDownPct, cancelRisePct, cancelAfterMin],
+        [simAt, entryPct, stopPct, takePct, trailUpPct, trailDownPct, cancelRisePct, cancelAfterMin],
     );
 }
 
 /** 결과 조립(순수) — params 는 파서(parseTradeSimParams)를 이미 지난 값이라 재정규화하지 않는다. */
-export function buildSimView(auto: AutoPointsView, grids: PointGridsView, params: TradeSimParams): SimView {
+export function buildSimView(signals: readonly LabelSignal[], grids: PointGridsView, params: TradeSimParams): SimView {
     const byKey = new Map<string, SimResult>();
-    for (const a of auto.points) {
-        const grid = grids.gridOf(a.stockCode, a.date);
+    for (const s of signals) {
+        const grid = grids.gridOf(s.stockCode, s.date);
         if (!grid) continue;
-        byKey.set(pointKeyOf({ stockCode: a.stockCode, date: a.date, time: a.time }), simulate(grid, a.point, params));
+        byKey.set(pointKeyOf({ stockCode: s.stockCode, date: s.date, time: s.time }), simulate(grid, { min: s.min, close: s.close }, params));
     }
-    return { params, byKey, total: auto.points.length };
+    return { params, byKey, total: signals.length };
 }

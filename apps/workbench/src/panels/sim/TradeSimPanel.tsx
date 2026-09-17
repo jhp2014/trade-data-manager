@@ -9,7 +9,7 @@ import { useMemo } from "react";
 import type { SimStatus, TradeSimParams } from "@trade-data-manager/market/domain";
 import { NumField } from "../../components/NumField.js";
 import { PanelHeader } from "../../components/ControlChrome.js";
-import { useSimBasis, useTradeSim } from "../../lib/PointGridsContext.js";
+import { useLabelRows, useSimBasis, useTradeSim } from "../../lib/PointGridsContext.js";
 import { parseTradeSimParams } from "../../lib/pointDef.js";
 import { pointKeyOf } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
@@ -39,6 +39,8 @@ const fmtPct = (v: number | null): string => (v === null ? "—" : `${v >= 0 ? "
 export function TradeSimPanel(): JSX.Element {
     const sim = useTradeSim();
     const basis = useSimBasis();
+    // 봉 사실 미도착 라벨 — 모수에서 빠진 결손을 화면이 말한다(3치 — 리뷰 B-1, 0이면 침묵).
+    const pendingCount = useLabelRows().pendingKeys.size;
     const simParams = useWorkbench((s) => s.pointDef.sim);
     const setDef = useWorkbench((s) => s.setPointDef);
     const setSim = (patch: Partial<TradeSimParams>): void => setDef({ sim: { ...simParams, ...patch } });
@@ -100,6 +102,7 @@ export function TradeSimPanel(): JSX.Element {
                 >
                     모수 {agg.total.toLocaleString()}{survivorKeys !== null && " (보는 집합)"} · 체결 {agg.filled.toLocaleString()}
                     {agg.total > 0 && ` (${Math.round((agg.filled / agg.total) * 100)}%)`}
+                    {pendingCount > 0 && ` · 대기 ${pendingCount.toLocaleString()}`}
                 </span>
                 <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }} title="본체는 도달 측정 — 익절 보고값 = 트레일↑ 눌림 전 최고 도달가, 손절 보고값 = 트레일↓ 반등 전 최저 도달가(진단), 청산 체결가 정밀도는 재지 않습니다">
                     도달 측정
@@ -153,7 +156,7 @@ export function TradeSimPanel(): JSX.Element {
 
                 {/* ── 오른쪽: 결과 스택 ── */}
                 <div style={{ flex: 1, minWidth: 0, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8, overflowY: "auto" }}>
-                    {sim.total === 0 && <Note>자동 시그널이 아직 없습니다 — 격자 로딩 중이거나 정의 게이트가 전부 걸렀습니다</Note>}
+                    {sim.total === 0 && <Note>시그널(라벨 좌표)이 아직 없습니다 — 탐색 후보에서 그룹을 배정하거나, 격자·봉 사실 로딩을 기다리세요</Note>}
                     {/* 분류 띠 + 범례 — 6분류(체결 3 + 미체결 3). */}
                     <div>
                         <div style={{ display: "flex", height: 12, borderRadius: 3, overflow: "hidden" }}>

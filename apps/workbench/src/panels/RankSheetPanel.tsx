@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { usePointRows } from "../lib/usePointRows.js";
-import { useAutoPoints, useOutcomeSlices, usePointGrids, useTradeSim, type OutcomesView, type SimView } from "../lib/PointGridsContext.js";
+import { useLabelRows, useOutcomeSlices, useSimAt, useTradeSim, type OutcomesView, type SimView } from "../lib/PointGridsContext.js";
 import { useDisplayT } from "./outcome/outcomeLink.js";
-import { defDerivedFor } from "../lib/defDerived.js";
 import { seriesColor } from "../styles/palette.js";
 import { colKey, type OutScope } from "./rank/sheetColumns.js";
 import { useCandidateDays } from "../lib/useCandidateDays.js";
@@ -41,7 +40,7 @@ import { usePersistedState } from "../store/persist.js";
 import { selectFilterStages, useWorkbench } from "../store/workbench.js";
 import type { ReviewPointKey } from "@trade-data-manager/market/domain";
 
-// 타점 분석 시트 — 행=타점(격자 파생) · 열=축별 순위. (축은 전부 계산 축 — 판단축은 2026-08-25 폐지.)
+// 타점 분석 시트 — 행=타점(라벨 좌표, 2026-09-18 B) · 열=축별 순위. (축은 전부 계산 축 — 판단축은 2026-08-25 폐지.)
 //  · 셀 = 숫자 / 순위 눈금 / 값 눈금(토글). 숫자는 **값만** 쓴다(`+12.3%` — 순위 수치는 타점이 만
 //    단위가 되며 말을 안 해서 뗐다; 순위는 눈금 모드의 자리와 툴팁에 산다). 값 눈금은
 //    **필터 보드 레일과 같은 좌표**라 쏠림이 보인다. 값 없음(결손·입력 전) = 빈칸.
@@ -134,7 +133,6 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     const assemblies = useWorkbench((s) => s.assemblies);
     const savedSets = useWorkbench((s) => s.savedSets);
     const pointDefCur = useWorkbench((s) => s.pointDef);
-    const grids = usePointGrids();
     const viewingAssembly = useMemo(
         () => (selectedSetRef?.kind === "assembly" ? (assemblies.find((a) => a.id === selectedSetRef.id) ?? null) : null),
         [selectedSetRef, assemblies],
@@ -174,9 +172,9 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     const { displayCols, leftOf, tableW, lastFrozenKey, widthOf } = cols;
 
     // ── 전체 타점(행 원천) + 기간. day 모드는 후보 하루(존재 지도 파생)가 행 원천이다.
-    const { points: allPoints, isLoading: pointsLoading } = usePointRows(); // point 행 원천(자동 타점 파생)
+    const { points: allPoints, isLoading: pointsLoading } = usePointRows(); // point 행 원천(라벨 좌표 — 라벨=타점 진실)
     const { candidates, isLoading: candLoading } = useCandidateDays();
-    const autoPoints = useAutoPoints(); // day 행의 "타점 수" — 존재 지도가 아니라 파생 한 벌에서 센다
+    const labelRows = useLabelRows(); // day 행의 "타점 수" = 그 날의 라벨 수(라벨=타점 진실, 2026-09-18 B)
     const { index: presenceIdx } = usePresenceIndex();
     const allByKey = useMemo(() => {
         const m = new Map<string, ReviewPointKey>();
@@ -226,8 +224,8 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
         if (!dayMode) return buildSheetRows(rowPoints, axisIds, indexByAxis);
         // day 행 = 후보 하루 전부(빈 셀 = 진도 정보). narrow 필터는 차트 키로 좁힌다.
         const base = bandsActive && filterModeEff === "narrow" ? candidates.filter((c) => interKeys.has(chartKey(c))) : candidates;
-        return buildDaySheetRows(base, axisIds, indexByAxis, (c) => presenceIdx.get(chartKey(c)), (c) => autoPoints.byChart.get(chartKey(c))?.length ?? 0);
-    }, [dayMode, rowPoints, axisIds, indexByAxis, bandsActive, filterModeEff, candidates, interKeys, presenceIdx, autoPoints]);
+        return buildDaySheetRows(base, axisIds, indexByAxis, (c) => presenceIdx.get(chartKey(c)), (c) => labelRows.byChart.get(chartKey(c))?.length ?? 0);
+    }, [dayMode, rowPoints, axisIds, indexByAxis, bandsActive, filterModeEff, candidates, interKeys, presenceIdx, labelRows]);
 
     // ── 정렬 체인(n차). 평클릭=리셋 · Shift+클릭=단 추가. 규칙 전부는 sheetSort(순수·테스트) 에.
     //    축 정렬 = 강(rank↑) 먼저, 값 없음(미배치·미산정)은 방향 무관 바닥. localStorage 영속(옛 단일 정렬도 읽는다).
@@ -254,21 +252,19 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     const outcomes = sliceAt(displayT);
     // 시뮬 열의 값 — 같은 사정(시트 전용 소스, useTradeSim). 노브 커밋마다 참조가 갈려 재계산.
     const sim = useTradeSim();
-    // 부품별 파생(조립 뷰) — 부품 정의(사본 없으면 현재 정의)의 결과 단면·시뮬·모수 키. defDerived 캐시라
-    // 같은 정의를 깔때기 평가(materialsFor)와 공유한다(두 벌 안 돈다).
-    const partAccess = useMemo(() => {
-        if (grids.byDate === null) return null;
-        const m = new Map<string, { oc: OutcomesView; sim: SimView; has: (k: string) => boolean }>();
+    // 부품별 파생(조립 뷰) — 2026-09-18 B: 행·걷기가 라벨(정의 무관)이 되면서 부품이 가르는 건
+    // **시뮬 노브**(payload 의 sim)뿐이다. 결과 단면은 전역 한 벌(표시 T — 부품끼리 같은 값), 시뮬은
+    // useSimAt 파라미터 벌 캐시를 지난다("모수 밖" 판정은 모수가 라벨로 통일돼 소멸).
+    const simAt = useSimAt();
+    const partSim = useMemo(() => {
+        const m = new Map<string, SimView>();
         for (const sc of outScopes ?? []) {
             if (sc.kind !== "part") continue;
             const def = savedSets.find((s) => s.id === sc.id)?.pointDef ?? pointDefCur;
-            const d = defDerivedFor(grids.byDate, def);
-            // 부품 열의 T 도 **지금 보는 T** 다 — 부품이 가르는 건 모수(어느 시그널이 있나)지 T 가 아니다
-            // (T 는 조건의 전제라 조건 인스턴스가 진다). 그래서 부품 × 인스턴스 곱셈이 안 생긴다.
-            m.set(sc.id, { oc: d.outcomes(displayT), sim: d.sim(def.sim), has: d.hasPoint });
+            m.set(sc.id, simAt(def.sim));
         }
         return m;
-    }, [outScopes, grids.byDate, savedSets, pointDefCur, displayT]);
+    }, [outScopes, savedSets, pointDefCur, simAt]);
     /** 인스턴스 열의 단면 — 그 조건의 T 로(모수는 현재 정의와 같다). */
     const instSlice = useMemo(() => {
         const m = new Map<string, OutcomesView>();
@@ -278,21 +274,16 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
         }
         return m;
     }, [outcomeStages, sliceAt]);
-    // scope 가 오면 갈라진 열(부품 = 그 정의의 값 / 인스턴스 = 그 T 의 값) — 없으면 붙박이(표시 T).
+    // scope 가 오면 갈라진 열 — 인스턴스 = 그 T 의 단면. 부품의 결과는 전역과 같다(행·걷기가 라벨로
+    // 정의 무관이 됐다, 2026-09-18 B — 부품이 가르는 건 시뮬 노브뿐).
     const outcomeOf = useMemo(() => (row: SheetRow, scope?: { kind: "part" | "inst"; id: string }) => {
         const k = rowKey(row);
-        if (scope === undefined) return outcomes.byKey.get(k);
-        return (scope.kind === "part" ? partAccess?.get(scope.id)?.oc : instSlice.get(scope.id))?.byKey.get(k);
-    }, [outcomes, partAccess, instSlice]);
-    // 시뮬은 **T 무관**이라 인스턴스로 안 갈린다 — 부품(정의)만 가른다.
+        if (scope?.kind === "inst") return instSlice.get(scope.id)?.byKey.get(k);
+        return outcomes.byKey.get(k);
+    }, [outcomes, instSlice]);
+    // 시뮬은 **T 무관**이라 인스턴스로 안 갈린다 — 부품(payload 의 sim 노브)만 가른다.
     const simOf = useMemo(() => (row: SheetRow, scope?: { kind: "part" | "inst"; id: string }) =>
-        (scope?.kind === "part" ? partAccess?.get(scope.id)?.sim : sim)?.byKey.get(rowKey(row)), [sim, partAccess]);
-    // 모수 밖 판정 — "그 정의엔 이 시그널이 없다"(빈 칸과 다른 정보). 인스턴스는 모수가 같아 언제나 false.
-    const outsideOf = useMemo(() => (row: SheetRow, scope: { kind: "part" | "inst"; id: string }): boolean => {
-        if (scope.kind !== "part") return false;
-        const p = partAccess?.get(scope.id);
-        return p !== undefined && !p.has(rowKey(row));
-    }, [partAccess]);
+        (scope?.kind === "part" ? partSim.get(scope.id) : sim)?.byKey.get(rowKey(row)), [sim, partSim]);
     /** 차이 열 값 — 피연산자 열의 **같은 접근자**를 두 번 부른다(값 정의가 한 곳이라 정렬·칸이 못 갈린다). */
     const difOf = useMemo(() => {
         // ⚠ 재료는 **숨김 이전 목록**(cols.baseOutCols)이다 — displayCols 를 물면 피연산자 열을 숨기는
@@ -458,7 +449,7 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
             <SheetRowView key={key} row={row} cols={displayCols}
                 leftOf={leftOf} lastFrozenKey={lastFrozenKey} widthOf={widthOf}
                 name={nameOf(row.stockCode)}
-                mode={cellMode} valuedOf={valuedOf} outcomeOf={outcomeOf} simOf={simOf} outsideOf={outsideOf} difOf={difOf} sortAxisId={sortAxisId}
+                mode={cellMode} valuedOf={valuedOf} outcomeOf={outcomeOf} simOf={simOf} difOf={difOf} sortAxisId={sortAxisId}
                 focus={isSubjectRow(row)} pinned={isPinned}
                 dim={bandsActive && !interKeys.has(matchKeyOf(row)) && (isPinned || filterModeEff === "dim")}
                 inPinnedBlock={inPinnedBlock} isLastPinned={isLastPinned} top={top} h={rowH} />

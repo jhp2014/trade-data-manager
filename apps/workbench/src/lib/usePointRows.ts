@@ -1,11 +1,11 @@
-// point 행 원천 — 시트·깔때기·작업셋·레일이 보는 **한 곳**. 행 = 자동 타점(격자 파생) 하나뿐이다.
+// point 행 원천 — 시트·깔때기·작업셋·레일이 보는 **한 곳**. 행 = **라벨 좌표**(그룹 배정 캔들 좌표) 하나뿐이다.
 //
-// 손 타점(review_points)·출처 토글은 2026-09-01 폐지 — 부분만 손으로 찍는 건 뜻이 없고(전량은 양이 불가)
-// 토글은 화면·모수·축을 두 벌로 만들었다. 이 훅이 남은 이유는 소비자가 "행이 어디서 오는지"를 안
-// 묻게 하기 위해서다 — 정렬·복제 방지는 Provider(useAutoPointsValue.rows)가 진다.
+// 2026-09-18 「구조 개편」 B: 격자 파생(자동 타점)은 행 원천 지위를 잃었다 — 라벨이 타점의 진실이고,
+// 종단이 필요한 건 분류된 것뿐이다(격자 파생은 탐색 후보 ①·차트 ◇ 로 존치). 이 훅이 남은 이유는
+// 소비자가 "행이 어디서 오는지"를 안 묻게 하기 위해서다 — 정렬·복제 방지는 Provider(useLabelRowsValue)가 진다.
 import { useMemo } from "react";
 import type { ReviewPointKey } from "@trade-data-manager/market/domain";
-import { useAutoPoints } from "./PointGridsContext.js";
+import { useLabelRows } from "./PointGridsContext.js";
 
 export interface PointRowsView {
     /** 날짜 내림차순, 같은 날 시각 오름차순. **readonly** — 파생 한 벌의 원본이라, 소비자가 제자리
@@ -19,9 +19,9 @@ export interface PointRowsView {
 const EMPTY: readonly ReviewPointKey[] = [];
 
 export function usePointRows(): PointRowsView {
-    const auto = useAutoPoints();
+    const labels = useLabelRows();
     return useMemo<PointRowsView>(
-        () => ({ points: auto.rows.length > 0 ? auto.rows : EMPTY, isLoading: auto.isLoading, error: auto.error }),
-        [auto],
+        () => ({ points: labels.rows.length > 0 ? labels.rows : EMPTY, isLoading: labels.isLoading, error: labels.error }),
+        [labels],
     );
 }
