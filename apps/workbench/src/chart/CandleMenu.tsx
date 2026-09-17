@@ -46,6 +46,11 @@ export interface CandleMenuProps {
         on: boolean;
         onToggle: () => void;
     };
+    /** 그룹 배정(좌표 라벨 — 라벨=타점) — 분봉 캔들에서만 뜬다. 복기 전용이라 optional.
+     *  임의 봉 우클릭을 배정 직행으로 갈아치우지 않는 이유: 그 자리는 선 긋기 소유(decisions.md 「구조 개편」). */
+    assign?: {
+        onAssign: () => void;
+    };
     onClose: () => void;
 }
 
@@ -100,7 +105,7 @@ function SectionLabel({ children }: { children: React.ReactNode }): JSX.Element 
     );
 }
 
-export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketChange, lines, ignore, onClose }: CandleMenuProps): JSX.Element {
+export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketChange, lines, ignore, assign, onClose }: CandleMenuProps): JSX.Element {
     const title = candle ? `${candle.date}${candle.time ? ` ${candle.time.slice(0, 5)}` : " 일봉"}` : "가격선";
     // 분봉 앵커는 UN 고정(서버 규칙), KRX 바가 없는 일봉도 UN 으로 되돌린다 — 없는 시장을 지목할 수는 없다.
     const eff: AnchorMarket = candle?.time || !bars?.krx ? "un" : market;
@@ -144,6 +149,15 @@ export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketCha
                         <MenuItem onClick={() => { lines.onRemove(lines.idAtCandle!); onClose(); }} style={{ color: "var(--rise)" }}>
                             이 봉의 선 삭제
                         </MenuItem>
+                    )}
+
+                    {candle.time && assign && (
+                        <>
+                            <SectionLabel>좌표 라벨 — 이 봉을 타점으로 분류</SectionLabel>
+                            <MenuItem onClick={() => { assign.onAssign(); onClose(); }}>
+                                이 좌표에 그룹 배정…
+                            </MenuItem>
+                        </>
                     )}
 
                     {!candle.time && (

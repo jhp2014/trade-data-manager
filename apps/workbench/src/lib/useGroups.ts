@@ -36,6 +36,13 @@ import { chartKey, pointKey } from "./pointKey.js";
 /** 라벨 없는 날의 ∃ 조회 결과 — 고정 참조(대부분의 날이라 매 호출 새 배열이면 소비 memo 가 헛돈다). */
 const EMPTY_NAMES: string[] = [];
 
+/** 한 차트의 좌표 라벨 한 줄 — 차트 표식(라벨=타점)의 재료. 이름은 지워진 그룹을 떨군 뒤다. */
+export interface PointLabel {
+    time: string; // HH:MM:SS
+    names: string[];
+}
+const EMPTY_LABELS: PointLabel[] = [];
+
 const TOGGLE_KEY = ["group-toggle"];
 // point 토글은 별도 키 — day 와 in-flight 를 섞어 세면 마지막 정산(invalidate)이 엉뚱한 피드로 미뤄진다.
 const POINT_TOGGLE_KEY = ["group-toggle-point"];
@@ -109,6 +116,11 @@ export interface GroupsView {
     pointNamesAtDay: (chart: ChartGroupRef) => string[];
     /** 이 그룹의 좌표 라벨 사용 건수. day countOf 와 **합산하지 않는다** — 뜻이 다른 두 수다. */
     pointCountOf: (groupName: string) => number;
+    /**
+     * 이 차트의 좌표 라벨 전부(시각 오름차순) — 차트의 라벨 표식(◆, 라벨=타점)이 이걸 그린다.
+     * "지워진 그룹 떨구기" 규칙 포함(pointGroupsOf 와 같은 사정 — 호출부마다 복제 금지). 없으면 고정 참조.
+     */
+    pointLabelsOf: (chart: ChartGroupRef) => readonly PointLabel[];
     /** 좌표 라벨 토글(낙관적). on 생략 = 현재 상태의 반대. */
     togglePoint: (ref: GroupPointItemRef, groupName: string, on?: boolean) => void;
     /** 전 좌표 라벨 멤버십 원본. */
@@ -151,6 +163,21 @@ export function useGroupsValue(): GroupsView {
     const pointDayApplied = useMemo(() => {
         const folded = foldPointIndexToDay(pointMemberships);
         return new Map([...folded].map(([k, names]) => [k, expandWithAncestors(names, groupByName)]));
+    }, [pointMemberships, groupByName]);
+    // 차트별 좌표 라벨 색인 — 차트 표식(라벨=타점)의 재료. 지워진 그룹은 여기서 떨궈 소비자가 규칙을 모른다.
+    const pointLabelsByChart = useMemo(() => {
+        const m = new Map<string, PointLabel[]>();
+        for (const p of pointMemberships) {
+            const names = p.groupNames.filter((n) => groupByName.has(n));
+            if (names.length === 0) continue;
+            const k = chartKey(p);
+            const entry: PointLabel = { time: p.time, names };
+            const list = m.get(k);
+            if (list) list.push(entry);
+            else m.set(k, [entry]);
+        }
+        for (const list of m.values()) list.sort((a, b) => (a.time < b.time ? -1 : 1));
+        return m;
     }, [pointMemberships, groupByName]);
     // grain 분류(자손 포함 롤업) — Provider 한 벌에서 굽는다(소비 화면마다 전량 롤업이 돌지 않게).
     const grainSets = useMemo(
@@ -267,6 +294,7 @@ export function useGroupsValue(): GroupsView {
             appliedPointGroupNamesOf: (ref) => expandWithAncestors(pointOf(ref), groupByName),
             pointInheritedViaOf: (ref, groupName) => inheritanceSources(pointOf(ref), groupByName).get(groupName) ?? null,
             pointNamesAtDay: (c) => pointDayApplied.get(chartKey(c)) ?? EMPTY_NAMES,
+            pointLabelsOf: (c) => pointLabelsByChart.get(chartKey(c)) ?? EMPTY_LABELS,
             createGroupAndAttach,
             renameGroup: renameGroupCb,
             deleteGroup: deleteGroupCb,
@@ -275,5 +303,5 @@ export function useGroupsValue(): GroupsView {
         };
         // mutation 은 매 렌더 새 객체(useMutation) — 의존성에 넣으면 매번 재생성되므로 제외(mutate 는 안정).
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [groups, groupByName, chartIndex, counts, memberships, grainSets, pointIndex, pointCounts, pointMemberships, pointDayApplied, createGroupAndAttach, renameGroupCb, deleteGroupCb, setParentCb, groupsQ.isLoading, memberQ.isLoading, pointMemberQ.isLoading]);
+    }, [groups, groupByName, chartIndex, counts, memberships, grainSets, pointIndex, pointCounts, pointMemberships, pointDayApplied, pointLabelsByChart, createGroupAndAttach, renameGroupCb, deleteGroupCb, setParentCb, groupsQ.isLoading, memberQ.isLoading, pointMemberQ.isLoading]);
 }

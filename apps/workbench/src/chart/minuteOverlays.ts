@@ -20,7 +20,28 @@ export interface AutoPointInput {
     label: string;
 }
 
+/** 좌표 라벨 입력(스냅 전) — 라벨=타점(그룹 배정 좌표)의 ◆ 표식. color = 첫 그룹의 groupColor. */
+export interface LabelPointInput {
+    time: number;
+    label: string;
+    color: string;
+}
+
 const NO_TIMES: readonly number[] = [];
+
+/** 목록을 실제 봉 시각으로 스냅(≤ target 최대, 같은 봉 중복 제거) — 자동 Point ◇ 와 라벨 ◆ 가 같은 자를 쓴다. */
+export function snapPoints<T extends { time: number }>(points: MinutePoint[], list: readonly T[]): T[] {
+    const seen = new Set<number>();
+    const out: T[] = [];
+    for (const sp of list) {
+        const s = snapToBar(points, sp.time);
+        if (s != null && !seen.has(s)) {
+            seen.add(s);
+            out.push({ ...sp, time: s });
+        }
+    }
+    return out;
+}
 
 /**
  * 타점 세로선 — markerTime/자동 Point 를 실제 봉 시각으로 스냅(≤ target 최대)해 두 pane primitive 에 push.
@@ -34,20 +55,7 @@ export function useMarkerVertLines(
     autoPoints: AutoPointInput[] = [],
 ): { currentSnapped: number | null; autoSnapped: AutoPointInput[] } {
     const currentSnapped = useMemo(() => snapToBar(points, markerTime), [markerTime, points]);
-    const snapList = <T extends { time: number }>(list: readonly T[]): T[] => {
-        const seen = new Set<number>();
-        const out: T[] = [];
-        for (const sp of list) {
-            const s = snapToBar(points, sp.time);
-            if (s != null && !seen.has(s)) {
-                seen.add(s);
-                out.push({ ...sp, time: s });
-            }
-        }
-        return out;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    const autoSnapped = useMemo(() => snapList(autoPoints), [autoPoints, points]);
+    const autoSnapped = useMemo(() => snapPoints(points, autoPoints), [autoPoints, points]);
 
     // 세로선 갱신 — 현재 시간선(진한 파랑) + 자동 Point(흐린 청록). 겹치면 현재가 이긴다.
     useEffect(() => {

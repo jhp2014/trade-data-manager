@@ -12,8 +12,8 @@ import { useKeymapDynamic } from "../keymap/dynamic.js";
 //
 // ## 소유자 = **명시 선택 하나**(2026-09-15)
 // 옛 규칙은 "시트가 배치에 있으면 시트, 없으면 작업셋"이라는 존재 우선순위였다 — 후보가 둘일 땐 통했지만
-// 후보가 넷(시트·작업 대상·테마[복기]·테마[장 마감])이 되는 순간 "지금 무엇을 걷고 싶은가"를 배치가
-// 대신 정할 수 없다. 그래서 소유자는 **사람이 고르고**(배지 클릭 / `q` 순환), 그 선택은 전역 영속이다.
+// 후보가 다섯(시트·작업 대상·탐색 후보·테마[복기]·테마[장 마감])이 되는 순간 "지금 무엇을 걷고 싶은가"를
+// 배치가 대신 정할 수 없다. 그래서 소유자는 **사람이 고르고**(배지 클릭 / `q` 순환), 그 선택은 전역 영속이다.
 // 자동(auto) 항목은 두지 않는다 — 명시 하나면 화면의 배지가 곧 진실이고, 규칙이 둘이면 "왜 저기가 걷지"가 다시 생긴다.
 //
 // 후보 판정 소스는 **프로바이더 존재**다(옛 `dock.openPanelIds` 아님): 얹혀 있다 = 그 패널이 마운트돼
@@ -30,13 +30,14 @@ import { useKeymapDynamic } from "../keymap/dynamic.js";
 //
 // ⚠ 모듈 전역 단일 소유 — 후보 패널은 각 1개 전제(panelCatalog). 인스턴스가 둘이 되면 나중 것이 앞을 덮는다.
 
-export type RowNavOwner = "rank-sheet" | "workset" | "replay-board" | "theme-board";
+export type RowNavOwner = "rank-sheet" | "workset" | "point-probe" | "replay-board" | "theme-board";
 type Step = (dir: 1 | -1) => void;
 
 /** 후보 — **순환 순서이자 폴백 우선순위**. unit 은 도움말 문구("다음 …"), label 은 배지 툴팁·순환 문구. */
 export const ROW_NAV_OWNERS: readonly { owner: RowNavOwner; unit: string; label: string }[] = [
     { owner: "rank-sheet", unit: "행(시트)", label: "시트" },
     { owner: "workset", unit: "타점(작업 대상)", label: "작업 대상" },
+    { owner: "point-probe", unit: "후보(탐색 후보)", label: "탐색 후보" },
     { owner: "replay-board", unit: "종목(테마 [복기])", label: "테마 [복기]" },
     { owner: "theme-board", unit: "종목(테마 [장 마감])", label: "테마 [장 마감]" },
 ];

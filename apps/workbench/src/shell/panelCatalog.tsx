@@ -14,6 +14,7 @@ import { LiveBoardPanel } from "../panels/LiveBoardPanel.js";
 import { RealtimeChartPanel } from "../panels/RealtimeChartPanel.js";
 import { ReplayBoardPanel } from "../panels/ReplayBoardPanel.js";
 import { WorksetPanel } from "../panels/WorksetPanel.js";
+import { ProbePanel } from "../panels/probe/ProbePanel.js";
 import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
 import { RankSheetPanel } from "../panels/RankSheetPanel.js";
 import { FilterFunnelPanel } from "../panels/FilterFunnelPanel.js";
@@ -93,6 +94,9 @@ export const PANEL_TYPES: PanelType[] = [
         render: (id) => <ChartPanel panelId={id} />,
     },
     { idBase: "workset", component: "workset", title: "작업 대상", plane: "eod", render: () => <WorksetPanel /> },
+    // 탐색 후보 — 수동 분류 우선 개편(2026-09-17)의 입구: 하루의 후보(probe)를 순회하며 우클릭 배정.
+    // ⚠ duplicable 금지 — w/s 순회(point-probe)가 모듈 전역 단일 소유다(rowNav 머리 주석).
+    { idBase: "probe", component: "probe", title: "탐색 후보", plane: "eod", render: (id) => <ProbePanel panelId={id} /> },
     { idBase: "history", component: "recentHistory", title: "최근 탐색", plane: "eod", render: () => <RecentHistoryPanel /> },
     { idBase: "rank-sheet", component: "rankSheet", title: "시트", plane: "eod", render: () => <RankSheetPanel /> },
     // 집합 편성 — 조건을 걸어 집합을 만드는 자리(다른 패널은 그 집합을 구독만 한다).

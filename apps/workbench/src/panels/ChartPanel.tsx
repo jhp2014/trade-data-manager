@@ -8,7 +8,8 @@ import { useChartViews } from "../lib/chartFrame.js";
 import { autoPointsOfChart, useAutoPoints, usePointGrids } from "../lib/PointGridsContext.js";
 import { useDisplayT } from "./outcome/outcomeLink.js";
 import { minuteToHms, sliceOutcome, walkOutcome } from "@trade-data-manager/market/domain";
-import type { AutoPointInput } from "../chart/minuteOverlays.js";
+import type { AutoPointInput, LabelPointInput } from "../chart/minuteOverlays.js";
+import { groupColor } from "../styles/palette.js";
 import { ownBundle, useAnchorMarks, useBaselineLines, useIgnoreCandles } from "../lib/chartAnchorHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../lib/chartFrame.js";
@@ -66,7 +67,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
-    const { chartGroupsOf, pathLabel } = useGroups();
+    const { chartGroupsOf, pathLabel, pointLabelsOf } = useGroups();
     // 두 날짜: 일봉=기준일(앵커, 2년), 분봉·큐레이션=검색날짜(기본=기준일, 일봉 봉 클릭이 드리프트). 고정 시 기준일 붙박이.
     const viewDate = pinMinute ? anchorDate : searchDate;
     // 이 차트(검색날짜)의 큐레이션 존재 요약 — "이 날 내가 뭘 남겼더라"를 헤더에서 답한다.
@@ -128,6 +129,13 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
+
+    // 좌표 라벨 ◆(라벨=타점, 진실) — 이 차트(검색날짜)의 그룹 배정 좌표. 색 = 첫 그룹의 groupColor.
+    const chartLabels = pointLabelsOf({ stockCode: code, date: viewDate });
+    const labelPoints = useMemo<LabelPointInput[]>(
+        () => chartLabels.map((l) => ({ time: kstToUnix(viewDate, l.time), label: l.names.join(" · "), color: groupColor(l.names[0] ?? "") })),
+        [chartLabels, viewDate],
+    );
 
     const dailyLines = lines.dLines;
     const minuteLines = lines.resolvedLines;
@@ -259,6 +267,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     pctBase={pctBase}
                                     markerTime={markerTime}
                                     autoPoints={autoPoints}
+                                    labelPoints={labelPoints}
                                     legHighTimes={legHighTimes}
                                     legBand={legBand}
                                     showPointInfo={showPointInfo}
@@ -294,6 +303,18 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                         on: candleMenu.candle ? ignore.ignoredDates.includes(candleMenu.candle.date) : false,
                         onToggle: () => candleMenu.candle && ignore.toggleIgnore(candleMenu.candle.date),
                     }}
+                    assign={
+                        candleMenu.candle?.time
+                            ? {
+                                  // ◇/◆ 우클릭 직행(onMarkContext)과 같은 목적지 — 팝오버 한 벌(store/groupAssign).
+                                  onAssign: () =>
+                                      useGroupAssign.getState().open(
+                                          { stockCode: code, name: name ?? undefined, date: candleMenu.candle!.date, time: candleMenu.candle!.time! },
+                                          { x: candleMenu.x, y: candleMenu.y },
+                                      ),
+                              }
+                            : undefined
+                    }
                     onClose={() => setCandleMenu(null)}
                 />
             )}

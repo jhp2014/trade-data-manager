@@ -124,7 +124,9 @@ type Ranks = NonNullable<ReturnType<SectionRanks["ranksOf"]>>;
 const amountOrd = (r: Ranks, p: Pick<ThemeStrengthParams, "zoneAmountWindow">): number | null =>
     p.zoneAmountWindow === 60 ? r.amount60 ?? null : r.amount;
 
-const inZone = (r: Ranks, p: ZoneParams): boolean => {
+/** 존 판정(등락 서수 ≤ N ∧ 대금 서수 ≤ M) — 외부(탐색 후보의 존 순위 선거름)도 이걸 쓴다.
+ *  판정식을 밖에서 다시 쓰면 themeStatsOf 의 selfInZone 과 갈릴 수 있어 export 로 연다. */
+export const inZone = (r: Ranks, p: ZoneParams): boolean => {
     const amt = amountOrd(r, p);
     return r.rate !== null && amt !== null && r.rate <= p.zoneRateN && amt <= p.zoneAmountN;
 };
