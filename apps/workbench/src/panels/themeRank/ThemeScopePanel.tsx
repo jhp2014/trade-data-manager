@@ -57,11 +57,6 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
                         {nameOf(subject.code)} · {subject.date}{plane.minute !== null && ` ${fmtMin(plane.minute)}`}
                     </span>
                 )}
-                {plane.viewMoved && (
-                    <button onClick={plane.resetView} title="뷰 이동/확대 중 — 클릭하면 원위치(그림 빈 곳 더블클릭과 같다)" style={backBtn}>
-                        {plane.zoom !== null ? `${(plane.defaultSpan / plane.domSpan).toFixed(1)}×` : "원위치"}
-                    </button>
-                )}
                 {plane.anchor && (
                     <button onClick={plane.goBack} title="이 패널에서 점을 눌러 떠나기 전 종목으로 돌아간다" style={backBtn}>
                         ← {nameOf(plane.anchor.code)}

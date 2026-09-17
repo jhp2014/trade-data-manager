@@ -282,6 +282,21 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
                         <CanvasLayers layers={p.layers} width={size.w} height={size.h} clip={box} />
                     </div>
 
+                    {/* 뷰 컨트롤 — 판 좌측 상단(x반전 후 가장 한산한 구석, 2026-09-17 사용자 확정).
+                        over-SVG 뒤에 그려 클릭이 먼저 닿는다. */}
+                    {p.viewMoved && (
+                        <button onClick={p.resetView}
+                            title="뷰 이동/확대 중 — 클릭하면 원위치(그림 빈 곳 더블클릭과 같다)"
+                            style={{
+                                position: "absolute", left: box.left + 6, top: box.top + 4, zIndex: 2,
+                                fontSize: 11, color: "var(--accent-primary)", borderWidth: 1, borderStyle: "solid",
+                                borderColor: "var(--accent-primary)", borderRadius: 8, padding: "0 6px",
+                                background: "var(--accent-soft)", cursor: "pointer", whiteSpace: "nowrap",
+                            }}>
+                            {p.zoom !== null ? `${(p.defaultSpan / p.domSpan).toFixed(1)}×` : "원위치"}
+                        </button>
+                    )}
+
                     <svg width={size.w} height={size.h}
                         style={{ ...overSvg, cursor: hover && p.peerThemes.has(hover.code) ? "pointer" : "grab" }}
                         onPointerDown={onPointerDown}
