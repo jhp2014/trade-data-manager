@@ -268,11 +268,11 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
                         <text x={4} y={box.top - 4} textAnchor="start" style={axisText}>{yScale.title}</text>
                         <text x={box.left + box.width / 2} y={size.h - 8} textAnchor="middle" style={axisText}>{xScale.title}</text>
                         {p.foldedRate > 0 && (
-                            // 판 **바깥** 좌측하단 구석(아래 여백의 둘째 줄) — 안에 두면 점·눈금과 겹치고,
-                            // 첫 줄(컷/자 배지 줄)에 두면 왼쪽으로 클램프된 대금 배지와 자리를 다툰다.
+                            // 판 바깥, **아래 스케일 줄의 가장 왼쪽**(2026-09-17 사용자 확정 자리). 경계값은
+                            // 팬 원값(긴 소수)이 아니라 소수 1자리로 자른다.
                             <g>
-                                <rect x={2} y={box.top + box.height + 16} width={64} height={13} rx={6} fill="var(--bg-tertiary)" />
-                                <text x={34} y={box.top + box.height + 26} textAnchor="middle" style={axisText}>{`≤${p.vy.lo}% ${p.foldedRate}`}</text>
+                                <rect x={2} y={box.top + box.height + 3} width={64} height={13} rx={6} fill="var(--bg-tertiary)" />
+                                <text x={34} y={box.top + box.height + 13} textAnchor="middle" style={axisText}>{`≤${p.vy.lo.toFixed(1)}% ${p.foldedRate}`}</text>
                             </g>
                         )}
                     </svg>
