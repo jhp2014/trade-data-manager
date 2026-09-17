@@ -22,8 +22,10 @@ import { themeColorMap } from "./themeColor.js";
 import { trailLayer, type Trail, type TrailPoint } from "./trailLayer.js";
 import { ACTIVE } from "../../styles/palette.js";
 
-// 왼쪽 여백이 넓은 이유: 등락(가로선) 손잡이 배지가 왼쪽 스케일에 가로로 앉기 때문(2026-09-17).
-export const PAD = { left: 64, top: 16, right: 12, bottom: 30 };
+// 오른쪽 여백이 넓은 이유: 등락(가로선) 손잡이 배지가 **오른쪽 스케일**에 가로로 앉기 때문이다
+// (2026-09-17 저녁 — x반전으로 주 시선(상위권)이 오른쪽-위가 되자 왼쪽 배지는 손과 눈이 반대편이었다.
+// 등락 눈금은 양쪽에 선다).
+export const PAD = { left: 44, top: 16, right: 64, bottom: 30 };
 /** 컷/자 라벨 배지 크기(px) — 이게 손잡이다(선 자체는 안 잡힌다). */
 export const LBL_W = 52;
 export const LBL_H = 14;

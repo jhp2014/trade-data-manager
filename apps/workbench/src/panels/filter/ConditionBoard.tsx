@@ -234,8 +234,13 @@ export function ConditionBoard({ barsOpen }: {
             {themeLink !== null && (
                 <ThemeLinkMenu anchor={themeLink}
                     boundId={bindings[themeLink.stageId]}
-                    candidates={dockSlots.filter((id) => parseSlotId(id)?.base === THEME_RANK_BASE
-                        && (!Object.entries(bindings).some(([sid, pid]) => pid === id && sid !== themeLink.stageId)))}
+                    candidates={dockSlots.filter((id) => {
+                        if (parseSlotId(id)?.base !== THEME_RANK_BASE) return false;
+                        // "다른 행이 쓰는 판" 제외는 **살아 있는 테마 행**만 센다 — 고아 바인딩(행 삭제·
+                        // 집합 적용의 통째 교체)이 판을 영구 점유하면 기본 판이 목록에서 사라진다(실사용 버그).
+                        return !Object.entries(bindings).some(([sid, pid]) => pid === id && sid !== themeLink.stageId
+                            && stages.some((st) => st.id === sid && st.predicates[0]?.kind === "themeStrength"));
+                    })}
                     onPick={(panelId) => {
                         bindTheme(themeLink.stageId, panelId);
                         openPanelExact(panelId);

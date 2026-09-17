@@ -65,8 +65,9 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
     const gyVisible = dragRef.current === "gy" || (gy !== null && yScale.inDomain(gy));
 
     const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(v, hi));
-    // 배지 자리 — 세로선(대금) = 아래 스케일, 가로선(등락) = **왼쪽 스케일 가로 글자**(2026-09-17).
-    const rateLabelX = Math.max(2, box.left - LBL_W - 4);
+    // 배지 자리 — 세로선(대금) = 아래 스케일, 가로선(등락) = **오른쪽 스케일 가로 글자**(2026-09-17 저녁
+    // — 1위 코너(오른쪽-위) 곁에 손잡이가 있어야 존을 만지는 손과 눈이 같은 자리다).
+    const rateLabelX = box.left + box.width + 4;
     const vLabel = (px: number): { x: number; y: number } => ({ x: clamp(px - LBL_W / 2, box.left, box.left + box.width - LBL_W), y: box.top + box.height + 3 });
     const hLabel = (py: number): { x: number; y: number } => ({ x: rateLabelX, y: clamp(py - LBL_H / 2, box.top, box.top + box.height - LBL_H) });
     const cutLabels = cut !== null && cutX !== null && cutY !== null ? { amount: vLabel(cutX), rate: hLabel(cutY) } : null;
@@ -247,7 +248,9 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
                         {yScale.ticks.map((t) => (
                             <g key={`y${t.v}`}>
                                 <line x1={box.left} y1={yScale.px(t.v)} x2={box.left + box.width} y2={yScale.px(t.v)} stroke="var(--border-subtle)" />
+                                {/* 눈금 글자는 양쪽 — 주 시선(1위 코너)이 오른쪽이라 오른쪽 스케일이 본론이고, 왼쪽은 보조다. */}
                                 <text x={box.left - 6} y={yScale.px(t.v) + 3} textAnchor="end" style={axisText}>{t.label}</text>
+                                <text x={box.left + box.width + 6} y={yScale.px(t.v) + 3} textAnchor="start" style={axisText}>{t.label}</text>
                             </g>
                         ))}
                         <line x1={box.left} y1={box.top} x2={box.left} y2={box.top + box.height} stroke="var(--border-strong)" />

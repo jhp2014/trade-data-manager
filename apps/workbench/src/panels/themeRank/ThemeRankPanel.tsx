@@ -19,6 +19,7 @@ import { themeStrengthLabel } from "../filter/label.js";
 import { themeParamsOf } from "../filter/themeLink.js";
 import { subjectStatus } from "../../lib/subject.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
+import { openAndFocus } from "../../lib/openPanel.js";
 import { useThemeStrengthStats } from "../../lib/useThemeStrengthStats.js";
 import { anyConditionOn, DEFAULT_THEME_STRENGTH, themeVerdicts, type ThemeStrengthParams, type ThemeVerdict } from "../../lib/themeStrength.js";
 import { projectionOf } from "../../lib/useThemeProjection.js";
@@ -160,9 +161,11 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
                         ▣ {themeStrengthLabel(linkedParams)}
                     </span>
                 ) : (
-                    <span style={{ ...label, color: "var(--text-tertiary)" }} title="연동은 집합 편성 보드의 테마 행에서 건다(pull) — 이 판은 미연동이라 십자선이 자유 자다">
-                        미연동 — 연동은 편성 보드에서
-                    </span>
+                    <button onClick={() => openAndFocus("filter-funnel-1")}
+                        style={{ ...label, color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
+                        title="연동은 집합 편성 보드의 테마 행에서 건다(pull) — 클릭하면 보드를 연다">
+                        미연동 — 연동은 편성 보드에서 ▸
+                    </button>
                 )}
                 {linked !== null && !linked.enabled && (
                     <span title="연동 행이 꺼져 있어 깔때기에 안 낀다 — 카운트는 켰을 때의 값(탐색용)"

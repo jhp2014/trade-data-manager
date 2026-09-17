@@ -94,6 +94,15 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         expect(useWorkbench.getState().themeBindings["t1"]).toBe("theme-rank-1");
     });
 
+    it("고아 바인딩은 후보를 점유하지 않는다 — 죽은 행이 가리키는 판도 목록에 선다(2026-09-17 실사용 버그)", () => {
+        useWorkbench.setState({ filterStages: [THEME_STAGE] });
+        // 살아 있지 않은 행 id 가 기본 판(슬롯 1)을 가리키는 고아 — 집합 적용의 통째 교체가 남기는 모양.
+        act(() => { useWorkbench.getState().bindTheme("dead-row", "theme-rank-1"); });
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "존 30/40")!); });
+        expect(byText(baseElement as HTMLElement, "○ 테마 순위 [조건]")).toBeTruthy();
+    });
+
     it("연동된 테마 행 — 배지가 판 이름을 말하고, 배지 클릭 = 변경/해제 메뉴", () => {
         useWorkbench.setState({ filterStages: [THEME_STAGE] });
         act(() => { useWorkbench.getState().bindTheme("t1", "theme-rank-1"); });
