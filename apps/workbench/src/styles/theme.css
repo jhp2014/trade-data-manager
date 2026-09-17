@@ -134,6 +134,45 @@ button {
     display: none;
 }
 
+/* 테마 순위 판 좌측 상단 뷰 컨트롤 — 평소엔 고스트(회색 글자만), 손이 갔을 때만 카드가 서고 색이
+   진해진다(2026-09-17 사용자 확정: "B 구조(한 덩어리 툴바) + C 평상시 투명"). 반투명 바탕은 점을
+   덜 가리려는 것 — 컨트롤이 늘어도 이 카드 안에 구분선으로 이어 붙인다. */
+.plane-ctl {
+    display: flex;
+    align-items: center;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    transition: background 120ms ease, border-color 120ms ease;
+}
+.plane-ctl:hover {
+    background: rgba(255, 255, 255, 0.85);
+    border-color: var(--border-default);
+}
+.plane-ctl button {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    padding: 2px 8px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+.plane-ctl button:hover {
+    color: var(--accent-primary);
+}
+.plane-ctl .plane-ctl-div {
+    width: 1px;
+    align-self: stretch;
+    background: var(--border-default);
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.plane-ctl:hover .plane-ctl-div {
+    opacity: 1;
+}
+
 /* 새로고침 등 진행 중 회전 표시. */
 @keyframes spin {
     to {

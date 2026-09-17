@@ -82,7 +82,6 @@ export interface ThemePlane {
     vy: ValueDom;
     rawVdom: { x?: ValueDom; y?: ValueDom } | undefined;
     zoom: ZoomDom | null;
-    zoomable: boolean;
     viewMoved: boolean;
     resetView: () => void;
     writeZoom: (d: { x0: number; x1: number; y0: number; y1: number }) => void;
@@ -197,10 +196,9 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
     // 축 상한 = 유니버스 크기 — 하루 안에서 상수(carry-forward 로 n 이 자라도 축이 안 출렁이게).
     const maxRank = Math.max(section?.codes.length ?? 0, 1);
 
-    // ── 서수 뷰 도메인 — 기본 [1..200] 고정 창(2026-09-17). 팬 상시, 휠 줌은 서수×서수에서만.
+    // ── 서수 뷰 도메인 — 기본 [1..200] 고정 창(2026-09-17). 팬·휠 줌 상시(값 축 줌은 vdom 쪽).
     // 도메인 읽기는 **서수 축이 하나라도 있으면** 산다 — 혼합 축(예: x 순위 · y 값)에서 x 팬이 쓰는
     // zoom 을 "둘 다 순위" 게이트로 버리면 팬이 조용히 죽고, 저장물만 남아 모드 복귀 때 뷰가 튄다.
-    const zoomable = axes.xMode === "rank" && axes.yMode === "rank";
     const anyRank = axes.xMode === "rank" || axes.yMode === "rank";
     const rawZoom = useWorkbench((s) => s.sessionUi[panelId]?.["zoom"]) as ZoomDom | undefined;
     const zoom = anyRank && rawZoom !== undefined && subject !== null && rawZoom.date === subject.date ? rawZoom : null;
@@ -377,7 +375,7 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
         snapStatus, snapError: snapQ.isError ? (snapQ.error as Error).message : null,
         minute, minuteRange, section, stocks,
         participants, hitPoints, subjectThemes, peerThemes, themeColors, themesStatus, lens, setLens,
-        maxRank, dom, domSpan, defaultSpan, clampDom0, vx, vy, rawVdom, zoom, zoomable, viewMoved, resetView, writeZoom, writeVdom,
+        maxRank, dom, domSpan, defaultSpan, clampDom0, vx, vy, rawVdom, zoom, viewMoved, resetView, writeZoom, writeVdom,
         xScale, yScale, scales, foldedRate, size, box, inner, wrapRef,
         trails, layers, trailMinutes, pointMinutes, nearestAt, navigate, anchor, goBack,
     };

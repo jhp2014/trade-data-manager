@@ -80,6 +80,32 @@ export function panAmountDom(dom: ValueDom, dlog: number): ValueDom {
     return { lo: 10 ** lo, hi: 10 ** (lo + span) };
 }
 
+/** 값 축 줌 하한 — 등락 5%p · 대금 1데케이드. 이보다 좁히면 눈금·자리의 뜻이 무너진다. */
+export const RATE_ZOOM_MIN_SPAN = 5;
+export const AMOUNT_ZOOM_MIN_DECADES = 1;
+
+/** 등락 값 축 줌 — 커서 값을 고정한 채 창 폭 f배. u = 커서의 도메인 내 비율(lo=0, hi=1).
+ *  한계: 폭 [RATE_ZOOM_MIN_SPAN, 팬 전 구간], 자리 [RATE_PAN_LO, RATE_VIEW.hi]. 변화 없으면 같은 참조. */
+export function zoomRateDom(dom: ValueDom, f: number, u: number): ValueDom {
+    const span = dom.hi - dom.lo;
+    const next = Math.min(Math.max(span * f, RATE_ZOOM_MIN_SPAN), RATE_VIEW.hi - RATE_PAN_LO);
+    if (next === span) return dom;
+    const lo = Math.max(RATE_PAN_LO, Math.min(dom.lo + u * span - u * next, RATE_VIEW.hi - next));
+    return { lo, hi: lo + next };
+}
+
+/** 대금 값 축 줌 — 로그 공간에서 커서 고정 f배(한계는 AMOUNT_PAN·데케이드 하한). 변화 없으면 같은 참조. */
+export function zoomAmountDom(dom: ValueDom, f: number, u: number): ValueDom {
+    const l0 = Math.log10(dom.lo);
+    const span = Math.log10(dom.hi) - l0;
+    const pLo = Math.log10(AMOUNT_PAN.lo);
+    const pHi = Math.log10(AMOUNT_PAN.hi);
+    const next = Math.min(Math.max(span * f, AMOUNT_ZOOM_MIN_DECADES), pHi - pLo);
+    if (next === span) return dom;
+    const lo = Math.max(pLo, Math.min(l0 + u * span - u * next, pHi - next));
+    return { lo: 10 ** lo, hi: 10 ** (lo + next) };
+}
+
 // ── 평면 단면 — (분, 축 설정) → stocks 순서의 좌표 배열. 재료는 전부 sectionSeries 공용 캐시. ──
 export interface PlaneSlice {
     x: (number | null)[];

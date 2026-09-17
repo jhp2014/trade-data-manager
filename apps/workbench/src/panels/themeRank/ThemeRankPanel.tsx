@@ -200,11 +200,6 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
                         {nameOf(subject.code)} · {subject.date}{plane.minute !== null && ` ${fmtMin(plane.minute)}`}
                     </span>
                 )}
-                {plane.anchor && (
-                    <button onClick={plane.goBack} title="이 패널에서 점을 눌러 떠나기 전 종목으로 돌아간다" style={backBtn}>
-                        ← {nameOf(plane.anchor.code)}
-                    </button>
-                )}
                 <SubjectBadge subject={subject} name={subject ? nameOf(subject.code) : undefined} absentLabel="그 분 순위 없음"
                     status={section
                         ? subjectStatus(
@@ -229,5 +224,4 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
 
 const wrap: React.CSSProperties = { display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" };
 const label: React.CSSProperties = { fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 };
-const backBtn: React.CSSProperties = { fontSize: 11, color: "var(--accent-primary)", borderWidth: 1, borderStyle: "solid", borderColor: "var(--accent-primary)", borderRadius: 8, padding: "0 6px", background: "var(--accent-soft)", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 };
 const chipsRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderBottom: "1px solid var(--border-subtle)", overflowX: "auto", flexShrink: 0 };

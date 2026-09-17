@@ -10,7 +10,7 @@ import { usePanelUi } from "../../store/usePanelUi.js";
 import { CanvasLayers } from "../canvas/CanvasPainter.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { FILTER } from "../../styles/palette.js";
-import { panAmountDom, panRateDom, type ValueDom } from "./axisModel.js";
+import { panAmountDom, panRateDom, zoomAmountDom, zoomRateDom, type ValueDom } from "./axisModel.js";
 import { tooltipBoxOf } from "./tooltipBox.js";
 import { TimelineBar } from "./TimelineBar.js";
 import { TrailControl } from "./TrailControl.js";
@@ -147,24 +147,40 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
         }
     };
 
-    /** 휠 = 커서 중심 확대/축소(서수×서수 한정). 줌아웃 상한 = 유니버스 전체, 줌인 하한 = ZOOM_MIN_SPAN. */
+    /** 휠 = 커서 중심 확대/축소 — 모든 축 모드(2026-09-17 관찰판 확대 요청). 서수 축은 정방 zoom 창,
+     *  값 축은 각자 vdom(등락 선형·대금 로그 공간, 한계는 axisModel 줌 함수가 문다). */
     const onWheel = (e: React.WheelEvent<SVGSVGElement>): void => {
-        if (!p.zoomable) return;
-        if (!p.subject || p.maxRank <= ZOOM_MIN_SPAN + 1) return;
+        if (!p.subject) return;
         const rect = e.currentTarget.getBoundingClientRect();
         const px = e.clientX - rect.left;
         const py = e.clientY - rect.top;
         if (px < box.left || px > box.left + box.width || py < box.top || py > box.top + box.height) return;
         const f = e.deltaY < 0 ? 1 / 1.25 : 1.25;
-        const next = Math.min(Math.max(p.domSpan * f, ZOOM_MIN_SPAN), Math.max(p.maxRank - 1, 1));
-        if (next === p.domSpan) return;
-        // x 는 반전축 — 커서 아래 서수를 고정하려면 x1(왼쪽 끝) 기준으로 셈한다.
         const ux = (px - p.inner.left) / Math.max(p.inner.width, 1);
         const uy = (py - p.inner.top) / Math.max(p.inner.height, 1);
-        const cursorOrdX = p.dom.x1 - ux * p.domSpan;
-        const x0 = p.clampDom0(cursorOrdX + ux * next - next, next);
-        const y0 = p.clampDom0(p.dom.y0 + uy * p.domSpan - uy * next, next);
-        p.writeZoom({ x0, x1: x0 + next, y0, y1: y0 + next });
+        if ((p.axes.xMode === "rank" || p.axes.yMode === "rank") && p.maxRank > ZOOM_MIN_SPAN + 1) {
+            const next = Math.min(Math.max(p.domSpan * f, ZOOM_MIN_SPAN), Math.max(p.maxRank - 1, 1));
+            if (next !== p.domSpan) {
+                // x 는 반전축 — 커서 아래 서수를 고정하려면 x1(왼쪽 끝) 기준으로 셈한다.
+                const cursorOrdX = p.dom.x1 - ux * p.domSpan;
+                const x0 = p.clampDom0(cursorOrdX + ux * next - next, next);
+                const y0 = p.clampDom0(p.dom.y0 + uy * p.domSpan - uy * next, next);
+                p.writeZoom({ x0, x1: x0 + next, y0, y1: y0 + next });
+            }
+        }
+        if (p.axes.xMode === "value" || p.axes.yMode === "value") {
+            const nextV: { x?: ValueDom; y?: ValueDom } = { ...(p.rawVdom ?? {}) };
+            let moved = false;
+            if (p.axes.xMode === "value") {
+                const d = zoomAmountDom(p.vx, f, ux);
+                if (d !== p.vx) { nextV.x = d; moved = true; }
+            }
+            if (p.axes.yMode === "value") {
+                const d = zoomRateDom(p.vy, f, 1 - uy); // u 는 lo 기준 비율 — py 는 위(hi)가 0 이라 뒤집는다
+                if (d !== p.vy) { nextV.y = d; moved = true; }
+            }
+            if (moved) p.writeVdom(nextV);
+        }
     };
 
     /** 빈 곳 더블클릭 = 원위치(기본 200 창 + 값 축 기본 도메인). 점 위는 제외. */
@@ -283,18 +299,22 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
                     </div>
 
                     {/* 뷰 컨트롤 — 판 좌측 상단(x반전 후 가장 한산한 구석, 2026-09-17 사용자 확정).
-                        over-SVG 뒤에 그려 클릭이 먼저 닿는다. */}
-                    {p.viewMoved && (
-                        <button onClick={p.resetView}
-                            title="뷰 이동/확대 중 — 클릭하면 원위치(그림 빈 곳 더블클릭과 같다)"
-                            style={{
-                                position: "absolute", left: box.left + 6, top: box.top + 4, zIndex: 2,
-                                fontSize: 11, color: "var(--accent-primary)", borderWidth: 1, borderStyle: "solid",
-                                borderColor: "var(--accent-primary)", borderRadius: 8, padding: "0 6px",
-                                background: "var(--accent-soft)", cursor: "pointer", whiteSpace: "nowrap",
-                            }}>
-                            {p.zoom !== null ? `${(p.defaultSpan / p.domSpan).toFixed(1)}×` : "원위치"}
-                        </button>
+                        over-SVG 뒤에 그려 클릭이 먼저 닿는다. 브레드크럼(← 종목)도 같은 묶음.
+                        모양은 .plane-ctl(theme.css) — 고스트 툴바(평소 투명, 호버 시 카드). */}
+                    {(p.viewMoved || p.anchor !== null) && (
+                        <div className="plane-ctl" style={{ position: "absolute", left: box.left + 6, top: box.top + 4, zIndex: 2 }}>
+                            {p.viewMoved && (
+                                <button onClick={p.resetView} title="뷰 이동/확대 중 — 클릭하면 원위치(그림 빈 곳 더블클릭과 같다)">
+                                    ⟲ {p.zoom !== null ? `${(p.defaultSpan / p.domSpan).toFixed(1)}×` : "원위치"}
+                                </button>
+                            )}
+                            {p.viewMoved && p.anchor !== null && <div className="plane-ctl-div" />}
+                            {p.anchor !== null && (
+                                <button onClick={p.goBack} title="이 패널에서 점을 눌러 떠나기 전 종목으로 돌아간다">
+                                    ← {nameOf(p.anchor.code)}
+                                </button>
+                            )}
+                        </div>
                     )}
 
                     <svg width={size.w} height={size.h}
