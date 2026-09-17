@@ -26,6 +26,9 @@ import { ACTIVE } from "../../styles/palette.js";
 // (2026-09-17 저녁 — x반전으로 주 시선(상위권)이 오른쪽-위가 되자 왼쪽 배지는 손과 눈이 반대편이었다.
 // 등락 눈금은 양쪽에 선다).
 export const PAD = { left: 44, top: 16, right: 64, bottom: 30 };
+/** 그림 안쪽 패딩(px) — 도메인 끝(1위 코너)의 점·링이 경계에 딱 붙지 않게 **스케일만** 이만큼 안으로
+ * 매핑한다(경계선·클립·배지 자리는 바깥 상자 그대로 — 2026-09-17 사용자 피드백). */
+export const INNER_PAD = 12;
 /** 컷/자 라벨 배지 크기(px) — 이게 손잡이다(선 자체는 안 잡힌다). */
 export const LBL_W = 52;
 export const LBL_H = 14;
@@ -90,6 +93,8 @@ export interface ThemePlane {
     foldedRate: number;
     size: { w: number; h: number };
     box: { left: number; top: number; width: number; height: number };
+    /** 스케일이 쓰는 안쪽 상자(INNER_PAD) — 팬·휠의 px→도메인 비율도 이걸 써야 1:1 로 따라온다. */
+    inner: { left: number; top: number; width: number; height: number };
     wrapRef: (el: HTMLDivElement | null) => void;
     trails: Trail[] | null;
     layers: ReturnType<typeof scatterLayer>[];
@@ -186,6 +191,8 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
     }, []);
     useEffect(() => () => roRef.current?.disconnect(), []);
     const box = { left: PAD.left, top: PAD.top, width: Math.max(0, size.w - PAD.left - PAD.right), height: Math.max(0, size.h - PAD.top - PAD.bottom) };
+    // 스케일이 실제로 쓰는 안쪽 상자 — 점·눈금·컷이 전부 이만큼 들어와 도메인 끝이 숨을 쉰다.
+    const inner = { left: box.left + INNER_PAD, top: box.top + INNER_PAD, width: Math.max(0, box.width - 2 * INNER_PAD), height: Math.max(0, box.height - 2 * INNER_PAD) };
 
     // 축 상한 = 유니버스 크기 — 하루 안에서 상수(carry-forward 로 n 이 자라도 축이 안 출렁이게).
     const maxRank = Math.max(section?.codes.length ?? 0, 1);
@@ -251,14 +258,14 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
 
     // ── 축 스케일 — 서수는 뷰 도메인, 값은 고정 도메인(+팬 vdom). 렌더·판정·드래그의 단일 출처.
     const xScale = useMemo(
-        () => (axes.xMode === "rank" ? rankScaleX(dom, box, maxRank, axes.windowMin) : valueScaleX(vx, box, axes.windowMin)),
+        () => (axes.xMode === "rank" ? rankScaleX(dom, inner, maxRank, axes.windowMin) : valueScaleX(vx, inner, axes.windowMin)),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [axes, dom, vx, box.left, box.top, box.width, box.height, maxRank],
+        [axes, dom, vx, inner.left, inner.top, inner.width, inner.height, maxRank],
     );
     const yScale = useMemo(
-        () => (axes.yMode === "rank" ? rankScaleY(dom, box, maxRank) : valueScaleY(vy, box)),
+        () => (axes.yMode === "rank" ? rankScaleY(dom, inner, maxRank) : valueScaleY(vy, inner)),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [axes, dom, vy, box.left, box.top, box.width, box.height, maxRank],
+        [axes, dom, vy, inner.left, inner.top, inner.width, inner.height, maxRank],
     );
     const scales = useMemo(() => ({ x: xScale.px, y: yScale.px }), [xScale, yScale]);
     // 접힌 등락 값의 수 — participants 가 창 아래를 이미 걸러내므로(위) 원본 slice 에서 센다.
@@ -371,7 +378,7 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
         minute, minuteRange, section, stocks,
         participants, hitPoints, subjectThemes, peerThemes, themeColors, themesStatus, lens, setLens,
         maxRank, dom, domSpan, defaultSpan, clampDom0, vx, vy, rawVdom, zoom, zoomable, viewMoved, resetView, writeZoom, writeVdom,
-        xScale, yScale, scales, foldedRate, size, box, wrapRef,
+        xScale, yScale, scales, foldedRate, size, box, inner, wrapRef,
         trails, layers, trailMinutes, pointMinutes, nearestAt, navigate, anchor, goBack,
     };
 }

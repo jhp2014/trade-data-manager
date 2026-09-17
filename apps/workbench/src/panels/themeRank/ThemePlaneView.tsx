@@ -45,8 +45,8 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
     const [guides, setGuides] = usePanelUi<Record<string, number>>(p.panelId, "guides", {});
     const [guidePrev, setGuidePrev] = useState<{ k: string; v: number } | null>(null);
     const guidePrevRef = useRef<{ k: string; v: number } | null>(null);
-    const centerX = xScale.invert(box.left + box.width / 2);
-    const centerY = yScale.invert(box.top + box.height / 2);
+    const centerX = xScale.invert(p.inner.left + p.inner.width / 2);
+    const centerY = yScale.invert(p.inner.top + p.inner.height / 2);
     const gx = cut !== null ? null : guidePrev?.k === guideKeys.x ? guidePrev.v : guides[guideKeys.x] ?? centerX;
     const gy = cut !== null ? null : guidePrev?.k === guideKeys.y ? guidePrev.v : guides[guideKeys.y] ?? centerY;
 
@@ -127,8 +127,8 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
             // 서수 축 — x 는 반전축이라 부호가 값 축과 반대(px 가 커질수록 서수가 작아진다).
             if (p.axes.xMode === "rank" || p.axes.yMode === "rank") {
                 const span = pan.dom.x1 - pan.dom.x0;
-                const x0 = p.axes.xMode === "rank" ? p.clampDom0(pan.dom.x0 + (dx / Math.max(box.width, 1)) * span, span) : pan.dom.x0;
-                const y0 = p.axes.yMode === "rank" ? p.clampDom0(pan.dom.y0 - (dy / Math.max(box.height, 1)) * span, span) : pan.dom.y0;
+                const x0 = p.axes.xMode === "rank" ? p.clampDom0(pan.dom.x0 + (dx / Math.max(p.inner.width, 1)) * span, span) : pan.dom.x0;
+                const y0 = p.axes.yMode === "rank" ? p.clampDom0(pan.dom.y0 - (dy / Math.max(p.inner.height, 1)) * span, span) : pan.dom.y0;
                 p.writeZoom({ x0, x1: x0 + span, y0, y1: y0 + span });
             }
             // 값 축 — 등락은 선형(%), 대금은 로그(데케이드) 공간. 한계는 axisModel 상수.
@@ -136,11 +136,11 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
                 const next: { x?: ValueDom; y?: ValueDom } = { ...(p.rawVdom ?? {}) };
                 if (p.axes.xMode === "value") {
                     const L = Math.log10(pan.vx.hi) - Math.log10(pan.vx.lo);
-                    next.x = panAmountDom(pan.vx, -(dx / Math.max(box.width, 1)) * L);
+                    next.x = panAmountDom(pan.vx, -(dx / Math.max(p.inner.width, 1)) * L);
                 }
                 if (p.axes.yMode === "value") {
                     const S = pan.vy.hi - pan.vy.lo;
-                    next.y = panRateDom(pan.vy, (dy / Math.max(box.height, 1)) * S);
+                    next.y = panRateDom(pan.vy, (dy / Math.max(p.inner.height, 1)) * S);
                 }
                 p.writeVdom(next);
             }
@@ -159,8 +159,8 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
         const next = Math.min(Math.max(p.domSpan * f, ZOOM_MIN_SPAN), Math.max(p.maxRank - 1, 1));
         if (next === p.domSpan) return;
         // x 는 반전축 — 커서 아래 서수를 고정하려면 x1(왼쪽 끝) 기준으로 셈한다.
-        const ux = (px - box.left) / Math.max(box.width, 1);
-        const uy = (py - box.top) / Math.max(box.height, 1);
+        const ux = (px - p.inner.left) / Math.max(p.inner.width, 1);
+        const uy = (py - p.inner.top) / Math.max(p.inner.height, 1);
         const cursorOrdX = p.dom.x1 - ux * p.domSpan;
         const x0 = p.clampDom0(cursorOrdX + ux * next - next, next);
         const y0 = p.clampDom0(p.dom.y0 + uy * p.domSpan - uy * next, next);

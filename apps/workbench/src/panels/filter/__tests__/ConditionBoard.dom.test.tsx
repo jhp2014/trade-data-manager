@@ -94,6 +94,15 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         expect(useWorkbench.getState().themeBindings["t1"]).toBe("theme-rank-1");
     });
 
+    it("소멸된 판을 가리키는 바인딩 = 읽기 시점 미연동 — 배지가 죽은 판 이름을 말하지 않는다", () => {
+        useWorkbench.setState({ filterStages: [THEME_STAGE] });
+        // 슬롯 대장(기본 시딩)에 없는 판 id — ×로 소멸된 판이 남긴 바인딩의 모양.
+        act(() => { useWorkbench.getState().bindTheme("t1", "theme-rank-9"); });
+        const { container } = renderBoard();
+        expect(container.textContent).not.toContain("테마 순위 [조건] 9");
+        expect(container.textContent).toContain("○ 미연동");
+    });
+
     it("고아 바인딩은 후보를 점유하지 않는다 — 죽은 행이 가리키는 판도 목록에 선다(2026-09-17 실사용 버그)", () => {
         useWorkbench.setState({ filterStages: [THEME_STAGE] });
         // 살아 있지 않은 행 id 가 기본 판(슬롯 1)을 가리키는 고아 — 집합 적용의 통째 교체가 남기는 모양.

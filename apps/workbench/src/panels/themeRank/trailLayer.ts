@@ -33,8 +33,9 @@ export interface TrailScales {
 /** 렌즈 밖 동료 흐리기 — scatterLayer 의 DIM 과 같은 값(꼬리만 진하면 층이 어긋나 보인다). */
 const DIM = 0.3;
 
-/** 계단 i(0=가장 과거)…n-1(머리 직전) → 진하기·굵기. 마지막 계단이 가장 진하다. */
-const alphaOf = (i: number, n: number): number => 0.2 + 0.6 * ((i + 1) / n);
+/** 계단 i(0=가장 과거)…n-1(머리 직전) → 진하기·굵기. 마지막 계단이 가장 진하다.
+ *  상한 ~0.45 — 꼬리는 맥락이지 주인공이 아니다(2026-09-17 사용자 피드백으로 반투명 하향). */
+const alphaOf = (i: number, n: number): number => 0.1 + 0.35 * ((i + 1) / n);
 const widthOf = (i: number, n: number): number => 1.2 + 0.8 * ((i + 1) / n);
 
 export function trailLayer({ trails, scales }: { trails: readonly Trail[]; scales: TrailScales }): DrawLayer {

@@ -44,9 +44,10 @@ export interface ScatterArgs {
 const DIM = 0.3;
 
 export function scatterLayer({ points, subject, peerThemes, colorOf, lens, scales, compact }: ScatterArgs): DrawLayer {
-    const peerR = compact ? 2.8 : 4;
-    const subjR = compact ? 3.5 : 5;
-    const subjRing = compact ? 6 : 8.5;
+    // 2026-09-17 사용자 피드백 — 한 단계 축소(도메인 200 고정 창에서 점이 커 보인다).
+    const peerR = compact ? 2.2 : 3;
+    const subjR = compact ? 2.8 : 4;
+    const subjRing = compact ? 5 : 7;
     const dim: DrawOp[] = [];
     const strong: DrawOp[] = [];
     const subjectOps: DrawOp[] = [];

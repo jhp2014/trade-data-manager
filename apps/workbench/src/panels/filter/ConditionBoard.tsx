@@ -75,6 +75,13 @@ export function ConditionBoard({ barsOpen }: {
     const unbindTheme = useWorkbench((s) => s.unbindTheme);
     const dockSlots = useDock((s) => s.slots);
     const [themeLink, setThemeLink] = useState<{ stageId: string; x: number; y: number } | null>(null);
+    // 바인딩이 가리키는 판이 **슬롯 대장에 살아 있을 때만** 연동으로 읽는다 — 판을 ×로 소멸해도
+    // 바인딩은 남는데(고아 = 읽기 시점 해석 규칙), 카탈로그가 이름을 지어내(slotTitleOf) 죽은 판을
+    // 배지에 계속 말하고 이름 클릭이 그 판을 되살리는 사고가 났다(2026-09-17 실사용).
+    const livePanelOf = (stageId: string): string | undefined => {
+        const pid = bindings[stageId];
+        return pid !== undefined && dockSlots.includes(pid) ? pid : undefined;
+    };
     const [groupEditor, setGroupEditor] = useState<GroupEditorAnchor | null>(null);
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
     const groupCreate = useGroupCreateFlow(addStage, setGroupEditor);
@@ -91,7 +98,7 @@ export function ConditionBoard({ barsOpen }: {
         switch (stageKind(stage)) {
             case "themeStrength": {
                 // 연동돼 있으면 그 판으로(특정 인스턴스 — 타입 리졸버가 아니라 정확 열기), 아니면 연동 목록.
-                const bound = bindings[stage.id];
+                const bound = livePanelOf(stage.id);
                 if (bound !== undefined && parseSlotId(bound)?.base === THEME_RANK_BASE) openPanelExact(bound);
                 else setThemeLink({ stageId: stage.id, x: e.clientX, y: e.clientY });
                 return;
@@ -176,7 +183,7 @@ export function ConditionBoard({ barsOpen }: {
                                         label={stageLabel(stage, v.labelLook)}
                                         dead={v.deadStageIds.includes(stage.id)}
                                         linked={false}
-                                        linkedLabel={stageKind(stage) === "themeStrength" ? (bindings[stage.id] !== undefined ? slotTitleOf(bindings[stage.id]) : "미연동") : undefined}
+                                        linkedLabel={stageKind(stage) === "themeStrength" ? (livePanelOf(stage.id) !== undefined ? slotTitleOf(livePanelOf(stage.id)!) : "미연동") : undefined}
                                         onLinkedClick={(e) => setThemeLink({ stageId: stage.id, x: e.clientX, y: e.clientY })}
                                         showBar={barsOpen}
                                         pickedCells={selection?.stageId === stage.id ? selection.cells : []}
@@ -233,7 +240,7 @@ export function ConditionBoard({ barsOpen }: {
             {/* 테마 연동 메뉴 — 이 보드가 유일한 연동 손잡이(pull). 목록 = 미연동 조건판 + 새 조건판(관찰판 제외). */}
             {themeLink !== null && (
                 <ThemeLinkMenu anchor={themeLink}
-                    boundId={bindings[themeLink.stageId]}
+                    boundId={livePanelOf(themeLink.stageId)}
                     candidates={dockSlots.filter((id) => {
                         if (parseSlotId(id)?.base !== THEME_RANK_BASE) return false;
                         // "다른 행이 쓰는 판" 제외는 **살아 있는 테마 행**만 센다 — 고아 바인딩(행 삭제·
