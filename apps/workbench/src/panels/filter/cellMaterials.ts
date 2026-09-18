@@ -4,7 +4,7 @@
 //    + `themeStrength.themeStatsOf`(타점 정보 패널과 같은 판정식).
 //  · 격자 Point = `useAutoPoints`(defDerived 단일 파생 캐시)의 산출물.
 //
-// 순수 함수인 이유: 훅이 아니어야 dom 테스트 없이 잠글 수 있고, 호출부(useProbes)의 memo 신원이
+// 순수 함수인 이유: 훅이 아니어야 dom 테스트 없이 잠글 수 있고, 호출부(useCellSet)의 memo 신원이
 // 재료 한 벌로 모인다(어댑터가 훅이면 의존 배열이 갈려 매 렌더 새 참조가 된다).
 import type { CellMaterials } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";

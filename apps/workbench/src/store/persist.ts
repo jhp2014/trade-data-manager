@@ -31,6 +31,19 @@ export function backupRawOnce(key: string, tag: string): void {
     }
 }
 
+/**
+ * 그 키로 **저장한 적이 있나** — 값의 내용이 아니라 존재만 본다.
+ * `loadJson` 은 "없음"과 "빈 배열"을 똑같이 `[]` 로 돌려주므로, 1회 이주처럼
+ * **사용자가 비운 것과 아직 아무 일도 없던 것을 갈라야 하는 자리**가 이걸 쓴다.
+ */
+export function hasStored(key: string): boolean {
+    try {
+        return localStorage.getItem(key) !== null;
+    } catch {
+        return false;
+    }
+}
+
 export function saveJson(key: string, value: unknown): void {
     try {
         localStorage.setItem(key, JSON.stringify(value));

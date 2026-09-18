@@ -11,8 +11,14 @@ export type StickyRowKind = "date" | "stock" | "point";
 /** 고정 행 높이(px) — 균일해야 가상화가 재지 않고 앉힌다(WorksetList 머리 주석). */
 export const ROW_H: Record<StickyRowKind, number> = { date: 24, stock: 24, point: 22 };
 
-/** 붙는 띠의 두께 = 두 머리(날짜+종목)의 높이 합. */
+/** 붙는 띠의 두께 = 두 머리(날짜+종목)의 높이 합 — **종단 목록**의 값이다. */
 export const BAND_H = ROW_H.date + ROW_H.stock;
+
+/**
+ * 띠 두께 — 머리가 몇 층인가로 정한다. **하루 우주는 날짜가 상수라 머리가 1층**(종목)뿐이고,
+ * 이 값을 상수로 두면 띠가 행을 반쯤 먹는다(이 파일이 경고하는 바로 그 증상).
+ */
+export const bandHOf = (hasDateHead: boolean): number => (hasDateHead ? BAND_H : ROW_H.stock);
 
 /** 각 행의 시작 offset(px) — 누적합. */
 export function rowStarts(kinds: readonly StickyRowKind[]): number[] {
@@ -90,6 +96,8 @@ export function stockPushOf(
     starts: readonly number[],
     stockIdx: number,
     scrollOffset: number,
+    /** 띠 두께 — 머리 층수에 따라 다르다(bandHOf). 기본은 종단(날짜+종목). */
+    bandH: number = BAND_H,
 ): number {
     if (stockIdx < 0) return 0;
     let next = -1;
@@ -97,5 +105,5 @@ export function stockPushOf(
         if (kinds[i] !== "point") { next = i; break; }
     }
     if (next < 0) return 0; // 마지막 덩어리 — 뒤에서 밀 것이 없다
-    return Math.min(0, starts[next]! - (scrollOffset + BAND_H));
+    return Math.min(0, starts[next]! - (scrollOffset + bandH));
 }

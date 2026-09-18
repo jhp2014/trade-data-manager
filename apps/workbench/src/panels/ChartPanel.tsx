@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { useWorkbench, type ChartView } from "../store/workbench.js";
+import { selectFilterStages, useWorkbench, type ChartView } from "../store/workbench.js";
+import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
+import type { FilterStage } from "./filter/stage.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { usePlaneBus } from "../store/usePlaneBus.js";
 import { useChartBundle } from "../lib/useChartBundle.js";
@@ -10,6 +12,13 @@ import { useDisplayT } from "./outcome/outcomeLink.js";
 import { minuteToHms, sliceOutcome, walkOutcome } from "@trade-data-manager/market/domain";
 import type { AutoPointInput, LabelPointInput } from "../chart/minuteOverlays.js";
 import { groupColor } from "../styles/palette.js";
+
+/** 집합 평가를 끄는 상수 — 빈 배열 리터럴이면 매 렌더 새 참조라 memo 가 헛돈다. */
+const EMPTY_STAGES: FilterStage[] = [];
+
+/** 조건 id → 사람이 준 이름(없으면 자동 라벨 대신 id — hover 카드가 조용히 비지 않게). */
+const stageNameOf = (stages: readonly FilterStage[], id: string): string =>
+    stages.find((s) => s.id === id)?.name ?? "조건";
 import { ownBundle, useAnchorMarks, useBaselineLines, useIgnoreCandles } from "../lib/chartAnchorHooks.js";
 import { CandleMenu, type MenuBar } from "../chart/CandleMenu.js";
 import type { RenderLine } from "../lib/chartFrame.js";
@@ -90,8 +99,32 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const autoView = useAutoPoints();
     const grids = usePointGrids();
     const t1 = useDisplayT();
-    const { autoPoints, legHighTimes, legHighBySignal } = useMemo<{
-        autoPoints: AutoPointInput[];
+    // ── 표식의 **두 소스는 갈라 둔다**(2026-09-18 단계 ③):
+    //    ◇ = **현재 집합의 후보**(하루·셀 우주) · 다리 표식(드롭 캡·띠) = 격자 파생.
+    //    한 memo 에서 뽑으면 ◇ 를 집합으로 옮기는 손이 다리 표식을 같이 죽인다.
+    const setUniverse = useWorkbench((s) => s.filterUniverse);
+    const funnelStages = useWorkbench(selectFilterStages);
+    // 집합 평가는 **이 차트가 집합의 날짜를 보고 있을 때만** — 다른 날짜 차트가 두 번째 평가(와 15MB
+    // 재료 요청)를 낳지 않게. 조건이 없으면 useCellSet 이 재료조차 안 당긴다.
+    // ⚠ 기준은 `anchorDate`(= 전역 focus.date = 집합의 날짜)다 — 한때 `searchDate` 와 비교했는데
+    //   `viewDate` 가 그것에서 파생돼 사실상 `!pinMinute` 이었다(드리프트한 차트는 통과하고, 핀을 켜면
+    //   집합의 날짜를 보면서도 ◇ 가 사라지는 정반대 동작). `drifted` 가 그 판정의 단일 출처다.
+    // opts 는 목록과 **같은 상수**를 쓴다(안 그러면 메모가 갈려 5.7초가 두 번 돈다).
+    const cellStages = setUniverse === "daily" && !drifted ? funnelStages : EMPTY_STAGES;
+    const cellSet = useCellSet(cellStages, viewDate, DAY_SET_OPTS);
+    const autoPoints = useMemo<AutoPointInput[]>(() => {
+        // 평가 중에는 안 그린다 — 표식 층의 계산이 캔들(시선의 소비자)을 지연시키면 안 된다.
+        if (cellStages.length === 0 || cellSet.isLoading) return [];
+        return cellSet.hits
+            .filter((h) => h.code === code)
+            .map((h) => ({
+                time: kstToUnix(viewDate, minuteToHms(h.min)),
+                // hover 카드 재료가 "어느 조건에 걸렸나"로 바뀌었다(옛 격자 요약 대신).
+                label: `${h.tags.map((t) => stageNameOf(funnelStages, t)).join(" · ")}${h.ratePct !== null ? ` · ${h.ratePct.toFixed(1)}%` : ""}${h.cumAmount !== null ? ` · ${(h.cumAmount / 1e8).toFixed(0)}억` : ""}${h.zoneRank !== null ? ` · ${h.zoneTheme ?? ""} ${h.zoneRank}위` : ""}`,
+            }));
+    }, [cellStages, cellSet.hits, cellSet.isLoading, code, viewDate, funnelStages]);
+
+    const { legHighTimes, legHighBySignal } = useMemo<{
         legHighTimes: number[];
         /** 시그널 봉(unix초) → 그 연장 고점 봉(unix초) — 선택 시그널의 다리 띠 재료. */
         legHighBySignal: Map<number, number>;
@@ -99,23 +132,19 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         const grid = showLegMarks ? grids.gridOf(code, viewDate) : undefined;
         const legTimes = new Set<number>();
         const bySignal = new Map<number, number>();
-        const list = autoPointsOfChart(autoView, code, viewDate).map((p) => {
+        for (const p of autoPointsOfChart(autoView, code, viewDate)) {
             const signalUnix = kstToUnix(viewDate, minuteToHms(p.min));
-            let label = `자동 ${p.kind === "breakout" ? "돌파" : "재돌파"} ${p.ordinal + 1}번째 · 레벨 ${p.levelPrice.toLocaleString()} · 대금 ${(Number(p.tv) / 1e8).toFixed(0)}억`;
             if (showLegMarks && grid) {
                 // 세션 최고가 굽기 이후 걷기는 항상 선다 — 무눌림(옛 "고점 없음")도 연장 고점 = 세션 최고가.
                 const s = sliceOutcome(walkOutcome(grid, p), t1, p.close);
                 // 분모 = 레벨가(다리 상승폭) — 결과 패널·시트의 % 는 Point 봉 종가 분모라 값이 다르다. 기준을 라벨에 명시.
                 // 밴드 Point 는 연장 고점이 레벨가 아래일 수 있어(§10.4 cap) 부호를 값이 정한다 — "+-" 금지.
-                const legPct = ((s.extHighPrice - p.levelPrice) / p.levelPrice) * 100;
-                label += ` · 고점 ${minuteToHms(s.extHighMin).slice(0, 5)} (레벨${legPct >= 0 ? "+" : ""}${legPct.toFixed(1)}%)`;
                 const highUnix = kstToUnix(viewDate, minuteToHms(s.extHighMin));
                 legTimes.add(highUnix);
                 bySignal.set(signalUnix, highUnix);
             }
-            return { time: signalUnix, label };
-        });
-        return { autoPoints: list, legHighTimes: [...legTimes], legHighBySignal: bySignal };
+        }
+        return { legHighTimes: [...legTimes], legHighBySignal: bySignal };
     }, [autoView, grids, showLegMarks, t1, code, viewDate]);
 
     // 다리 띠 — **선택한 시그널 하나**만(전 시그널에 칠하면 겹쳐서 바탕색이 된다). 선택 = focus.time 이

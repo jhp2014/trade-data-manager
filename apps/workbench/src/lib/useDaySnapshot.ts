@@ -13,8 +13,9 @@ import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-q
 import { fetchDayReplay, type DayReplay } from "../api/dayReplay.js";
 import { histStale } from "../api/queries.js";
 
-/** 동시에 들고 있을 날짜 수. 힙 = 이 값 × ~15MB 가 상한이다. */
-const CAP = 4;
+/** 동시에 들고 있을 날짜 수. 힙 = 이 값 × ~15MB 가 상한이다.
+ *  6 인 이유: 현재 + **프리페치 앞뒤 2** + 직전 시선 1 + 여유 1(4 면 프리페치가 제 앞 날짜를 밀어낸다). */
+const CAP = 6;
 
 const keyOf = (date: string): unknown[] => ["day-replay-lru", date]; // 메모리 전용 키 — 옛 "skeleton-day-src"(은퇴한 골격 패널의 이름)에서 개명
 
@@ -56,4 +57,54 @@ export function useDaySnapshot(date: string | null): UseQueryResult<DayReplay> {
         // 시간 기반 만료는 안 쓴다 — 위 LRU 가 개수로 관리한다(시간으로 잡으면 빠르게 순회할 때 상한이 없다).
         gcTime: Infinity,
     });
+}
+
+/**
+ * 이웃 날짜 **미리 당기기** — 날짜 경계 넘기(w/s)가 한 손짓인데 수백 ms 공백이 끼면 순회가 끊긴다.
+ *
+ * ⚠ 프리페치한 날짜도 **LRU 에 등록**한다(`recent`) — 안 하면 `gcTime: Infinity` 라 캐시에 영구
+ * 잔류해서 한 날 ~15MB 가 조용히 쌓인다. 반대로 `inUse` 에는 **안** 넣는다: 쓰는 중이 아니므로
+ * 상한이 넘치면 먼저 버려져야 한다.
+ *
+ * 취소: 날짜가 바뀌면 (a) 대기 중인 idle 예약을 걷고 (b) 더 이상 이웃이 아닌 날짜의 in-flight 을
+ * 끊는다(`fetchDayReplay` 가 signal 을 받으므로 실제로 끊긴다). 안 끊으면 a/d 연타가 요청을 쌓는다.
+ *
+ * **후보 계산은 미리 하지 않는다**(설계) — 재료만 당긴다.
+ */
+export function useDayReplayPrefetch(date: string | null, neighbors: readonly string[]): void {
+    const qc = useQueryClient();
+    const key = neighbors.join(",");
+    useEffect(() => {
+        if (!date || neighbors.length === 0) return;
+        const targets = neighbors.filter((d) => d !== date);
+        const idle = (cb: () => void): number =>
+            typeof requestIdleCallback === "function"
+                ? (requestIdleCallback(cb) as unknown as number)
+                : (setTimeout(cb, 0) as unknown as number);
+        const cancelIdle = (h: number): void => {
+            if (typeof cancelIdleCallback === "function") cancelIdleCallback(h as unknown as number);
+            else clearTimeout(h);
+        };
+        const handle = idle(() => {
+            for (const d of targets) {
+                recent = [...recent.filter((x) => x !== d), d]; // 뒤쪽(먼저 버려지는 자리)에 등록
+                void qc.prefetchQuery({
+                    queryKey: keyOf(d),
+                    queryFn: ({ signal }) => fetchDayReplay(d, signal),
+                    staleTime: histStale(d),
+                    gcTime: Infinity,
+                });
+            }
+        });
+        return () => {
+            cancelIdle(handle);
+            // ⚠ 판정을 **한 틱 미룬다** — React 는 커밋의 cleanup 을 전부 돌린 뒤 setup 을 돌리므로,
+            //   여기서 바로 보면 새 날짜의 useDaySnapshot 이 아직 inUse 를 안 올렸다. 그대로 끊으면
+            //   w/s 로 막 넘어간 그 날짜의 프리페치(15MB)가 abort 되고 직후 처음부터 다시 받는다.
+            setTimeout(() => {
+                for (const d of targets) if ((inUse.get(d) ?? 0) === 0) void qc.cancelQueries({ queryKey: keyOf(d) });
+            }, 0);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [date, key, qc]);
 }

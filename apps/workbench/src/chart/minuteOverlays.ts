@@ -12,7 +12,7 @@ import { ALARM, PRICE_LINE } from "../styles/palette.js";
 import { type MinuteSeries } from "./minuteSeries.js";
 
 const MARKER_LINE_COLOR = "#2563eb"; // 현재 타점(Focus.time) 세로선 — 진한 파랑
-const AUTO_LINE_COLOR = "rgba(22,121,111,0.35)"; // 자동 Point(격자 파생) — 흐린 청록(현재 시간선과 눈으로 갈리게)
+// (옛 AUTO_LINE_COLOR 폐지 — 아래 주석 참조)
 
 /** 자동 Point 입력(스냅 전) — unix초 + 마커 title 로 쓸 요약 라벨(종류·레벨·대금은 호출자가 접는다). */
 export interface AutoPointInput {
@@ -44,8 +44,12 @@ export function snapPoints<T extends { time: number }>(points: MinutePoint[], li
 }
 
 /**
- * 타점 세로선 — markerTime/자동 Point 를 실제 봉 시각으로 스냅(≤ target 최대)해 두 pane primitive 에 push.
- * setLines 는 통째 교체라 스펙 조립도 여기 한 곳이어야 한다(두 훅이 각자 부르면 나중 것이 덮는다).
+ * 타점 세로선 — **현재 시각 하나뿐**이다(2026-09-18 단계 ③).
+ *
+ * 옛 구현은 후보마다 흐린 점선을 깔았는데 화면이 난잡했다. 그리고 그 선은 없어도 된다:
+ * **타점으로 이동하면 `markerTime` 이 그 좌표라 파란 선이 이미 거기 선다** — "선택된 타점 선"을
+ * 따로 만들 필요가 없었다. 거래대금 pane 의 선도 같은 배열이라 함께 걷혔다.
+ * `autoSnapped` 반환은 유지한다 — ◇ 마커의 x 좌표 스냅에 여전히 쓰인다.
  * (다리 고점은 세로선이 아니라 드롭 캡/띠 — useLegMarks 가 별도 primitive 로 진다: 형태가 같으면 안 갈린다.)
  */
 export function useMarkerVertLines(
@@ -57,21 +61,17 @@ export function useMarkerVertLines(
     const currentSnapped = useMemo(() => snapToBar(points, markerTime), [markerTime, points]);
     const autoSnapped = useMemo(() => snapPoints(points, autoPoints), [autoPoints, points]);
 
-    // 세로선 갱신 — 현재 시간선(진한 파랑) + 자동 Point(흐린 청록). 겹치면 현재가 이긴다.
+    // 세로선 갱신 — 현재 시간선 하나. `autoSnapped` 는 의존에서 뺀다(선과 무관해졌다 — 넣어 두면
+    // 후보 목록이 바뀔 때마다 setLines·bumpOverlay 가 헛발화한다).
     useEffect(() => {
-        const specs: VertLineSpec[] = [];
-        for (const a of autoSnapped) {
-            if (a.time === currentSnapped) continue; // 현재 시간선과 겹치면 진한 선만
-            specs.push({ time: a.time as UTCTimestamp, color: AUTO_LINE_COLOR, width: 1, dashed: true });
-        }
-        if (currentSnapped != null) {
-            specs.push({ time: currentSnapped as UTCTimestamp, color: MARKER_LINE_COLOR, width: 1, dashed: true });
-        }
+        const specs: VertLineSpec[] = currentSnapped == null
+            ? []
+            : [{ time: currentSnapped as UTCTimestamp, color: MARKER_LINE_COLOR, width: 1, dashed: true }];
         series.candleVertsRef.current?.setLines(specs);
         series.amountVertsRef.current?.setLines(specs);
         series.bumpOverlay();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentSnapped, autoSnapped]);
+    }, [currentSnapped]);
 
     return { currentSnapped, autoSnapped };
 }

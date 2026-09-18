@@ -22,7 +22,7 @@ import {
 import { useMinuteInteraction, GROUP_MARKER_ATTR } from "./minuteInteraction.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
-import { AUTO_POINT, MARKER_NOW } from "../styles/palette.js";
+import { MARK_BAND_H, MARK_HIT_W, MARK_ROW_GAP, MarkDiamond, MarkTriangle } from "./markerGlyphs.js";
 
 /**
  * 세로선(x) 우측에 붙이는 오버레이 박스 — 우측 공간이 모자라면 좌측으로 뒤집는다.
@@ -68,96 +68,34 @@ function AnchoredBox({
 }
 
 /**
- * 마커 기하 — 시간선 ▼ 와 타점 ◇ 가 **같은 크기·같은 높이**에 서도록 한 곳에서만 정한다.
- * (따로 적었을 땐 시간선 쪽이 축소 뷰박스 + 인라인 svg 베이스라인만큼 작고 낮게 그려졌다.)
+ * 마커 기하 — 글리프·크기는 **공용 단일 출처**(chart/markerGlyphs)다. 목록(작업 대상)이 같은 기호를
+ * 쓰기 때문에 여기 지역 상수로 두면 두 화면의 표식이 조용히 갈린다.
+ * 상자는 **클릭 표적**의 크기다(그림이 6.5px 로 작아져도 손은 18px 그대로 — 줄이지 말 것).
  */
-const MARKER_BOX = { w: 18, h: 14 } as const;
+const MARKER_BOX = { w: MARK_HIT_W, h: MARK_BAND_H } as const;
 
-// prop 기본값은 모듈 상수로 — `= []` 인라인이면 렌더마다 새 참조라 세로선 effect(setLines+bumpOverlay)가
-// 매 렌더 발화한다(실시간 차트처럼 안 넘기는 호출자에서).
+// prop 기본값은 모듈 상수로 — `= []` 인라인이면 렌더마다 새 참조라 오버레이 effect 가 매 렌더 발화한다.
 const NO_AUTO: AutoPointInput[] = [];
 const NO_LABELS: LabelPointInput[] = [];
 
-function markerBoxStyle(x: number, zIndex: number): CSSProperties {
+/**
+ * 표식 한 칸의 자리. `row` 로 윗줄(◇)·아랫줄(◆)을 가르고 **높이도 그 줄만큼만** 준다 —
+ * 두 상자가 다 밴드 높이(18)를 먹으면 아랫줄 상자가 윗줄의 아래 절반을 덮어, 같은 분에 ◇·◆ 가
+ * 함께 선 좌표에서 ◇ 아래쪽에 커서를 올려도 hover 카드가 안 뜬다(리뷰가 잡은 자리).
+ */
+function markerBoxStyle(x: number, zIndex: number, row: 0 | 1 = 0): CSSProperties {
     return {
         position: "absolute",
         left: x - MARKER_BOX.w / 2,
-        top: 0,
+        top: row === 0 ? 0 : MARK_ROW_GAP,
         width: MARKER_BOX.w,
-        height: MARKER_BOX.h,
+        height: row === 0 ? MARK_ROW_GAP : MARKER_BOX.h - MARK_ROW_GAP,
         display: "flex",
         justifyContent: "center",
         alignItems: "flex-start",
         paddingTop: 1,
         zIndex,
     };
-}
-
-/** 시간선 ▼ — 색은 언제나 MARKER_NOW(호출부 하나). hover 강조가 없으므로 변형도 없다. */
-function MarkerTriangle({ fill, stroke }: { fill: string; stroke: string }): JSX.Element {
-    return (
-        <svg
-            width={12}
-            height={10}
-            viewBox="0 0 12 10"
-            style={{
-                display: "block", // 인라인 baseline 만큼 내려앉지 않게
-                overflow: "visible",
-                pointerEvents: "none",
-                filter: "drop-shadow(0 1px 1.5px rgba(0,0,0,0.35))",
-            }}
-        >
-            <polygon points="1,1 11,1 6,9" fill={fill} stroke={stroke} strokeWidth={1.4} />
-        </svg>
-    );
-}
-
-/**
- * 라벨 ◆ — 그룹 배정된 캔들 좌표(라벨=타점, 진실). 자동 ◇(보조·속 빈)와 **채움으로** 갈린다.
- * 색 = 첫 그룹의 groupColor(호출자가 접는다) — 어느 그룹인지는 title 이 다 말한다.
- */
-function MarkerLabelDiamond({ color }: { color: string }): JSX.Element {
-    return (
-        <svg
-            width={10}
-            height={10}
-            viewBox="0 0 10 10"
-            style={{
-                display: "block",
-                overflow: "visible",
-                pointerEvents: "none",
-                filter: "drop-shadow(0 1px 1.5px rgba(0,0,0,0.3))",
-            }}
-        >
-            <polygon points="5,1 9,5 5,9 1,5" fill={color} stroke="var(--bg-primary, #ffffff)" strokeWidth={1.2} />
-        </svg>
-    );
-}
-
-/**
- * 타점 ◇ — 시간선 ▼ 와 **모양으로** 갈린다(색만으로 가르면 작은 크기에서 섞인다).
- * 두 뜻을 **다른 채널**로 나눠 싣는다: `now`(시간선이 이 타점 위) = 색, `active`(hover) = 크기.
- * 한 채널에 둘을 얹으면 "현재"와 "마우스가 위에 있다"가 픽셀 단위로 같은 그림이 된다.
- */
-function MarkerDiamond({ active = false, now = false }: { active?: boolean; now?: boolean }): JSX.Element {
-    return (
-        <svg
-            width={10}
-            height={10}
-            viewBox="0 0 10 10"
-            style={{
-                display: "block",
-                overflow: "visible",
-                pointerEvents: "none",
-                filter: active ? "drop-shadow(0 2px 2.5px rgba(0,0,0,0.5))" : "drop-shadow(0 1px 1.5px rgba(0,0,0,0.3))",
-                transform: active ? "scale(1.3)" : "none",
-                transformOrigin: "50% 50%",
-                transition: "transform 0.1s ease",
-            }}
-        >
-            <polygon points="5,1 9,5 5,9 1,5" fill={now ? MARKER_NOW : "var(--bg-primary, #ffffff)"} stroke={now ? MARKER_NOW : AUTO_POINT} strokeWidth={1.4} />
-        </svg>
-    );
 }
 
 // chart-review 참고 재구현: 캔들(등락률 %) pane + 거래대금(억) histogram pane + 크로스헤어 OHLC 툴팁.
@@ -323,11 +261,12 @@ export function MinuteChart({
                         title={autoLabelOf(a.time)}
                         style={{ ...markerBoxStyle(a.x, 7), cursor: "pointer" }}
                     >
-                        <MarkerDiamond active={hoveredAuto === a.time} now={a.time === currentSnapped} />
+                        <MarkDiamond filled={false} active={hoveredAuto === a.time} now={a.time === currentSnapped} />
                     </div>
                 );
             })}
-            {/* 좌표 라벨 ◆ — ◇ 아래 줄(top 12)에 서서 같은 분에 둘 다 있어도 겹치지 않는다.
+            {/* 좌표 라벨 ◆ — ◇ 아래 줄(MARK_ROW_GAP)에 서서 같은 분에 둘 다 있어도 겹치지 않는다.
+                **셋은 슬롯 조합이 말한다**: 윗줄만 = 후보 · 아랫줄만 = 라벨 · 둘 다 = 둘이 보인다.
                 손은 ◇ 와 동일: 좌클릭 = 시간선 이동, 우클릭 = 배정 팝오버(라벨 편집). */}
             {labelOverlay.marks.map((l) => {
                 if (l.x < 0) return null;
@@ -342,16 +281,16 @@ export function MinuteChart({
                             if (l.point && onMarkContext) onMarkContext(l.point.tradeTime, { x: e.clientX, y: e.clientY });
                         }}
                         title={meta ? `라벨: ${meta.label}` : "좌표 라벨"}
-                        style={{ ...markerBoxStyle(l.x, 7), top: 12, cursor: "pointer" }}
+                        style={{ ...markerBoxStyle(l.x, 7, 1), cursor: "pointer" }}
                     >
-                        <MarkerLabelDiamond color={meta?.color ?? "#8b93a7"} />
+                        <MarkDiamond filled color={meta?.color ?? "#8b93a7"} active={hoveredAuto === l.time} />
                     </div>
                 );
             })}
             {/* 시간선 ▼ — 타점이 아닌 자리에서만(겹치면 위에서 그 ◇ 가 MARKER_NOW 로 칠해진다). */}
             {overlay.current && !overlay.marks.some((a) => a.time === currentSnapped) && overlay.current.x >= 0 && (
                 <div title="현재 시간선" style={{ ...markerBoxStyle(overlay.current.x, 7), pointerEvents: "none" }}>
-                    <MarkerTriangle fill={MARKER_NOW} stroke={MARKER_NOW} />
+                    <MarkTriangle />
                 </div>
             )}
             {/* 타점 hover 카드 — 세로선 우측(공간 없으면 좌측). 축별 상세는 "타점 정보" 패널. */}

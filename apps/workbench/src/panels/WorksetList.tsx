@@ -19,21 +19,18 @@ import { useEffect, useLayoutEffect, useMemo, useRef, type CSSProperties } from 
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ReviewPointKey } from "@trade-data-manager/market/domain";
 import type { Group } from "../api/groups.js";
-import type { DayPresence } from "../lib/presence.js";
 import { weekdayOf } from "../lib/date.js";
 import { PresenceBadges, PresenceIcon, GroupNamesCard } from "../components/PresenceBadges.js";
 import { ScrollRow } from "../components/ControlChrome.js";
 import { HoverCard } from "../components/HoverCard.js";
-import { GROUP_PLAIN, PIN } from "../styles/palette.js";
+import { GROUP_PLAIN, PIN, groupColor } from "../styles/palette.js";
 import { useGroupAssign } from "../store/groupAssign.js";
-import { ROW_H, indexAt, rowStarts, stickyDateOf, stickyStockAt, stockPushOf, type StickyRowKind } from "./worksetSticky.js";
+import { ROW_H, bandHOf, indexAt, rowStarts, stickyDateOf, stickyStockAt, stockPushOf, type StickyRowKind } from "./worksetSticky.js";
+import { MarkDiamond } from "../chart/markerGlyphs.js";
+import type { WorksetRow } from "./workset/rows.js";
 
-export interface WorksetEntry {
-    date: string;
-    code: string;
-    presence: DayPresence;
-    points: ReviewPointKey[];
-}
+export type { WorksetEntry } from "./workset/rows.js";
+import type { WorksetEntry } from "./workset/rows.js";
 
 export interface WorksetLens {
     /** 이 (날짜,종목) 아래에 멤버가 있나 — 종목 행 레일의 기준. */
@@ -42,20 +39,23 @@ export interface WorksetLens {
     pointMember: (p: ReviewPointKey) => boolean;
 }
 
-type Row =
-    | { kind: "date"; key: string; date: string; count: number }
-    | { kind: "stock"; key: string; entry: WorksetEntry }
-    | { kind: "point"; key: string; entry: WorksetEntry; point: ReviewPointKey };
+type Row = WorksetRow;
 
 /** 고정 높이(px) — 균일해야 가상화가 재지 않고 앉힌다. 행 안 내용은 한 줄로 자른다.
  *  값은 붙는 머리 산술과 **같은 출처**여야 한다(worksetSticky.ROW_H — 어긋나면 띠가 행 경계를 먹는다). */
 const DATE_H = ROW_H.date;
 const STOCK_H = ROW_H.stock;
-const POINT_H = ROW_H.point;
 
-export function WorksetList({ groups, focus, lens, nameOf, pointGroupsOf, pathOf, onPickDay, onPickPoint, jumpTo }: {
-    /** 날짜 내림차순 그룹(패널이 접는다) — 여긴 그리기만. */
-    groups: readonly { date: string; stocks: readonly WorksetEntry[] }[];
+/** 하루 두 종류를 **같은 높이의 종단 짝**으로 접는다 — 붙는 머리 산술이 한 벌로 남는 이유. */
+const stickyKindOf = (r: Row): StickyRowKind =>
+    r.kind === "dayStock" ? "stock" : r.kind === "dayCell" ? "point" : r.kind;
+
+export function WorksetList({ rows, focus, lens, nameOf, pointGroupsOf, pathOf, onPickDay, onPickPoint, onPickCell, onToggleCollapse, jumpTo }: {
+    /**
+     * 평탄화된 행들(빌드는 `workset/rows.ts` 순수 함수) — 여긴 그리기만.
+     * **순회도 이 배열에서 나온다**(walkableOf) — 두 벌이면 접힘이 반영 안 된 유령 행을 밟는다.
+     */
+    rows: readonly Row[];
     focus: { code: string; date: string; time: string | null };
     /** null = 렌즈 없음(집합 미선택·전체). */
     lens: WorksetLens | null;
@@ -65,29 +65,28 @@ export function WorksetList({ groups, focus, lens, nameOf, pointGroupsOf, pathOf
     pathOf: (groupName: string) => string;
     onPickDay: (e: WorksetEntry) => void;
     onPickPoint: (p: ReviewPointKey) => void;
+    /** 하루 우주의 좌표 클릭 — 시선 이동(좌클릭=시선 채널 그대로). */
+    onPickCell?: (code: string, date: string, time: string) => void;
+    /** 종목 머리 접기/펴기 — 접힘은 패널이 소유한다(빌더가 자식 행을 안 만드는 그 집합). */
+    onToggleCollapse?: (code: string) => void;
     /** 찾아가기 — nonce 가 바뀔 때만 그 (날짜,종목)으로(없으면 같은 종목의 아무 날짜로). ItemRows.jumpTo 선례. */
     jumpTo?: { date: string; code: string; nonce: number };
 }): JSX.Element {
-    const rows = useMemo<Row[]>(() => {
-        const out: Row[] = [];
-        for (const g of groups) {
-            out.push({ kind: "date", key: `@${g.date}`, date: g.date, count: g.stocks.length });
-            for (const e of g.stocks) {
-                out.push({ kind: "stock", key: `${e.date}|${e.code}`, entry: e });
-                for (const p of e.points) out.push({ kind: "point", key: `${e.date}|${e.code}|${p.time}`, entry: e, point: p });
-            }
-        }
-        return out;
-    }, [groups]);
-
     // 붙는 머리 산술의 재료 — 행 종류열과 각 행의 시작 offset(둘 다 순수 함수가 소유, worksetSticky).
-    const kinds = useMemo<StickyRowKind[]>(() => rows.map((r) => r.kind), [rows]);
+    // 하루 우주의 두 종류는 **높이가 같은** 종단 짝으로 접어 넣는다(dayStock↔stock 24 · dayCell↔point 22)
+    // — 산술이 보는 건 높이와 "머리인가"뿐이라, 접어 넣으면 띠·밀어올리기 코드가 한 벌로 남는다.
+    const kinds = useMemo<StickyRowKind[]>(() => rows.map((r) => stickyKindOf(r)), [rows]);
+    const hasDateHead = useMemo(() => rows.some((r) => r.kind === "date"), [rows]);
+    const bandH = bandHOf(hasDateHead);
     const starts = useMemo(() => rowStarts(kinds), [kinds]);
     const scrollRef = useRef<HTMLDivElement>(null);
     const virt = useVirtualizer({
         count: rows.length,
         getScrollElement: () => scrollRef.current,
-        estimateSize: (i) => (rows[i]?.kind === "date" ? DATE_H : rows[i]?.kind === "stock" ? STOCK_H : POINT_H),
+        estimateSize: (i) => {
+            const k = rows[i] ? stickyKindOf(rows[i]!) : "point";
+            return ROW_H[k]; // ⚠ 가상화기와 붙는 머리 산술이 **같은 수**를 봐야 한다(지역 상수 금지)
+        },
         getItemKey: (i) => rows[i]?.key ?? i,
         overscan: 12,
         // rangeExtractor 없음 — 붙는 머리는 가상 범위에 끼워 넣는 게 아니라 **띠 층이 rows 에서 직접**
@@ -115,11 +114,11 @@ export function WorksetList({ groups, focus, lens, nameOf, pointGroupsOf, pathOf
     // 종목 행이 스크롤 밖으로 밀리면 "이 타점들이 누구 것인지"와 **하루 그룹 배지**가 같이 사라진다
     // (타점 행은 하루 그룹을 반복하지 않기로 했다 — 아래 아이콘 주석).
     const pinnedDateIdx = stickyDateOf(kinds, indexAt(starts, scrollOffset));
-    const pinnedStockIdx = stickyStockAt(kinds, starts, pinnedDateIdx, scrollOffset + ROW_H.date);
+    const pinnedStockIdx = stickyStockAt(kinds, starts, pinnedDateIdx, scrollOffset + (hasDateHead ? ROW_H.date : 0));
     const pinnedDate = pinnedDateIdx >= 0 ? rows[pinnedDateIdx] : undefined;
     const pinnedStock = pinnedStockIdx >= 0 ? rows[pinnedStockIdx] : undefined;
     // 다음 머리가 띠 안으로 들어오면 그만큼 밀려 올라간다(안 밀면 띠가 다음 종목 행을 삼킨다).
-    const stockPush = stockPushOf(kinds, starts, pinnedStockIdx, scrollOffset);
+    const stockPush = stockPushOf(kinds, starts, pinnedStockIdx, scrollOffset, bandH);
 
     /** 행의 **자리** — 붙든 눕든 절대배치 한 가지다(폭·높이가 모드에 따라 안 갈린다). */
     const seatAt = (top: number, h: number): CSSProperties => ({
@@ -228,6 +227,83 @@ export function WorksetList({ groups, focus, lens, nameOf, pointGroupsOf, pathOf
         );
     };
 
+    /** 하루 종목 머리 — 접기 손잡이 + 이름 + ◇·◆ 수. 날짜가 상수라 이게 유일한 머리다. */
+    const dayStockRow = (r: Extract<Row, { kind: "dayStock" }>, seat: CSSProperties, pinned: boolean): JSX.Element => {
+        const selected = r.code === focus.code;
+        return (
+            <div key={r.key} data-row={r.key} style={{
+                ...seat,
+                display: "flex", alignItems: "center", gap: 6, padding: "0 10px", boxSizing: "border-box",
+                background: "var(--bg-tertiary)", overflow: "hidden",
+                borderLeft: `3px solid ${selected ? "var(--accent-hover)" : "transparent"}`,
+                borderBottom: pinned ? "1px solid var(--border-default)" : undefined,
+            }}>
+                <button onClick={() => onToggleCollapse?.(r.code)} className="row-self-marked"
+                    title={r.collapsed ? "펴기 — 이 종목의 좌표가 다시 서고 순회에도 든다" : "접기 — 자식 행이 사라지고 w/s 순회에서도 빠진다"}
+                    style={{ flexShrink: 0, border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: 11, color: "var(--text-tertiary)", padding: 0, width: 12 }}>
+                    {r.collapsed ? "▸" : "▾"}
+                </button>
+                <span style={{ flexShrink: 0, fontWeight: 600, whiteSpace: "nowrap", color: "var(--text-primary)" }}>
+                    {nameOf(r.code) ?? r.code}
+                </span>
+                <span style={{ marginLeft: "auto", flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 7, fontSize: 10.5, color: "var(--text-tertiary)" }}>
+                    {r.labels > 0 && <span className="tabular" style={{ color: PIN }} title="이 종목의 라벨 좌표 수">◆ {r.labels}</span>}
+                    <span className="tabular" title="조건이 뽑은 좌표 수">◇ {r.hits}</span>
+                </span>
+            </div>
+        );
+    };
+
+    /** 하루 좌표 한 줄 — 표식 두 칸(◇ 후보 / ◆ 라벨)이 셋을 말한다. */
+    const dayCellRow = (r: Extract<Row, { kind: "dayCell" }>, seat: CSSProperties): JSX.Element => {
+        const c = r.cell;
+        // 좌표 행은 **시각이 맞아야** 현재다 — `time === null`(하루 선택)을 참으로 치면 그 종목의
+        // 좌표 다섯 줄이 전부 칠해져 w/s 커서가 화면에서 안 읽힌다(종단 종목 행의 규칙을 잘못 따라온 자리).
+        const current = c.code === focus.code && r.date === focus.date && focus.time === c.time;
+        const pGroups = pointGroupsOf({ stockCode: c.code, date: r.date, time: c.time });
+        return (
+            <button key={r.key} data-row={r.key} className="row-self-marked"
+                onClick={() => onPickCell?.(c.code, r.date, c.time)}
+                onContextMenu={(ev) => {
+                    ev.preventDefault();
+                    useGroupAssign.getState().open({ stockCode: c.code, name: nameOf(c.code) ?? undefined, date: r.date, time: c.time }, { x: ev.clientX, y: ev.clientY });
+                }}
+                title="좌클릭 = 시선 이동 · 우클릭 = 그룹 배정(좌표 라벨)"
+                style={{
+                    ...seat, display: "flex", alignItems: "center", gap: 6, textAlign: "left",
+                    border: "none", borderBottom: "1px solid var(--border-subtle)", padding: "0 10px 0 22px", boxSizing: "border-box",
+                    cursor: "pointer", font: "inherit", overflow: "hidden",
+                    borderLeft: `3px solid ${current ? "var(--accent-primary)" : "transparent"}`,
+                    background: current ? "var(--bg-active)" : "transparent",
+                }}>
+                {/* 표식 두 칸 — 차트의 두 줄을 가로로 옮긴 것(같은 글리프·같은 크기). 셋이 칸 조합으로 갈린다. */}
+                <span style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 2, width: 22 }}>
+                    <span style={{ width: 9, display: "inline-flex", justifyContent: "center" }}>
+                        {c.hit !== null && <MarkDiamond filled={false} />}
+                    </span>
+                    <span style={{ width: 9, display: "inline-flex", justifyContent: "center" }}>
+                        {c.labeled && <MarkDiamond filled color={pGroups[0] ? groupColor(pGroups[0].name) : PIN} />}
+                    </span>
+                </span>
+                <span className="tabular" style={{ flexShrink: 0, width: 40, fontSize: 12, color: current ? "var(--accent-primary)" : "var(--text-secondary)", fontWeight: current ? 700 : 400 }}>
+                    {c.time.slice(0, 5)}
+                </span>
+                <span className="tabular" style={{ flexShrink: 0, width: 50, textAlign: "right", fontSize: 11.5, color: (c.hit?.ratePct ?? 0) >= 0 ? "var(--rise)" : "var(--fall)" }}>
+                    {c.hit?.ratePct !== null && c.hit?.ratePct !== undefined ? `${c.hit.ratePct.toFixed(1)}%` : "—"}
+                </span>
+                {pGroups.length > 0 && (
+                    <span style={{ marginLeft: "auto", flexShrink: 0 }}>
+                        <HoverCard card={<GroupNamesCard head="이 좌표" names={pGroups.map((g) => pathOf(g.name))} />}>
+                            <span data-point-group aria-label="타점 그룹" style={{ display: "inline-flex", color: GROUP_PLAIN }}>
+                                <PresenceIcon kindKey="group-day" name="그룹" />
+                            </span>
+                        </HoverCard>
+                    </span>
+                )}
+            </button>
+        );
+    };
+
     return (
         <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
             <div style={{ height: virt.getTotalSize(), position: "relative" }}>
@@ -239,6 +315,7 @@ export function WorksetList({ groups, focus, lens, nameOf, pointGroupsOf, pathOf
                 <div style={{ position: "sticky", top: 0, zIndex: 3, height: 0 }}>
                     {pinnedDate?.kind === "date" && dateHead(pinnedDate, { ...seatAt(0, DATE_H), zIndex: 1 })}
                     {pinnedStock?.kind === "stock" && stockRow(pinnedStock, { ...seatAt(DATE_H + stockPush, STOCK_H), zIndex: 0 }, true)}
+                    {pinnedStock?.kind === "dayStock" && dayStockRow(pinnedStock, { ...seatAt(stockPush, STOCK_H), zIndex: 0 }, true)}
                 </div>
                 {items.map((v) => {
                     if (v.index === pinnedDateIdx || v.index === pinnedStockIdx) return null; // 띠가 이미 그렸다
@@ -246,6 +323,8 @@ export function WorksetList({ groups, focus, lens, nameOf, pointGroupsOf, pathOf
                     const seat = seatAt(v.start, v.size);
                     if (r.kind === "date") return dateHead(r, seat);
                     if (r.kind === "stock") return stockRow(r, seat, false);
+                    if (r.kind === "dayStock") return dayStockRow(r, seat, false);
+                    if (r.kind === "dayCell") return dayCellRow(r, seat);
                     return pointRow(r, seat);
                 })}
             </div>

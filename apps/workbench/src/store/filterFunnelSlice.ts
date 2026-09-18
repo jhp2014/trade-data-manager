@@ -24,7 +24,8 @@ import {
 import { persistSavedSets } from "./savedSetsSlice.js";
 import { applyRailPredicate, type RailKey } from "../panels/filter/stageBinding.js";
 import { parseUniverse, type Universe } from "../panels/filter/universe.js";
-import { backupRawOnce, loadJson, persistedField, saveJson } from "./persist.js";
+import { migrateProbeStages } from "../panels/filter/legacyProbe.js";
+import { backupRawOnce, hasStored, loadJson, persistedField, saveJson } from "./persist.js";
 import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
 
 /** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
@@ -162,9 +163,30 @@ export const putStages = (
     };
 };
 
-export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => ({
-    filterStages: loadStages(),
-    filterUniverse: UNIVERSE_FIELD.load(),
+/**
+ * 첫 상태의 조건 한 벌 — **저장한 적이 없고** 이미 하루 우주면 옛 패널 조건을 1회 이주한다.
+ * 전환 훅(setFilterUniverse)만으로는 단계 ② 에서 이미 하루로 넘어가 있던 사용자가 기회를 영영 잃는다.
+ *
+ * ⚠ 판정이 "비었나"가 아니라 "**키가 있나**"인 이유: 조건을 **일부러 다 지운** 사용자도 빈 배열을
+ * 저장해 둔다. 내용으로 재면 그 사람의 재시작 때 지운 조건이 되살아난다("내가 지운 게 돌아왔다").
+ */
+const initialStages = (universe: Universe): FilterStage[] => {
+    const saved = loadStages();
+    if (universe !== "daily" || hasStored(STAGES_KEY)) return saved;
+    const seeded = migrateProbeStages();
+    if (seeded === null) return saved;
+    saveJson(STAGES_KEY, seeded);
+    return seeded;
+};
+
+// ⚠ 우주는 **슬라이스 생성 시점에** 읽는다 — 모듈 상수로 굳히면 `persistedField.load` 가 함수인
+//    이유(선언과 생성 사이에 값이 안 굳게 · 생성자를 직접 불러 초기값을 검사하는 persist.dom.test)가
+//    무효가 된다.
+export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => {
+    const universe = UNIVERSE_FIELD.load();
+    return {
+    filterStages: initialStages(universe),
+    filterUniverse: universe,
     funnelSelection: null,
     selectedSetRef: null,
     gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
@@ -183,7 +205,12 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     setGazePresence: (dnf) => set(() => { saveJson(GAZE_PRESENCE_KEY, dnf); return { gazePresence: dnf }; }),
 
     // 우주 전환 = 조건 비우기 동반(위 필드 주석). 시선·포인터 정리는 putStages 의 규칙을 그대로 탄다.
-    setFilterUniverse: (u) => set((s) => (s.filterUniverse === u ? {} : putStages(s, [], u))),
+    // 예외 하나 — 하루로 **처음** 갈아탈 때만 옛 "탐색 후보" 패널의 조건을 이주해 심는다(1회, legacyProbe).
+    setFilterUniverse: (u) => set((s) => {
+        if (s.filterUniverse === u) return {};
+        const seeded = u === "daily" ? migrateProbeStages(s.panelUi) : null;
+        return putStages(s, seeded ?? [], u);
+    }),
 
     // 시선 정리는 전부 putStages 가 한다 — 삭제·비우기·끄기·레일 해제 어느 경로든 같은 규칙으로 풀린다.
     addFilterStage: (predicates) => set((s) => putStages(s, addStage(selectFilterStages(s), predicates ?? []))),
@@ -210,4 +237,5 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     clearFilterStages: () => set((s) => putStages(s, [])),
     // 칸 짚기도 깔때기를 만지는 손이다 — 선택 포인터는 작업 깔때기로 복귀한다.
     setFunnelSelection: (sel) => set(() => ({ funnelSelection: sel, selectedSetRef: null })),
-});
+    };
+};

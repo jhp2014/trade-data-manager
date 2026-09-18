@@ -242,3 +242,30 @@ describe("evaluateCells — 격자·전고", () => {
         expect(evaluateCells([s], NO_MAT, conds).hits).toEqual([]);
     });
 });
+
+describe("evaluateCells — 종목 그룹째 자르기(limitBy)", () => {
+    it("상한을 넘기는 종목은 **통째로** 빠진다 — 반토막이면 종목 머리의 수가 거짓말한다", () => {
+        // A 2셀 · B 3셀 · C 2셀(전부 같은 분대에 흩어짐) — 상한 5
+        const a = stock("A", { n: 5, rate: [9, 9, 0, 0, 0] });
+        const b = stock("B", { n: 5, rate: [9, 9, 9, 0, 0] });
+        const c = stock("C", { n: 5, rate: [9, 9, 0, 0, 0] });
+        const r = evaluateCells([a, b, c], NO_MAT, rateCond(5), { limit: 5, limitBy: "stockGroup" });
+        const byCode = new Map<string, number>();
+        for (const h of r.hits) byCode.set(h.code, (byCode.get(h.code) ?? 0) + 1);
+        // 어떤 종목이 남든 **부분 종목은 없다**(각 종목은 제 전량 또는 0).
+        const whole: Record<string, number> = { A: 2, B: 3, C: 2 };
+        for (const [code, n] of Object.entries(whole)) {
+            expect([0, n], `${code} 는 전량 또는 0 이어야 한다`).toContain(byCode.get(code) ?? 0);
+        }
+        expect(r.hits.length).toBeLessThanOrEqual(5);
+        expect(r.matched).toBe(7); // 총수는 자르기와 무관하다
+        expect(r.truncated).toBe(true);
+    });
+
+    it("기본(cell)은 시각 프리픽스 컷 — 기존 동작이 안 바뀐다", () => {
+        const a = stock("A", { n: 5, rate: [9, 9, 9, 9, 9] });
+        const b = stock("B", { n: 5, rate: [9, 9, 9, 9, 9] });
+        const r = evaluateCells([a, b], NO_MAT, rateCond(5), { limit: 3 });
+        expect(r.hits.map((h) => `${h.code}@${h.min - MIN0}`)).toEqual(["A@0", "B@0", "A@1"]);
+    });
+});

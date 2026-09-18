@@ -20,6 +20,7 @@ import {
     type CellCondition,
     type CellConditions,
     type CellEvalOptions,
+    type CellEvalResult,
     type CellHit,
     type CellPredicate,
     type FunnelItem,
@@ -29,9 +30,16 @@ import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useAutoPoints } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { useThemeKnobParams } from "./themeLink.js";
-import { cellMaterialsOf } from "../probe/cellMaterials.js";
+import { cellMaterialsOf } from "./cellMaterials.js";
 import { activeStages, type FilterStage } from "./stage.js";
 import { stageDeficiency } from "./universe.js";
+
+/**
+ * 하루 집합의 평가 옵션 — **소비자가 전부 이 상수를 쓴다**(목록·차트).
+ * opts 는 메모 키에 실리므로 한 소비자만 다르게 주면 같은 (날짜, 조건)이 두 벌로 갈려 5.7초가 두 번
+ * 돌고, 잘린 날엔 목록(종목째 컷)과 차트(앞에서 컷)가 **다른 셀**을 그린다(리뷰가 잡은 자리).
+ */
+export const DAY_SET_OPTS: CellEvalOptions = { limitBy: "stockGroup" };
 
 /** 칸 하나의 상태 — 평가에 들었나, 아니면 이 우주에서 결손인가(이유와 함께). */
 export interface CellStageStatus {
@@ -88,6 +96,44 @@ export function toCellConditions(stages: readonly FilterStage[]): { conditions: 
     return { conditions, stages: status };
 }
 
+// ── 모듈 메모 — 소비자가 셋이 된다(순회 목록 · 차트 ◇ · 날짜 경계 판정). 같은 (하루 재료, 조건, 노브)
+//    조합을 두 번 평가하면 존 순위 조건에서 5.7초가 그대로 두 번 든다.
+//    키의 바깥 축은 **격자 파생 배열 참조**(WeakMap) — 그게 갈리면 재료가 갈린 것이라 캐시도 같이
+//    죽는 게 맞다(`themeRank/sectionSeries` 의 분 단면 WeakMap 과 같은 수법·같은 이유).
+//    안쪽 키에 날짜·조건·노브·상한을 싣는다.
+const MEMO = new WeakMap<object, Map<string, CellEvalResult>>();
+const MEMO_CAP = 3; // 한 재료당 조합 몇 벌 — 조건을 만지는 동안 직전 것들이 살아 있게
+
+/**
+ * 참조 → 세대 번호. **키에 못 싣는 객체 참조**(격자 파생·테마 투영)를 문자열 키에 태우는 자다.
+ * 안 태우면 그 재료만 갈렸을 때 캐시가 조용히 낡은 결과를 돌려준다 — 테마 멤버십을 고쳐도
+ * `zoneRank` 조건이 옛 소속으로 계산된 채 남는 식(리뷰가 잡은 자리).
+ */
+const GEN = new WeakMap<object, number>();
+let genSeq = 0;
+const genOf = (o: object): number => {
+    const v = GEN.get(o);
+    if (v !== undefined) return v;
+    GEN.set(o, ++genSeq);
+    return genSeq;
+};
+
+function evaluateMemo(gen: object, key: string, run: () => CellEvalResult): CellEvalResult {
+    let per = MEMO.get(gen);
+    if (!per) MEMO.set(gen, (per = new Map()));
+    const hit = per.get(key);
+    if (hit) {
+        // LRU — 다시 꽂아 최신으로(Map 은 삽입 순서를 지킨다).
+        per.delete(key);
+        per.set(key, hit);
+        return hit;
+    }
+    const made = run();
+    per.set(key, made);
+    while (per.size > MEMO_CAP) per.delete(per.keys().next().value as string);
+    return made;
+}
+
 const EMPTY_HITS: CellHit[] = [];
 const EMPTY_ITEMS: FunnelItem[] = [];
 const EMPTY_MAP = new Map<string, ReplayStock>();
@@ -100,14 +146,17 @@ export const cellHitToItem = (h: CellHit, date: string): FunnelItem => ({
 });
 
 export function useCellSet(stages: readonly FilterStage[], date: string, opts?: CellEvalOptions): CellSetView {
-    const snapQ = useDaySnapshot(date);
+    const narrowedEarly = useMemo(() => toCellConditions(stages), [stages]);
+    // 평가할 조건이 없으면 **하루 재료를 안 당긴다** — /day-replay 는 한 날 ~15MB 다.
+    // (라벨 층은 이 재료가 없어도 선다 — 멤버십에서 오므로. 조건 없음 = 안 보여줌 규칙과 같은 결.)
+    const snapQ = useDaySnapshot(narrowedEarly.conditions.length > 0 ? date : null);
     const stocks = snapQ.data?.stocks;
     const auto = useAutoPoints();
     const themes = useThemeProjection();
     // 존 정의(N·M·창·기준)는 공용 사다리 — 타점 정보 패널과 같은 숫자를 낸다(두 화면 두 숫자 금지).
     const zoneParams = useThemeKnobParams();
 
-    const narrowed = useMemo(() => toCellConditions(stages), [stages]);
+    const narrowed = narrowedEarly;
     const needsGrid = useMemo(
         () => narrowed.conditions.some((c) => c.predicates.some((p) => p.kind === "gridPoint")),
         [narrowed],
@@ -118,15 +167,27 @@ export function useCellSet(stages: readonly FilterStage[], date: string, opts?: 
     );
     const limit = opts?.limit;
     const hardCap = opts?.hardCap;
+    const limitBy = opts?.limitBy;
 
     const result = useMemo(() => {
         if (!stocks || snapQ.data?.date !== date) return null;
-        const mat = cellMaterialsOf(stocks, date, auto, themes.proj, zoneParams);
-        return evaluateCells(stocks, mat, narrowed.conditions, {
-            ...(limit !== undefined ? { limit } : {}),
-            ...(hardCap !== undefined ? { hardCap } : {}),
+        // 메모 키 — 조건·노브·**재료 세대를 전부** 싣는다. 하나라도 빠지면 조용히 낡은 목록을 돌려준다.
+        //  · 바깥 축(WeakMap) = `stocks` 배열 참조 = 하루 재료의 세대. 오늘 날짜는 60초마다 재조회되므로
+        //    이걸 안 가르면 새로 채워진 분의 후보가 세션 내내 안 뜬다.
+        //  · 격자(`auto.points`)·테마 투영(`themes.proj`)은 참조를 키에 못 실으니 **세대 번호**로 태운다.
+        const key = JSON.stringify([
+            date, narrowed.conditions, zoneParams, limit ?? null, hardCap ?? null, limitBy ?? null,
+            genOf(auto.points), genOf(themes.proj),
+        ]);
+        return evaluateMemo(stocks, key, () => {
+            const mat = cellMaterialsOf(stocks, date, auto, themes.proj, zoneParams);
+            return evaluateCells(stocks, mat, narrowed.conditions, {
+                ...(limit !== undefined ? { limit } : {}),
+                ...(hardCap !== undefined ? { hardCap } : {}),
+                ...(limitBy !== undefined ? { limitBy } : {}),
+            });
         });
-    }, [stocks, snapQ.data?.date, date, auto, themes.proj, zoneParams, narrowed, limit, hardCap]);
+    }, [stocks, snapQ.data?.date, date, auto, themes.proj, zoneParams, narrowed, limit, hardCap, limitBy]);
 
     const items = useMemo<readonly FunnelItem[]>(
         () => (result ? result.hits.map((h) => cellHitToItem(h, date)) : EMPTY_ITEMS),

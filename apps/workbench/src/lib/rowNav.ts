@@ -30,14 +30,13 @@ import { useKeymapDynamic } from "../keymap/dynamic.js";
 //
 // ⚠ 모듈 전역 단일 소유 — 후보 패널은 각 1개 전제(panelCatalog). 인스턴스가 둘이 되면 나중 것이 앞을 덮는다.
 
-export type RowNavOwner = "rank-sheet" | "workset" | "point-probe" | "replay-board" | "theme-board";
+export type RowNavOwner = "rank-sheet" | "workset" | "replay-board" | "theme-board";
 type Step = (dir: 1 | -1) => void;
 
 /** 후보 — **순환 순서이자 폴백 우선순위**. unit 은 도움말 문구("다음 …"), label 은 배지 툴팁·순환 문구. */
 export const ROW_NAV_OWNERS: readonly { owner: RowNavOwner; unit: string; label: string }[] = [
     { owner: "rank-sheet", unit: "행(시트)", label: "시트" },
     { owner: "workset", unit: "타점(작업 대상)", label: "작업 대상" },
-    { owner: "point-probe", unit: "후보(탐색 후보)", label: "탐색 후보" },
     { owner: "replay-board", unit: "종목(테마 [복기])", label: "테마 [복기]" },
     { owner: "theme-board", unit: "종목(테마 [장 마감])", label: "테마 [장 마감]" },
 ];
@@ -50,7 +49,12 @@ export const ROW_NAV_ORIGIN = "row-nav";
 
 const SELECTED = persistedField<RowNavOwner>(
     "wb.rowNavOwner",
-    (o) => (ORDER.includes(o as RowNavOwner) ? (o as RowNavOwner) : null),
+    (o) => {
+        // 옛 "탐색 후보"는 작업 대상에 **흡수**됐다(2026-09-18 단계 ③) — 그 값을 들고 있던 사용자를
+        // 승계한다. 안 하면 파서가 거절해 말없이 "시트"로 떨어진다(고른 주인이 조용히 바뀌는 사고).
+        const v = o === "point-probe" ? "workset" : o;
+        return ORDER.includes(v as RowNavOwner) ? (v as RowNavOwner) : null;
+    },
     "rank-sheet",
 );
 

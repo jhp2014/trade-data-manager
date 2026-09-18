@@ -13,7 +13,8 @@ export interface PanelUiSlice {
     clonePanelUi: (fromId: string, toId: string) => void; // 패널 복제의 "설정 사본" — 영속 가방 통째 복사
 }
 
-const PANEL_UI_KEY = "wb.panelUi";
+/** export 인 이유: 슬라이스가 아직 없는 자리(옛 패널 조건 1회 이주)가 이 가방을 직접 읽는다. */
+export const PANEL_UI_KEY = "wb.panelUi";
 
 export const createPanelUiSlice: StateCreator<WorkbenchState, [], [], PanelUiSlice> = (set) => ({
     panelUi: loadJson(PANEL_UI_KEY, (o) => (o && typeof o === "object" ? (o as PanelUiBag) : null)) ?? {},

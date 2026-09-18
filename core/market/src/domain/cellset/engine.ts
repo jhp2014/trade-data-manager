@@ -78,6 +78,12 @@ export interface CellEvalResult {
 export interface CellEvalOptions {
     /** 산출물 상한(기본 2,000) — 정렬 뒤 앞에서 자른다. */
     limit?: number;
+    /**
+     * 자르는 **단위**(기본 `"cell"`). 섹션(종목 머리 + 자식) 화면은 반드시 `"stockGroup"` 이어야 한다:
+     * 시각 프리픽스로 자르면 한 종목이 반토막 나서 **머리의 `◇ n` 이 거짓말**을 한다.
+     * 상한이 산출물 상한(전량 평가 후 컷)이라 남은 종목의 수는 어느 단위로 잘라도 정확하다.
+     */
+    limitBy?: "cell" | "stockGroup";
     /** 평가 중단 그물(기본 50,000 **셀**) — 넘으면 즉시 반환하고 tooWide. */
     hardCap?: number;
 }
@@ -174,6 +180,27 @@ const hm = (min: number): string => {
     const p = (n: number): string => String(n).padStart(2, "0");
     return `${p(Math.floor(min / 60))}:${p(min % 60)}`;
 };
+
+/**
+ * 종목 그룹째 자르기 — 상한을 넘는 **마지막 종목은 통째로** 뺀다(반토막 금지).
+ * 정렬은 분↑ 이라 한 종목의 셀이 흩어져 있다 — 그래서 "앞에서 N개"가 아니라 **남길 종목 집합**을 정한다:
+ * 이른 분부터 종목을 등록해 가다가 상한을 넘기는 순간 그 종목은 빼고, 이미 등록된 종목의 셀만 남긴다.
+ * 그러면 남은 종목의 건수가 화면 머리(`◇ n`)와 정확히 일치한다.
+ */
+function cutByStockGroup(sorted: readonly CellHit[], limit: number): CellHit[] {
+    const perCode = new Map<string, number>();
+    for (const h of sorted) perCode.set(h.code, (perCode.get(h.code) ?? 0) + 1);
+    const keep = new Set<string>();
+    let total = 0;
+    for (const h of sorted) {
+        if (keep.has(h.code)) continue;
+        const n = perCode.get(h.code) ?? 0;
+        if (total + n > limit) continue; // 이 종목은 통째로 뺀다 — 뒤에 더 작은 종목이 있으면 그건 든다
+        keep.add(h.code);
+        total += n;
+    }
+    return sorted.filter((h) => keep.has(h.code));
+}
 
 /**
  * 하루의 발화 셀 — 종목별 dense 타임라인 단일 패스.
@@ -334,8 +361,9 @@ export function evaluateCells(
     const out = [...byKey.values()];
     out.sort((a, b) => a.min - b.min || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
     const truncated = out.length > limit;
+    const cut = truncated ? (opts.limitBy === "stockGroup" ? cutByStockGroup(out, limit) : out.slice(0, limit)) : out;
     return {
-        hits: truncated ? out.slice(0, limit) : out,
+        hits: cut,
         matched,
         limit,
         truncated,
