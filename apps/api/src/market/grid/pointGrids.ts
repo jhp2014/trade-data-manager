@@ -32,7 +32,6 @@ import {
     dropSameDayAnchors,
     kstToday,
     mapWithConcurrency,
-    minuteToHms,
     rawScaleOf,
     resolveBaselines,
     subtractMonths,
@@ -73,7 +72,7 @@ const MATERIAL_MISSING_TTL_MS = 10 * 60_000;
 
 export interface PointGridsDeps {
     deps: Pick<AxisDeps, "minute" | "rawDaily" | "adjDaily" | "chartAnchor">;
-    /** 좌표 라벨 읽기(로컬 미러) — 기대집합 합집합·단면 분 합류의 재료. ISP: 읽기 한 메서드만. */
+    /** 좌표 라벨 읽기(로컬 미러) — 기대집합 합집합의 재료. ISP: 읽기 한 메서드만. */
     groups: Pick<GroupReader, "listAllPointMemberships">;
     store: GridStore;
     /** 검출 파라미터 — recon A/B 주입용. 기본값이 곧 CALC_VERSION 에 구워진 규칙이다. */
@@ -159,54 +158,6 @@ export class PointGrids {
             dates.push(m.wire);
         }
         return { version: POINT_GRID_CALC_VERSION, dates };
-    }
-
-    /**
-     * 단면 분 (날짜 → 분 → 종목들) — 격자의 **사건 봉 전부**(밴드 사건 캔들 ∪ 피벗, v9 §4).
-     * 순위 단면의 기대집합이 이걸 본다. `confirmedMin` 은 넣지 않는다(소비자 없음 — 필요 시 한 줄 추가).
-     *
-     * **판정 정의(게이트·자격 시각 창·병합·양봉)와 무관**한 게 요점이다: Point 는 언제나 밴드 사건 목록에서
-     * 골리므로(`pointsOf`) 후보 전체를 기대집합으로 삼으면 클라가 정의 노브를 굴려도 서버가 다시 구울 게
-     * 없고, 피벗 분까지 넓히면 국소 저점·고점 시각의 순위 단면이 결손 없이 선다.
-     * 대사는 bundle() 과 같은 게으른 규칙을 탄다(콜드면 굽고, 그 뒤엔 메모).
-     */
-    async sectionMinutes(): Promise<Map<string, Map<string, Set<string>>>> {
-        // bundle() 과 **같은 재시도**가 필요하다: 비행 중 gen 이 밀리면(앵커 편집) 그 비행은 산출물을
-        // 하나도 반영하지 못해 memo 가 빈 채 남고, 그대로 돌려주면 순위 단면이 "후보 0" 을 정상으로
-        // 받아 **빈 번들을 200 으로** 서빙한다(클라 IMMUTABLE 이라 세션 내내 굳는다).
-        for (let i = 0; i < 3; i++) {
-            const g = this.gen;
-            await this.reconcile();
-            if (g === this.gen) break;
-        }
-        const out = new Map<string, Map<string, Set<string>>>();
-        for (const [date, m] of this.memo) {
-            const byMinute = new Map<string, Set<string>>();
-            const add = (code: string, min: number): void => {
-                const hhmm = minuteToHms(min).slice(0, 5);
-                const set = byMinute.get(hhmm);
-                if (set) set.add(code);
-                else byMinute.set(hhmm, new Set([code]));
-            };
-            for (const [code, entry] of Object.entries(m.charts)) {
-                for (const e of entry.grid.newHighs) add(code, e.min);
-                for (const p of entry.grid.pivots) add(code, p.min); // 꼬리 포함, 두 kind 모두(§4)
-            }
-            out.set(date, byMinute);
-        }
-        // 좌표 라벨 분 합집합(2026-09-18, A2 선행) — 라벨 좌표는 격자 사건 봉이 아닐 수 있어 명시로 넣는다.
-        // 이게 있어야 라벨 행에서 테마 강도·존 순위 술어가 서고, 이 분들이 정확히 A2 가 남길 집합이다.
-        const today = (this.cfg.today ?? kstToday)();
-        for (const m of await this.cfg.groups.listAllPointMemberships()) {
-            if (m.date >= today) continue;
-            const hhmm = m.time.slice(0, 5);
-            let byMinute = out.get(m.date);
-            if (!byMinute) out.set(m.date, (byMinute = new Map()));
-            const set = byMinute.get(hhmm);
-            if (set) set.add(m.stockCode);
-            else byMinute.set(hhmm, new Set([m.stockCode]));
-        }
-        return out;
     }
 
     private async doReconcile(): Promise<GridReconcileReport> {

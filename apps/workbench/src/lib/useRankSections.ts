@@ -2,7 +2,7 @@
 // (테마 순위 패널·깔때기)의 몫이다 — 여긴 "어느 (날짜,분)의 단면"과 "그 단면에서 이 종목의 서수"를
 // O(1)로 꺼내는 데까지만. 재료는 rank-sections 키 하나(테이블 키와 같은 결).
 //
-// ⚠ 와이어는 **접힌 행**이다(그 분의 후보 종목 ∪ 그 동료) — 행이 없는 종목은 "그 분의 관심 대상이
+// ⚠ 와이어는 **접힌 행**이다(그 분의 라벨 종목 ∪ 그 동료) — 행이 없는 종목은 "그 분의 관심 대상이
 //   아님"이고, 행이 있는데 −1 이면 **결손**(미개장·데이터 없음)이다. 둘을 섞지 않으려고 `ranksOf` 는
 //   전자를 null, 후자를 `{rate: null, ...}` 로 돌려준다(옛 "유니버스 밖 = null" 과 같은 자리).
 //
@@ -19,7 +19,7 @@ export interface SectionView {
     date: string;
     sealed: boolean;
     section: WireRankSection;
-    /** 종목 → codes 배열 인덱스. 없으면 그 단면의 접힌 행에 없다(후보도 동료도 아님). */
+    /** 종목 → codes 배열 인덱스. 없으면 그 단면의 접힌 행에 없다(라벨도 동료도 아님). */
     indexOf(code: string): number | null;
     /** 종목의 (등락률, 당일 대금, 60분 창 대금) 서수. 행이 없으면 null, 행이 있고 −1 이면 그 값만 null(결손). */
     ranksOf(code: string): { rate: number | null; amount: number | null; amount60: number | null } | null;
@@ -32,7 +32,7 @@ export interface RankSectionsView {
     error: Error | null;
     /** (날짜, "HH:MM"[:SS 허용 — 분으로 절단]) → 단면. 없으면 null(pending·모수 밖). */
     sectionAt(date: string, time: string): SectionView | null;
-    /** 굽지 않은 날짜(오늘 이후 타점) — 배지 재료. */
+    /** 굽지 않은 날짜(오늘 이후의 라벨) — 배지 재료. **아직 읽는 화면이 없다**(wire rankSection.ts 의 같은 경고). */
     pending: readonly string[];
 }
 

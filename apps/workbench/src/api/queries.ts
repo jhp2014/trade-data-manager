@@ -97,9 +97,9 @@ export const allCommentsQuery = () =>
 export const computedAxesQuery = () =>
     queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
 
-// 순위 단면 번들(격자 후보 캔들이 선 날짜·분의 서수) — **키 하나**(전 소비자가 통째를 본다). 모수가
-// 격자 후보라 기준선 앵커 편집(chartAnchorHooks — 그게 곧 후보 집합의 변경)·테마 배정(접기가 바뀐다)·
-// 미러 동기화(CURATION)가 무효화한다. 서수 자체는 불변 원료다.
+// 순위 단면 번들(라벨 좌표가 선 날짜·분의 서수) — **키 하나**(전 소비자가 통째를 본다). 모수가 좌표
+// 라벨이라 라벨 토글(useGroups — 그게 곧 모수의 변경)·테마 배정(접기가 바뀐다)·미러 동기화(CURATION)가
+// 무효화한다(앵커 편집은 A2 이후 무관). 서수 자체는 불변 원료다.
 export const rankSectionsQuery = () =>
     queryOptions({ queryKey: ["rank-sections"], queryFn: ({ signal }) => fetchRankSections(signal), staleTime: IMMUTABLE , meta: CURATION });
 

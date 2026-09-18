@@ -1,14 +1,16 @@
-// RankSections — 후보 캔들이 존재하는 (날짜, 분)의 순위 단면을 대사(reconcile)로 유지하는 읽기모델.
+// RankSections — 라벨 좌표가 있는 (날짜, 분)의 순위 단면을 대사(reconcile)로 유지하는 읽기모델.
 //
 // ## 대사 모델 — 삭제·추가는 이벤트가 아니라 집합 대조다
-// 기대집합 = **격자의 후보 캔들**(신고가 목록)에서 뽑은 날짜→분 집합. 요청마다 저장집합(메모·파일)과
-// 대조해 **빠진 단면만 계산하고, 참조 없는 날짜 파일은 GC** 한다(분봉 수집 완료 판정과 같은 모델).
-// 같은 분 후보 여럿 = 단면 하나 공유 — 그래서 낟알이 종목이 아니라 (날짜, 분)이다.
+// 기대집합 = **좌표 라벨**(`group_members_point`, 큐레이션 미러)에서 뽑은 날짜→분 집합. 요청마다
+// 저장집합(메모·파일)과 대조해 **빠진 단면만 계산하고, 참조 없는 날짜 파일은 GC** 한다(분봉 수집 완료
+// 판정과 같은 모델). 같은 분 라벨 여럿 = 단면 하나 공유 — 그래서 낟알이 종목이 아니라 (날짜, 분)이다.
 //
-// 왜 타점이 아니라 후보인가(2026-09-01): 타점이 읽기 층 파생물(정의 노브의 함수)이 되면서 서버는 어느
-// 분이 타점인지 모른다. `Point ⊆ 신고가 캔들` 이라 후보 전체를 구우면 **정의를 굴려도 서버 왕복이 0** 이다.
+// 왜 격자 후보가 아니라 라벨인가(2026-09-18, A2 — decisions.md 「구조 개편」): 종단 모수가 그룹 배정된
+// 좌표로 좁아졌다. 옛 모수(격자의 사건 봉 전부)는 34,202단면 · 98만 행 · 첫 굽기 수십 분이었는데 그중
+// 실제로 조회되는 건 라벨 분뿐이다(술어도 타점 정보도 행 = 라벨에서만 단면을 본다). 라벨 아닌 분은
+// **결손**이고 그게 맞다 — 클라의 즉석 재계산 경로(themeRank/sectionSeries)가 탐색용 순위를 따로 든다.
 //
-// ## 서빙은 접어서 — 저장은 유니버스 전 종목, 와이어는 그 분의 후보 + 동료만
+// ## 서빙은 접어서 — 저장은 유니버스 전 종목, 와이어는 그 분의 라벨 종목 + 동료만
 // 접기는 테마 멤버십(시트)을 보지만 **저장물은 안 본다** — 그래서 시트를 고치면 재굽기가 아니라 다시
 // 접기로 끝난다(멤버십 지문이 접힌 결과의 메모 키다). 규칙 전문은 wire/rankSection.ts 머리 주석.
 //
@@ -25,6 +27,7 @@ import {
     kstToday,
     mapWithConcurrency,
     rankSectionOf,
+    type GroupReader,
     type RankSection,
     type ThemeMember,
 } from "@trade-data-manager/market";
@@ -46,8 +49,8 @@ const UNSEALED_TTL_MS = 5 * 60_000;
 
 export interface RankSectionsDeps {
     derived: Pick<DerivedCache, "snapshot" | "isSealed">;
-    /** 기대집합 공급자 — 격자의 후보 캔들: 날짜 → 분("HH:MM") → 그 분의 후보 종목들. */
-    candidates: { sectionMinutes(): Promise<Map<string, Map<string, Set<string>>>> };
+    /** 기대집합 공급자 — 좌표 라벨(로컬 미러). ISP: 읽기 한 메서드만(PointGrids 와 같은 관용구). */
+    labels: Pick<GroupReader, "listAllPointMemberships">;
     /** 테마 멤버십(시트 캐시) — **서빙 접기에만** 쓴다(저장물은 테마를 모른다). */
     membership: { load(): Promise<ThemeMember[]> };
     store: RankSectionStore;
@@ -81,9 +84,9 @@ const membershipFingerprint = (rows: readonly ThemeMember[]): string =>
     rows.map((m) => `${m.theme}|${m.code}`).sort().join(";");
 
 /**
- * 접기 메모 키 — **내용으로** 잡는다: 멤버십 지문 + 그 날짜의 (분, 후보 종목) 전부.
- * ⚠ "단면 개수"로 대신하면 조용히 낡은 걸 서빙한다: 이미 있는 분에 **후보 종목이 하나 늘면**
- *   개수가 그대로라 그 종목의 행이 영영 안 실린다(기준선을 새로 그은 차트가 깔때기에서 결손으로 남는다).
+ * 접기 메모 키 — **내용으로** 잡는다: 멤버십 지문 + 그 날짜의 (분, 라벨 종목) 전부.
+ * ⚠ "단면 개수"로 대신하면 조용히 낡은 걸 서빙한다: 이미 있는 분에 **라벨 종목이 하나 늘면**
+ *   개수가 그대로라 그 종목의 행이 영영 안 실린다(같은 분에 라벨을 붙인 차트가 깔때기에서 결손으로 남는다).
  */
 const foldKey = (fp: string, byMinute: ReadonlyMap<string, Set<string>>): string => {
     const parts: string[] = [];
@@ -106,8 +109,24 @@ export class RankSections {
 
     constructor(private readonly deps: RankSectionsDeps) {}
 
-    /** 전체 번들 — 요청 시 게으른 대사. 동시 요청은 한 비행을 나눠 탄다. */
-    bundle(): Promise<RankSectionBundle> {
+    /**
+     * 전체 번들 — 요청 시 게으른 대사. 동시 요청은 한 비행을 나눠 탄다.
+     *
+     * 비행 중 gen 이 밀렸으면(라벨 편집) 그 비행은 **낡은 기대집합**으로 접힌 결과다 — 그대로 주면
+     * 방금 붙인 라벨의 단면이 빠진 번들을 클라가 IMMUTABLE 로 세션 내내 굳힌다(깔때기에서 영구 결손).
+     * 한 번 더 돈다 — 상한 3회(편집 폭주 중엔 어차피 곧 새 요청이 온다). PointGrids.bundle 과 같은 규칙.
+     */
+    async bundle(): Promise<RankSectionBundle> {
+        let g = this.gen;
+        let out = await this.flight();
+        for (let i = 0; i < 2 && g !== this.gen; i++) {
+            g = this.gen;
+            out = await this.flight();
+        }
+        return out;
+    }
+
+    private flight(): Promise<RankSectionBundle> {
         if (this.inFlight) return this.inFlight;
         const p = this.doBundle().finally(() => {
             if (this.inFlight === p) this.inFlight = null;
@@ -116,27 +135,33 @@ export class RankSections {
         return p;
     }
 
-    /** 앵커 변경 직후 호출(chartAnchor 컨트롤러) — 변경 **전에** 시작된 in-flight 에 이후 refetch 가
-     *  합류하지 않게. 기준선이 곧 격자의 재료이고 격자가 곧 이 읽기모델의 모수라 앵커가 발화점이다. */
+    /** 라벨 편집 직후 호출(group 컨트롤러) — 변경 **전에** 시작된 in-flight 에 이후 refetch 가
+     *  합류하지 않게. 좌표 라벨이 곧 이 읽기모델의 모수라 라벨 부착·해제가 발화점이다. */
     invalidate(): void {
         this.gen++;
         this.inFlight = null;
-        // 접힌 결과도 버린다 — 앵커 편집은 후보 집합(기대집합)을 바꾸므로 옛 접기는 재료가 다르다.
+        // 접힌 결과도 버린다 — 라벨 편집은 기대집합을 바꾸므로 옛 접기는 재료가 다르다.
         this.foldMemo.clear();
     }
 
     private async doBundle(): Promise<RankSectionBundle> {
         const gen = this.gen;
         const today = (this.deps.today ?? kstToday)();
-        const [candidates, members] = await Promise.all([this.deps.candidates.sectionMinutes(), this.deps.membership.load()]);
+        const [labels, members] = await Promise.all([this.deps.labels.listAllPointMemberships(), this.deps.membership.load()]);
         const expected = new Map<string, Map<string, Set<string>>>();
         const pending = new Set<string>();
-        for (const [date, byMinute] of candidates) {
-            if (date >= today) {
-                pending.add(date); // 잠정 유니버스 위 서수로 필터를 판정하지 않는다
+        // 라벨 → 날짜 → 분("HH:MM") → 그 분의 라벨 종목들. 같은 좌표에 그룹이 여럿이어도 단면은 하나다.
+        for (const m of labels) {
+            if (m.date >= today) {
+                pending.add(m.date); // 잠정 유니버스 위 서수로 필터를 판정하지 않는다
                 continue;
             }
-            if (byMinute.size > 0) expected.set(date, byMinute);
+            let byMinute = expected.get(m.date);
+            if (!byMinute) expected.set(m.date, (byMinute = new Map()));
+            const hhmm = m.time.slice(0, 5);
+            const set = byMinute.get(hhmm);
+            if (set) set.add(m.stockCode);
+            else byMinute.set(hhmm, new Set([m.stockCode]));
         }
         const dates = [...expected.keys()].sort();
         const t0 = Date.now();
@@ -153,8 +178,8 @@ export class RankSections {
     }
 
     /**
-     * 접기 — 유니버스 전 종목 서수(`FullDate`)에서 **그 분의 후보 ∪ 동료** 행만 남긴다.
-     * 동료 = 후보의 소속 테마 멤버 ∩ 그날 유니버스. 자기 서수는 테마가 없어도 항상 싣는다.
+     * 접기 — 유니버스 전 종목 서수(`FullDate`)에서 **그 분의 라벨 종목 ∪ 동료** 행만 남긴다.
+     * 동료 = 라벨 종목의 소속 테마 멤버 ∩ 그날 유니버스. 자기 서수는 테마가 없어도 항상 싣는다.
      * 분모 `n` 은 접기 전 값 그대로다(유니버스 전체 참가 수 — 접힌 행 수가 아니다).
      */
     private fold(full: FullDate, byMinute: ReadonlyMap<string, Set<string>>, index: ReturnType<typeof buildThemeIndex>, fp: string): RankSectionDate {

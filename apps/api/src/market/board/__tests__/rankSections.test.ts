@@ -1,7 +1,7 @@
-// RankSections 대사 로직 — fake store/candidates/derived 주입(derivedCache.test 의 fake 스타일).
+// RankSections 대사 로직 — fake store/labels/derived 주입(derivedCache.test 의 fake 스타일).
 // 순위 계산 자체(rankSectionOf)는 core 테스트가 지킨다 — 여기는 **언제 굽고, 언제 안 읽고, 언제 지우나**만.
 import { describe, it, expect } from "vitest";
-import { kstToUnix, type MinuteDerived, type ThemeMember } from "@trade-data-manager/market";
+import { kstToUnix, type MinuteDerived, type PointGroupMembership, type ThemeMember } from "@trade-data-manager/market";
 import { RankSections, RANK_SECTION_CALC_VERSION } from "../rankSections.js";
 import { RANK_SECTION_FILE_VERSION, type RankSectionFile, type RankSectionStore } from "../rankSectionStore.js";
 import { SNAPSHOT_SCHEMA_VERSION, type DaySnapshotFile } from "../daySnapshotCache.js";
@@ -72,40 +72,28 @@ class FakeSectionStore implements RankSectionStore {
     }
 }
 
-/** 후보 한 건 — (종목,날짜,분). 기대집합은 이제 격자의 신고가 캔들이다(타점이 아니라). */
-const cand = (date: string, time: string, code = "A"): Candidate => ({ stockCode: code, date, time });
-interface Candidate { stockCode: string; date: string; time: string }
-
-/** 단면 분 목록 → 날짜 → 분("HH:MM") → 종목 집합(PointGrids.sectionMinutes 와 같은 모양). */
-const minutesOf = (list: readonly Candidate[]): Map<string, Map<string, Set<string>>> => {
-    const out = new Map<string, Map<string, Set<string>>>();
-    for (const c of list) {
-        const hhmm = c.time.slice(0, 5);
-        let byMinute = out.get(c.date);
-        if (!byMinute) out.set(c.date, (byMinute = new Map()));
-        const set = byMinute.get(hhmm);
-        if (set) set.add(c.stockCode);
-        else byMinute.set(hhmm, new Set([c.stockCode]));
-    }
-    return out;
-};
+/** 라벨 한 건 — (종목,날짜,분). 기대집합은 좌표 라벨이다(2026-09-18 A2 — 격자 후보가 아니라). */
+const cand = (date: string, time: string, code = "A"): PointGroupMembership => ({ stockCode: code, date, time, groupNames: ["G"] });
 
 function make(
-    candidates: Candidate[],
+    labels: PointGroupMembership[],
     opts?: { sealed?: string[]; files?: Record<string, DaySnapshotFile>; gate?: () => Promise<void>; members?: ThemeMember[] },
 ) {
     const derived = new FakeDerived(opts?.files ?? { [D1]: snapOf(D1, ["A", "B"]), [D2]: snapOf(D2, ["A", "B", "C"]) });
     for (const d of opts?.sealed ?? [D1, D2]) derived.sealedDates.add(d);
     const store = new FakeSectionStore();
-    const list = candidates;
+    const list = labels;
     let members = opts?.members ?? [];
     let nowMs = 0;
     const sections = new RankSections({
         derived,
-        candidates: {
-            sectionMinutes: async () => {
+        labels: {
+            // 느린 읽기의 모형 — **시작 시점의 상태**를 돌려준다(게이트가 풀린 뒤의 최신이 아니라).
+            // 그래야 "낡은 기대집합으로 시작한 비행"을 테스트가 실제로 만들 수 있다.
+            listAllPointMemberships: async () => {
+                const out = [...list];
                 await opts?.gate?.();
-                return minutesOf(list);
+                return out;
             },
         },
         membership: { load: async () => [...members] },
@@ -120,11 +108,13 @@ function make(
     };
 }
 
-/** 접힌 행 → 종목별 서수(테스트 가독용) — 와이어는 codes 인덱스 튜플이라 그대로 읽기 나쁘다. */
+/** 접힌 행 → 종목별 서수(테스트 가독용) — 와이어는 codes 인덱스 튜플이라 그대로 읽기 나쁘다.
+ *  ⚠ **stride 4 가 와이어 계약**([codeIdx, rate, amount, amount60], wire rankSection.ts) — 3 으로 훑으면
+ *  남의 칸을 codeIdx 로 오독해 "동료 행이 실렸나" 같은 단언이 우연히 통과한다(행이 둘 이상일 때 갈린다). */
 const ranksOf = (d: { codes: string[]; sections: { time: string; rows: number[] }[] }, time: string, code: string) => {
     const s = d.sections.find((x) => x.time === time)!;
     const i = d.codes.indexOf(code);
-    for (let at = 0; at < s.rows.length; at += 3) if (s.rows[at] === i) return { rate: s.rows[at + 1], amount: s.rows[at + 2] };
+    for (let at = 0; at < s.rows.length; at += 4) if (s.rows[at] === i) return { rate: s.rows[at + 1], amount: s.rows[at + 2] };
     return null;
 };
 
@@ -247,9 +237,9 @@ describe("RankSections 대사", () => {
     it("낡은 세대의 비행은 GC 를 건너뛴다 — 새 비행이 방금 구운 파일을 지우지 않는다(경합 가드)", async () => {
         let release!: () => void;
         const gate = new Promise<void>((r) => (release = r));
-        const { sections, store } = make([cand(D1, "09:30:00")], { gate: () => gate });
-        const old = sections.bundle(); // 기대집합에 D2 가 없는 낡은 비행 — listAllPoints 에서 대기 중
-        // 그 사이 다른(새) 비행의 산물처럼 D2 파일이 생기고, invalidate 가 세대를 올렸다.
+        const { sections, store, points } = make([cand(D1, "09:30:00")], { gate: () => gate });
+        const old = sections.bundle(); // 기대집합에 D2 가 없는 낡은 비행 — 라벨 읽기에서 대기 중
+        // 그 사이 D2 에 라벨이 붙어(새 세대) 그 단면 파일이 생겼다 — 낡은 비행엔 안 보이는 사실이다.
         store.map.set(D2, {
             v: RANK_SECTION_FILE_VERSION,
             version: RANK_SECTION_CALC_VERSION,
@@ -257,11 +247,25 @@ describe("RankSections 대사", () => {
             codes: ["A", "B", "C"],
             sections: [{ time: "09:00", n: 3, rate: [1, 2, 3], amount: [3, 2, 1], amount60: [3, 2, 1] }],
         });
+        points.push(cand(D2, "09:00:00"));
         sections.invalidate();
         release();
         await old;
         expect(store.map.has(D2)).toBe(true); // 낡은 비행이 안 지웠다
         expect(store.removed).toEqual([]);
+    });
+
+    it("비행 중 라벨 편집 — 낡은 기대집합 번들을 그대로 주지 않는다(gen 재시도)", async () => {
+        // ⚠ 클라 캐시가 IMMUTABLE 이라 여기서 낡은 번들을 주면 방금 붙인 라벨의 단면이 **세션 내내** 빈다.
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        const { sections, points } = make([cand(D1, "09:30:00")], { gate: () => gate });
+        const p = sections.bundle();
+        points.push(cand(D2, "09:00:00")); // 비행 중 라벨 부착
+        sections.invalidate();
+        release();
+        const b = await p;
+        expect(b.dates.map((d) => d.date)).toEqual([D1, D2]); // 재시도 없으면 [D1] 이다
     });
 
     it("미봉인 날짜는 TTL 메모 — 창 안 재요청은 스냅샷을 안 읽고, 창이 지나면 다시 굽는다(자가치유)", async () => {

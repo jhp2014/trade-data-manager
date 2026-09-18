@@ -436,15 +436,4 @@ describe("PointGrids 대사 — 좌표 라벨 차트", () => {
         expect(h.files.get(D)!.charts["A"].grid.base).toBe(9000);
     });
 
-    it("sectionMinutes — 라벨 분이 사건 봉이 아니어도 단면 기대집합에 합류한다", async () => {
-        const h = harness({
-            anchors: [],
-            minutes: { [`L|${D}`]: twoBars("L", D) },
-            pointLabels: [label("L", D, "09:15:00")], // 09:15 는 사건 봉(09:10·09:20)이 아니다
-        });
-        const byDate = await h.grids.sectionMinutes();
-        const byMinute = byDate.get(D)!;
-        expect(byMinute.get("09:15")?.has("L")).toBe(true); // 라벨 분 명시 합류
-        expect(byMinute.get("09:10")?.has("L")).toBe(true); // 격자 사건 봉도 그대로
-    });
 });
