@@ -24,7 +24,7 @@ const MIN_SEG = 16;
 export const STAGE_DND = "application/x-funnel-stage";
 
 export function FilterRow({
-    no, stage, tally, universe, label, dead, linked, linkedLabel, onLinkedClick, showBar, pickedCells, dragging, dropTarget,
+    no, stage, tally, universe, label, dead, deficiency, cellFields, linked, linkedLabel, onLinkedClick, showBar, pickedCells, dragging, dropTarget,
     onPick, onPickPass, onOpen, onToggle, onRemove, onDragStart, onDragEnd, onDragOver, onDropOn,
 }: {
     no: number;
@@ -34,6 +34,13 @@ export function FilterRow({
     universe: number;
     label: string;
     dead: boolean;
+    /**
+     * 이 우주에서 **결손**인 이유들(빈 배열 = 온전히 평가된다). 죽은 참조(dead)와 **다른 표식**이어야
+     * 한다 — 죽음은 고쳐야 할 것이고, 결손은 사실이다(재료가 생기면 문법 변경 없이 켜진다).
+     */
+    deficiency?: string[];
+    /** 셀 술어의 그 자리 편집 줄(하루 우주) — 전용 편집 판이 없는 종류라 줄 안에서 만진다. */
+    cellFields?: React.ReactNode;
     /** 전용 패널이 지금 이 행을 비추는 중(테마) — 어디를 만지면 이 줄이 바뀌는지 알린다. */
     linked?: boolean;
     /** 테마 행 전용 — 연동된 조건판 라벨(미연동이면 "미연동"). 클릭 = 연동 메뉴(pull 의 유일한 손잡이). */
@@ -89,6 +96,12 @@ export function FilterRow({
                     style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", border: "none", background: "transparent", padding: 0, font: "inherit", cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: dead ? FAIL : "var(--text-primary)", textAlign: "left" }}>
                     {label}
                 </button>
+                {deficiency !== undefined && deficiency.length > 0 && (
+                    <span title={`이 우주에서 평가할 수 없는 조건입니다 — ${deficiency.join(" / ")}`}
+                        style={{ flexShrink: 0, fontSize: 9.5, color: "var(--text-tertiary)", border: "1px dashed var(--border-strong)", borderRadius: 3, padding: "0 4px" }}>
+                        결손
+                    </span>
+                )}
                 {!showBar && tally !== null && (
                     <span title="이 필터가 새로 죽인 수(상류 전부 통과였는데 이번에 탈락). 0 이면 장식이다."
                         style={{ flexShrink: 0, fontSize: 10.5, color: decorative ? "var(--text-tertiary)" : FAIL, fontVariantNumeric: "tabular-nums" }}>
@@ -111,6 +124,8 @@ export function FilterRow({
                     <button onClick={onRemove} title="이 필터 지우기" style={{ ...iconBtn, color: FAIL }}>✕</button>
                 </span>
             </div>
+
+            {cellFields}
 
             {showBar && (
                 <>

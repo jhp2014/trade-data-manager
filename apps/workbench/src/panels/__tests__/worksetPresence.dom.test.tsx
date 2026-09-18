@@ -145,7 +145,7 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
     });
 
     it("집합은 **읽기만** — 머리글 라벨이 보는 집합을 말하고, 고르는 칩은 이 패널에 없다(집합 편성의 몫)", () => {
-        useWorkbench.setState({ savedSets: [{ id: "fs1", name: "돌파", stages: [], part: { kind: "survivors" } }] });
+        useWorkbench.setState({ savedSets: [{ id: "fs1", name: "돌파", stages: [], part: { kind: "survivors" }, universe: "longitudinal" }] });
         renderWithProviders(<WorksetPanel />, SEED);
         expect(screen.getByTitle(/^지금 보는 집합: 연동/)).toBeTruthy();
         expect(screen.queryByTitle(/^유니버스/)).toBeNull(); // 집합 칩 줄이 없다(월 줄의 "전체"는 다른 채널)

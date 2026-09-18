@@ -18,12 +18,13 @@ import type { FunnelCell } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import type { SetRef } from "../lib/setRef.js";
 import {
-    activeStages, addStage, moveStage, parseStages, removeStage, renameGroupInStages, renameStage, setStagePredicates, toggleStage,
+    activeStages, addStage, moveStage, parseStages, removeStage, renameGroupInStages, renameStage, replaceStage, setStagePredicates, toggleStage,
     type FilterPredicate, type FilterStage,
 } from "../panels/filter/stage.js";
 import { persistSavedSets } from "./savedSetsSlice.js";
 import { applyRailPredicate, type RailKey } from "../panels/filter/stageBinding.js";
-import { loadJson, saveJson } from "./persist.js";
+import { parseUniverse, type Universe } from "../panels/filter/universe.js";
+import { backupRawOnce, loadJson, persistedField, saveJson } from "./persist.js";
 import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
 
 /** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
@@ -36,11 +37,21 @@ const SLOTS_KEY = "wb.filterSlots"; // 슬롯 시절 — 활성 칸 하나만 �
 const LEGACY_STAGES_KEY = "wb.filterStages"; // 슬롯 이전의 단일 벌
 
 /**
+ * 작업 깔때기의 **우주**(2026-09-18 단계 ②) — 배열 키(`wb.filterStages.v4`)와 **별도 스칼라 키**다.
+ * 배열 키를 `{universe, stages}` 래퍼로 감싸는 안은 기각: 모양이 바뀌면 키 상향을 강제하고,
+ * 키를 올리면 `parseStages` 의 all-or-nothing 과 맞물려 사용자의 조건이 전멸한다.
+ * 부재 = 종단(우주가 없던 시절의 행동 그대로).
+ */
+const UNIVERSE_FIELD = persistedField<Universe>("wb.filterUniverse", (raw) => parseUniverse(raw), "longitudinal");
+
+/**
  * 조건 한 벌 읽기 — 지금 키 → 슬롯의 활성 칸 → 슬롯 이전의 단일 벌 순.
  * 슬롯의 **활성 칸만** 살린다: 나머지 두 칸은 이름이 없어 살려 둘 자리가 없고(집합은 이름이 있어야 한다),
  * 슬롯을 안 쓰던 사람에게는 애초에 빈 칸이다. 옛 키는 안 지운다 — 새 키가 서면 자연히 안 읽힌다.
  */
 const loadStages = (): FilterStage[] => {
+    // 셀 술어가 저장물에 실리기 **전에** 원문을 한 번 뜬다(단계 ②의 되돌림 경로 — persist.backupRawOnce).
+    backupRawOnce(STAGES_KEY, "pre-universe");
     // v4 리셋 이전 키들(v3·v2·슬롯·최초)은 읽지 않는다 — 옛 leaf·t 없는 결과 술어가 되살아나는 뒷문이 된다.
     void SLOTS_KEY;
     void LEGACY_STAGES_KEY;
@@ -60,6 +71,18 @@ export interface FunnelSelection {
 export interface FilterFunnelSlice {
     /** 조건 한 벌(영속). 읽기는 selectFilterStages 로 — 소비자가 필드 이름에 매이지 않게. */
     filterStages: FilterStage[];
+    /**
+     * 지금 만지는 조건이 사는 **우주**(영속). 편성 패널은 이 값으로 **디스패치**한다 —
+     * 전역 "모드 스위치"가 아니라 **편집 대상의 타입**이다(decisions 「집합」: 토글이 서는 자리는
+     * "＋ 새 집합" 한 번뿐).
+     */
+    filterUniverse: Universe;
+    /**
+     * 우주 갈아타기 — **조건을 비우는 것이 동반된다**(= 새 집합). 조건을 남긴 채 우주만 바꾸는
+     * 손잡이는 만들지 않는다: 그게 기각된 "전역 모드 스위치"의 다른 이름이고, 우주를 넘기는
+     * 정식 경로는 **⧉ 다른 우주로 복제**(결손 경고를 지나는 명시적 행위)다.
+     */
+    setFilterUniverse: (u: Universe) => void;
     /** 짚은 칸(시선) — 세션 한정. 골격·시트 등 구독자가 보는 집합을 정한다. */
     funnelSelection: FunnelSelection | null;
     /**
@@ -92,6 +115,8 @@ export interface FilterFunnelSlice {
     toggleFilterStage: (id: string) => void;
     moveFilterStage: (from: number, to: number) => void;
     setFilterStagePredicates: (id: string, predicates: FilterPredicate[]) => void;
+    /** 칸 통째 교체 — 칸 수준 필드(전이)까지 한 번에 가는 편집면이 쓴다(셀 술어 인라인 편집). */
+    setFilterStage: (next: FilterStage) => void;
     renameFilterStage: (id: string, name: string) => void;
     /**
      * 그룹 **개명 승계** — 그룹 필터 리터럴이 그룹을 이름으로 들고 있어, 서버 개명 후 여기서 작업 깔때기 +
@@ -121,25 +146,44 @@ export const selectFilterStages = (s: Pick<FilterFunnelSlice, "filterStages">): 
 export const putStages = (
     s: Pick<FilterFunnelSlice, "filterStages" | "funnelSelection">,
     stages: FilterStage[],
-): Pick<FilterFunnelSlice, "filterStages" | "funnelSelection" | "selectedSetRef"> => {
+    /** 집합을 열 때만 준다 — 그 집합의 우주로 깔때기가 갈아탄다(편집 경로는 우주를 안 건드린다). */
+    universe?: Universe,
+): Pick<FilterFunnelSlice, "filterStages" | "funnelSelection" | "selectedSetRef"> & Partial<Pick<FilterFunnelSlice, "filterUniverse">> => {
     saveJson(STAGES_KEY, stages);
     const sel = s.funnelSelection;
     const keep = sel !== null && activeStages(stages).some((st) => st.id === sel.stageId);
     // 깔때기를 만졌다 = 선택 포인터는 작업 깔때기로 복귀 — 칩에서 고른 집합을 보던 중이라도, 조건을
     // 고치는 손은 "지금 이걸 보겠다"는 뜻이다(연동 패널이 편집을 따라와야 편집의 대가가 보인다).
-    return { filterStages: stages, funnelSelection: keep ? sel : null, selectedSetRef: null };
+    return {
+        filterStages: stages,
+        funnelSelection: keep ? sel : null,
+        selectedSetRef: null,
+        ...(universe !== undefined ? { filterUniverse: UNIVERSE_FIELD.save(universe) } : {}),
+    };
 };
 
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => ({
     filterStages: loadStages(),
+    filterUniverse: UNIVERSE_FIELD.load(),
     funnelSelection: null,
     selectedSetRef: null,
     gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
     gazePresence: loadJson(GAZE_PRESENCE_KEY, parsePresenceDnf) ?? [],
 
-    selectSet: (ref) => set(() => ({ selectedSetRef: ref })),
+    // 포인터는 **우주를 넘지 않는다**(단계 ② 불변식 ①) — 넘게 두면 "하루 집합을 골랐더니 종단
+    // 구독 패널이 전부 비는" 사고가 열린다. 전역 포인터를 우주별로 둘 두는 안은 과설계라 기각.
+    selectSet: (ref) => set((s) => {
+        if (ref?.kind === "saved") {
+            const set = s.savedSets.find((x) => x.id === ref.setId);
+            if (set && set.universe !== s.filterUniverse) return {};
+        }
+        return { selectedSetRef: ref };
+    }),
     setGazeMonths: (months) => set(() => ({ gazeMonths: months })),
     setGazePresence: (dnf) => set(() => { saveJson(GAZE_PRESENCE_KEY, dnf); return { gazePresence: dnf }; }),
+
+    // 우주 전환 = 조건 비우기 동반(위 필드 주석). 시선·포인터 정리는 putStages 의 규칙을 그대로 탄다.
+    setFilterUniverse: (u) => set((s) => (s.filterUniverse === u ? {} : putStages(s, [], u))),
 
     // 시선 정리는 전부 putStages 가 한다 — 삭제·비우기·끄기·레일 해제 어느 경로든 같은 규칙으로 풀린다.
     addFilterStage: (predicates) => set((s) => putStages(s, addStage(selectFilterStages(s), predicates ?? []))),
@@ -148,6 +192,7 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     toggleFilterStage: (id) => set((s) => putStages(s, toggleStage(selectFilterStages(s), id))),
     moveFilterStage: (from, to) => set((s) => putStages(s, moveStage(selectFilterStages(s), from, to))),
     setFilterStagePredicates: (id, predicates) => set((s) => putStages(s, setStagePredicates(selectFilterStages(s), id, predicates))),
+    setFilterStage: (next) => set((s) => putStages(s, replaceStage(selectFilterStages(s), next))),
     renameFilterStage: (id, name) => set((s) => putStages(s, renameStage(selectFilterStages(s), id, name))),
     renameGroupInFilters: (from, to) => set((s) => {
         const stages = renameGroupInStages(selectFilterStages(s), from, to);

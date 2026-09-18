@@ -78,6 +78,11 @@ export function rowIdOfStage(s: FilterStage): string {
         case "axisValue": return `axis:${first.axisId}`;
         case "outcome": return `outcome:${first.metric}@${first.t}`; // (지표 × T) 별 줄 — 뭉개면 T 다른 조건이 한 줄로 접힌다
         case "outcomeRecovery": return `recovery:${s.id}`;
+        // 셀 술어는 **칸마다 제 줄**이다 — 같은 종류가 여러 칸에 서는 게 이 우주의 기본 모양이라
+        // 종류로 뭉치면(그룹처럼) 되짚기가 엉뚱한 칸을 연다.
+        case "cellValue":
+        case "priorHighBreak":
+        case "gridPoint": return `cell:${s.id}`;
         case "date": return "date";
         case "time": return "time";
         case "themeStrength": return `theme:${s.id}`;

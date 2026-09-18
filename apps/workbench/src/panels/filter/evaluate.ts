@@ -217,6 +217,16 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
             return resolved.some(([from, to]) => v >= from && v <= to);
         }
 
+        // 셀 술어(하루·셀 우주의 어휘)는 **종단에서 결손**이다 — 종단 행은 좌표 하나라 분봉 시계열이
+        // 없다. 거짓이 아니라 undefined 인 것이 요점이다: "탈락"으로 세면 그 조건이 든 칸이 모수를
+        // 통째로 죽이고, 결손으로 세면 미배치 칸에 모여 화면이 "판단 못 했다"고 말한다(3치 규칙).
+        // 왜 여기서 막지 않고 평가까지 오게 두나 — 결손은 **사실**이고, 그 사실을 말하는 자리가
+        // universe.ts 의 결손 지도다(팔레트 회색·조건 줄 배지). 대수는 한 벌로 둔다.
+        case "cellValue":
+        case "priorHighBreak":
+        case "gridPoint":
+            return undefined;
+
         // 자물쇠 — 빠뜨린 술어가 여기 오면 **전 항목이 미배치**로 세어져 조용히 필터가 죽는다(stage.ts).
         default: return unknownPredicate(p);
     }

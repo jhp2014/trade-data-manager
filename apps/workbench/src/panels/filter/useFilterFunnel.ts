@@ -104,6 +104,9 @@ const hasHotPredicate = (stages: readonly FilterStage[]): boolean =>
 /** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
 export function useFilterFunnel(): FunnelView {
     const stages = useWorkbench(selectFilterStages);
+    // 지금 만지는 조건이 사는 우주 — 리졸버가 저장 집합의 우주와 대조한다(단계 ② 불변식 ①).
+    // (아래 `universe` 는 "유니버스 참조"라는 다른 뜻으로 이미 쓰인다 — 이름을 가른다.)
+    const filterUniverse = useWorkbench((s) => s.filterUniverse);
     const savedSets = useWorkbench((s) => s.savedSets);
     const assemblies = useWorkbench((s) => s.assemblies);
 
@@ -355,6 +358,7 @@ export function useFilterFunnel(): FunnelView {
      */
     const setCtx = useMemo<SetResolveCtx>(
         () => ({
+            universe: filterUniverse,
             candidates: cand.candidates,
             timesOf: timesOfCur,
             activeStages: stages,
@@ -366,7 +370,7 @@ export function useFilterFunnel(): FunnelView {
             evalLook,
             grainLook,
         }),
-        [cand.candidates, timesOfCur, evalLook, grainLook, stages, savedSets, assemblies, materialsFor, grain, active, result, materialsEpoch],
+        [filterUniverse, cand.candidates, timesOfCur, evalLook, grainLook, stages, savedSets, assemblies, materialsFor, grain, active, result, materialsEpoch],
     );
 
     const { resolveSet, viewOf } = useSetViews(result, setCtx);

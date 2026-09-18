@@ -59,7 +59,7 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
     it("옛 키(wb.savedSets·wb.filterFunnelSets)는 읽지 않는다 — v2 리셋(골격 leaf 부활 금지)", async () => {
         stubStorage({
             "wb.filterFunnelSets": [{ id: "fs1", name: "깔때기 시절", stages: [] }],
-            "wb.savedSets": [{ id: "fs2", name: "v1 시절", stages: [], part: { kind: "survivors" } }],
+            "wb.savedSets": [{ id: "fs2", name: "v1 시절", stages: [], part: { kind: "survivors" }, universe: "longitudinal" as const }],
         });
         const store = await loadStore();
         expect(store.getState().savedSets).toEqual([]);
@@ -67,7 +67,7 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
 
     it("지금 키(v3)는 그대로 읽는다", async () => {
         stubStorage({
-            "wb.savedSets.v3": [{ id: "fs2", name: "새것", stages: [], part: { kind: "survivors" } }],
+            "wb.savedSets.v3": [{ id: "fs2", name: "새것", stages: [], part: { kind: "survivors" }, universe: "longitudinal" as const }],
         });
         const store = await loadStore();
         expect(store.getState().savedSets.map((s) => s.name)).toEqual(["새것"]);

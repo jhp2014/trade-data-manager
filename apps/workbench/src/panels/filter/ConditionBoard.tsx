@@ -27,6 +27,9 @@ import { Legend, PASS_CELLS } from "./cells.js";
 import { FilterRow } from "./FilterRow.js";
 import { useFunnel } from "./FunnelContext.js";
 import { GrainSection, Note } from "./grain.js";
+import type { CellValueRange } from "@trade-data-manager/market/domain";
+import { CellStageFields } from "./CellPredicateFields.js";
+import { kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
 import { GroupEditors, type GroupEditorAnchor } from "./ConditionEditors.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
@@ -36,7 +39,7 @@ import { HOT_PANEL_ID } from "../hot/hotPanelIds.js";
 import { useLinkedHot } from "../hot/hotLink.js";
 import { useLinkedOutcome } from "../outcome/outcomeLink.js";
 import { stageLabel } from "./label.js";
-import { stageKind, type FilterPredicate, type FilterStage, type Grain } from "./stage.js";
+import { stageKind, type FilterPredicate, type FilterStage, type Grain, type PredicateKind } from "./stage.js";
 
 const GRAINS: Grain[] = ["day", "point"];
 /** 종류별 편집면 — 줄 이름을 누르면 여기로 데려간다. 결과 패널 id 는 공용 상수(주소가 세 곳이라 잎 모듈). */
@@ -58,6 +61,9 @@ export function ConditionBoard({ barsOpen }: {
     const moveStage = useWorkbench((s) => s.moveFilterStage);
     const addStage = useWorkbench((s) => s.addFilterStage);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
+    const setStage = useWorkbench((s) => s.setFilterStage);
+    // 편집 대상의 **타입** — 팔레트 회색·결손 배지·칸 층위가 전부 이 하나로 갈린다(모드 스위치가 아니다).
+    const setUniverse = useWorkbench((s) => s.filterUniverse);
 
     const [dragId, setDragId] = useState<string | null>(null);
     // 놓일 자리 표시 — 드래그가 되는 줄도 모르던 게 이 목록의 첫 문제였다(손잡이와 이 선이 한 쌍).
@@ -182,6 +188,8 @@ export function ConditionBoard({ barsOpen }: {
                                         universe={v.universe}
                                         label={stageLabel(stage, v.labelLook)}
                                         dead={v.deadStageIds.includes(stage.id)}
+                                        deficiency={stageDeficiency(stage, setUniverse)}
+                                        cellFields={<CellStageFields stage={stage} onPatch={setStage} />}
                                         linked={false}
                                         linkedLabel={stageKind(stage) === "themeStrength" ? (livePanelOf(stage.id) !== undefined ? slotTitleOf(livePanelOf(stage.id)!) : "미연동") : undefined}
                                         onLinkedClick={(e) => setThemeLink({ stageId: stage.id, x: e.clientX, y: e.clientY })}
@@ -207,6 +215,8 @@ export function ConditionBoard({ barsOpen }: {
 
                 {!v.isLoading && (
                     <AddCondition
+                        setUniverse={setUniverse}
+                        onCell={(p) => addStage([p])}
                         onRails={() => openAndFocus(RAIL_PANEL)}
                         onOutcome={() => openAndFocus(OUTCOME_PANEL)}
                         onHot={() => {
@@ -283,7 +293,11 @@ export function ConditionBoard({ barsOpen }: {
  * 거기서 긋는 순간 조건이 된다(레일 하나 = 필터 하나). 테마·그룹은 기본값이 뜻을 갖거나 팔레트에서
  * 곧바로 식을 쓰므로 행을 만든다.
  */
-function AddCondition({ onRails, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot }: {
+function AddCondition({ setUniverse, onCell, onRails, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot }: {
+    /** 편집 대상의 우주 — 팔레트는 **숨기지 않고 회색**으로 세운다(대수는 한 벌, 결손은 사실). */
+    setUniverse: Universe;
+    /** 셀 조건 만들기 — 전용 편집 판이 없는 종류라 기본 payload 로 줄을 만들고 그 자리에서 만진다. */
+    onCell: (p: FilterPredicate) => void;
     onRails: () => void;
     onOutcome: () => void;
     /** 그룹 입구 둘(하루/타점) — scope 는 태어나는 자리에서 확정된다(편집 판에 토글이 없다). */
@@ -300,15 +314,22 @@ function AddCondition({ onRails, onOutcome, onGroup, onTheme, onHot, canAddHot, 
     // 캡처 단계라 일관되게 닫힌다(useDismiss 머리 주석). 판정 범위 = 손잡이+판(손잡이 클릭은 토글이 처리).
     const wrapRef = useRef<HTMLDivElement>(null);
     useDismiss(wrapRef, () => setOpen(false), open);
-    const item = (label: string, hint: string, run: (e: React.MouseEvent) => void): JSX.Element => (
-        <button onClick={(e) => { setOpen(false); run(e); }} title={hint}
-            style={{
-                display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent",
-                color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: "5px 10px",
-            }}>
-            {label}
-        </button>
-    );
+    const item = (label: string, hint: string, run: (e: React.MouseEvent) => void, kind?: PredicateKind): JSX.Element => {
+        // 결손은 **숨기지 않는다** — 회색 + 이유. 숨기면 "그 우주엔 그런 문법이 없다"가 되어, 나중에
+        // 재료가 생겨도 합치는 공사가 다시 필요해진다(decisions 「집합」: 대수는 한 벌).
+        const why = kind ? kindDeficiency(kind, setUniverse) : null;
+        return (
+            <button onClick={(e) => { if (why) return; setOpen(false); run(e); }} title={why ?? hint} disabled={why !== null}
+                style={{
+                    display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent",
+                    color: why ? "var(--text-tertiary)" : "var(--text-primary)", cursor: why ? "default" : "pointer",
+                    font: "inherit", fontSize: 11.5, padding: "5px 10px",
+                }}>
+                {label}{why ? " — 이 우주에선 결손" : ""}
+            </button>
+        );
+    };
+    const atLeast = (value: number): CellValueRange => ({ from: { kind: "value", value } });
     return (
         <div ref={wrapRef} style={{ position: "relative", padding: "6px 2px 2px" }}>
             <button onClick={() => setOpen(!open)}
@@ -322,14 +343,26 @@ function AddCondition({ onRails, onOutcome, onGroup, onTheme, onHot, canAddHot, 
                     background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 5,
                     boxShadow: "0 2px 8px rgba(0,0,0,.12)", padding: "3px 0",
                 }}>
-                    {item("레일 — 계산 축 · 날짜 · 시간", "필터 레일 판으로 — 분포를 보며 그으면 그 자리에서 조건이 됩니다(빈 조건은 안 만듭니다)", onRails)}
-                    {item("결과 — 시그널 이후", "시그널 결과 판으로 — 연장 고점·저가(미래 값) 분포를 보며 그으면 조건이 됩니다", onOutcome)}
+                    {/* 하루·셀 우주의 종류들 — 전용 판이 없어 **여기서 만들고 줄에서 만진다**. */}
+                    {setUniverse === "daily" && (
+                        <>
+                            {item("등락률", "그 분의 등락률(UN %) — 값은 줄에서 만집니다", () => onCell({ kind: "cellValue", field: "ratePct", ranges: [atLeast(5)] }), "cellValue")}
+                            {item("누적대금", "그 분까지의 세션 누적 거래대금(억)", () => onCell({ kind: "cellValue", field: "cumAmountEok", ranges: [atLeast(100)] }), "cellValue")}
+                            {item("분봉고가", "그 분 봉의 고가(UN %)", () => onCell({ kind: "cellValue", field: "minuteHighPct", ranges: [atLeast(5)] }), "cellValue")}
+                            {item("존순위", "테마 존 안 순위(작을수록 위) — 분 단면을 굽는 비싼 재료입니다", () => onCell({ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }] }), "cellValue")}
+                            {item("전고 돌파", "직전 W 거래일 고가를 분봉 고가가 넘는 분(당일 제외)", () => onCell({ kind: "priorHighBreak", days: 20 }), "priorHighBreak")}
+                            {item("격자 Point", "기준선 있는 차트의 격자 파생 Point 좌표", () => onCell({ kind: "gridPoint" }), "gridPoint")}
+                            {item("시각", "장중 시각 창 — 09:00~10:30 처럼", () => onCell({ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }), "time")}
+                        </>
+                    )}
+                    {item("레일 — 계산 축 · 날짜 · 시간", "필터 레일 판으로 — 분포를 보며 그으면 그 자리에서 조건이 됩니다(빈 조건은 안 만듭니다)", onRails, "axisValue")}
+                    {item("결과 — 시그널 이후", "시그널 결과 판으로 — 연장 고점·저가(미래 값) 분포를 보며 그으면 조건이 됩니다", onOutcome, "outcome")}
                     {/* 그룹은 입구가 둘 — scope(질문의 층위)가 여기서 확정된다. 팔레트는 그 낟알의
                         그룹만 보여준다(그룹의 낟알 = 조건의 scope, 1:1 — 같은 그룹이 입구에 따라 다른
                         질문이 되는 모호함을 입구에서 끊는다). */}
-                    {item("그룹 (하루)", "그룹 식 — 하루가 행. 하루 그룹만 고를 수 있습니다", (e) => onGroup("day", e))}
-                    {item("그룹 (타점)", "그룹 식 — 좌표 라벨이 붙은 타점이 행이 됩니다(타점 그룹만 고를 수 있습니다)", (e) => onGroup("point", e))}
-                    {item("테마 강도", "기본값으로 켜진 행을 만들고, 어느 조건판에 연동할지 고릅니다(pull)", onTheme)}
+                    {item("그룹 (하루)", "그룹 식 — 하루가 행. 하루 그룹만 고를 수 있습니다", (e) => onGroup("day", e), "group")}
+                    {item("그룹 (타점)", "그룹 식 — 좌표 라벨이 붙은 타점이 행이 됩니다(타점 그룹만 고를 수 있습니다)", (e) => onGroup("point", e), "group")}
+                    {item("테마 강도", "기본값으로 켜진 행을 만들고, 어느 조건판에 연동할지 고릅니다(pull)", onTheme, "themeStrength")}
                     {canAddHot
                         ? item(nextHot === null ? "급타점 수" : `급타점 수 (${nextHot.w}분/${nextHot.r}%)`,
                             "아직 안 쓰인 자리로 행을 만들고 급타점 판에서 엽니다 — 짧은 시간에 급한 재돌파가 몇 번 지나갔나", onHot)

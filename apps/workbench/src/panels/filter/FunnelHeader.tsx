@@ -16,7 +16,8 @@ import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
-import { FAIL } from "../../styles/palette.js";
+import { FAIL, POINT_DEF } from "../../styles/palette.js";
+import { UNIVERSE_LABEL } from "./universe.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 
 export function FunnelHeader({ v, barsOpen, onToggleBars }: {
@@ -27,6 +28,10 @@ export function FunnelHeader({ v, barsOpen, onToggleBars }: {
 }): JSX.Element {
     const stages = useWorkbench(selectFilterStages);
     const clearStages = useWorkbench((s) => s.clearFilterStages);
+    // 편집 대상의 **타입**(우주) — 전역 모드 스위치가 아니라 "지금 만지는 집합이 무엇인가"의 표시다.
+    // 바꾸는 손은 집합 줄의 `＋ 새 집합 ▾` 하나뿐(decisions 「집합」).
+    const setUniverse = useWorkbench((s) => s.filterUniverse);
+    const date = useWorkbench((s) => s.focus.date);
 
     const controls = useMemo<ControlSpec[]>(() => [
         {
@@ -42,6 +47,23 @@ export function FunnelHeader({ v, barsOpen, onToggleBars }: {
     return (
         <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>
             <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>집합 편성</span>
+            {/* 우주 뱃지 — 이 패널이 무엇을 편집 중인지 말하는 한 자리. 하루면 **날짜 칩**이 따라 선다
+                (날짜는 정의가 아니라 변수라 전역 시선의 거울이다 — 불변식 ③). */}
+            <span style={{
+                fontSize: 10, flexShrink: 0, borderRadius: 8, padding: "0 6px",
+                color: setUniverse === "daily" ? "var(--accent-primary)" : "var(--text-secondary)",
+                border: `1px solid ${setUniverse === "daily" ? POINT_DEF : "var(--border-default)"}`,
+            }} title={setUniverse === "daily"
+                ? "하루·셀 우주 — 그날 전 (종목,분) 셀이 모수다. 날짜는 정의가 아니라 전역 시선이 주는 변수."
+                : "종단 · 좌표 우주 — 라벨 좌표 전부가 모수다(전 기간)."}>
+                {UNIVERSE_LABEL[setUniverse]}
+            </span>
+            {setUniverse === "daily" && (
+                <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-secondary)", flexShrink: 0 }}
+                    title="이 집합이 평가되는 날짜 — 전역 시선(차트·복기 보드와 같은 날)을 따라간다">
+                    {date}
+                </span>
+            )}
             {/* 전체 → 생존 — 옛 막대 서랍의 요약 줄이 여기로 왔다(서랍이 없어졌다). 붙어 있어야 관계가 읽힌다. */}
             <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}
                 title="후보 전체 → 걸린 필터를 다 통과한 수">

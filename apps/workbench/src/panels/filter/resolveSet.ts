@@ -18,6 +18,7 @@ import {
 import { expandToPointItems } from "../../lib/grainView.js";
 import { judgeKeyOf } from "../../lib/pointDef.js";
 import type { SetRef } from "../../lib/setRef.js";
+import type { Universe } from "./universe.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import type { Assembly } from "../../store/assembliesSlice.js";
 import { unionGrain, unionOf, uniqueCounts, type UnionPart } from "./assembly.js";
@@ -36,6 +37,11 @@ export interface DefMaterials {
 
 /** 풀이에 필요한 바깥 재료. 없는 것(지워진 그룹·집합)은 undefined = 깨진 참조. */
 export interface SetResolveCtx {
+    /**
+     * 지금 맥락의 **우주**(2026-09-18 단계 ②) — 저장 집합이 이 우주의 것일 때만 풀린다.
+     * 다른 우주면 `otherUniverse` 로 접는다(조용한 합병 금지 — 불변식 ①).
+     */
+    universe: Universe;
     /** 유니버스 — 후보 하루 전부. 어느 참조든 이 분모 위에서 풀린다. */
     candidates: readonly ChartRef[];
     /** 그 하루의 타점 시각들(타점 0이면 빈 배열). */
@@ -84,6 +90,12 @@ export interface ResolvedSet {
     items: FunnelItem[];
     /** 저장 집합만: 전 단계 AND 미배치 수(그 정의 유니버스 기준) — 조립 부품 줄이 병기해 결손이 조용히 안 사라진다. */
     pending?: number;
+    /**
+     * **다른 우주의 집합**이라 이 맥락에서 풀 수 없다(2026-09-18 단계 ② 불변식 ①).
+     * `broken`(지워짐)과 일부러 구분한다 — 깨짐은 고쳐야 할 것이고, 이건 **사실**이라 화면 문구가 다르다.
+     * 조용히 빈 집합으로 합치면 "절반이 결손인 유령 집합"이 만들어진다.
+     */
+    otherUniverse?: boolean;
 }
 
 const BROKEN: ResolvedSet = { broken: true, grain: "day", items: [] };
@@ -168,6 +180,9 @@ export function expandRefToPoints(ref: SetRef, r: ResolvedSet, ctx: SetResolveCt
 function resolveSaved(setId: string, ctx: SetResolveCtx): ResolvedSet {
     const s = ctx.savedSetOf(setId);
     if (s === undefined) return BROKEN;
+    // 다른 우주의 집합은 **이 기계로 풀지 않는다** — 셀 술어는 종단 평가기에서 전부 결손이라
+    // 그대로 풀면 "조건이 있는데 아무것도 안 걸리는" 빈 집합이 조용히 나온다(그 침묵이 사고다).
+    if (s.universe !== ctx.universe) return { broken: false, otherUniverse: true, grain: "day", items: [] };
     const r = resolveDef(setId, ctx);
     if (s.part.kind === "survivors") return { broken: false, grain: r.grain, items: r.tally.survivors, pending: r.tally.pendingCount };
     const c = cellItems(r, s.part.stageId, s.part.cells);

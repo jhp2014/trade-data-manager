@@ -3,6 +3,7 @@
 // 죽은 참조를 이름 없이 id 로 흘리면(또는 조용히 건너뛰면) 화면에는 멀쩡한 조건처럼 보인다.
 // 그래서 이름을 못 찾은 자리는 `(지워짐)` 으로 **눈에 띄게** 남긴다 — 판정에서 그게 미배치를 만들고 있으니
 // 숫자와 화면이 같은 이야기를 해야 한다.
+import { CELL_VALUE_FIELDS, TRANSITION_LABEL } from "@trade-data-manager/market/domain";
 import { NONE_LABEL, isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { shortDate } from "../../lib/date.js";
 import { OUTCOME_METRIC_NAME } from "../../lib/outcomeMetric.js";
@@ -50,8 +51,26 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
         case "outcomeRecovery": return `${p.recovered ? "저가 회복" : "저가 미회복"} @T${p.t}%`;
         // (W,r) 을 라벨에 싣는다 — 결과의 @T 와 같은 이유: 인스턴스가 여럿이라 없으면 두 줄이 같은 이름이 된다.
         case "hotPoints": return `급타점 수 (${p.w}분/${p.r}%)`;
+        case "cellValue": return cellValueLabel(p);
+        case "priorHighBreak": return `전고 돌파 (${p.days}일)`;
+        case "gridPoint": return "격자 Point";
     }
 }
+
+/** 셀 값 술어 한 줄 — `등락률 ≥ 5%` 처럼 경계까지 싣는다(같은 필드의 조건이 여럿 설 수 있다). */
+function cellValueLabel(p: Extract<FilterPredicate, { kind: "cellValue" }>): string {
+    const meta = CELL_VALUE_FIELDS[p.field];
+    const r = p.ranges[0];
+    const bound = r?.from?.kind === "value" ? `≥${r.from.value}` : r?.to?.kind === "value" ? `≤${r.to.value}` : "";
+    const more = p.ranges.length > 1 ? ` 외 ${p.ranges.length - 1}구간` : "";
+    return `${meta.label} ${bound}${meta.suffix}${more}`;
+}
+
+/** 전이 접미 — 라벨 뒤에 붙는 "· 하루 처음". 전이가 없으면 빈 문자열(호출부가 그냥 이어 붙인다). */
+export const transitionSuffix = (p: FilterPredicate): string => {
+    const t = "transition" in p ? p.transition : undefined;
+    return t ? ` · ${TRANSITION_LABEL[t]}` : "";
+};
 
 /** 테마 강도 묶음 한 줄 — 존 N/M·기준 + 활성 하위 조건. 보드 행·막대·패널 칩이 같은 표기를 쓴다. */
 export function themeStrengthLabel(p: ThemeStrengthParams): string {
@@ -68,6 +87,7 @@ export function themeStrengthLabel(p: ThemeStrengthParams): string {
 
 /** 단계가 무슨 도구인가 — 막대 아래 한 줄. 한 단계는 한 종류라 첫 술어가 곧 단계의 종류다. */
 export function kindLabel(kind: PredicateKind | undefined): string {
+    if (kind === undefined) return "";
     switch (kind) {
         case "group": return "그룹";
         case "axisBand":
@@ -78,7 +98,16 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         case "outcome":
         case "outcomeRecovery": return "결과";
         case "hotPoints": return "급타점";
-        default: return "";
+        case "cellValue": return "셀 값";
+        case "priorHighBreak": return "전고";
+        case "gridPoint": return "격자";
+        default: {
+            // 자물쇠 — 옛 `default: return ""` 는 종류를 빠뜨려도 컴파일이 통과하고 증상이 조용했다
+            // (보드 줄의 종류 라벨만 빈칸). `never` 대입이 그 구멍을 컴파일 에러로 바꾼다.
+            const missing: never = kind;
+            void missing;
+            return "";
+        }
     }
 }
 

@@ -24,7 +24,14 @@
 // 확답을 주게 되어, 사전이 도착하는 순간 해상도가 튀고 결과 목록이 통째로 다시 그려진다. 이 앱이 이미
 // 쓰는 규칙과 같다(evalPredicate·and3) — "아니다"와 "모른다"는 섞지 않는다. 모름을 어떻게 다룰지는
 // **사전 로드 여부를 아는 소비자**의 몫이다(로딩 중 = 보류 / 로드 끝났는데 없음 = 죽은 참조).
-import { TOLERANCE_MAX_PCT, TOLERANCE_MIN_PCT, type Grain } from "@trade-data-manager/market/domain";
+import {
+    parseCellPredicate,
+    TOLERANCE_MAX_PCT,
+    TOLERANCE_MIN_PCT,
+    type CellPredicate,
+    type Grain,
+    type Transition,
+} from "@trade-data-manager/market/domain";
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr, renameGroupInExpr } from "../rank/groupFilter.js";
 import { DEFAULT_THEME_STRENGTH, anyConditionOn, parseThemeStrengthParams, type ThemeStrengthParams } from "../../lib/themeStrength.js";
@@ -68,7 +75,9 @@ export type FilterPredicate =
     | { kind: "axisBand"; axisId: string; band: RankBand }
     | { kind: "axisValue"; axisId: string; ranges: AxisValueRange[] }
     | { kind: "date"; ranges: DateRange[] }
-    | { kind: "time"; ranges: TimeRange[] }
+    // `time` 은 **한 종류로 합쳐졌다** — payload 가 글자까지 같아 새 kind 를 만들 이유가 없었다.
+    // 전이는 하루 우주에서만 뜻이 있고 종단에선 결손이다(universe.ts).
+    | { kind: "time"; ranges: TimeRange[]; transition?: Transition }
     // 테마 강도 묶음 — **파라미터가 payload 안에 산다**(SavedSet 이 stages 를 통째 복사하므로
     // 외부 참조로 두면 집합의 자립이 깨진다). 전 파라미터는 보드 행(레일·칩)에서 직접 편집한다.
     | { kind: "themeStrength"; params: ThemeStrengthParams }
@@ -85,9 +94,19 @@ export type FilterPredicate =
     // 살아야 SavedSet 이 자립한다). 값은 격자 파생 축으로 나가지만(축 id = `c:hot:<stageId>`) 조건은
     // 축 술어(axisValue)가 아니라 **자기 종류**다 — 파라미터가 조건에 실려 있어야 서로 다른 (W,r) 이
     // 한 집합 안에서 AND 로 공존한다(decisions.md 「급타점 수 축」).
-    | { kind: "hotPoints"; w: number; r: number; ranges: AxisValueRange[] };
+    | { kind: "hotPoints"; w: number; r: number; ranges: AxisValueRange[] }
+    // ── 셀 술어(하루·셀 우주) — core `domain/cellset` 의 어휘를 **그대로** 흡수한다(2026-09-18 단계 ②).
+    // 합류 방향이 core → workbench 인 이유: 반대로 종단 술어를 core 로 올리면 `GroupExpr`·
+    // `ThemeStrengthParams`·`OutcomeMetric`(전부 workbench 어휘)이 core 에 딸려 들어간다.
+    // 종단 평가기에서 이 셋은 **결손(undefined)** 이고, 그 사실은 universe.ts 의 결손 지도가 말한다.
+    | Extract<CellPredicate, { kind: "cellValue" }>
+    | Extract<CellPredicate, { kind: "priorHighBreak" }>
+    | Extract<CellPredicate, { kind: "gridPoint" }>;
 
 export type PredicateKind = FilterPredicate["kind"];
+
+/** 전이 수식어 재수출 — 필터 모듈들은 stage 만 본다(core 경로가 바뀌어도 한 줄). */
+export type { Transition };
 
 /**
  * 술어 종류 스위치의 **자물쇠**. 이 레포는 `noImplicitReturns` 가 없어서, 반환형에 `undefined`/`null`
@@ -109,6 +128,14 @@ export interface FilterStage {
     /** 끈 단계는 평가에서 통째로 빠진다 — 지우지 않고 잠깐 빼보는 게 한계 기여도를 눈으로 확인하는 손짓이다. */
     enabled: boolean;
     predicates: FilterPredicate[];
+    /**
+     * **전이 수식어(칸 수준)** — 술어 AND 전체를 하나의 f 로 보고 그 엣지에서만 건다(2026-09-18 단계 ②).
+     * 문법이 칸인 이유: 줄 토글이면 `A(처음으로) ∧ B` 가 "A 가 처음 참이 된 분 ∧ 그 분에 B" 인데
+     * 사람이 원하는 건 "A∧B 가 처음 성립한 분"이다(옛 probe ② 가 정확히 후자다).
+     * 술어에도 같은 필드가 있고 **술어 하나짜리 칸에서 둘은 동치**다(core engine 테스트가 잠갔다) —
+     * 읽기는 양쪽을 흡수하고 쓰기만 여기로 한다. 하루·셀 우주에서만 뜻이 있다(종단은 결손).
+     */
+    transition?: Transition;
 }
 
 /** 조건이 하나도 없는 술어(빈 식·빈 배열·빈 밴드) — 평가에서 빼야 "무제한"이 "전부 미배치"로 안 뒤집힌다. */
@@ -123,6 +150,10 @@ export function isPredicateEmpty(p: FilterPredicate): boolean {
         case "outcome": return p.ranges.length === 0;
         case "outcomeRecovery": return false; // boolean 하나라 항상 조건이다
         case "hotPoints": return p.ranges.length === 0;
+        case "cellValue": return p.ranges.every((r) => !r.from && !r.to);
+        case "priorHighBreak": return false; // 창 하나라 항상 조건이다
+        case "gridPoint": return false;
+        default: return unknownPredicate(p); // 자물쇠 — 빠뜨리면 그 종류가 "무제한 통과"로 샌다
     }
 }
 
@@ -173,6 +204,10 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
         case "outcome": return "point"; // 결과 걷기의 앵커가 시그널(타점)이다 — 시각 없이는 판정 불가
         case "outcomeRecovery": return "point";
         case "hotPoints": return "point"; // 쌍을 세는 자가 타점이다 — 행 정체성도 타점
+        // 셀 = (종목,날짜,분) — 좌표와 같은 모양이라 층위도 타점이다.
+        case "cellValue":
+        case "priorHighBreak":
+        case "gridPoint": return "point";
         default: return unknownPredicate(p); // 자물쇠: 빠뜨리면 그 조건이 보드에서 "(지워짐)"으로 보인다
     }
 }
@@ -340,6 +375,14 @@ export function setStagePredicates(stages: readonly FilterStage[], id: string, p
     return stages.map((s) => (s.id === id ? { ...s, predicates } : s));
 }
 
+/**
+ * 칸 하나를 **통째로** 갈아 끼운다(id 로 찾아서). 술어만 바꾸는 setStagePredicates 와 달리
+ * 칸 수준 필드(전이)까지 한 번에 간다 — 부분 패치 API 로 하면 "안 건드림"과 "지움"을 구분할 수 없다.
+ */
+export function replaceStage(stages: readonly FilterStage[], next: FilterStage): FilterStage[] {
+    return stages.map((s) => (s.id === next.id ? next : s));
+}
+
 export function renameStage(stages: readonly FilterStage[], id: string, name: string): FilterStage[] {
     const trimmed = name.trim();
     return stages.map((s) => (s.id === id ? { ...s, name: trimmed === "" ? undefined : trimmed } : s));
@@ -363,11 +406,13 @@ export function parseStages(o: unknown): FilterStage[] | null {
             if (!parsed) return null;
             predicates.push(parsed);
         }
+        const t = (raw as { transition?: unknown }).transition;
         out.push({
             id: s.id,
             name: typeof s.name === "string" ? s.name : undefined,
             enabled: s.enabled !== false,
             predicates,
+            ...(isTransitionValue(t) ? { transition: t } : {}),
         });
     }
     return out;
@@ -412,6 +457,10 @@ const isFromToRange = (o: unknown): o is { from: string; to: string } => {
     return typeof r.from === "string" && typeof r.to === "string";
 };
 
+/** 전이 수식어 값인가 — core 어휘 3종(모르는 값은 전이 없음으로 떨군다). */
+const isTransitionValue = (v: unknown): v is Transition =>
+    v === "firstOfDay" || v === "firstTrue" || v === "improve";
+
 /** 허용 폭 T 로 쓸 수 있는 값인가 — 도메인 [2,30]. 밖이면 그 술어는 폐기(파서 원칙: 반쯤 살리지 않는다). */
 const isTolerance = (v: unknown): v is number =>
     typeof v === "number" && Number.isFinite(v) && v >= TOLERANCE_MIN_PCT && v <= TOLERANCE_MAX_PCT;
@@ -454,9 +503,20 @@ function parsePredicate(o: unknown): FilterPredicate | null {
         case "date":
             return Array.isArray(p.ranges) && p.ranges.every(isFromToRange)
                 ? { kind: "date", ranges: p.ranges } : null;
-        case "time":
-            return Array.isArray(p.ranges) && p.ranges.every(isFromToRange)
-                ? { kind: "time", ranges: p.ranges } : null;
+        case "time": {
+            if (!Array.isArray(p.ranges) || !p.ranges.every(isFromToRange)) return null;
+            // 전이는 옵셔널 — 모르는 값은 **떨군다**(조용히 다른 뜻이 되지 않게). 왕복 보존은 골든이 지킨다.
+            const t = (p as { transition?: unknown }).transition;
+            return { kind: "time", ranges: p.ranges, ...(isTransitionValue(t) ? { transition: t } : {}) };
+        }
+        // 셀 술어는 **core 파서 한 벌**을 그대로 쓴다(검증 두 벌 금지). core 의 null 이 여기선
+        // "저장본 통째 폐기" 신호로 흐른다 — 종단 저장물의 all-or-nothing 규칙이 그대로 보존된다.
+        // (하루 우주의 패널 로컬 경로는 여전히 parseCellConditions 의 시드 폴백 규칙을 쓴다 —
+        //  저장물의 성질이 달라서 갈리는 것이고, 합류 뒤에도 그 둘은 갈린 채로 둔다.)
+        case "cellValue":
+        case "priorHighBreak":
+        case "gridPoint":
+            return parseCellPredicate(o) as FilterPredicate | null;
         default:
             return null;
     }

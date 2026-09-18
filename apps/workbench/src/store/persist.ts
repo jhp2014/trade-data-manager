@@ -11,6 +11,26 @@ export function loadJson<T>(key: string, parse: (raw: unknown) => T | null): T |
     }
 }
 
+/**
+ * 파싱 **전에** 원문을 한 번만 복사해 둔다 — 스키마를 넓히는 배포의 되돌림 경로.
+ *
+ * `parseStages` 는 모양이 안 맞으면 저장본을 통째로 버리므로, 술어 유니온을 넓힌 코드가 나간 뒤
+ * 되돌릴 일이 생기면 **옛 코드가 새 종류를 못 읽어** 사용자의 조건이 그 순간 사라진다. 그때
+ * 복구할 수 있는 것은 원문뿐이라, 새 코드가 처음 읽는 그 순간에 백업을 만든다.
+ * 이미 있으면 건드리지 않는다(첫 로드의 상태가 보존돼야 뜻이 있다).
+ */
+export function backupRawOnce(key: string, tag: string): void {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return;
+        const bak = `${key}.bak.${tag}`;
+        if (localStorage.getItem(bak) !== null) return;
+        localStorage.setItem(bak, raw);
+    } catch {
+        /* 백업 실패는 무해 — 원문은 그대로 있다 */
+    }
+}
+
 export function saveJson(key: string, value: unknown): void {
     try {
         localStorage.setItem(key, JSON.stringify(value));

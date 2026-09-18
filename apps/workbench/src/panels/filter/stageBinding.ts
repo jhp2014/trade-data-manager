@@ -39,6 +39,10 @@ export function railKeyOf(p: FilterPredicate): RailKey | null {
         case "group": return null;
         case "themeStrength": return null; // 레일이 아니다 — 보드 테마 칸의 목록 행(그룹과 동형)
         case "outcomeRecovery": return null; // 명목값 — 레일이 아니라 결과 패널 머리글 칩이 편집 입구
+        // 셀 술어 — 하루 우주의 레일(분포 스트립)은 아직 없다. 켤 때 어댑터 하나로 붙는다.
+        case "cellValue":
+        case "priorHighBreak":
+        case "gridPoint": return null;
         // 자물쇠 — 빠뜨리면 그은 컷이 그 행에 조용히 안 붙는다(stage.ts).
         default: return unknownPredicate(p);
     }

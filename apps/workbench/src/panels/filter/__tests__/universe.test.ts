@@ -1,0 +1,79 @@
+import { describe, it, expect } from "vitest";
+import { cloneDeficiencies, kindDeficiency, parseUniverse, predicateDeficiency, stageDeficiency, UNIVERSES, type Universe } from "../universe.js";
+import type { FilterPredicate, PredicateKind } from "../stage.js";
+
+// 이 표가 **스펙**이고 테스트는 그 사본이다 — 결손 지도의 단일 출처(universe.ts)가 여기와 어긋나면
+// 팔레트의 회색과 평가의 결손이 다른 이야기를 한다.
+const AVAILABLE: Record<Universe, PredicateKind[]> = {
+    longitudinal: ["group", "axisBand", "axisValue", "date", "time", "themeStrength", "outcome", "outcomeRecovery", "hotPoints"],
+    daily: ["time", "cellValue", "priorHighBreak", "gridPoint"],
+};
+const ALL_KINDS: PredicateKind[] = [
+    "group", "axisBand", "axisValue", "date", "time", "themeStrength",
+    "outcome", "outcomeRecovery", "hotPoints", "cellValue", "priorHighBreak", "gridPoint",
+];
+
+describe("kindDeficiency — 종류 × 우주 전수", () => {
+    for (const u of UNIVERSES) {
+        for (const k of ALL_KINDS) {
+            const ok = AVAILABLE[u].includes(k);
+            it(`${u} × ${k} = ${ok ? "가용" : "결손"}`, () => {
+                const d = kindDeficiency(k, u);
+                if (ok) expect(d).toBeNull();
+                else expect(d, "결손이면 **이유**가 있어야 한다 — 회색만 두면 사용자가 왜인지 모른다").toBeTruthy();
+            });
+        }
+    }
+});
+
+describe("predicateDeficiency — payload 까지 본다", () => {
+    it("전이 수식어는 종단에서 결손이다(종단 행에는 '직전 분'이 없다)", () => {
+        const p: FilterPredicate = { kind: "time", ranges: [{ from: "09:00", to: "10:00" }], transition: "firstOfDay" };
+        expect(predicateDeficiency(p, "daily")).toEqual([]);
+        expect(predicateDeficiency(p, "longitudinal")).toHaveLength(1);
+    });
+
+    it("전이 없는 시각 술어는 두 우주 다 가용 — 합쳐진 한 종류다", () => {
+        const p: FilterPredicate = { kind: "time", ranges: [{ from: "09:00", to: "10:00" }] };
+        expect(predicateDeficiency(p, "daily")).toEqual([]);
+        expect(predicateDeficiency(p, "longitudinal")).toEqual([]);
+    });
+
+    it("타점 앵커 경계는 하루에서 결손 — 값 경계는 가용", () => {
+        const anchored: FilterPredicate = { kind: "axisValue", axisId: "a1", ranges: [{ from: { kind: "point", point: "A|2026-07-24|09:31:00" } }] };
+        const valued: FilterPredicate = { kind: "axisValue", axisId: "a1", ranges: [{ from: { kind: "value", value: 5 } }] };
+        // 축 자체가 하루에서 결손이라 이유가 둘(종류 + 경계) — 값 경계면 하나다.
+        expect(predicateDeficiency(anchored, "daily")).toHaveLength(2);
+        expect(predicateDeficiency(valued, "daily")).toHaveLength(1);
+    });
+
+    it("셀 값 술어는 종단에서 결손, 하루에서 가용", () => {
+        const p: FilterPredicate = { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] };
+        expect(predicateDeficiency(p, "longitudinal")).toHaveLength(1);
+        expect(predicateDeficiency(p, "daily")).toEqual([]);
+    });
+});
+
+describe("칸·복제", () => {
+    const cellStage = { id: "s1", enabled: true, predicates: [{ kind: "cellValue" as const, field: "ratePct" as const, ranges: [{ from: { kind: "value" as const, value: 5 } }] }] };
+    const timeStage = { id: "s2", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: "09:00", to: "10:00" }] }] };
+
+    it("칸의 결손은 술어 이유의 합집합(중복 제거)", () => {
+        expect(stageDeficiency(cellStage, "daily")).toEqual([]);
+        expect(stageDeficiency(cellStage, "longitudinal")).toHaveLength(1);
+        expect(stageDeficiency(timeStage, "longitudinal")).toEqual([]);
+    });
+
+    it("복제 경고는 **결손이 되는 칸만** 집는다 — 온전한 칸은 조용하다", () => {
+        const warn = cloneDeficiencies([cellStage, timeStage], "longitudinal");
+        expect(warn.map((w) => w.stageId)).toEqual(["s1"]);
+        expect(cloneDeficiencies([cellStage, timeStage], "daily")).toEqual([]);
+    });
+});
+
+describe("parseUniverse — 부재·오염은 종단(우주가 없던 시절의 행동)", () => {
+    it.each([[undefined], [null], ["nope"], [42], [{}]])("%s → longitudinal", (v) => {
+        expect(parseUniverse(v)).toBe("longitudinal");
+    });
+    it("daily 만 daily", () => expect(parseUniverse("daily")).toBe("daily"));
+});

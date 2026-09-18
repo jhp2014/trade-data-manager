@@ -70,7 +70,7 @@ describe("집합 줄은 상시 한 줄, 막대는 접힌 채로 시작한다 —
 });
 
 describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는 그 값", () => {
-    const ONE = [{ id: "fs1", name: "돌파", stages: [], part: { kind: "survivors" as const } }];
+    const ONE = [{ id: "fs1", name: "돌파", stages: [], part: { kind: "survivors" as const }, universe: "longitudinal" as const }];
 
     it("저장 집합은 고정 없이는 줄에 안 서고(⋯ 판에만), 고르면 줄에 서며 다시 누르면 연동으로 돌아온다", () => {
         useWorkbench.setState({ savedSets: ONE });
@@ -132,7 +132,7 @@ describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는
     });
 
     it("이름 바꾸기 — 행의 이름 버튼 → 입력 → Enter. 다른 집합과 같은 이름은 무시된다", () => {
-        useWorkbench.setState({ savedSets: [...ONE, { id: "fs2", name: "눌림", stages: [], part: { kind: "survivors" } }] });
+        useWorkbench.setState({ savedSets: [...ONE, { id: "fs2", name: "눌림", stages: [], part: { kind: "survivors" }, universe: "longitudinal" as const }] });
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 관리"));
         const mgr = baseElement as HTMLElement;
