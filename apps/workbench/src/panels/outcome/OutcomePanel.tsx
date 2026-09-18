@@ -17,7 +17,10 @@ import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
 import { useSubject } from "../../lib/subject.js";
 import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
 import { LEG_HIGH } from "../../styles/palette.js";
-import { useFunnel } from "../filter/FunnelContext.js";
+import { useBoundSet } from "../filter/useBoundSet.js";
+import { SetBindingLabel } from "../filter/SetBindingLabel.js";
+import { setMembersOf } from "../filter/setMembers.js";
+import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { OUTCOME_REVEAL, rowIdOfKey, useBoardReveal, useRevealConsumer } from "../filter/boardReveal.js";
 import { predicateOfKind, stagesFor, type RailKey } from "../filter/stageBinding.js";
 import { Note } from "../filter/grain.js";
@@ -34,7 +37,7 @@ const METRIC_ROWS: readonly { metric: OutcomeMetric; hint: string }[] = [
     { metric: "dropFromClose", hint: "그 저가의 Point 봉 종가 대비 % — 진입가 관점의 깊이. 무눌림은 값 없음" },
 ];
 
-export function OutcomePanel(): JSX.Element {
+export function OutcomePanel({ panelId = "outcome-rails" }: { panelId?: string }): JSX.Element {
     const sliceAt = useOutcomeSlices();
     const walks = useOutcomeWalks(); // 분포 스트립 재료(T 무관 — 걷기 층 소유)
     // 봉 사실 미도착 라벨 — 모수(signals)에서 빠진 결손을 화면이 말한다(3치 — 리뷰 B-1, 0이면 침묵).
@@ -42,7 +45,6 @@ export function OutcomePanel(): JSX.Element {
     // 표시 T 와 연동 행 — 이 판의 모든 값이 이 T 단면에서 나온다(단일 출처는 outcomeLink).
     const { outcomeStages, linkedId, setLinked, displayT, setDisplayT, conflictAt } = useLinkedOutcome();
     const outcomes = sliceAt(displayT);
-    const v = useFunnel();
     const stages = useWorkbench(selectFilterStages);
     const applyRail = useWorkbench((s) => s.applyFilterRail);
 
@@ -54,9 +56,26 @@ export function OutcomePanel(): JSX.Element {
             : chartKeyOf(subject.code, subject.date);
 
     // 보는 집합 멤버 오버레이 — RailPanel 과 같은 규칙: 조건/집합/짚음이 걸렸을 때만(전부 멤버는 바탕색).
-    const selectedView = v.viewOf(null);
+    // 바인딩은 **패널 것**이다(2026-09-18 단계 ④): 기본 연동 + 이 패널에 고정 가능, 하루 우주면 셀 집합.
+    const bound = useBoundSet(panelId);
+    const selectedView = bound.view;
     const filtersOn = stages.some((st) => st.enabled !== false && st.predicates.length > 0);
-    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null || s.funnelSelection !== null) || filtersOn;
+    // 고정된 패널은 **전역 포인터와 무관하게** 자기 집합을 오버레이한다(고정의 뜻이 그것이다).
+    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null || s.funnelSelection !== null) || filtersOn || bound.pinned !== null;
+    // n/N 의 재료 — 이 패널은 타점 층위다(값은 라벨 좌표에만 굽혀 있다. 하루 후보는 "표현 안 됨"으로 선다).
+    const boundMembers = useMemo(
+        () => setMembersOf(bound.view, "point", (it) => it.time !== undefined && outcomes.byKey.has(pointKeyOf(it.stockCode, it.date, it.time))),
+        [bound.view, outcomes],
+    );
+    const controls: ControlSpec[] = [{
+        kind: "toggle", id: "setPin", name: "집합 고정", label: "고정",
+        help: bound.pinned !== null
+            ? "고정 해제 — 다시 전역 선택을 따라갑니다"
+            : bound.canPinNow
+                ? "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다"
+                : "짚은 칸은 고정할 수 없습니다(시선이라 클릭 한 번에 사라집니다) — 집합으로 저장한 뒤 고정하세요",
+        on: bound.pinned !== null, set: bound.togglePin, disabled: !bound.canPinNow,
+    }];
     const memberKeys = useMemo<ReadonlySet<string> | null>(
         () => (pointerOn && selectedView.isFiltering && !selectedView.broken
             ? new Set(selectedView.viewedPointRefs.map((p) => pointKeyOf(p.stockCode, p.date, p.time)))
@@ -101,7 +120,7 @@ export function OutcomePanel(): JSX.Element {
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
             <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>
-                <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>시그널 결과</span>
+                <SetBindingLabel bound={bound} members={boundMembers} />
                 <span title="모수 = 시그널 전부, 기준 = 지금 보는 허용 폭 T(전부 정확값). 초과 = T 보다 깊은 눌림 발생 · 이내 = 눌림 전부 T 이내 · 무눌림 = 2% 이상 눌림 자체가 없음(연장 고점 = 세션 최고가)"
                     style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }} className="tabular">
                     {counts.total.toLocaleString()} · 초과 {counts.exceeded.toLocaleString()}
@@ -130,6 +149,7 @@ export function OutcomePanel(): JSX.Element {
                 <span title="그은 컷은 곧바로 집합 편성의 조건이 된다 — 필터 레일 패널과 같은 직결, 여긴 시그널 이후(미래) 값" style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>
                     긋는 순간 조건
                 </span>
+                <HeaderControls controls={controls} storageKey="wb.headerPins.outcome" />
             </PanelHeader>
 
             {/* 칩 스트립 = 결과 조건 목록의 파생 뷰(테마 순위 패널과 같은 관용구) — 클릭 = 연동 전환.

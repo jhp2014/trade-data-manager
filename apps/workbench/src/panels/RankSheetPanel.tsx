@@ -25,7 +25,7 @@ import { SheetPresetMenu } from "./rank/SheetPresetMenu.js";
 import { useSessionScroll } from "./rank/useSessionScroll.js";
 import { useRankAxes } from "../lib/RankAxesContext.js";
 import { valueDomain, valueToFrac } from "../lib/computedAxis.js";
-import { useLinkedSet } from "./filter/useSetBinding.js";
+import { useBoundSet } from "./filter/useBoundSet.js";
 import { SetBindingLabel } from "./filter/SetBindingLabel.js";
 import { setMembersOf } from "./filter/setMembers.js";
 import { parseCellMode, CELL_MODE_LABEL, type CellMode, type ValuedCell } from "./rank/sheetCell.js";
@@ -71,7 +71,7 @@ const SORT_KEY = "wb.rankSheetSort"; // 정렬 체인 영속(다른 시트 설�
 // 무필터 상태의 매칭 집합 — 참조 하나로 고정해 useMemo 결과가 렌더마다 안 바뀌게(깔때기 쪽 상수 패턴과 동일).
 const EMPTY_KEYS: ReadonlySet<string> = new Set();
 
-export function RankSheetPanel(): JSX.Element {
+export function RankSheetPanel({ panelId = "rank-sheet" }: { panelId?: string }): JSX.Element {
     // 행 모드 — 타점(분석의 기본) / 하루(후보 하루 × day 축). day 는 열·정렬의 저장 주머니가 달라
     // **모드째 리마운트**한다(usePersistedState 가 키 변경을 안 따라가므로 — 옛 상태가 새 키를 덮는 사고 방지).
     const [rowMode, setRowMode] = usePersistedState<RowMode>(ROWMODE_KEY, parseRowMode, "point");
@@ -79,10 +79,12 @@ export function RankSheetPanel(): JSX.Element {
     // 거기서 얹으면 모드를 바꾸는 순간 순회 함수가 잠깐 사라진다(바깥은 안 리마운트된다).
     // 키 등록은 App 한 곳, 소유자는 **명시 선택**(머리글 `w/s` 배지 · `q` 순환) — lib/rowNav 머리 주석.
     const navRef = usePublishRowNav("rank-sheet");
-    return <SheetBody key={rowMode} rowMode={rowMode} setRowMode={setRowMode} navRef={navRef} />;
+    return <SheetBody key={rowMode} panelId={panelId} rowMode={rowMode} setRowMode={setRowMode} navRef={navRef} />;
 }
 
-function SheetBody({ rowMode, setRowMode, navRef }: {
+function SheetBody({ panelId, rowMode, setRowMode, navRef }: {
+    /** 집합 고정(핀)의 낟알 — 행 모드 리마운트를 건너 살아야 해서 바깥에서 받는다. */
+    panelId: string;
     rowMode: RowMode; setRowMode: (m: RowMode) => void; navRef: MutableRefObject<(dir: 1 | -1) => void>;
 }): JSX.Element {
     const dayMode = rowMode === "day";
@@ -127,15 +129,22 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     }, []);
     const axisMin = cellMode === "number" ? 56 : 76; // 눈금 모드는 그릴 폭이 필요하다
 
+    // ── 보는 집합 — 기본은 연동(전역 선택 포인터 + 월 시선 구독, 주인은 작업 대상)이고, **이 패널에
+    //    고정**할 수 있다(2026-09-18 단계 ④ — "종단 시트 ∥ 오늘 후보"를 나란히 보려면 포인터 하나로는
+    //    안 된다. 포인터는 우주를 못 넘는다). 하루 우주면 같은 계약을 셀 평가기가 채운다.
+    const linked = useBoundSet(panelId);
+
     // ── 조립 뷰 판정 — 보는 집합이 조립이면 결과 열이 **부품별**로 갈라지고(부품 정의의 값), 필터 방식은
     //    좁히기로 고정된다(흐리게의 행 원천이 현재 정의라 조립 멤버가 행째 안 보인다 — decisions.md 「집합 조립」).
-    const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
+    //    ⚠ 기준은 전역 포인터가 아니라 **이 패널이 실제로 따라가는 참조**(linked.target)다 — 고정한
+    //    패널이 전역 포인터를 읽으면 행은 A 인데 결과 열은 ∪B 의 부품별로 갈린다(리뷰가 잡은 자리).
     const assemblies = useWorkbench((s) => s.assemblies);
     const savedSets = useWorkbench((s) => s.savedSets);
     const pointDefCur = useWorkbench((s) => s.pointDef);
+    const boundRef = linked.target;
     const viewingAssembly = useMemo(
-        () => (selectedSetRef?.kind === "assembly" ? (assemblies.find((a) => a.id === selectedSetRef.id) ?? null) : null),
-        [selectedSetRef, assemblies],
+        () => (boundRef?.kind === "assembly" ? (assemblies.find((a) => a.id === boundRef.id) ?? null) : null),
+        [boundRef, assemblies],
     );
     // 결과 열이 갈라지는 자리 — **배타 3갈래**(decisions.md 「허용 폭 T 의 인스턴스화」):
     //   조립 뷰면 부품(모수가 다름) / 아니고 결과 조건이 있으면 인스턴스(T 가 다름) / 그 외 붙박이.
@@ -182,9 +191,6 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
         return m;
     }, [allPoints]);
 
-    // ── 보는 집합 — 연동 하나(전역 선택 포인터 + 월 시선 구독, 주인은 작업셋). 사이드바 재편(2026-08-21)으로
-    //    패널별 고정 바인딩·집합 사이드바는 폐지 — 멤버 브라우징·표현 안 됨은 작업셋이 담당한다.
-    const linked = useLinkedSet();
     const bandsActive = linked.view.isFiltering;
     // 무필터면 매칭이라는 개념 자체가 없다 — 전 우주 Set 을 짓지 않는다(수천 타점이면 그게 그대로 비용).
     const interKeys = useMemo<ReadonlySet<string>>(() => {
@@ -465,6 +471,17 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
     //    상주하는 순간 그건 문맥이 아니라 컨트롤이다. 개수는 툴팁으로 내리고 자리는 안 움직인다(규약 ②).
     const controls: ControlSpec[] = [
         {
+            // 고정/해제 — **고르는 손이 아니다**(1비트). 고르는 자리는 여전히 집합 편성/작업 대상 하나고,
+            // 여기서는 "지금 따라가는 것을 이 패널에 묶는다"만 한다(2026-09-18 단계 ④).
+            kind: "toggle", id: "setPin", name: "집합 고정", label: "고정",
+            help: linked.pinned !== null
+                ? "고정 해제 — 다시 전역 선택을 따라갑니다"
+                : linked.canPinNow
+                    ? "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다"
+                    : "짚은 칸은 고정할 수 없습니다(시선이라 클릭 한 번에 사라집니다) — 집합으로 저장한 뒤 고정하세요",
+            on: linked.pinned !== null, set: linked.togglePin, disabled: !linked.canPinNow,
+        },
+        {
             kind: "choice", id: "rowMode", name: "행",
             help: "행의 단위 — 타점(분봉 시각까지) / 하루(후보 하루 × day 축, 타점 없이도 값이 선다)",
             values: [{ v: "point", label: "타점" }, { v: "day", label: "하루" }],
@@ -519,7 +536,7 @@ function SheetBody({ rowMode, setRowMode, navRef }: {
                 컨트롤 줄로 갔다 — 남은 둘은 정렬 단·그룹뿐이다(controls 선언의 잣대 참고). */}
             <PanelHeader gap={8}>
                 <ScrollRow gap={9}>
-                    <SetBindingLabel linked={linked} members={setMembers} />
+                    <SetBindingLabel bound={linked} members={setMembers} />
                     <RowNavBadge owner="rank-sheet" />
                     <span style={{ fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}>{mainRows.length}행{bandsActive ? ` · 매칭 ${interKeys.size}` : ""}{sortAxisId && unplacedOnSort > 0 ? ` · 값 없음 ${unplacedOnSort}` : ""}</span>
                     {/* 선택이 이 표에 없을 때만 그 이유를 말한다 — 필터 밖(좁히기로 빠짐)과 타점 없음(하루 선택 등)은 다른 문제다. */}

@@ -102,7 +102,13 @@ export function toCellConditions(stages: readonly FilterStage[]): { conditions: 
 //    죽는 게 맞다(`themeRank/sectionSeries` 의 분 단면 WeakMap 과 같은 수법·같은 이유).
 //    안쪽 키에 날짜·조건·노브·상한을 싣는다.
 const MEMO = new WeakMap<object, Map<string, CellEvalResult>>();
-const MEMO_CAP = 3; // 한 재료당 조합 몇 벌 — 조건을 만지는 동안 직전 것들이 살아 있게
+/**
+ * 한 재료(하루 스냅샷)당 살려 두는 조합 수. 산수는 **동시에 서 있는 서로 다른 조건 벌**이다:
+ * 핀 둘(시트·결과) + 작업 깔때기(작업 대상) + 차트 = 4 가 현실적 상한이고, 조건을 만지는 동안
+ * 직전 것도 살아 있어야 편집이 매끄럽다(단계 ④ 에서 3 → 6). 넘치면 LRU 스래싱으로 **매 렌더
+ * 재평가**가 나는데 그 대가가 5.7초다. 담는 것은 결과 배열이라 힙 부담은 작다.
+ */
+const MEMO_CAP = 6;
 
 /**
  * 참조 → 세대 번호. **키에 못 싣는 객체 참조**(격자 파생·테마 투영)를 문자열 키에 태우는 자다.

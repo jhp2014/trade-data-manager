@@ -41,6 +41,8 @@ const savedSets = new Map<string, SavedSet>([
     ["fs1", { id: "fs1", name: "테마 생존", stages: [groupStage("g1", "테마")], part: { kind: "survivors" }, universe: "longitudinal" }],
     ["fs2", { id: "fs2", name: "테마 탈락", stages: [groupStage("g1", "테마")], part: { kind: "cell", stageId: "g1", cells: ["fail"] }, universe: "longitudinal" }],
     ["fs3", { id: "fs3", name: "부위 깨짐", stages: [dateStage("d9", "2026-07-01", "2026-07-03")], part: { kind: "cell", stageId: "없는단계", cells: ["survive"] }, universe: "longitudinal" }],
+    // 하루 집합 — 이 기계가 **안 푸는** 종류(조건은 종단 술어라 여기서도 풀리긴 하지만 우주가 다르다).
+    ["fs-day", { id: "fs-day", name: "오늘 후보", stages: [dateStage("d1", "2026-07-01", "2026-07-03")], part: { kind: "survivors" }, universe: "daily" }],
 ]);
 
 const grainLook = { hasGroup: (n: string) => knownGroups.has(n), axisScope: () => undefined };
@@ -64,7 +66,6 @@ const evalLook: EvalLookup = {
 };
 
 const ctx: SetResolveCtx = {
-    universe: "longitudinal",
     candidates: [A, B, C],
     timesOf,
     activeStages,
@@ -84,6 +85,18 @@ const withLook = (base: SetResolveCtx, look: EvalLookup): SetResolveCtx => ({
 });
 
 const codesOf = (r: { items: FunnelItem[] }): string[] => r.items.map((i) => `${i.stockCode.slice(-1)}${i.time ? "@" + i.time.slice(0, 5) : ""}`);
+
+describe("resolveSetRef — 우주 게이트", () => {
+    it("**하루 집합은 이 기계가 안 푼다** — otherUniverse 로 접는다(맥락이 아니라 집합 자신의 우주가 기준)", () => {
+        const r = resolveSetRef({ kind: "saved", setId: "fs-day" }, ctx);
+        expect(r.otherUniverse).toBe(true);
+        expect(r.items).toEqual([]);
+        // 깨짐과 **일부러 구분**한다 — 깨짐은 고칠 것이고 이건 사실이라 화면 문구가 다르다.
+        expect(r.broken).toBe(false);
+        // 같은 조건을 든 종단 집합은 그대로 풀린다(게이트가 조건이 아니라 우주를 본다는 증거).
+        expect(resolveSetRef({ kind: "saved", setId: "fs1" }, ctx).otherUniverse).toBeUndefined();
+    });
+});
 
 describe("resolveSetRef — 산지별 풀이", () => {
     it("유니버스: 후보 하루 전부, day 층위", () => {

@@ -66,6 +66,9 @@ export function SetRow(): JSX.Element {
     const toggle = (ref: SetRef): void => selectSet(isOn(ref) ? null : ref);
     const countOf = (ref: SetRef): string => {
         const r = v.resolveSet(ref);
+        // 이 리졸버는 **종단 집합만** 푼다 — 하루 집합의 건수는 여기서 셀 수 없다(날짜가 있어야 하고
+        // 평가가 5.7초다). "0건"이라고 적으면 조건이 아무것도 못 걸었다는 거짓말이 된다.
+        if (r.otherUniverse) return "하루 · 셀";
         return r.broken ? "—" : `${r.items.length.toLocaleString("ko-KR")}건`;
     };
 

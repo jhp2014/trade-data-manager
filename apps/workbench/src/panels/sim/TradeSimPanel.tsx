@@ -14,7 +14,10 @@ import { parseTradeSimParams } from "../../lib/pointDef.js";
 import { pointKeyOf } from "../../lib/pointKey.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { FAIL, LEG_HIGH, POINT_DEF, STRONG } from "../../styles/palette.js";
-import { useFunnel } from "../filter/FunnelContext.js";
+import { useBoundSet } from "../filter/useBoundSet.js";
+import { SetBindingLabel } from "../filter/SetBindingLabel.js";
+import { setMembersOf } from "../filter/setMembers.js";
+import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { Note } from "../filter/grain.js";
 import { FillRateCurve } from "./FillRateCurve.js";
 import { medianOf, SimDistribution } from "./SimDistribution.js";
@@ -36,7 +39,7 @@ function KnobGroup({ color, label, children }: { color: string; label: string; c
 
 const fmtPct = (v: number | null): string => (v === null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(1)}%`);
 
-export function TradeSimPanel(): JSX.Element {
+export function TradeSimPanel({ panelId = "trade-sim" }: { panelId?: string }): JSX.Element {
     const sim = useTradeSim();
     const basis = useSimBasis();
     // 봉 사실 미도착 라벨 — 모수에서 빠진 결손을 화면이 말한다(3치 — 리뷰 B-1, 0이면 침묵).
@@ -48,15 +51,33 @@ export function TradeSimPanel(): JSX.Element {
     const normPct = (v: number): number => parseTradeSimParams({ stopPct: v }).stopPct;
     const normEntry = (v: number): number => parseTradeSimParams({ entry: { anchor: "close", pct: v } }).entry.pct;
 
-    // 모수 = 깔때기 보는 집합의 생존 시그널(조건·집합이 걸렸을 때) — 아니면 전 시그널.
-    const funnel = useFunnel();
-    const selectedView = funnel.viewOf(null);
+    // 모수 = **이 패널이 보는 집합**의 생존 시그널(조건·집합이 걸렸을 때) — 아니면 전 시그널.
+    // 기본은 연동이고 이 패널에 고정할 수 있다(2026-09-18 단계 ④). 하루 우주면 셀 집합이 그 자리에 온다.
+    const bound = useBoundSet(panelId);
+    const selectedView = bound.view;
+    // ⚠ `broken`(깨진 참조·못 푸는 바인딩)도 **거르는 상태**다 — null 로 떨어뜨리면 모수가 조용히
+    //   전 시그널로 넓어져, 고장난 바인딩이 "더 많은 통계"로 보인다(라벨이 이유를 말하고 있는데도).
     const survivorKeys = useMemo<readonly string[] | null>(
-        () => (selectedView.isFiltering && !selectedView.broken
+        () => (selectedView.isFiltering
             ? selectedView.viewedPointRefs.map((p) => pointKeyOf(p.stockCode, p.date, p.time))
             : null),
         [selectedView],
     );
+
+    // n/N — 시뮬 값은 라벨 좌표에만 굽혀 있다(sim.byKey). 하루 후보는 "표현 안 됨"으로 서서 그 사실을 말한다.
+    const boundMembers = useMemo(
+        () => setMembersOf(bound.view, "point", (it) => it.time !== undefined && sim.byKey.has(pointKeyOf(it.stockCode, it.date, it.time))),
+        [bound.view, sim],
+    );
+    const controls: ControlSpec[] = [{
+        kind: "toggle", id: "setPin", name: "집합 고정", label: "고정",
+        help: bound.pinned !== null
+            ? "고정 해제 — 다시 전역 선택을 따라갑니다"
+            : bound.canPinNow
+                ? "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다"
+                : "짚은 칸은 고정할 수 없습니다(시선이라 클릭 한 번에 사라집니다) — 집합으로 저장한 뒤 고정하세요",
+        on: bound.pinned !== null, set: bound.togglePin, disabled: !bound.canPinNow,
+    }];
 
     const agg = useMemo(() => {
         const keys = survivorKeys ?? [...sim.byKey.keys()];
@@ -92,7 +113,7 @@ export function TradeSimPanel(): JSX.Element {
     return (
         <div style={{ display: "flex", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)", flexDirection: "column" }}>
             <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>
-                <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>트레이드 시뮬</span>
+                <SetBindingLabel bound={bound} members={boundMembers} />
                 <span
                     className="tabular"
                     style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}
@@ -107,6 +128,7 @@ export function TradeSimPanel(): JSX.Element {
                 <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }} title="본체는 도달 측정 — 익절 보고값 = 트레일↑ 눌림 전 최고 도달가, 손절 보고값 = 트레일↓ 반등 전 최저 도달가(진단), 청산 체결가 정밀도는 재지 않습니다">
                     도달 측정
                 </span>
+                <HeaderControls controls={controls} storageKey="wb.headerPins.tradeSim" />
             </PanelHeader>
 
             <div style={{ flex: 1, minHeight: 0, display: "flex" }}>

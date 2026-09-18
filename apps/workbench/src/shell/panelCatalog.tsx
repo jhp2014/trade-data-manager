@@ -97,7 +97,7 @@ export const PANEL_TYPES: PanelType[] = [
     //  그 패널이 곧 후보 순회 목록이다. 저장 레이아웃의 `component: "probe"` 는 sanitizeLayout 이
     //  미등록으로 걷어낸다(map·rankSkeleton 선례) — 사용자 화면의 그 탭은 다음 로드에 사라진다.)
     { idBase: "history", component: "recentHistory", title: "최근 탐색", plane: "eod", render: () => <RecentHistoryPanel /> },
-    { idBase: "rank-sheet", component: "rankSheet", title: "시트", plane: "eod", render: () => <RankSheetPanel /> },
+    { idBase: "rank-sheet", component: "rankSheet", title: "시트", plane: "eod", render: (id) => <RankSheetPanel panelId={id} /> },
     // 집합 편성 — 조건을 걸어 집합을 만드는 자리(다른 패널은 그 집합을 구독만 한다).
     // component 키는 "filterFunnel" 그대로 — 저장 프리셋에 박히는 값이라 이름이 바뀌어도 못 건드린다.
     { idBase: "filter-funnel", component: "filterFunnel", title: "집합 편성", plane: "eod", render: (id) => <FilterFunnelPanel panelId={id} /> },
@@ -107,13 +107,13 @@ export const PANEL_TYPES: PanelType[] = [
     // 시그널 결과 — 시그널 **이후**(미래) 값의 분포·조건(과거/미래 패널 경계 — 필터 레일의 형제).
     // 결과 시트 패널(outcomeSheet)은 2026-09-04 폐지 — 결과 열이 기존 시트(rankSheet)의 열 프리셋으로 들어갔다.
     // 옛 배치에 남은 id 는 sanitizeLayout 자가치유가 걷어낸다(옛 map·rankSkeleton* 과 같은 길).
-    { idBase: "outcome-rails", component: "outcomeRails", title: "시그널 결과", plane: "eod", render: () => <OutcomePanel /> },
+    { idBase: "outcome-rails", component: "outcomeRails", title: "시그널 결과", plane: "eod", render: (id) => <OutcomePanel panelId={id} /> },
     // 급타점 — 창 W 안 급한 재돌파의 개수(시그널 **이전**의 특징이라 필터 레일의 형제다). 전제가 쌍
     // (W,r) 이라 1차원 레일에 안 앉아 전용 판을 둔다 — 편집면이 여기 하나여야 값의 경로가 닫힌다.
     { idBase: "hot-points", component: "hotPoints", title: "급타점", plane: "eod", render: () => <HotPointsPanel /> },
     // 트레이드 시뮬 — 노브 7(정의 payload 동승) + 체결률 곡선·분류·도달 분포. 깔때기 거울이 아니라
     // 모수(보는 집합)로만 이어진다(decisions.md 「시그널 결과」 트레이드 시뮬 항목).
-    { idBase: "trade-sim", component: "tradeSim", title: "트레이드 시뮬", plane: "eod", render: () => <TradeSimPanel /> },
+    { idBase: "trade-sim", component: "tradeSim", title: "트레이드 시뮬", plane: "eod", render: (id) => <TradeSimPanel panelId={id} /> },
     // 타점 정의 — 판정 노브를 분포 보며 긋는 자리(모수 선언층, POINT_DEF teal). 필터 레일의 형제이되
     // 깔때기 단이 아니다: 여기 컷은 행을 지우는 게 아니라 시그널의 존재·위치를 바꾼다.
     { idBase: "point-def", component: "pointDef", title: "타점 정의", plane: "eod", render: () => <PointDefPanel /> },

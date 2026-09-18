@@ -43,7 +43,7 @@ function ToggleControl({ spec }: { spec: ToggleSpec }): JSX.Element {
     const label = spec.label ?? spec.name;
     return (
         <WidthLock alts={[<b key="b" style={{ fontWeight: 700 }}>{label}</b>]}>
-            <TextToggle active={spec.on} onClick={() => spec.set(!spec.on)}
+            <TextToggle active={spec.on} disabled={spec.disabled ?? false} onClick={() => spec.set(!spec.on)}
                 color={toneColor(spec)} activeColor={spec.activeColor} title={spec.help ?? spec.name}>
                 {label}
             </TextToggle>
