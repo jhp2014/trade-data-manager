@@ -38,7 +38,10 @@ function itemStyle(active: boolean): React.CSSProperties {
         color: active ? "var(--accent-hover)" : "var(--text-primary)",
         fontWeight: active ? 700 : 400,
         cursor: "pointer",
-        font: "inherit",
+        // font 축약형 대신 낱개로 — 활성 여부에 따라 fontWeight 가 바뀌는 자리라 축약형과 섞으면 React 가 경고한다.
+        fontFamily: "inherit",
+        fontSize: "inherit",
+        lineHeight: "inherit",
     };
 }
 
