@@ -1,11 +1,21 @@
-// 탐색 후보 패널 — 수동 분류 우선 워크플로(decisions.md 「구조 개편」)의 1차 표면:
-// focus.date 하루의 후보(probe)를 시각순으로 세우고, 사람이 w/s 로 빠르게 순회하며
-// 우클릭 배정(좌표 라벨)으로 1차 수동 분류를 한다. **좌클릭=시선, 우클릭=라벨** 채널 그대로.
+// 탐색 후보 패널 — 하루·셀 우주의 첫 표면(decisions.md 「집합 = (낟알, 우주, 조건)」):
+// focus.date 하루의 모든 (종목,분) 셀에 **조건 묶음**을 물려 걸린 셀을 시각순으로 세우고,
+// 사람이 w/s 로 순회하며 우클릭 배정(좌표 라벨)으로 1차 수동 분류를 한다. **좌클릭=시선, 우클릭=라벨**.
 //
-// 후보는 진실이 아니라 입구다 — 이 목록의 어떤 값도 저장되지 않고, 노브는 패널 로컬(panelUi)이다.
-// 배정된 좌표는 기존 좌표 라벨 어휘(GroupChips)로 행에 표시된다(라벨이 곧 타점).
+// **후보 로직이라는 개념이 없다 — 칸 하나가 곧 로직이다.** 아래 목록의 칸은 지우면 그냥 사라지고
+// (시드는 빌트인이 아니다), 편집은 조건 payload 위에서 이뤄진다. 값은 어디에도 저장되지 않고
+// 조건만 패널 로컬(panelUi)에 남는다 — 후보는 진실이 아니라 입구다(진실은 라벨).
 import { useEffect, useId, useMemo, useRef } from "react";
-import { DEFAULT_PROBE_PARAMS, minuteToHms, type ProbeParams, type ProbeTag } from "@trade-data-manager/market/domain";
+import {
+    CELL_VALUE_FIELDS,
+    minuteToHms,
+    seedConditionsOf,
+    TRANSITION_LABEL,
+    DEFAULT_SEED_KNOBS,
+    type CellCondition,
+    type CellConditions,
+    type CellPredicate,
+} from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { useGroupAssign } from "../../store/groupAssign.js";
@@ -16,15 +26,9 @@ import { PanelHeader, TextToggle } from "../../components/ControlChrome.js";
 import { NumField } from "../../components/NumField.js";
 import { GroupChips } from "../../components/GroupChips.js";
 import { BoardCenter } from "../../components/board/BoardCard.js";
+import { seriesColor } from "../../styles/palette.js";
 import { useProbes } from "./useProbes.js";
-
-// 태그 표기 — 색은 이 패널 로컬(의미색 계약 없음: 종류 구분만 하면 된다).
-const TAG_META: Record<ProbeTag, { label: string; color: string }> = {
-    grid: { label: "격자", color: "#16796f" },
-    surge: { label: "급등대금", color: "#c0567e" },
-    priorHigh: { label: "전고돌파", color: "#be7a00" },
-    zoneRise: { label: "존순위", color: "#4a7fc1" },
-};
+import { CELL_CONDITIONS_KEY, knobsFromLegacy, readCellConditions, withFloor } from "./conditions.js";
 
 const fmtEok = (won: number | null): string => {
     if (won === null) return "—";
@@ -32,8 +36,53 @@ const fmtEok = (won: number | null): string => {
     return eok >= 10_000 ? `${(eok / 10_000).toFixed(1)}조` : `${Math.round(eok).toLocaleString()}억`;
 };
 
-/** DOM 상한 — 노브를 다 열면 하루 후보가 수천이 될 수 있다(가상화 전 임시 그물, 초과는 꼬리 안내). */
-const ROW_CAP = 2000;
+/** 칸 색 — 자리 순번으로 돌려쓴다(의미색 계약 없음: 종류 구분만 하면 된다). */
+const condColor = (i: number): string => seriesColor(i);
+
+/** 구간 한쪽의 값 — 편집칸이 붙는 자리(양쪽 다 있으면 from 을 쓴다). 첫 구간만 본다. */
+function boundOf(p: Extract<CellPredicate, { kind: "cellValue" }>): { side: "from" | "to"; value: number } | null {
+    const r = p.ranges[0];
+    if (!r) return null;
+    if (r.from?.kind === "value") return { side: "from", value: r.from.value };
+    if (r.to?.kind === "value") return { side: "to", value: r.to.value };
+    return null;
+}
+
+/**
+ * 편집한 경계만 갈아 끼운다 — **나머지는 보존**한다(반대쪽 경계·두 번째 이후 OR 구간).
+ * 통째로 `[{from}]` 으로 갈아치우면 파서·엔진이 이미 지원하는 양끝/다중 구간이 편집 한 번에
+ * 복구 불가로 증발한다(② 에서 종단 술어와 합류하면 그런 구간이 일상이 된다).
+ */
+function withBound(p: Extract<CellPredicate, { kind: "cellValue" }>, side: "from" | "to", value: number): CellPredicate {
+    const first = p.ranges[0] ?? {};
+    const next = { ...first, [side]: { kind: "value" as const, value } };
+    return { ...p, ranges: [next, ...p.ranges.slice(1)] };
+}
+
+/** 술어 한 줄의 편집칸 — payload 모양에서 자동으로 고른다(시드 전용 분기를 만들지 않는다). */
+function PredicateField({ p, onChange }: { p: CellPredicate; onChange: (next: CellPredicate) => void }): JSX.Element | null {
+    if (p.kind === "cellValue") {
+        const b = boundOf(p);
+        const meta = CELL_VALUE_FIELDS[p.field];
+        if (!b) return <span style={{ color: "var(--text-tertiary)" }}>{meta.label}</span>;
+        return (
+            <NumField
+                label={`${meta.label}${b.side === "from" ? "≥" : "≤"}`}
+                suffix={meta.suffix}
+                value={b.value}
+                min={p.field === "zoneRank" ? 1 : undefined}
+                onCommit={(v) => onChange(withBound(p, b.side, v))}
+            />
+        );
+    }
+    if (p.kind === "priorHighBreak") {
+        return <NumField label="창" suffix="일" value={p.days} min={1} onCommit={(v) => onChange({ ...p, days: Math.round(v) })} />;
+    }
+    if (p.kind === "time") {
+        return <span style={{ color: "var(--text-tertiary)" }}>{p.ranges.map((r) => `${r.from}~${r.to}`).join(", ") || "시각"}</span>;
+    }
+    return null; // gridPoint — 편집할 payload 가 없다
+}
 
 export function ProbePanel({ panelId }: { panelId: string }): JSX.Element {
     const date = useWorkbench((s) => s.focus.date);
@@ -41,35 +90,34 @@ export function ProbePanel({ panelId }: { panelId: string }): JSX.Element {
     const focusTime = useWorkbench((s) => s.focus.time);
     const originId = useId();
 
-    // ── 노브(패널 로컬 영속 — panelUi 가방, 새 전역 키 없음). 후보는 진실이 아니라 로컬로 충분하다.
-    const d = DEFAULT_PROBE_PARAMS;
-    const [gridOn, setGridOn] = usePanelUi(panelId, "gridOn", d.gridOn);
-    const [surgeOn, setSurgeOn] = usePanelUi(panelId, "surgeOn", d.surgeOn);
-    const [surgeRatePct, setSurgeRatePct] = usePanelUi(panelId, "surgeRatePct", d.surgeRatePct);
-    const [surgeAmountEok, setSurgeAmountEok] = usePanelUi(panelId, "surgeAmountEok", d.surgeAmountEok);
-    const [priorHighOn, setPriorHighOn] = usePanelUi(panelId, "priorHighOn", d.priorHighOn);
-    const [priorHighDays, setPriorHighDays] = usePanelUi(panelId, "priorHighDays", d.priorHighDays);
-    const [zoneOn, setZoneOn] = usePanelUi(panelId, "zoneOn", d.zoneOn);
-    const [zoneMaxRank, setZoneMaxRank] = usePanelUi(panelId, "zoneMaxRank", d.zoneMaxRank);
-    const [minCumAmountEok, setMinCumAmountEok] = usePanelUi(panelId, "minCumAmountEok", d.minCumAmountEok);
-    const [knobsOpen, setKnobsOpen] = usePanelUi(panelId, "knobsOpen", true);
-
-    // memo 신원 — 스칼라들로만 조립(usePanelUi 원시값이라 안전). useProbes 의 deps 에 통째로 실린다.
-    const params = useMemo<ProbeParams>(
-        () => ({ gridOn, surgeOn, surgeRatePct, surgeAmountEok, priorHighOn, priorHighDays, zoneOn, zoneMaxRank, minCumAmountEok }),
-        [gridOn, surgeOn, surgeRatePct, surgeAmountEok, priorHighOn, priorHighDays, zoneOn, zoneMaxRank, minCumAmountEok],
+    // ── 조건 묶음(패널 로컬 영속). **raw 참조로 memo** 한다 — panelUi 가방 전체를 의존으로 걸면
+    //    노브 접기 같은 무관한 상태 변경이 전 셀 재평가를 문다.
+    const rawConds = useWorkbench((s) => s.panelUi[panelId]?.[CELL_CONDITIONS_KEY]);
+    const conditions = useMemo<CellConditions>(
+        // 옛 노브(스칼라 9개)는 조건 키가 비어 있을 때만 읽힌다 — 1회 번역(conditions.ts 머리 주석).
+        () => readCellConditions({ ...(useWorkbench.getState().panelUi[panelId] ?? {}), [CELL_CONDITIONS_KEY]: rawConds }),
+        [panelId, rawConds],
     );
+    const [knobsOpen, setKnobsOpen] = usePanelUi(panelId, "knobsOpen", true);
+    // 하한 **일괄 손잡이** — 저장물은 칸마다 자기 하한 항을 든다(우주는 조건이 아니다).
+    const [floorEok, setFloorEok] = usePanelUi(panelId, "minCumAmountEok", DEFAULT_SEED_KNOBS.minCumAmountEok);
 
-    const view = useProbes(date, params);
+    const setConditions = (next: CellConditions): void => useWorkbench.getState().setPanelUi(panelId, CELL_CONDITIONS_KEY, next);
+    const patch = (id: string, fn: (c: CellCondition) => CellCondition): void => setConditions(conditions.map((c) => (c.id === id ? fn(c) : c)));
+    const applyFloor = (eok: number): void => {
+        setFloorEok(eok);
+        setConditions(withFloor(conditions, floorEok, eok));
+    };
+
+    const view = useProbes(date, conditions);
     const groups = useGroups();
-    // 순회·렌더가 **같은 목록**을 봐야 한다 — 커서가 hits 전량을 걷고 DOM 이 cap 이면 존재하지 않는
-    // 행으로 시선이 간다(리뷰 지적). cap 은 렌더 상한이자 순회 상한이다.
-    const shownHits = useMemo(() => (view.hits.length > ROW_CAP ? view.hits.slice(0, ROW_CAP) : view.hits), [view.hits]);
+    const nameOfCond = useMemo(() => new Map(conditions.map((c, i) => [c.id, { name: c.name ?? c.id, color: condColor(i) }])), [conditions]);
 
     // ── w/s 순회 — publish 는 패널 최상단(조기 반환보다 위). 커서 = 지금 시선과 일치하는 행.
+    //    엔진이 이미 상한으로 자른 배열 하나만 존재하므로 "순회와 렌더가 같은 목록"이 자동으로 성립한다.
     const navRef = usePublishRowNav("point-probe");
     navRef.current = (dir): void => {
-        const hits = shownHits;
+        const hits = view.hits;
         if (hits.length === 0) return;
         const idx = focusCode && focusTime
             ? hits.findIndex((h) => h.code === focusCode && minuteToHms(h.min) === focusTime)
@@ -85,7 +133,10 @@ export function ProbePanel({ panelId }: { panelId: string }): JSX.Element {
         activeRowRef.current?.scrollIntoView({ block: "nearest" });
     }, [focusCode, focusTime]);
 
-    const bodyShown = !view.isLoading && !view.error;
+    // 목록이 안 그려지는 상태에선 순회도 멈춘다 — **tooWide 포함**. 안 막으면 "조건이 너무 넓습니다"
+    // 화면에서 w/s 가 렌더되지 않은(게다가 그물에 걸려 앞부분만 평가된) 목록을 밟아, 목록엔 없는
+    // 좌표로 시선만 혼자 움직인다("순회와 렌더가 같은 목록" 불변식의 유일한 구멍이었다).
+    const bodyShown = !view.isLoading && !view.error && !view.tooWide;
     if (!bodyShown) navRef.current = () => {};
 
     return (
@@ -93,46 +144,78 @@ export function ProbePanel({ panelId }: { panelId: string }): JSX.Element {
             <PanelHeader chrome={false} gap={6} style={{ borderBottom: "1px solid var(--border-default)" }}>
                 <RowNavBadge owner="point-probe" />
                 <span className="tabular" style={{ flexShrink: 0, fontSize: 11, color: "var(--text-secondary)" }}>
-                    {date} · {view.hits.length.toLocaleString()} 후보
+                    {date} · 조건 {view.matched.toLocaleString()}건
                 </span>
-                {zoneOn && !view.themesReady && (
-                    <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--text-tertiary)" }} title="테마 멤버십 로딩 중 — 존순위 태그는 아직 못 센다">
+                {view.truncated && !view.tooWide && (
+                    <span className="tabular" style={{ flexShrink: 0, fontSize: 10.5, color: "var(--fall)" }} title="상한을 넘어 앞에서 잘렸다 — 조건을 조이면 전부 보인다">
+                        상한 {view.limit.toLocaleString()} 초과 — 잘림
+                    </span>
+                )}
+                {!view.themesReady && (
+                    <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--text-tertiary)" }} title="테마 멤버십 로딩 중 — 존순위 칸은 아직 못 센다">
                         테마 로딩중…
                     </span>
                 )}
                 <span style={{ flex: 1 }} />
-                <TextToggle active={knobsOpen} onClick={() => setKnobsOpen((v) => !v)} title="후보 로직 노브 접기/펴기">
-                    노브
+                <TextToggle active={knobsOpen} onClick={() => setKnobsOpen((v) => !v)} title="조건 칸 목록 접기/펴기">
+                    조건
                 </TextToggle>
             </PanelHeader>
 
             {knobsOpen && (
-                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 10px", padding: "5px 10px", borderBottom: "1px solid var(--border-subtle)", fontSize: 11, color: "var(--text-secondary)" }}>
-                    <TextToggle active={gridOn} activeColor={TAG_META.grid.color} onClick={() => setGridOn((v) => !v)} title="격자 파생 Point(기준선 있는 차트) — 현행 판정 그대로">
-                        격자
-                    </TextToggle>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        <TextToggle active={surgeOn} activeColor={TAG_META.surge.color} onClick={() => setSurgeOn((v) => !v)} title="등락률 X% 이상에서 세션 누적 대금 N억 첫 도달(하루 1회)">
-                            급등대금
-                        </TextToggle>
-                        <NumField label="등락≥" suffix="%" value={surgeRatePct} min={0} onCommit={setSurgeRatePct} />
-                        <NumField label="누적≥" suffix="억" value={surgeAmountEok} min={1} onCommit={(v) => setSurgeAmountEok(Math.round(v))} />
-                    </span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        <TextToggle active={priorHighOn} activeColor={TAG_META.priorHigh.color} onClick={() => setPriorHighOn((v) => !v)} title="직전 W거래일 고가를 분봉 고가가 처음 넘는 자리(당일 제외, 하루 1회)">
-                            전고돌파
-                        </TextToggle>
-                        <NumField label="창" suffix="일" value={priorHighDays} min={1} onCommit={(v) => setPriorHighDays(Math.round(v))} />
-                    </span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        <TextToggle active={zoneOn} activeColor={TAG_META.zoneRise.color} onClick={() => setZoneOn((v) => !v)} title="테마 존 내 순위 상승 & N위 이내 — 존 정의(N·M·기준)는 테마 노브 공용 사다리. 첫 켬은 분당 단면 전량 계산이라 잠깐 걸린다">
-                            존순위
-                        </TextToggle>
-                        <NumField label="≤" suffix="위" value={zoneMaxRank} min={1} onCommit={(v) => setZoneMaxRank(Math.round(v))} />
-                    </span>
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }} title="세션 누적 대금 관찰 시작선(0 = 없음) — 급등대금·전고돌파·존순위는 하한 충족 뒤로 발화가 밀리고, 격자만 좌표 고정이라 미달 좌표가 목록에서 빠진다">
-                        <NumField label="하한" suffix="억" value={minCumAmountEok} min={0} onCommit={(v) => setMinCumAmountEok(Math.round(v))} />
-                    </span>
+                <div style={{ borderBottom: "1px solid var(--border-subtle)", fontSize: 11, color: "var(--text-secondary)" }}>
+                    {conditions.map((c, i) => {
+                        const hit = view.byCondition.get(c.id) ?? 0;
+                        const trans = c.transition ?? c.predicates.find((p) => p.transition)?.transition;
+                        return (
+                            <div key={c.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 8px", padding: "3px 10px", borderBottom: "1px solid var(--border-subtle)" }}>
+                                <TextToggle
+                                    active={c.enabled}
+                                    activeColor={condColor(i)}
+                                    onClick={() => patch(c.id, (x) => ({ ...x, enabled: !x.enabled }))}
+                                    title="이 칸을 껐다 켜기 — 지우지 않고 빼보는 손짓"
+                                >
+                                    {c.name ?? c.id}
+                                </TextToggle>
+                                {c.predicates.map((p, pi) => (
+                                    <PredicateField
+                                        key={`${p.kind}-${pi}`}
+                                        p={p}
+                                        onChange={(next) => patch(c.id, (x) => ({ ...x, predicates: x.predicates.map((q, qi) => (qi === pi ? next : q)) }))}
+                                    />
+                                ))}
+                                {trans && (
+                                    <span style={{ fontSize: 10, color: "var(--text-tertiary)" }} title="전이 수식어 — 값이 참인 매 분이 아니라 그 순간에만 걸린다">
+                                        {TRANSITION_LABEL[trans]}
+                                    </span>
+                                )}
+                                <span style={{ flex: 1 }} />
+                                <span className="tabular" style={{ fontSize: 10.5, color: c.enabled ? "var(--text-secondary)" : "var(--text-tertiary)" }}>
+                                    {c.enabled ? hit.toLocaleString() : "—"}
+                                </span>
+                                <button
+                                    onClick={() => setConditions(conditions.filter((x) => x.id !== c.id))}
+                                    title="이 칸을 지운다 — 시드는 빌트인이 아니다(복원은 아래 줄)"
+                                    style={{ fontSize: 11, color: "var(--text-tertiary)", padding: "0 2px" }}
+                                >
+                                    ×
+                                </button>
+                            </div>
+                        );
+                    })}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 10px" }}>
+                        <span title="세션 누적 대금 하한(0 = 없음) — **모든 칸**의 하한 항을 한 번에 고치는 손잡이다(저장은 칸마다)">
+                            <NumField label="하한 일괄" suffix="억" value={floorEok} min={0} onCommit={(v) => applyFloor(Math.round(v))} />
+                        </span>
+                        <span style={{ flex: 1 }} />
+                        <button
+                            onClick={() => setConditions(seedConditionsOf(knobsFromLegacy(useWorkbench.getState().panelUi[panelId])))}
+                            title="시드 4칸을 다시 심는다(지금 칸은 통째로 대체된다)"
+                            style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}
+                        >
+                            시드 복원
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -140,11 +223,13 @@ export function ProbePanel({ panelId }: { panelId: string }): JSX.Element {
                 <BoardCenter text={`${date} 후보 계산중…`} />
             ) : view.error ? (
                 <BoardCenter text={`후보 오류: ${view.error.message}`} />
+            ) : view.tooWide ? (
+                <BoardCenter text={`조건이 너무 넓습니다 — ${view.matched.toLocaleString()}건 이상. 조건을 조여 주세요`} />
             ) : view.hits.length === 0 ? (
-                <BoardCenter text="후보 없음 — 노브를 열거나 로직을 켜 보세요" />
+                <BoardCenter text={conditions.some((c) => c.enabled) ? "걸린 셀 없음 — 조건을 넓혀 보세요" : "조건 없음 — 칸을 켜거나 시드를 복원하세요"} />
             ) : (
                 <div style={{ flex: 1, overflowY: "auto" }}>
-                    {shownHits.map((h) => {
+                    {view.hits.map((h) => {
                         const time = minuteToHms(h.min);
                         const stock = view.byCode.get(h.code);
                         const active = focusCode === h.code && focusTime === time;
@@ -174,18 +259,22 @@ export function ProbePanel({ panelId }: { panelId: string }): JSX.Element {
                                     {stock?.name ?? h.code}
                                 </span>
                                 <span style={{ flexShrink: 0, display: "inline-flex", gap: 3 }}>
-                                    {h.tags.map((t) => (
-                                        <span key={t} style={{ fontSize: 10, fontWeight: 700, color: TAG_META[t].color, border: `1px solid ${TAG_META[t].color}55`, borderRadius: 3, padding: "0 3px", lineHeight: 1.5 }}>
-                                            {TAG_META[t].label}
-                                        </span>
-                                    ))}
+                                    {h.tags.map((t) => {
+                                        const meta = nameOfCond.get(t);
+                                        if (!meta) return null;
+                                        return (
+                                            <span key={t} style={{ fontSize: 10, fontWeight: 700, color: meta.color, border: `1px solid ${meta.color}55`, borderRadius: 3, padding: "0 3px", lineHeight: 1.5 }}>
+                                                {meta.name}
+                                            </span>
+                                        );
+                                    })}
                                 </span>
                                 <span className="tabular" style={{ flexShrink: 0, width: 52, textAlign: "right", color: (h.ratePct ?? 0) >= 0 ? "var(--rise)" : "var(--fall)" }}>
                                     {h.ratePct !== null ? `${h.ratePct.toFixed(1)}%` : "—"}
                                 </span>
                                 <span className="tabular" style={{ flexShrink: 0, width: 64, textAlign: "right", color: "var(--text-secondary)" }}>{fmtEok(h.cumAmount)}</span>
                                 {h.zoneRank !== null && (
-                                    <span className="tabular" style={{ flexShrink: 0, fontSize: 10.5, color: TAG_META.zoneRise.color }} title={h.zoneTheme ?? undefined}>
+                                    <span className="tabular" style={{ flexShrink: 0, fontSize: 10.5, color: "var(--text-secondary)" }} title={h.zoneTheme ?? undefined}>
                                         {h.zoneTheme ? `${h.zoneTheme} ` : ""}{h.zoneRank}위
                                     </span>
                                 )}
@@ -196,9 +285,9 @@ export function ProbePanel({ panelId }: { panelId: string }): JSX.Element {
                             </div>
                         );
                     })}
-                    {view.hits.length > ROW_CAP && (
+                    {view.truncated && (
                         <div style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-tertiary)" }}>
-                            상위 {ROW_CAP.toLocaleString()}건만 표시 — 하한(억)·로직 노브로 조이세요 (전체 {view.hits.length.toLocaleString()}건)
+                            상위 {view.limit.toLocaleString()}건만 표시 — 조건을 조이세요 (전체 {view.matched.toLocaleString()}건)
                         </div>
                     )}
                 </div>

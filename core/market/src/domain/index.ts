@@ -31,8 +31,15 @@ export * from "./review/group.js";
 // 후보 하루를 모수로 삼는 필터 깔때기의 정산(단계 독립 평가 · 3치 AND · 5칸 · 한계 기여도).
 export * from "./review/funnel.js";
 
-// probe — 탐색 후보(수동 분류 우선 개편의 입구 계산): 하루 재료 위의 판정 규칙만, 서수·격자는 콜백 주입.
-export * from "./probe/probe.js";
+// probe/probe.ts 는 **배럴에서 뺐다** — cellset 으로 이주를 마쳤고, 남은 유일한 소비자가
+// 이주 등가 게이트(cellset/__tests__/equivalence.test.ts)라 앱이 실수로 집어 쓸 자리를 없앤다.
+// 파일 자체는 그 게이트가 읽을 **동결된 참조 구현**으로만 남는다(② 합류 때 게이트와 함께 걷는다).
+
+// cellset — **하루·셀 우주**(그날 전 (종목,분))의 조건 어휘·평가 엔진·시드.
+// "후보 로직"이라는 개념이 없다: 조건 묶음 한 칸이 곧 로직이고, 로직 추가는 조건 저장이다.
+export * from "./cellset/predicate.js";
+export * from "./cellset/engine.js";
+export * from "./cellset/seed.js";
 
 // grid — 자동 타점 격자(순수 검출): 확정 고점·구간 저점 피벗 + 신고가 캔들 목록 + 기준선 첫 터치. Point 판정은 읽기 층(points).
 // codec = 와이어 튜플 인코딩(서버 인코드·클라 디코드가 같은 한 벌).
