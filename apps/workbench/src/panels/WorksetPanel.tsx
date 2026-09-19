@@ -10,7 +10,6 @@ import { neighborDates } from "./workset/dayCrossing.js";
 import { useDayReplayPrefetch } from "../lib/useDaySnapshot.js";
 import { useQuery } from "@tanstack/react-query";
 import { dataDatesQuery } from "../api/queries.js";
-import type { FilterStage } from "./filter/stage.js";
 import { usePublishRowNav } from "../lib/rowNav.js";
 import { RowNavBadge } from "../components/RowNavBadge.js";
 
@@ -66,7 +65,6 @@ const parseBool = (raw: unknown): boolean | null => (typeof raw === "boolean" ? 
 
 
 /** 종단일 때 셀 평가를 끄는 상수 — 빈 배열 리터럴이면 매 렌더 새 참조라 memo 가 헛돈다. */
-const EMPTY_STAGES: FilterStage[] = [];
 const EMPTY_CELLS: DayCell[] = [];
 const EMPTY_DATES: string[] = [];
 const EMPTY_HITS: CellHit[] = [];
@@ -95,6 +93,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     //    종단이면 지금까지의 3층 목록 그대로, 하루면 그날의 셀 ∪ 라벨 2층 목록이 된다.
     const setUniverse = useWorkbench((s) => s.filterUniverse);
     const stages = useWorkbench(selectFilterStages);
+    const expr = useWorkbench((s) => s.filterExpr);
     const isDaily = setUniverse === "daily";
     const pid = panelId ?? "workset";
     const [sortMode, setSortMode] = usePanelUi<"stock" | "time">(pid, "daySort", "stock");
@@ -102,7 +101,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     const [showLabels, setShowLabels] = usePanelUi(pid, "dayLabels", true);
     const [datePinned, setDatePinned] = usePanelUi(pid, "datePin", false);
     // 셀 평가 — 상한은 **종목 그룹째** 자른다(반토막이면 머리의 ◇ n 이 거짓말을 한다).
-    const cellSet = useCellSet(isDaily ? stages : EMPTY_STAGES, focusDate, DAY_SET_OPTS);
+    const cellSet = useCellSet(isDaily ? expr : null, focusDate, DAY_SET_OPTS);
     const pointMemberships = useGroups().pointMemberships;
 
     /**

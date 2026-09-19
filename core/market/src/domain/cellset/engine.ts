@@ -24,11 +24,11 @@ import { minuteOfDayOf, type MinuteDerived } from "../replay/dayReplay.js";
 import {
     CELL_VALUE_FIELDS,
     costTierOf,
-    isCellPredicateEmpty,
+    exprOfCellConditions,
+    pruneCellExpr,
     unknownCellPredicate,
-    type CellCondition,
     type CellConditions,
-    type CellPredicate,
+    type CellExpr,
     type CellValueField,
     type CellValueRange,
     type Transition,
@@ -206,40 +206,171 @@ function cutByStockGroup(sorted: readonly CellHit[], limit: number): CellHit[] {
  * 하루의 발화 셀 — 종목별 dense 타임라인 단일 패스.
  * 같은 (code,min)은 한 항목에 조건 id 가 쌓이고, 정렬은 분 오름차순 → 코드 오름차순(결정론).
  */
-export function evaluateCells(
+// ── 식 트리 평가 ───────────────────────────────────────────────────────────
+//
+// 컴파일 한 번(비용 정렬 + 상태 슬롯 배정) → 종목마다 상태 배열 새로, 셀마다 트리 한 번.
+// 옛 2층(조건 = OR 가지 · 술어 = AND 잎)은 `exprOfCellConditions` 가 그대로 이 모양으로 올린다 —
+// 그래서 기존 등가 게이트가 **이 엔진을 검증한다**(옛 경로를 따로 남겨 두 벌이 되지 않게).
+
+interface Compiled {
+    node: CellExpr;
+    /** 전이 상태 슬롯 — 잎과 AND 노드만 쓰지만, 슬롯은 모든 노드에 준다(색인이 단순해진다). */
+    idx: number;
+    children: Compiled[];
+    tier: 0 | 1 | 2;
+    /** 이 AND 노드의 **직속 값 잎**이 정확히 하나면 그 자식(improve 의 밑값 자리). 아니면 null. */
+    soleValueChild: Compiled | null;
+}
+
+function compile(e: CellExpr, next: () => number): Compiled {
+    const idx = next();
+    if (e.kind === "pred") {
+        return { node: e, idx, children: [], tier: costTierOf(e.pred), soleValueChild: null };
+    }
+    // 단락 순서 = 비용 오름차순. 가지의 비용은 그 안 **가장 비싼 잎**이다(싼 가지부터 봐야 비싼 재료가 늦게 불린다).
+    const children = e.of.map((c) => compile(c, next)).sort((a, b) => a.tier - b.tier);
+    const valueLeaves = children.filter((c) => c.node.kind === "pred" && c.node.pred.kind === "cellValue");
+    return {
+        node: e,
+        idx,
+        children,
+        tier: children.reduce<0 | 1 | 2>((t, c) => (c.tier > t ? c.tier : t), 0),
+        soleValueChild: e.kind === "and" && valueLeaves.length === 1 ? valueLeaves[0]! : null,
+    };
+}
+
+/** 건너뛴 가지의 전이 상태는 **미관찰로 되돌린다** — 안 본 것을 참으로 세지 않는다(fired 래치는 그대로). */
+function resetSubtree(c: Compiled, st: TransitionState[]): void {
+    const s = st[c.idx]!;
+    s.prevTrue = false;
+    s.prevValue = null;
+    for (const ch of c.children) resetSubtree(ch, st);
+}
+
+/** 한 셀의 평가 문맥 — 재료 호출이 셀당 한 번이 되게 존 순위를 여기 캐시한다. */
+interface CellCtx {
+    s: CellStock;
+    i: number;
+    min: number;
+    pre: StockPrecomputed;
+    mat: CellMaterials;
+    zone: { rank: number; theme: string } | null;
+    zoneAsked: boolean;
+    /** 이 가지가 존 순위를 물었나 — 발화한 가지만 hit 에 순위를 싣는다(옛 usedZone 과 같은 자). */
+    usedZone: boolean;
+}
+
+function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
+    const e = c.node;
+    let out: boolean;
+
+    if (e.kind === "pred") {
+        const p = e.pred;
+        let raw = false;
+        let v: number | null = null;
+        let improveUp = true;
+        switch (p.kind) {
+            case "cellValue": {
+                if (p.field === "zoneRank") {
+                    if (!ctx.zoneAsked) {
+                        ctx.zone = ctx.mat.zoneRankAt(ctx.s.code, ctx.min);
+                        ctx.zoneAsked = true;
+                    }
+                    ctx.usedZone = true;
+                }
+                v = valueOf(p.field, ctx.s, ctx.i, ctx.zone);
+                improveUp = CELL_VALUE_FIELDS[p.field].improve === "up";
+                raw = v !== null && inRanges(v, p.ranges);
+                break;
+            }
+            case "priorHighBreak": {
+                const bar = ctx.pre.priorHighOf(p.days);
+                raw = bar !== null && (ctx.s.minuteHigh[ctx.i] ?? -Infinity) > bar;
+                break;
+            }
+            case "gridPoint":
+                raw = ctx.pre.gridMinutes !== null && ctx.pre.gridMinutes.has(ctx.min);
+                break;
+            case "time":
+                raw = p.ranges.some((r) => {
+                    const t = hm(ctx.min);
+                    return t >= r.from && t <= r.to;
+                });
+                break;
+            default:
+                unknownCellPredicate(p);
+        }
+        out = applyTransition(p.transition, st[c.idx]!, raw, v, improveUp);
+    } else if (e.kind === "and") {
+        let all = true;
+        let k = 0;
+        for (; k < c.children.length; k++) {
+            if (!runNode(c.children[k]!, st, ctx)) { all = false; break; }
+        }
+        // ⚠ 단락 — 나머지 가지는 **평가하지 않는다**(비싼 재료를 안 부르는 것이 요점).
+        for (let rest = k + 1; rest < c.children.length; rest++) resetSubtree(c.children[rest]!, st);
+        // 묶음 전이 — 자식 AND 전체를 하나의 f 로 본다. improve 의 밑값은 **직속 값 잎이 정확히 하나일 때**
+        // 그 값이고(그래야 잎 하나짜리 묶음에서 두 자리가 동치), 아니면 밑값 없이 엣지로 동작한다.
+        const sole = c.soleValueChild;
+        const base = sole !== null && all ? st[sole.idx]!.prevValue : null;
+        const improveUp = sole !== null && sole.node.kind === "pred" && sole.node.pred.kind === "cellValue"
+            ? CELL_VALUE_FIELDS[sole.node.pred.field].improve === "up"
+            : true;
+        out = applyTransition(e.transition, st[c.idx]!, all, base, improveUp);
+    } else {
+        let any = false;
+        let k = 0;
+        for (; k < c.children.length; k++) {
+            if (runNode(c.children[k]!, st, ctx)) { any = true; break; }
+        }
+        for (let rest = k + 1; rest < c.children.length; rest++) resetSubtree(c.children[rest]!, st);
+        out = any;
+    }
+
+    return e.neg === true ? !out : out;
+}
+
+/**
+ * 하루의 발화 셀 — 종목별 dense 타임라인 단일 패스.
+ * 같은 (code,min)은 한 항목에 **발화한 최상위 가지 id** 가 쌓이고, 정렬은 분↑ → 코드↑(결정론).
+ *
+ * ⚠ 루트가 OR 이면 **가지를 단락하지 않는다** — 어느 가지가 발화했는지(tags·byCondition)가 화면의
+ * 재료라서다. 안쪽 OR 은 단락한다(그건 아무도 안 묻는다). 옛 엔진도 조건을 전부 돌았으므로 비용 동일.
+ */
+export function evaluateCellsExpr(
     stocks: readonly CellStock[],
     mat: CellMaterials,
-    conditions: CellConditions,
+    expr: CellExpr | null,
     opts: CellEvalOptions = {},
 ): CellEvalResult {
     const limit = opts.limit ?? CELL_LIMIT;
     const hardCap = opts.hardCap ?? CELL_HARD_CAP;
     const byCondition = new Map<string, number>();
 
-    // 살아 있는 조건 = 켜져 있고 술어가 하나라도 있는 것. **빈 조건은 "전부"가 아니라 빠진다**
-    // (조건 없음 = 안 보여줌 — 빈 술어를 참으로 세면 그 칸이 19만 셀을 통째로 통과시킨다).
-    const live: { c: CellCondition; preds: CellPredicate[] }[] = [];
-    for (const c of conditions) {
-        if (!c.enabled) continue;
-        const preds = c.predicates.filter((p) => !isCellPredicateEmpty(p));
-        if (preds.length === 0) continue;
-        preds.sort((a, b) => costTierOf(a) - costTierOf(b)); // 단락 순서 = 비용 오름차순
-        live.push({ c, preds });
-        byCondition.set(c.id, 0);
-    }
-    if (live.length === 0) {
+    const pruned = expr === null ? null : pruneCellExpr(expr);
+    if (pruned === null) {
         return { hits: [], matched: 0, limit, truncated: false, tooWide: false, byCondition };
     }
 
-    // 사전계산 소요 — 조건이 안 쓰는 재료는 만들지 않는다.
+    let slots = 0;
+    const root = compile(pruned, () => slots++);
+    // 태그를 다는 단위 = **루트의 직속 가지**(루트가 OR 일 때). 그 외엔 루트 자신 하나.
+    const branches = pruned.kind === "or" ? root.children : [root];
+    for (const b of branches) byCondition.set(b.node.id, 0);
+
+    // 사전계산 소요 — 식이 안 쓰는 재료는 만들지 않는다. **트리를 걸어야 한다**: 평평한 2중 루프로
+    // 재면 묶음 안의 격자·전고 술어를 못 보고, 그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**.
     const needDays: number[] = [];
     let needGrid = false;
-    for (const { preds } of live) {
-        for (const p of preds) {
-            if (p.kind === "priorHighBreak" && !needDays.includes(p.days)) needDays.push(p.days);
-            if (p.kind === "gridPoint") needGrid = true;
+    const scan = (e: CellExpr): void => {
+        if (e.kind === "pred") {
+            if (e.pred.kind === "priorHighBreak" && !needDays.includes(e.pred.days)) needDays.push(e.pred.days);
+            if (e.pred.kind === "gridPoint") needGrid = true;
+            return;
         }
-    }
+        for (const c of e.of) scan(c);
+    };
+    scan(pruned);
 
     const byKey = new Map<string, CellHit>();
     let matched = 0;
@@ -249,88 +380,22 @@ export function evaluateCells(
         const n = s.times.length;
         if (n === 0) continue;
         const pre = precompute(s, mat, needDays, needGrid);
-
-        // 전이 상태 — 조건마다 (술어 슬롯 배열 + 칸 하나). 종목이 바뀌면 새로 만든다(하루 경계 = 종목 타임라인).
-        const states = live.map(({ preds }) => ({ preds: preds.map(newState), cond: newState() }));
+        // 전이 상태 — 노드마다 슬롯 하나. 종목이 바뀌면 새로 만든다(하루 경계 = 종목 타임라인).
+        const st: TransitionState[] = Array.from({ length: slots }, newState);
 
         for (let i = 0; i < n; i++) {
             const min = minuteOfDayOf(s.times[i]);
-            // 존 순위는 셀당 한 번만 — 여러 조건이 같은 셀에서 물어도 재료 호출은 하나다.
-            let zone: { rank: number; theme: string } | null = null;
-            let zoneAsked = false;
+            const ctx: CellCtx = { s, i, min, pre, mat, zone: null, zoneAsked: false, usedZone: false };
 
-            for (let ci = 0; ci < live.length; ci++) {
-                const { c, preds } = live[ci];
-                const st = states[ci];
-                let all = true;
-                let condValue: number | null = null;
-                let condImproveUp = true;
-                let valueProviders = 0;
-                let usedZone = false;
+            for (const b of branches) {
+                ctx.usedZone = false;
+                if (!runNode(b, st, ctx)) continue;
 
-                for (let pi = 0; pi < preds.length; pi++) {
-                    const p = preds[pi];
-                    let raw = false;
-                    let v: number | null = null;
-                    let improveUp = true;
-
-                    switch (p.kind) {
-                        case "cellValue": {
-                            if (p.field === "zoneRank") {
-                                if (!zoneAsked) {
-                                    zone = mat.zoneRankAt(s.code, min);
-                                    zoneAsked = true;
-                                }
-                                usedZone = true;
-                            }
-                            v = valueOf(p.field, s, i, zone);
-                            improveUp = CELL_VALUE_FIELDS[p.field].improve === "up";
-                            raw = v !== null && inRanges(v, p.ranges);
-                            valueProviders++;
-                            condValue = v;
-                            condImproveUp = improveUp;
-                            break;
-                        }
-                        case "priorHighBreak": {
-                            const bar = pre.priorHighOf(p.days);
-                            raw = bar !== null && (s.minuteHigh[i] ?? -Infinity) > bar;
-                            break;
-                        }
-                        case "gridPoint":
-                            raw = pre.gridMinutes !== null && pre.gridMinutes.has(min);
-                            break;
-                        case "time":
-                            raw = p.ranges.some((r) => {
-                                const t = hm(min);
-                                return t >= r.from && t <= r.to;
-                            });
-                            break;
-                        default:
-                            unknownCellPredicate(p);
-                    }
-
-                    if (!applyTransition(p.transition, st.preds[pi], raw, v, improveUp)) {
-                        all = false;
-                        // ⚠ 단락 — 나머지 술어는 **평가하지 않는다**(비싼 재료를 안 부르는 것이 요점).
-                        // 안 본 술어의 직전 상태는 "미관찰"이라 미참으로 되돌린다(모르는 것을 참으로 세지 않는다).
-                        for (let rest = pi + 1; rest < preds.length; rest++) {
-                            st.preds[rest].prevTrue = false;
-                            st.preds[rest].prevValue = null;
-                        }
-                        break;
-                    }
-                }
-
-                // 칸 전이 — 술어 AND 전체를 하나의 f 로 본다. improve 의 밑값은 **값 술어가 정확히 하나일 때**
-                // 그 값이고(그래야 술어 하나짜리 칸에서 두 자리가 동치), 아니면 밑값 없이 엣지로 동작한다.
-                const fired = applyTransition(c.transition, st.cond, all, valueProviders === 1 ? condValue : null, condImproveUp);
-                if (!fired) continue;
-
-                byCondition.set(c.id, (byCondition.get(c.id) ?? 0) + 1);
+                byCondition.set(b.node.id, (byCondition.get(b.node.id) ?? 0) + 1);
                 const key = `${s.code}|${min}`;
                 let hit = byKey.get(key);
                 if (!hit) {
-                    matched++; // **셀** 수 — 같은 셀에 칸이 여럿 걸려도 하나다(목록 행 수와 같은 단위)
+                    matched++; // **셀** 수 — 같은 셀에 가지가 여럿 걸려도 하나다(목록 행 수와 같은 단위)
                     hit = {
                         code: s.code,
                         min,
@@ -342,15 +407,15 @@ export function evaluateCells(
                     };
                     byKey.set(key, hit);
                 }
-                if (!hit.tags.includes(c.id)) hit.tags.push(c.id);
-                if (usedZone && zone && (hit.zoneRank === null || zone.rank < hit.zoneRank)) {
-                    hit.zoneRank = zone.rank;
-                    hit.zoneTheme = zone.theme;
+                if (!hit.tags.includes(b.node.id)) hit.tags.push(b.node.id);
+                if (ctx.usedZone && ctx.zone && (hit.zoneRank === null || ctx.zone.rank < hit.zoneRank)) {
+                    hit.zoneRank = ctx.zone.rank;
+                    hit.zoneTheme = ctx.zone.theme;
                 }
 
                 if (matched > hardCap) {
                     // 그물 — 여기서부터는 비싼 재료도 안 부르고 즉시 접는다(matched 는 확인된 최소치).
-                    // 셀 수 기준이라 켜진 칸 수에 따라 그물이 조여지지 않는다(발화 수로 세면 4칸에서 1/4 로 내려간다).
+                    // 셀 수 기준이라 켜진 가지 수에 따라 그물이 조여지지 않는다.
                     tooWide = true;
                     break outer;
                 }
@@ -362,13 +427,18 @@ export function evaluateCells(
     out.sort((a, b) => a.min - b.min || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
     const truncated = out.length > limit;
     const cut = truncated ? (opts.limitBy === "stockGroup" ? cutByStockGroup(out, limit) : out.slice(0, limit)) : out;
-    return {
-        hits: cut,
-        matched,
-        limit,
-        truncated,
-        tooWide,
-        byCondition,
-    };
+    return { hits: cut, matched, limit, truncated, tooWide, byCondition };
 }
 
+/**
+ * 옛 계약(평평한 조건 목록)의 어댑터 — 조건 = OR 가지, 술어 = AND 잎으로 올려 **같은 엔진**을 탄다.
+ * 두 벌을 남기지 않는 것이 요점이다(언젠가 둘이 다른 답을 낸다).
+ */
+export function evaluateCells(
+    stocks: readonly CellStock[],
+    mat: CellMaterials,
+    conditions: CellConditions,
+    opts: CellEvalOptions = {},
+): CellEvalResult {
+    return evaluateCellsExpr(stocks, mat, exprOfCellConditions(conditions), opts);
+}

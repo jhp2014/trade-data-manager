@@ -20,17 +20,15 @@ import { useCallback, useMemo } from "react";
 import type { FunnelItem } from "@trade-data-manager/market/domain";
 import { chartKey } from "../../lib/pointKey.js";
 import type { SetRef } from "../../lib/setRef.js";
-import { useWorkbench, selectFilterStages } from "../../store/workbench.js";
+import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { useFunnel } from "./FunnelContext.js";
 import { DAY_SET_OPTS, useCellSet } from "./useCellSet.js";
-import { canPin, dayStagesOf, dayUnsupportedReason, parsePanelBinding, targetUniverseOf } from "./panelSetBinding.js";
+import { canPin, dayExprOf, dayUnsupportedReason, parsePanelBinding, targetUniverseOf } from "./panelSetBinding.js";
 import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
 import type { Universe } from "./universe.js";
-import type { FilterStage } from "./stage.js";
 import type { ViewedSet } from "./useSetViews.js";
 
-const EMPTY_STAGES: FilterStage[] = [];
 
 /** 하루 집합일 때만 뜻이 있는 상태 — 화면이 상한·결손·로딩을 말할 재료. */
 export interface DaySetState {
@@ -83,7 +81,7 @@ export function useBoundSet(panelId: string): BoundSet {
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const workingUniverse = useWorkbench((s) => s.filterUniverse);
-    const workingStages = useWorkbench(selectFilterStages);
+    const workingExpr = useWorkbench((s) => s.filterExpr);
     const focusDate = useWorkbench((s) => s.focus.date);
 
     /** 지금 따라가는 대상 — 핀이 있으면 그것, 없으면 전역 포인터(연동). */
@@ -91,13 +89,13 @@ export function useBoundSet(panelId: string): BoundSet {
     const universe = targetUniverseOf(target, savedSets, workingUniverse);
     const daily = universe === "daily";
 
-    const dayStages = useMemo(
-        () => (daily ? dayStagesOf(target, savedSets, workingStages) : null),
-        [daily, target, savedSets, workingStages],
+    const dayExpr = useMemo(
+        () => (daily ? dayExprOf(target, savedSets, workingExpr) : null),
+        [daily, target, savedSets, workingExpr],
     );
     // ⚠ 훅은 조건부로 못 부른다 — 종단이면 빈 조건을 넘긴다. 그러면 `useCellSet` 이 **재료조차 안 당긴다**
     //   (조건 0건 = /day-replay 미조회 — 그 성질이 여기서 값을 한다).
-    const cellSet = useCellSet(dayStages ?? EMPTY_STAGES, focusDate, DAY_SET_OPTS);
+    const cellSet = useCellSet(dayExpr, focusDate, DAY_SET_OPTS);
 
     // 종단 경로 — 핀이 없으면 viewOf(null) 이 전역 포인터를 따른다(기존 계약 그대로).
     const longView = funnel.viewOf(pinned);

@@ -10,8 +10,7 @@
 //     (죽은 개념의 유령 부활 금지 · useSetBinding 머리 주석).
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { isPersistableSetRef, parseSetRef, type SetRef } from "../../lib/setRef.js";
-import type { FilterStage } from "./stage.js";
-import { leavesOf } from "./expr.js";
+import { emptyExpr, type SetExpr } from "./expr.js";
 import type { Universe } from "./universe.js";
 
 /**
@@ -67,22 +66,22 @@ export function targetUniverseOf(
  * **최종 생존은 연동과 같다** — 그 참조의 뜻이 "작업 깔때기가 지금 내는 것"이고, 하루 우주에서 그건
  * 곧 작업 조건의 평가다. 그래서 "지금 보는 것을 고정" 이 포인터 없이도 뜻을 갖는다.
  */
-export function dayStagesOf(
+export function dayExprOf(
     ref: SetRef | null,
     savedSets: readonly SavedSet[],
-    workingStages: readonly FilterStage[],
-): readonly FilterStage[] | null {
-    if (ref === null || ref.kind === "survivors") return workingStages;
+    workingExpr: SetExpr,
+): SetExpr | null {
+    if (ref === null || ref.kind === "survivors") return workingExpr;
     if (ref.kind === "saved") {
         const s = savedSets.find((x) => x.id === ref.setId);
-        return s ? leavesOf(s.expr) : null;
+        return s ? s.expr : null;
     }
     return null;
 }
 
 /** 하루 우주에서 이 바인딩을 못 푸는 이유 한 줄(풀 수 있으면 null) — 화면이 그대로 띄운다. */
 export function dayUnsupportedReason(ref: SetRef | null, savedSets: readonly SavedSet[]): string | null {
-    if (dayStagesOf(ref, savedSets, []) !== null) return null;
+    if (dayExprOf(ref, savedSets, emptyExpr()) !== null) return null;
     if (ref?.kind === "saved") return "(지워진 집합)";
     return "하루 우주에는 조건이 있어야 합니다 — 집합 편성에서 고르세요";
 }

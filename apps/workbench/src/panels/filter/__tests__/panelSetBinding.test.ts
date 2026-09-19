@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { canPin, dayStagesOf, dayUnsupportedReason, parsePanelBinding, targetUniverseOf } from "../panelSetBinding.js";
+import { canPin, dayExprOf, dayUnsupportedReason, parsePanelBinding, targetUniverseOf } from "../panelSetBinding.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import type { FilterStage } from "../stage.js";
-import { exprOfStages } from "../expr.js";
+import { exprOfStages, leavesOf } from "../expr.js";
 
 // panelUi 는 무검증 JSON 가방이다 — 핀을 읽는 자리가 문지기고, **깨진 참조는 연동으로 폴백하지 않는다**
 // (조용한 폴백 = 다른 집합을 보여주는 실패).
@@ -53,20 +53,20 @@ describe("targetUniverseOf — 이 바인딩은 어느 우주로 풀리나", () 
     });
 });
 
-describe("dayStagesOf / dayUnsupportedReason — 하루 우주에서 무엇을 평가하나", () => {
-    const working = [stage("w1")];
+describe("dayExprOf / dayUnsupportedReason — 하루 우주에서 무엇을 평가하나", () => {
+    const working = exprOfStages([stage("w1")]);
     const sets = [set("fs-day", "daily", [stage("s1")])];
 
-    it("연동·최종 생존은 작업 깔때기의 조건, 저장 집합은 그 집합의 조건", () => {
-        expect(dayStagesOf(null, sets, working)).toEqual(working);
+    it("연동·최종 생존은 작업 깔때기의 식, 저장 집합은 그 집합의 식", () => {
+        expect(dayExprOf(null, sets, working)).toEqual(working);
         // 최종 생존 = "작업 깔때기가 지금 내는 것" — 하루 우주에선 곧 작업 조건의 평가다.
-        expect(dayStagesOf({ kind: "survivors" }, sets, working)).toEqual(working);
-        expect(dayStagesOf({ kind: "saved", setId: "fs-day" }, sets, working)).toEqual([stage("s1")]);
+        expect(dayExprOf({ kind: "survivors" }, sets, working)).toEqual(working);
+        expect(leavesOf(dayExprOf({ kind: "saved", setId: "fs-day" }, sets, working)!).map((s) => s.id)).toEqual(["s1"]);
     });
 
     it("풀 수 없는 바인딩은 null 이고 **이유가 따라온다**(조용한 빈 화면 금지)", () => {
-        expect(dayStagesOf({ kind: "orphan", label: "옛 조립 바인딩" }, sets, working)).toBeNull();
-        expect(dayStagesOf({ kind: "universe" }, sets, working)).toBeNull();
+        expect(dayExprOf({ kind: "orphan", label: "옛 조립 바인딩" }, sets, working)).toBeNull();
+        expect(dayExprOf({ kind: "universe" }, sets, working)).toBeNull();
         expect(dayUnsupportedReason({ kind: "universe" }, sets)).toMatch(/조건이 있어야/);
         expect(dayUnsupportedReason({ kind: "saved", setId: "없는것" }, sets)).toBe("(지워진 집합)");
     });

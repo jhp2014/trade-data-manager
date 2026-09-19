@@ -18,9 +18,11 @@ vi.mock("@trade-data-manager/market/domain", async (importOriginal) => {
     const mod = await importOriginal<typeof import("@trade-data-manager/market/domain")>();
     return {
         ...mod,
-        evaluateCells: (...args: Parameters<typeof mod.evaluateCells>) => {
+        // 훅이 부르는 것은 **식 엔진**이다(2026-09-19 6단계) — 옛 이름을 물고 있으면 스파이가 0이 되고,
+        // "평가는 한 벌" 검사가 조용히 통과한다(아무도 안 부르는 것을 세고 있으므로).
+        evaluateCellsExpr: (...args: Parameters<typeof mod.evaluateCellsExpr>) => {
             evalSpy();
-            return mod.evaluateCells(...args);
+            return mod.evaluateCellsExpr(...args);
         },
     };
 });

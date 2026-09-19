@@ -14,7 +14,6 @@ import type { AutoPointInput, LabelPointInput } from "../chart/minuteOverlays.js
 import { groupColor } from "../styles/palette.js";
 
 /** 집합 평가를 끄는 상수 — 빈 배열 리터럴이면 매 렌더 새 참조라 memo 가 헛돈다. */
-const EMPTY_STAGES: FilterStage[] = [];
 
 /** 조건 id → 사람이 준 이름(없으면 자동 라벨 대신 id — hover 카드가 조용히 비지 않게). */
 const stageNameOf = (stages: readonly FilterStage[], id: string): string =>
@@ -104,17 +103,18 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     //    한 memo 에서 뽑으면 ◇ 를 집합으로 옮기는 손이 다리 표식을 같이 죽인다.
     const setUniverse = useWorkbench((s) => s.filterUniverse);
     const funnelStages = useWorkbench(selectFilterStages);
+    const funnelExpr = useWorkbench((s) => s.filterExpr);
     // 집합 평가는 **이 차트가 집합의 날짜를 보고 있을 때만** — 다른 날짜 차트가 두 번째 평가(와 15MB
     // 재료 요청)를 낳지 않게. 조건이 없으면 useCellSet 이 재료조차 안 당긴다.
     // ⚠ 기준은 `anchorDate`(= 전역 focus.date = 집합의 날짜)다 — 한때 `searchDate` 와 비교했는데
     //   `viewDate` 가 그것에서 파생돼 사실상 `!pinMinute` 이었다(드리프트한 차트는 통과하고, 핀을 켜면
     //   집합의 날짜를 보면서도 ◇ 가 사라지는 정반대 동작). `drifted` 가 그 판정의 단일 출처다.
     // opts 는 목록과 **같은 상수**를 쓴다(안 그러면 메모가 갈려 5.7초가 두 번 돈다).
-    const cellStages = setUniverse === "daily" && !drifted ? funnelStages : EMPTY_STAGES;
-    const cellSet = useCellSet(cellStages, viewDate, DAY_SET_OPTS);
+    const cellExpr = setUniverse === "daily" && !drifted ? funnelExpr : null;
+    const cellSet = useCellSet(cellExpr, viewDate, DAY_SET_OPTS);
     const autoPoints = useMemo<AutoPointInput[]>(() => {
         // 평가 중에는 안 그린다 — 표식 층의 계산이 캔들(시선의 소비자)을 지연시키면 안 된다.
-        if (cellStages.length === 0 || cellSet.isLoading) return [];
+        if (cellExpr === null || cellSet.isLoading) return [];
         return cellSet.hits
             .filter((h) => h.code === code)
             .map((h) => ({
@@ -122,7 +122,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 // hover 카드 재료가 "어느 조건에 걸렸나"로 바뀌었다(옛 격자 요약 대신).
                 label: `${h.tags.map((t) => stageNameOf(funnelStages, t)).join(" · ")}${h.ratePct !== null ? ` · ${h.ratePct.toFixed(1)}%` : ""}${h.cumAmount !== null ? ` · ${(h.cumAmount / 1e8).toFixed(0)}억` : ""}${h.zoneRank !== null ? ` · ${h.zoneTheme ?? ""} ${h.zoneRank}위` : ""}`,
             }));
-    }, [cellStages, cellSet.hits, cellSet.isLoading, code, viewDate, funnelStages]);
+    }, [cellExpr, cellSet.hits, cellSet.isLoading, code, viewDate, funnelStages]);
 
     const { legHighTimes, legHighBySignal } = useMemo<{
         legHighTimes: number[];

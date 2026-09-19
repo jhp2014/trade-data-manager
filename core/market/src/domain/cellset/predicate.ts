@@ -129,6 +129,56 @@ export interface CellCondition {
 
 export type CellConditions = CellCondition[];
 
+// ── 식 트리(2026-09-19) ────────────────────────────────────────────────────
+//
+// 하루 우주의 조건은 원래부터 **OR(AND…) 2층**이었다(조건 = OR 가지, 술어 = AND 잎). 종단이 식 트리가
+// 되면서 같은 문법을 여기도 쓴다 — 달라지는 건 **깊이 제한이 없고 부정이 붙는다**는 것뿐이다.
+//
+// ⚠ **전이 수식어는 잎과 AND 노드에만** 붙는다(decisions.md 「집합 편성 재설계」). `¬(처음으로 f)` 나
+// `처음으로 (a ∨ b)` 는 뜻이 정의돼 있지 않다 — 정의되지 않은 것을 조용히 아무 값으로 계산하는 대신
+// 문법에서 자리를 안 만든다.
+
+export type CellExpr =
+    | { kind: "pred"; id: string; pred: CellPredicate; neg?: boolean }
+    | { kind: "and"; id: string; of: CellExpr[]; neg?: boolean; transition?: Transition }
+    | { kind: "or"; id: string; of: CellExpr[]; neg?: boolean };
+
+/** 이 가지의 **가장 비싼** 재료 등급 — 단락 순서의 자(싼 가지부터 보고 비싼 재료를 늦게 부른다). */
+export function cellExprTier(e: CellExpr): 0 | 1 | 2 {
+    if (e.kind === "pred") return costTierOf(e.pred);
+    let t: 0 | 1 | 2 = 0;
+    for (const c of e.of) {
+        const ct = cellExprTier(c);
+        if (ct > t) t = ct;
+    }
+    return t;
+}
+
+/**
+ * 평가에 들어갈 식 — 빈 술어 잎과 빈 묶음을 걷어낸다. 전부 걷히면 null.
+ * **빈 조건은 "전부"가 아니라 빠진다** — 빈 술어를 참으로 세면 그 가지가 19만 셀을 통째로 통과시킨다.
+ */
+export function pruneCellExpr(e: CellExpr): CellExpr | null {
+    if (e.kind === "pred") return isCellPredicateEmpty(e.pred) ? null : e;
+    const of = e.of.map(pruneCellExpr).filter((c): c is CellExpr => c !== null);
+    return of.length === 0 ? null : { ...e, of };
+}
+
+/**
+ * 옛 평평한 조건 목록 → 식(루트 OR). **엔진의 유일한 입력은 식이고, 이 함수가 옛 계약의 어댑터다** —
+ * 조건 = OR 가지(AND 묶음), 술어 = 그 가지의 잎. 꺼진 조건은 여기서 빠진다.
+ */
+export function exprOfCellConditions(conditions: CellConditions): CellExpr | null {
+    const of: CellExpr[] = [];
+    for (const c of conditions) {
+        if (!c.enabled) continue;
+        const preds = c.predicates.map((pred, i): CellExpr => ({ kind: "pred", id: `${c.id}#${i}`, pred }));
+        const branch = pruneCellExpr({ kind: "and", id: c.id, of: preds, ...(c.transition ? { transition: c.transition } : {}) });
+        if (branch !== null) of.push(branch);
+    }
+    return of.length === 0 ? null : { kind: "or", id: "root", of };
+}
+
 /** 조건이 하나도 없는 술어(빈 구간 배열) — 평가에서 빼야 "무제한"이 "전부 탈락"으로 안 뒤집힌다. */
 export function isCellPredicateEmpty(p: CellPredicate): boolean {
     switch (p.kind) {
