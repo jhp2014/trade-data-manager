@@ -12,7 +12,7 @@ import {
     mapLeaves, parseExpr, refNode, refsOf, removeNode,
     type SetExpr,
 } from "../expr.js";
-import { parseStages, type FilterStage } from "../stage.js";
+import { newStage, parseStages, type FilterStage } from "../stage.js";
 
 const datePred = { kind: "date" as const, ranges: [{ from: "2026-07-01", to: "2026-07-31" }] };
 const stage = (id: string, enabled = true, predicates: FilterStage["predicates"] = [datePred]): FilterStage =>
@@ -231,5 +231,22 @@ describe("순환 참조 — 저장 시 거절의 자", () => {
         sets.set("B", { kind: "and", id: "rb", of: [refNode("C")] });
         sets.set("C", { kind: "and", id: "rc", of: [] });
         expect(hasCycle("A", { kind: "or", id: "ra", of: [refNode("B"), refNode("C")] }, lookup)).toBe(false);
+    });
+});
+
+describe("addNodeAt — 빈 묶음은 감싸지 않는다", () => {
+    // 실측이 본 자리: `비우기` 뒤에도 `OR 로 추가` 토글이 남아 있어 첫 조건이 OR 로 들어온다.
+    // 감싸면 `OR(AND(), 새것)` — 평가는 activeExpr 이 구해 주지만 화면에 "모두 · 0" 유령이 선다.
+    it("빈 루트에 OR 로 붙여도 묶음이 새로 안 생긴다", () => {
+        const e = addLeafAt(emptyExpr(), null, newStage([{ kind: "date", ranges: [] }]), "or");
+        expect(e.kind).toBe("and");
+        expect(e.kind === "and" && e.of.map((c) => c.kind)).toEqual(["cond"]);
+    });
+
+    it("비지 않은 루트는 그대로 감싼다(기존 규칙)", () => {
+        const one = exprOfStages([{ id: "a", enabled: true, predicates: [] }]);
+        const e = addLeafAt(one, null, newStage([]), "or");
+        expect(e.kind).toBe("or");
+        expect(e.kind === "or" && e.of.map((c) => c.kind)).toEqual(["and", "cond"]);
     });
 });

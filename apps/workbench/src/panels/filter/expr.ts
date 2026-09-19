@@ -251,6 +251,11 @@ export function addNodeAt(e: SetExpr, at: string | null, leaf: SetExpr, mode: "a
     const target = at !== null && findNode(e, at) !== null ? at : idOf(e);
     return replaceNode(e, target, (n) => {
         if (n.kind === mode) return { ...n, of: [...n.of, leaf] };
+        // ⚠ **빈 묶음은 감싸지 않는다** — 조건을 다 비운 뒤 `OR 로 추가` 가 켜져 있으면
+        //   `OR(AND(), 새것)` 이 생긴다. 평가는 `activeExpr` 이 빈 묶음을 걷어 멀쩡하지만,
+        //   화면에는 "모두 · 0" 짜리 유령 묶음이 서고 사용자는 안 만든 구조를 본다.
+        //   감쌀 것이 없으면 그냥 넣는다(뜻은 "그 조건 하나" 로 같다).
+        if (isGroup(n) && n.of.length === 0) return { ...n, of: [leaf] };
         // 자리를 묶음으로 감싼다 — 감싸는 묶음은 **부정을 안 물려받는다**(¬(a) 를 ¬(a ∧ b) 로 바꾸면
         // 사용자가 건 적 없는 뜻이 된다). 부정은 감싸인 노드에 그대로 남는다.
         return { kind: mode, id: newNodeId(), of: [n, leaf] };
