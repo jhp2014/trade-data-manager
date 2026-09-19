@@ -4,10 +4,12 @@
 //   집합 = 이름 + 식
 //   식   = ¬? 조건 | ¬? AND(식…) | ¬? OR(식…)
 //
-// ⚠ **참조 잎(`¬? 참조`)은 아직 없다** — 문법의 나머지 한 갈래고 8단계(참조·드릴다운)에서 들어온다.
-// 지금 넣어 두고 평가에서 결손으로 흘리면 "조건이 있는데 아무것도 안 걸리는" 침묵이 되므로, 그
-// 갈래는 **평가까지 함께** 붙이는 단계에 더한다(옛 조립 저장물도 그때 `OR(참조…)` 로 승계된다 —
-// `legacyAssemblies` 가 그때까지 재워 두는 이유).
+// ## 참조 잎 — **이름이 곧 중첩의 수단**이다
+// `∈ 집합` 은 다른 저장 집합을 통째로 한 잎으로 세운다. 그래서 깊이는 이름이 만들고(승격),
+// 익명 묶음은 "아직 이름값을 못 한 구조"로 남는다. 옛 조립은 OR(참조…) 로 승계된다.
+//
+// ⚠ **참조는 그 자리에서 못 고친다** — 고치면 그 집합을 쓰는 다른 식이 전부 따라 바뀐다.
+// 편집하려면 그 집합을 **열어야** 한다(편집 대상 전환). 순환 참조는 저장 시 거절한다(무한 평가).
 //
 // ## 부정은 노드가 아니라 **수식어**다
 // `not(not(x))` 같은 사슬이 생기지 않게 `neg?: boolean` 을 각 형태에 단다(부재 = 거짓). 저장물에서도
@@ -29,6 +31,8 @@ interface Negatable {
 
 export type SetExpr =
     | ({ kind: "cond"; stage: FilterStage } & Negatable)
+    /** 다른 저장 집합 한 벌 — 내용은 그 집합의 것이고, 여기선 멤버십만 묻는다. */
+    | ({ kind: "ref"; id: NodeId; setId: string } & Negatable)
     | ({ kind: "and"; id: NodeId; of: SetExpr[] } & Negatable)
     | ({ kind: "or"; id: NodeId; of: SetExpr[] } & Negatable);
 
@@ -47,7 +51,39 @@ export const exprOfStages = (stages: readonly FilterStage[]): SetExpr =>
     ({ kind: "and", id: ROOT_ID, of: stages.map((stage): SetExpr => ({ kind: "cond", stage })) });
 
 /** 묶음인가 — `of` 를 가진 노드(타입 좁히기 헬퍼). */
-export const isGroup = (e: SetExpr): e is Extract<SetExpr, { of: SetExpr[] }> => e.kind !== "cond";
+export const isGroup = (e: SetExpr): e is Extract<SetExpr, { of: SetExpr[] }> => e.kind === "and" || e.kind === "or";
+
+/** 이 식이 쓰는 저장 집합 id 들(중복 제거) — 순환 검사·"쓰는 곳 N"·깨진 참조 표시의 재료. */
+export function refsOf(e: SetExpr): string[] {
+    const out = new Set<string>();
+    const walk = (n: SetExpr): void => {
+        if (n.kind === "ref") { out.add(n.setId); return; }
+        if (!isGroup(n)) return;
+        for (const c of n.of) walk(c);
+    };
+    walk(e);
+    return [...out];
+}
+
+/**
+ * 순환 참조인가 — `setId` 의 식이 `expr` 을 통해 자기 자신에 닿나. **저장 시 거절**의 자다.
+ * 순환을 허용하면 평가가 무한히 내려가고, 드릴다운 빵부스러기도 끝이 없다.
+ */
+export function hasCycle(setId: string, expr: SetExpr, exprOfSet: (id: string) => SetExpr | undefined): boolean {
+    // ⚠ 방문표(visited)와 순환 판정을 **섞지 않는다** — 섞으면 다이아몬드(A → B → C, A → C)가
+    //   순환으로 오판된다. 순환은 "자기 자신에 다시 닿는 것"뿐이고, 남을 두 번 지나는 건 정상이다.
+    const visited = new Set<string>();
+    const stack = [...refsOf(expr)];
+    while (stack.length > 0) {
+        const id = stack.pop()!;
+        if (id === setId) return true;
+        if (visited.has(id)) continue;
+        visited.add(id);
+        const e = exprOfSet(id);
+        if (e) stack.push(...refsOf(e));
+    }
+    return false;
+}
 
 /**
  * 잎(조건)들 — **표시 순서 그대로**. 평평한 목록을 읽는 소비자 20여 곳이 이 투영 하나로 안 깨진다
@@ -66,6 +102,9 @@ export function leavesOf(e: SetExpr): FilterStage[] {
     const out: FilterStage[] = [];
     const walk = (n: SetExpr): void => {
         if (n.kind === "cond") { out.push(n.stage); return; }
+        // ⚠ 참조는 **잎이 아니다** — 그 안의 조건은 그 집합의 것이라 이 식의 조건 목록에 안 든다.
+        //   여기서 펼치면 "이 집합의 조건 N개"가 남의 조건까지 세고, 편집면이 남의 것을 만지게 된다.
+        if (!isGroup(n)) return;
         for (const c of n.of) walk(c);
     };
     walk(e);
@@ -76,6 +115,7 @@ export function leavesOf(e: SetExpr): FilterStage[] {
 /** 이 식이 든 잎 수 — leavesOf().length 의 배열 없는 판(자주 불리는 자리에서 쓰레기를 안 만든다). */
 export function leafCount(e: SetExpr): number {
     if (e.kind === "cond") return 1;
+    if (!isGroup(e)) return 0; // 참조는 조건 수에 안 든다(위 leavesOf 와 같은 이유)
     let n = 0;
     for (const c of e.of) n += leafCount(c);
     return n;
@@ -90,6 +130,7 @@ export function mapLeaves(e: SetExpr, fn: (s: FilterStage) => FilterStage): SetE
         const next = fn(e.stage);
         return next === e.stage ? e : { ...e, stage: next };
     }
+    if (!isGroup(e)) return e;
     let changed = false;
     const of = e.of.map((c) => {
         const n = mapLeaves(c, fn);
@@ -107,6 +148,7 @@ export function mapLeaves(e: SetExpr, fn: (s: FilterStage) => FilterStage): SetE
 export function filterLeaves(e: SetExpr, keep: (s: FilterStage) => boolean): SetExpr {
     const walk = (n: SetExpr): SetExpr | null => {
         if (n.kind === "cond") return keep(n.stage) ? n : null;
+        if (!isGroup(n)) return n; // 참조는 조건 필터의 대상이 아니다(내용이 남의 것이다)
         const of = n.of.map(walk).filter((c): c is SetExpr => c !== null);
         if (of.length === 0) return null;
         return of.length === n.of.length && of.every((c, i) => c === n.of[i]) ? n : { ...n, of };
@@ -116,7 +158,7 @@ export function filterLeaves(e: SetExpr, keep: (s: FilterStage) => boolean): Set
 
 /** 잎 하나를 루트에 붙인다 — 루트가 묶음이 아닐 수는 없다(파서가 보장). */
 export function appendLeaf(e: SetExpr, stage: FilterStage): SetExpr {
-    if (e.kind === "cond") return { kind: "and", id: ROOT_ID, of: [e, { kind: "cond", stage }] };
+    if (!isGroup(e)) return { kind: "and", id: ROOT_ID, of: [e, { kind: "cond", stage }] };
     return { ...e, of: [...e.of, { kind: "cond", stage }] };
 }
 
@@ -144,10 +186,13 @@ export function negOf(e: SetExpr, id: string): boolean {
 /** 이 노드의 주소 — 잎은 조건 id, 묶음은 노드 id. */
 export const idOf = (e: SetExpr): string => (e.kind === "cond" ? e.stage.id : e.id);
 
+/** 참조 잎 하나 — 승격(이름 붙이기)과 조립 승계가 같은 자를 쓴다. */
+export const refNode = (setId: string): SetExpr => ({ kind: "ref", id: newNodeId(), setId });
+
 /** 트리에서 노드 하나를 찾는다(없으면 null). 짚은 노드가 지워졌는지 화면이 확인하는 자. */
 export function findNode(e: SetExpr, id: string): SetExpr | null {
     if (idOf(e) === id) return e;
-    if (e.kind === "cond") return null;
+    if (!isGroup(e)) return null;
     for (const c of e.of) {
         const hit = findNode(c, id);
         if (hit !== null) return hit;
@@ -158,7 +203,7 @@ export function findNode(e: SetExpr, id: string): SetExpr | null {
 /** 노드 하나를 바꿔 끼운다 — 안 바뀐 가지는 참조가 유지된다. */
 export function replaceNode(e: SetExpr, id: string, fn: (n: SetExpr) => SetExpr): SetExpr {
     if (idOf(e) === id) return fn(e);
-    if (e.kind === "cond") return e;
+    if (!isGroup(e)) return e;
     let changed = false;
     const of = e.of.map((c) => {
         const n = replaceNode(c, id, fn);
@@ -177,14 +222,14 @@ export const negateNode = (e: SetExpr, id: string): SetExpr =>
 
 /** 연산자 토글(AND ↔ OR) — 묶음에만. 잎을 누르면 아무 일도 안 난다. */
 export const toggleOperator = (e: SetExpr, id: string): SetExpr =>
-    replaceNode(e, id, (n) => (n.kind === "cond" ? n : { ...n, kind: n.kind === "and" ? "or" : "and" } as SetExpr));
+    replaceNode(e, id, (n) => (isGroup(n) ? { ...n, kind: n.kind === "and" ? "or" : "and" } as SetExpr : n));
 
 /** 노드 삭제 — 빈 묶음은 같이 접힌다(filterLeaves 와 같은 규칙). 루트는 비워질 뿐 안 사라진다. */
 export function removeNode(e: SetExpr, id: string): SetExpr {
     if (idOf(e) === id) return emptyExpr();
     const walk = (n: SetExpr): SetExpr | null => {
-        if (n.kind === "cond") return idOf(n) === id ? null : n;
         if (idOf(n) === id) return null;
+        if (!isGroup(n)) return n;
         const of = n.of.map(walk).filter((c): c is SetExpr => c !== null);
         if (of.length === 0) return null;
         return of.length === n.of.length && of.every((c, i) => c === n.of[i]) ? n : { ...n, of };
@@ -202,8 +247,7 @@ export function removeNode(e: SetExpr, id: string): SetExpr {
  * 그래서 사용자는 "AND 로 추가 / OR 로 추가" 둘만 고르고, 중첩은 그 결과로 생긴다.
  * 짚은 노드가 없거나(null) 트리에 없으면 루트에 붙인다.
  */
-export function addLeafAt(e: SetExpr, at: string | null, stage: FilterStage, mode: "and" | "or"): SetExpr {
-    const leaf: SetExpr = { kind: "cond", stage };
+export function addNodeAt(e: SetExpr, at: string | null, leaf: SetExpr, mode: "and" | "or"): SetExpr {
     const target = at !== null && findNode(e, at) !== null ? at : idOf(e);
     return replaceNode(e, target, (n) => {
         if (n.kind === mode) return { ...n, of: [...n.of, leaf] };
@@ -212,6 +256,10 @@ export function addLeafAt(e: SetExpr, at: string | null, stage: FilterStage, mod
         return { kind: mode, id: newNodeId(), of: [n, leaf] };
     });
 }
+
+/** 조건 붙이기 — `addNodeAt` 의 조건 갈래(옛 이름 유지: 호출부가 셋이다). */
+export const addLeafAt = (e: SetExpr, at: string | null, stage: FilterStage, mode: "and" | "or"): SetExpr =>
+    addNodeAt(e, at, { kind: "cond", stage }, mode);
 
 // ── 저장물 파싱 ────────────────────────────────────────────────────────────
 //
@@ -225,12 +273,18 @@ type StageParser = (o: unknown) => FilterStage[] | null;
 export function parseExpr(o: unknown, parseStages: StageParser): SetExpr | null {
     const walk = (n: unknown): SetExpr | null => {
         if (typeof n !== "object" || n === null) return null;
-        const r = n as { kind?: unknown; neg?: unknown; id?: unknown; of?: unknown; stage?: unknown };
+        const r = n as { kind?: unknown; neg?: unknown; id?: unknown; of?: unknown; stage?: unknown; setId?: unknown };
         const neg = r.neg === true ? { neg: true as const } : {};
         if (r.kind === "cond") {
             // 잎은 **단계 하나짜리 배열**로 파싱한다 — 술어 승계 규칙(scope 부재 = day 등)이 거기 있다.
             const one = parseStages([r.stage]);
             return one && one.length === 1 ? { kind: "cond", stage: one[0]!, ...neg } : null;
+        }
+        if (r.kind === "ref") {
+            // 가리키는 집합이 **아직 있는지는 안 본다** — 그건 리졸버의 일이고, 화면이
+            // "깨진 참조 + 라벨"로 받는다(조용한 폴백 금지 규칙과 같은 자리).
+            if (typeof r.setId !== "string" || r.setId === "") return null;
+            return { kind: "ref", id: typeof r.id === "string" && r.id !== "" ? r.id : newNodeId(), setId: r.setId, ...neg };
         }
         if (r.kind !== "and" && r.kind !== "or") return null;
         const of = (Array.isArray(r.of) ? r.of : []).map(walk).filter((c): c is SetExpr => c !== null);
@@ -240,5 +294,5 @@ export function parseExpr(o: unknown, parseStages: StageParser): SetExpr | null 
     const e = walk(o);
     // 루트는 묶음이어야 한다 — 잎 하나짜리 루트가 오면 AND 로 감싼다(붙이기·비우기가 늘 성립하게).
     if (e === null) return null;
-    return e.kind === "cond" ? { kind: "and", id: ROOT_ID, of: [e] } : e;
+    return isGroup(e) ? e : { kind: "and", id: ROOT_ID, of: [e] };
 }

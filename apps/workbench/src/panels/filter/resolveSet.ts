@@ -12,7 +12,7 @@
 // **넓어지는** 방향이라, 집합 하나 지웠는데 어느 패널이 전체를 보며 틀린 분모로 계속 읽게 된다.
 // "결손은 결손"(축 규칙 3)이 참조에도 적용되는 것.
 import {
-    expandUniverse, tallyFunnel,
+    expandUniverse, funnelKey, tallyFunnel,
     type ChartRef, type FunnelItem, type FunnelResult, type Grain, type PointDefinition,
 } from "@trade-data-manager/market/domain";
 import { expandToPointItems } from "../../lib/grainView.js";
@@ -129,6 +129,31 @@ export function expandRefToPoints(ref: SetRef, r: ResolvedSet, ctx: SetResolveCt
     return expandToPointItems(r.items, ctx.timesOf);
 }
 
+/**
+ * 참조 멤버십 사전 — `∈ 집합` 잎이 묻는 것. 그 집합을 **같은 리졸버로** 풀어 키 집합을 만든다.
+ *
+ * ⚠ **순환은 결손으로 끊는다.** 저장 시 거절(expr.hasCycle)이 1차 방어선이지만, 저장물이 손으로
+ * 편집되거나 규칙이 바뀐 뒤에도 여기서 무한 재귀가 나면 안 된다 — 지금 푸는 중인 id 를 들고 있다가
+ * 다시 만나면 null(모름)을 준다. 거짓이 아니라 모름인 이유는 늘 같다: 값을 지어내지 않는다.
+ *
+ * 다른 우주(하루) 집합·지워진 집합도 null 이다 — 그 가지는 결손이 되고 결손 수가 사실을 말한다.
+ */
+const resolving = new Set<string>();
+
+function refMembersOf(ctx: SetResolveCtx, selfId: string | null): (setId: string) => ReadonlySet<string> | null {
+    return (setId) => {
+        if (setId === selfId || resolving.has(setId)) return null; // 순환 — 결손으로 끊는다
+        resolving.add(setId);
+        try {
+            const r = resolveSaved(setId, ctx);
+            if (r.broken || r.otherUniverse === true) return null;
+            return new Set(r.items.map(funnelKey));
+        } finally {
+            resolving.delete(setId);
+        }
+    };
+}
+
 /** 저장 집합 한 벌 — 이름 붙은 저장물의 유일한 풀이 경로(두 벌이면 언젠가 다른 답을 낸다). */
 function resolveSaved(setId: string, ctx: SetResolveCtx): ResolvedSet {
     const s = ctx.savedSetOf(setId);
@@ -189,7 +214,9 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
         // 이게 없으면 같은 조건·다른 게이트 두 집합이 서로의 정산을 먹는다
         // (조용히 다른 집합). 정의 없는 옛 저장물은 "cur"(현재 정의) — 현재 정의가 바뀌면 평가에 닿는
         // 변경은 전부 재료(타점·축 값·결과)를 지나 세대가 바뀌므로 낡은 정산이 살아남지 못한다.
-        sessionKey = `${set?.pointDef ? judgeKeyOf(set.pointDef) : "cur"}\n${JSON.stringify(stages)}`;
+        // ⚠ 키에 **식 전체**를 십는다(잎 목록이 아니라) — 참조·부정·묶음 구조가 키에 안 실리면
+        //   같은 잎들을 다르게 묶은 두 집합이 서로의 정산을 먹는다(조용히 다른 집합).
+        sessionKey = `${set?.pointDef ? judgeKeyOf(set.pointDef) : "cur"}\n${JSON.stringify(expr)}`;
         const sHit = sessionDefCache.get(sessionKey);
         if (sHit !== undefined) {
             memo.set(setId, sHit);
@@ -204,7 +231,10 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
     const grain = resolveAutoGrain(stages, mat.grainLook);
     const items = expandUniverse(ctx.candidates, grain, mat.timesOf);
     // ⚠ 단계는 **하나**다(식 전체) — 잎마다 한 단계로 쪼개면 AND 가 두 번 적용돼 OR 묶음이 틀린다.
-    const r: ResolvedFilter = { grain, active, tally: tallyFunnel(items, [toFunnelStage(evaluated, mat.evalLook)]) };
+    const r: ResolvedFilter = {
+        grain, active,
+        tally: tallyFunnel(items, [toFunnelStage(evaluated, mat.evalLook, refMembersOf(ctx, setId))]),
+    };
     memo.set(setId, r);
     if (sessionKey !== null) sessionDefCache.set(sessionKey, r);
     return r;

@@ -12,7 +12,7 @@
 // 판정 규칙은 안 바뀌어야 하고, 그래야 규칙만 테스트로 못박을 수 있다.
 // 3치 대수(and3·or3·not3)는 **도메인의 것**이다 — 여기서 다시 정의하면 "모름을 어떻게 다루나"라는
 // 같은 규칙이 두 곳에서 각자 자란다. 이 파일은 그 대수로 술어를 조립하는 일만 한다.
-import { and3, not3, or3, type FunnelItem, type Verdict } from "@trade-data-manager/market/domain";
+import { and3, funnelKey, not3, or3, type FunnelItem, type Verdict } from "@trade-data-manager/market/domain";
 import { rowKeyToChartKey } from "../../lib/pointKey.js";
 import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { passesPoint, type SectionRanks, type ThemeProjection } from "../../lib/themeStrength.js";
@@ -249,14 +249,25 @@ export function evalStage(s: FilterStage, item: FunnelItem, look: EvalLookup): V
  * 빈 묶음: AND 는 공허참, OR 은 공허거짓(`and3([])`/`or3([])` 의 값 그대로). 평가 전에 `activeExpr`
  * 이 빈 묶음을 접으므로 실제로는 루트가 비었을 때만 닿는다.
  */
-export function evalExpr(e: SetExpr, item: FunnelItem, look: EvalLookup): Verdict {
-    const v = e.kind === "cond"
-        ? evalStage(e.stage, item, look)
-        : e.kind === "and"
-            ? and3(e.of.map((c) => evalExpr(c, item, look)))
-            : or3(e.of.map((c) => evalExpr(c, item, look)));
+export function evalExpr(e: SetExpr, item: FunnelItem, look: EvalLookup, refs: RefMembers = () => null): Verdict {
+    let v: Verdict;
+    if (e.kind === "cond") v = evalStage(e.stage, item, look);
+    else if (e.kind === "ref") {
+        const m = refs(e.setId);
+        // ⚠ **깨진 참조는 결손이지 거짓이 아니다** — 지워진 집합을 "안 맞았다"로 세면 그 가지가
+        //   조용히 빈 집합이 된다. 모름으로 두면 결손 수가 그 사실을 말한다(값을 지어내지 않는다).
+        v = m === null ? undefined : m.has(funnelKey(item));
+    } else v = e.kind === "and"
+        ? and3(e.of.map((c) => evalExpr(c, item, look, refs)))
+        : or3(e.of.map((c) => evalExpr(c, item, look, refs)));
     return e.neg === true ? not3(v) : v;
 }
+
+/**
+ * 참조 멤버십 사전 — `setId` → 그 집합의 항목 키 집합. **null = 못 푼다**(지워진 집합·순환·다른 우주).
+ * 키는 `funnelKey` 다(항목 동일성의 유일한 자 — 여기서 다른 키를 쓰면 같은 항목이 서로 다른 것이 된다).
+ */
+export type RefMembers = (setId: string) => ReadonlySet<string> | null;
 
 /**
  * 식을 core 깔때기가 먹는 모양으로 — **단계 하나**다. 정산은 술어를 모르고, 판정은 정산을 모른다.
@@ -268,5 +279,6 @@ export function evalExpr(e: SetExpr, item: FunnelItem, look: EvalLookup): Verdic
 export const toFunnelStage = (
     e: SetExpr,
     look: EvalLookup,
+    refs: RefMembers = () => null,
 ): { id: string; verdictOf: (item: FunnelItem) => Verdict } =>
-    ({ id: "expr", verdictOf: (item: FunnelItem) => evalExpr(e, item, look) });
+    ({ id: "expr", verdictOf: (item: FunnelItem) => evalExpr(e, item, look, refs) });

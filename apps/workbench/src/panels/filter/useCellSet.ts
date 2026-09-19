@@ -114,6 +114,12 @@ export function toCellExpr(expr: SetExpr): { expr: CellExpr | null; stages: Cell
                 };
             return node;
         }
+        if (e.kind === "ref") {
+            // ⚠ 하루 우주는 **셀**이 항목이고 참조가 가리키는 집합은 종단 좌표다 — 멤버십을 물을 키가
+            //   아예 다르다. 그래서 결손이고, AND 에 있으면 그 묶음이 통째로 빠진다(아래 규칙).
+            //   재료가 생기면(하루 집합을 참조로 쓸 수 있게 되면) 여기 한 줄이 켜진다.
+            return null;
+        }
         const of: CellExpr[] = [];
         for (const c of e.of) {
             const r = walk(c);

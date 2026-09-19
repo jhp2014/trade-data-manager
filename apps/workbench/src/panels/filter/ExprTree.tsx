@@ -13,11 +13,12 @@
 // 어느 노드를 폈나는 `panelUi`(슬롯 낟알)에 산다 — 식과 함께 저장하면 같은 집합을 두 패널이 다르게
 // 접을 수 없고, 저장물이 화면 사정으로 더러워진다.
 import { useMemo } from "react";
-import { FAIL } from "../../styles/palette.js";
+import { FAIL, PIN } from "../../styles/palette.js";
 import { renderExpr } from "./exprRender.js";
 import { idOf, isGroup, type SetExpr } from "./expr.js";
 import type { FilterStage } from "./stage.js";
-import { iconBtn } from "./ui.js";
+import { iconBtn, textInput } from "./ui.js";
+import { InlineRename } from "../../ui/InlineRename.js";
 
 /** 처음 열었을 때 펴 두는 깊이 — 큰 식을 전부 펴면 화면을 넘는다(2026-09-19 확정: 깊이 2). */
 export const DEFAULT_OPEN_DEPTH = 2;
@@ -42,6 +43,19 @@ export interface ExprTreeHandlers {
     onRemoveNode: (id: string) => void;
     /** 인라인 칩 클릭 — 그 조건의 편집면을 연다(줄 이름 클릭과 같은 자리로 간다). */
     onOpenLeaf: (id: string, e: React.MouseEvent) => void;
+    /** 참조의 표시 재료 — 이름·깨짐·쓰는 곳 수. */
+    refInfo: (setId: string) => { name: string; broken: boolean; usedBy: number };
+    /** 참조 열기 = **편집 대상 전환**(그 집합을 깔때기로 연다). */
+    onOpenRef: (setId: string) => void;
+    /**
+     * **이름 붙이기(승격)** — 지금 이름을 받는 중인 묶음 id(없으면 null)와 그 손잡이들.
+     * 이름을 붙이면 그 묶음이 집합으로 떨어져 나가고 자리엔 참조가 남는다 — 중첩을 재사용 가능하게
+     * 만드는 유일한 손짓이다.
+     */
+    promotingId: string | null;
+    onPromoteStart: (id: string) => void;
+    onPromoteCommit: (id: string, name: string) => void;
+    onPromoteCancel: () => void;
 }
 
 export function ExprTree({ expr, handlers }: { expr: SetExpr; handlers: ExprTreeHandlers }): JSX.Element {
@@ -61,6 +75,8 @@ function Node({ e, depth, counter, h }: {
         counter.n += 1;
         return <>{h.renderLeaf(e.stage, counter.n)}</>;
     }
+    // 참조는 **접힌 한 줄**이다 — 내용은 그 집합의 것이라 여기서 못 펴고 못 고친다(열어야 한다).
+    if (e.kind === "ref") return <RefRow e={e} h={h} />;
 
     const id = idOf(e);
     const picked = h.pickedId === id;
@@ -95,7 +111,18 @@ function Node({ e, depth, counter, h }: {
                 <span style={{ fontSize: 9.5, color: "var(--text-tertiary)" }}>
                     {e.kind === "and" ? "모두" : "하나라도"} · {e.of.length}
                 </span>
+                {h.promotingId === id ? (
+                    <span onClick={(ev) => ev.stopPropagation()} style={{ flex: 1, minWidth: 0 }}>
+                        <InlineRename initial="" onCommit={(nm) => h.onPromoteCommit(id, nm)} onCancel={h.onPromoteCancel}
+                            style={{ ...textInput, width: "100%", fontSize: 11, padding: "1px 5px" }} />
+                    </span>
+                ) : null}
                 <span style={{ marginLeft: "auto", display: "flex", gap: 3 }}>
+                    {h.promotingId !== id && (
+                        <button onClick={(ev) => { ev.stopPropagation(); h.onPromoteStart(id); }}
+                            title="이름 붙이기 — 이 묶음이 집합으로 떨어져 나가고 자리엔 참조가 남습니다(재사용 가능)"
+                            style={{ ...iconBtn, fontSize: 9.5, width: "auto", padding: "0 4px" }}>이름</button>
+                    )}
                     <button onClick={(ev) => { ev.stopPropagation(); h.onNegate(id); }} title="이 묶음 부정(¬)" style={iconBtn}>¬</button>
                     <button onClick={(ev) => { ev.stopPropagation(); h.onRemoveNode(id); }} title="이 묶음 통째로 지우기" style={{ ...iconBtn, color: FAIL }}>✕</button>
                 </span>
@@ -115,6 +142,42 @@ function Node({ e, depth, counter, h }: {
     );
 }
 
+/**
+ * 참조 줄 — `∈ 이름`. 클릭은 **그 집합 열기**(편집 대상 전환)지 이 자리 편집이 아니다.
+ * 쓰는 곳이 둘 이상이면 뱃지로 알린다 — 고치면 그 전부가 따라 바뀐다는 사실을 손이 닿기 전에 말한다.
+ */
+function RefRow({ e, h }: { e: Extract<SetExpr, { kind: "ref" }>; h: ExprTreeHandlers }): JSX.Element {
+    const info = h.refInfo(e.setId);
+    return (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 6px 3px", borderBottom: "1px solid var(--border-subtle)" }}>
+            <span style={{ flexShrink: 0, fontSize: 11, color: PIN }}>∈</span>
+            {e.neg === true && <span style={{ flexShrink: 0, fontSize: 11, color: FAIL }}>¬</span>}
+            <button onClick={() => h.onOpenRef(e.setId)}
+                title={info.broken
+                    ? "지워진 집합입니다 — 이 가지는 결손으로 평가됩니다(빈 집합이 아닙니다)"
+                    : `${info.name} — 클릭 = 이 집합 열기(편집 대상이 바뀝니다)`}
+                style={{
+                    minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    border: "none", background: "transparent", padding: 0, font: "inherit", cursor: "pointer",
+                    fontSize: 12.5, fontWeight: 600, color: info.broken ? FAIL : "var(--text-primary)",
+                }}>
+                {info.broken ? "(지워진 집합)" : info.name}
+            </button>
+            {info.usedBy > 1 && (
+                <span title={`이 집합을 쓰는 곳 ${info.usedBy} — 열어서 고치면 그 전부가 따라 바뀝니다`}
+                    style={{ flexShrink: 0, fontSize: 9.5, color: "var(--warning)", border: "1px solid var(--warning)", borderRadius: 3, padding: "0 4px" }}>
+                    쓰는 곳 {info.usedBy}
+                </span>
+            )}
+            <span style={{ marginLeft: "auto", flexShrink: 0, display: "flex", gap: 4 }}>
+                <button onClick={() => h.onNegate(idOf(e))} title={e.neg === true ? "부정 해제" : "이 참조 부정(¬)"}
+                    style={{ ...iconBtn, color: e.neg === true ? FAIL : undefined }}>¬</button>
+                <button onClick={() => h.onRemoveNode(idOf(e))} title="이 참조 지우기" style={{ ...iconBtn, color: FAIL }}>✕</button>
+            </span>
+        </div>
+    );
+}
+
 /** 인라인 한 줄 — 최소 괄호는 `exprRender` 가 친다(표기의 유일한 출처). */
 function InlineRow({ e, h, counter, dashed }: {
     e: SetExpr;
@@ -122,7 +185,7 @@ function InlineRow({ e, h, counter, dashed }: {
     counter: { n: number };
     dashed: boolean;
 }): JSX.Element {
-    const pieces = renderExpr(e, h.labelOf);
+    const pieces = renderExpr(e, h.labelOf, (setId) => h.refInfo(setId).name);
     // 인라인이어도 잎 번호는 계속 매긴다 — 펴고 접는다고 번호가 흔들리면 "3번 조건"이 뜻을 잃는다.
     counter.n += pieces.filter((p) => p.kind === "leaf").length;
     return (
@@ -138,6 +201,19 @@ function InlineRow({ e, h, counter, dashed }: {
                     return <span key={i} style={{ fontSize: 11, color: "var(--text-tertiary)" }}>{p.open ? "(" : ")"}</span>;
                 }
                 if (p.kind === "neg") return <span key={i} style={{ fontSize: 10, color: FAIL }}>¬</span>;
+                if (p.kind === "ref") {
+                    return (
+                        <button key={i} onClick={() => h.onOpenRef(p.setId)}
+                            title={`${p.label} — 클릭 = 이 집합 열기(편집 대상이 바뀝니다)`}
+                            style={{
+                                font: "inherit", fontSize: 11, padding: "1px 6px", borderRadius: 4, cursor: "pointer",
+                                border: `0.5px solid ${PIN}`, background: "var(--bg-secondary)", color: PIN,
+                                maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            }}>
+                            {p.neg ? "¬ " : ""}∈ {p.label}
+                        </button>
+                    );
+                }
                 return (
                     <button key={i} onClick={(ev) => h.onOpenLeaf(p.id, ev)}
                         title={`${p.label} — 클릭 = 이 조건의 편집면으로`}

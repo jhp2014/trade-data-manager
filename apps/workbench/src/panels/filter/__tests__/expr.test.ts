@@ -8,7 +8,8 @@
 //   ③ **잎 단위 관대** — 잎 하나가 깨져도 집합 전체가 증발하지 않는다.
 import { describe, it, expect } from "vitest";
 import {
-    activeExpr, appendLeaf, emptyExpr, exprOfStages, filterLeaves, leafCount, leavesOf, mapLeaves, parseExpr,
+    activeExpr, addLeafAt, appendLeaf, emptyExpr, exprOfStages, filterLeaves, hasCycle, leafCount, leavesOf,
+    mapLeaves, parseExpr, refNode, refsOf, removeNode,
     type SetExpr,
 } from "../expr.js";
 import { parseStages, type FilterStage } from "../stage.js";
@@ -168,5 +169,67 @@ describe("승계 — 평평한 리스트는 루트 AND 가 되고 **id 는 그�
 
     it("빈 리스트 = 빈 루트(조건 0개 — '제한 없음'이지 '전부 탈락'이 아니다)", () => {
         expect(exprOfStages([])).toEqual(emptyExpr());
+    });
+});
+
+// ── 8단계: 참조 잎 ────────────────────────────────────────────────────────
+describe("참조 잎 — 이름이 곧 중첩의 수단", () => {
+    const ref = (setId: string): SetExpr => ({ ...refNode(setId), id: `n-${setId}` });
+
+    // ⚠ 참조를 잎으로 세면 "이 집합의 조건 N개"가 남의 조건까지 세고, 편집면이 남의 것을 만진다.
+    it("참조는 조건 목록에 안 든다 — 내용이 남의 것이다", () => {
+        const e: SetExpr = { kind: "and", id: "root", of: [{ kind: "cond", stage: stage("a") }, ref("fs1")] };
+        expect(leavesOf(e).map((s) => s.id)).toEqual(["a"]);
+        expect(leafCount(e)).toBe(1);
+    });
+
+    it("refsOf — 쓰는 집합 id 를 중복 없이 모은다", () => {
+        const e: SetExpr = { kind: "or", id: "root", of: [ref("fs1"), ref("fs2"), ref("fs1")] };
+        expect(refsOf(e).sort()).toEqual(["fs1", "fs2"]);
+    });
+
+    it("왕복 항등 — 부정된 참조까지", () => {
+        const e: SetExpr = { kind: "and", id: "root", of: [{ ...ref("fs1"), neg: true }] };
+        expect(parseExpr(JSON.parse(JSON.stringify(e)), parseStages)).toEqual(e);
+    });
+
+    it("setId 가 없거나 빈 참조는 그 잎만 떨어진다(잎 단위 관대)", () => {
+        const e = parseExpr({ kind: "and", id: "root", of: [{ kind: "ref", id: "n1" }, { kind: "cond", stage: stage("a") }] }, parseStages);
+        expect(leavesOf(e!).map((s) => s.id)).toEqual(["a"]);
+        expect(refsOf(e!)).toEqual([]);
+    });
+
+    it("삭제·필터가 참조를 통과한다 — 조건 필터의 대상이 아니다", () => {
+        const e: SetExpr = { kind: "and", id: "root", of: [ref("fs1"), { kind: "cond", stage: stage("a") }] };
+        expect(refsOf(removeNode(e, "a"))).toEqual(["fs1"]);   // 조건만 지워도 참조는 남는다
+        expect(refsOf(removeNode(e, "n-fs1"))).toEqual([]);     // 참조도 제 id 로 지워진다
+    });
+
+    it("addLeafAt 이 참조 자리도 감싼다 — 잎과 같은 자격", () => {
+        const e: SetExpr = { kind: "and", id: "root", of: [ref("fs1")] };
+        const next = addLeafAt(e, "n-fs1", stage("b"), "or");
+        expect(next.kind).toBe("and");
+        expect(next.kind !== "cond" && next.kind !== "ref" && next.of[0]!.kind).toBe("or");
+    });
+});
+
+describe("순환 참조 — 저장 시 거절의 자", () => {
+    const sets = new Map<string, SetExpr>();
+    const lookup = (id: string): SetExpr | undefined => sets.get(id);
+
+    it("자기 자신을 가리키면 순환", () => {
+        expect(hasCycle("A", { kind: "and", id: "r", of: [refNode("A")] }, lookup)).toBe(true);
+    });
+
+    it("건너서 닿아도 순환 — A → B → A", () => {
+        sets.set("B", { kind: "and", id: "rb", of: [refNode("A")] });
+        expect(hasCycle("A", { kind: "and", id: "ra", of: [refNode("B")] }, lookup)).toBe(true);
+    });
+
+    it("닿지 않으면 순환이 아니다 — 같은 집합을 둘이 가리켜도(다이아몬드)", () => {
+        sets.clear();
+        sets.set("B", { kind: "and", id: "rb", of: [refNode("C")] });
+        sets.set("C", { kind: "and", id: "rc", of: [] });
+        expect(hasCycle("A", { kind: "or", id: "ra", of: [refNode("B"), refNode("C")] }, lookup)).toBe(false);
     });
 });

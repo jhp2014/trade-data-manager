@@ -32,7 +32,7 @@ import { CellStageFields } from "./CellPredicateFields.js";
 import { kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
 import { GroupEditors, RailEditors, type GroupEditorAnchor, type RailEditor } from "./ConditionEditors.js";
 import { ExprTree, type ExprTreeHandlers } from "./ExprTree.js";
-import { findNode, negOf, negateNode, removeNode, toggleOperator } from "./expr.js";
+import { findNode, negOf, negateNode, refsOf, removeNode, toggleOperator } from "./expr.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
@@ -90,6 +90,11 @@ export function ConditionBoard({ panelId }: {
     const expr = useWorkbench((s) => s.filterExpr);
     const setExpr = useWorkbench((s) => s.setFilterExpr);
     const addStageAt = useWorkbench((s) => s.addFilterStageAt);
+    const savedSets = useWorkbench((s) => s.savedSets);
+    const openSet = useWorkbench((s) => s.openSet);
+    const promoteNode = useWorkbench((s) => s.promoteNodeToSet);
+    /** 이름을 받는 중인 묶음 — 세션 한정(입력 중 새로고침이면 그냥 없던 일). */
+    const [promoting, setPromoting] = useState<string | null>(null);
     /** 짚은 노드 = **삽입 지점**. 세션 한정 — 새로고침 뒤 "어디에 붙더라"를 기억하게 두지 않는다. */
     const [pickedRaw, setPicked] = useState<string | null>(null);
     /** 접힘은 **보기**라 저장물이 아니라 패널 UI 에 산다(식과 함께 저장하면 저장물이 화면 사정으로 더러워진다). */
@@ -195,8 +200,22 @@ export function ConditionBoard({ panelId }: {
             const st = stages.find((x) => x.id === id);
             if (st) openEditor(st, e);
         },
+        refInfo: (setId) => {
+            const set = savedSets.find((x) => x.id === setId);
+            // "쓰는 곳" = 이 집합을 참조하는 **저장 집합 수** + 지금 작업 중인 식(그것도 한 곳이다).
+            const usedBy = savedSets.filter((x) => refsOf(x.expr).includes(setId)).length
+                + (refsOf(expr).includes(setId) ? 1 : 0);
+            return { name: set?.name ?? "(지워진 집합)", broken: set === undefined, usedBy };
+        },
+        // 열기 = **편집 대상 전환**(그 집합의 식이 작업 깔때기로 온다). 그 자리에서 고치게 두지
+        // 않는 이유: 참조는 남의 것이라, 여기서 고치면 그 집합을 쓰는 다른 식이 전부 따라 바뀐다.
+        onOpenRef: (setId) => openSet(setId),
+        promotingId: promoting,
+        onPromoteStart: (id) => setPromoting(id),
+        onPromoteCommit: (id, name) => { promoteNode(id, name); setPromoting(null); },
+        onPromoteCancel: () => setPromoting(null),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }), [expr, stages, v.labelLook, v.deadStageIds, setUniverse, picked, flipped, livePanelOf]);
+    }), [expr, stages, savedSets, v.labelLook, v.deadStageIds, setUniverse, picked, flipped, promoting, livePanelOf]);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>

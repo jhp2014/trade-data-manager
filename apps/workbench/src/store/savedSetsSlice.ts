@@ -8,7 +8,8 @@ import type { StateCreator } from "zustand";
 import type { PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import { parseStages } from "../panels/filter/stage.js";
-import { exprOfStages, parseExpr, type SetExpr } from "../panels/filter/expr.js";
+import { exprOfStages, findNode, hasCycle, parseExpr, refNode, replaceNode, ROOT_ID, type SetExpr } from "../panels/filter/expr.js";
+import { LEGACY_ASSEMBLIES_KEY, parseLegacyAssemblies } from "../panels/filter/legacyAssemblies.js";
 import { parseUniverse, type Universe } from "../panels/filter/universe.js";
 import { putExpr } from "./filterFunnelSlice.js";
 import { parsePointDef } from "../lib/pointDef.js";
@@ -86,14 +87,48 @@ export function parseSavedSets(o: unknown): SavedSet[] | null {
 
 /** 새 키를 먼저 읽고, 없으면 옛 "저장한 깔때기"를 부위=생존자로 이관한다(id 유지 — 옛 필터 바인딩이
  *  같은 id 의 saved 참조로 무손실 전환되는 근거). 옛 키는 안 지운다 — 새 키가 생기면 자연히 안 읽힌다. */
+/**
+ * 옛 조립(∪) 승계 — 재워 둔 저장물(`legacyAssemblies`)을 **`OR(참조…)` 집합**으로 올린다.
+ * 2026-09-08 조립의 뜻이 정확히 이것이었다: 부품 참조들의 평평한 합집합. 그래서 무손실이다.
+ *
+ * 규칙 셋:
+ *  · **꺼둔 부품(enabled=false)은 안 싣는다** — 그때 화면이 내던 것이 곧 켠 부품들의 합집합이었다.
+ *  · **죽은 부품(지워진 setId)도 싣는다** — 거르면 조용히 다른 집합이 된다. 참조가 깨진 채로 서고
+ *    화면이 "(지워진 집합)" 으로 말한다(결손이지 거짓이 아니다).
+ *  · **이름 충돌은 꼬리 숫자** — 같은 이름 덮어쓰기(saveSet 규칙)는 승계의 뜻이 아니다.
+ *
+ * 한 번 올리고 나면 새 키에 실려 다시 안 돈다(옛 키는 안 지운다 — 되돌림 경로).
+ */
+function migrateAssemblies(sets: SavedSet[], universe: Universe): SavedSet[] {
+    const legacy = loadJson(LEGACY_ASSEMBLIES_KEY, parseLegacyAssemblies);
+    if (!legacy || legacy.length === 0) return sets;
+    const out = [...sets];
+    for (const a of legacy) {
+        const members = a.members.filter((m) => m.enabled);
+        if (members.length === 0) continue;
+        let name = `∪ ${a.name}`;
+        for (let i = 2; out.some((x) => x.name === name); i++) name = `∪ ${a.name} ${i}`;
+        out.push({
+            id: a.id, // 옛 조립 id 를 그대로 — 그 조립을 가리키던 핀이 나중에 이어질 수 있는 유일한 끈이다
+            name,
+            expr: { kind: "or", id: ROOT_ID, of: members.map((m) => refNode(m.setId)) },
+            universe,
+        });
+    }
+    return out;
+}
+
 const loadSavedSets = (): SavedSet[] => {
     // 식 트리로 바뀌기 **전에** v3 원문을 한 번 뜬다(되돌림 경로 — 새 모양을 옛 코드가 읽으면 통째 폐기다).
     backupRawOnce(SAVED_SETS_V3_KEY, "pre-expr");
     const fresh = loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null));
     if (fresh) return parseSavedSets(fresh) ?? [];
     // v3(평평한 리스트)를 **승계해서 읽는다** — 같은 파서가 stages 갈래로 받아 AND(잎…) 로 올린다.
+    // 옛 조립도 이때 함께 올라온다(OR(참조…)). 새 키에 실리는 순간 둘 다 다시 안 돈다.
     const v3 = loadJson(SAVED_SETS_V3_KEY, (o) => (Array.isArray(o) ? o : null));
-    if (v3) return parseSavedSets(v3) ?? [];
+    if (v3) return persistSavedSets(migrateAssemblies(parseSavedSets(v3) ?? [], "longitudinal"));
+    const onlyAssemblies = migrateAssemblies([], "longitudinal");
+    if (onlyAssemblies.length > 0) return persistSavedSets(onlyAssemblies);
     // v3 리셋 이전 키들(v2·wb.savedSets·LEGACY)은 읽지 않는다 — 옛 leaf·t 없는 결과 술어의 뒷문이 된다.
     void LEGACY_SETS_KEY;
     return [];
@@ -121,6 +156,12 @@ export interface SavedSetsSlice {
     /** 이름만 바꾼다(id·조건 유지 — 바인딩이 id 로 따라오므로 이름은 표시물일 뿐). 빈 이름·다른 집합과 같은 이름은 무시. */
     renameSet: (id: string, name: string) => void;
     deleteSet: (id: string) => void;
+    /**
+     * **이름 붙이기(승격)** — 작업 식의 묶음 하나를 집합으로 떼어내고, 그 자리엔 참조가 남는다.
+     * 이게 중첩을 재사용 가능하게 만드는 유일한 손짓이다(익명 묶음 = 아직 이름값을 못 한 구조).
+     * 빈 이름·중복 이름·없는 노드는 무시한다(saveSet 의 규칙과 같은 자).
+     */
+    promoteNodeToSet: (nodeId: string, name: string) => void;
     /** 마지막으로 연 집합 — 덮어쓰기 버튼의 대상. 그 집합이 지워지면 풀린다(세션 한정). */
     openedSetId: string | null;
 }
@@ -136,6 +177,10 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         const expr = s.filterExpr;
         const universe = s.filterUniverse;
         const at = s.savedSets.findIndex((x) => x.name === n);
+        // ⚠ **순환 참조 거절** — 자기를 (건너서라도) 참조하는 집합은 평가가 무한히 내려가고 드릴다운
+        //   빵부스러기도 끝이 없다. 엎어쓰기일 때만 생길 수 있다(새 id 는 아직 아무도 안 가리킨다).
+        const exprOfSet = (sid: string): SetExpr | undefined => s.savedSets.find((x) => x.id === sid)?.expr;
+        if (at >= 0 && hasCycle(s.savedSets[at]!.id, expr, exprOfSet)) return {};
         // 정의도 사본으로 — 식과 같은 이유(자립). 저장 순간의 정의가 이 집합의 모수 정의다.
         const saved = at >= 0
             ? { ...s.savedSets[at]!, expr, universe, pointDef: s.pointDef }
@@ -146,8 +191,22 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         // 방금 저장한 집합이 곧 "열어 둔 집합" — 이어서 만지면 덮어쓰기가 그 집합을 가리킨다.
         return { savedSets: next, openedSetId: saved.id };
     }),
+    promoteNodeToSet: (nodeId, name) => set((s) => {
+        const n = name.trim();
+        const node = findNode(s.filterExpr, nodeId);
+        if (n === "" || node === null || s.savedSets.some((x) => x.name === n)) return {};
+        const id = `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+        const saved: SavedSet = { id, name: n, expr: node, universe: s.filterUniverse, pointDef: s.pointDef };
+        const sets = persistSavedSets([...s.savedSets, saved]);
+        // 그 자리는 참조로 — **부정은 참조에 남긴다**(¬(a∧b) 를 승격했는데 부정이 사라지면 뜻이 갈린다).
+        const neg = node.neg === true;
+        const next = replaceNode(s.filterExpr, nodeId, () => (neg ? { ...refNode(id), neg: true } : refNode(id)));
+        return { savedSets: sets, openedSetId: id, ...putExpr(next) };
+    }),
     overwriteSet: (id) => set((s) => {
         if (!s.savedSets.some((x) => x.id === id)) return {};
+        const exprOfSet = (sid: string): SetExpr | undefined => s.savedSets.find((x) => x.id === sid)?.expr;
+        if (hasCycle(id, s.filterExpr, exprOfSet)) return {}; // 순환 거절(saveSet 과 같은 규칙)
         // 조건·정의만 바뀐다(이름 유지). 같은 조건에서 나온 형제 집합이 있어도 **이 하나만** — 느리지만 암묵이 없다.
         // 우주도 함께 굳힌다 — 덮어쓰기는 "지금 만지는 것"을 그 집합으로 밀어 넣는 손짓이라, 우주만
         // 옛것으로 남으면 조건과 우주가 갈린 집합이 생긴다(그 순간 결손 지도가 거짓말한다).
