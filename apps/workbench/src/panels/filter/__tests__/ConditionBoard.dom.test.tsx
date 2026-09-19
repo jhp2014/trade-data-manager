@@ -289,6 +289,19 @@ describe("식 트리 — 묶음·부정·삽입 지점", () => {
         expect(e.kind === "or" && e.of.map((c) => c.kind)).toEqual(["and", "cond"]);
     });
 
+    // ⚠ 실측이 잡은 자리 — 셀 종류만 삽입 지점을 타고 **그룹·테마·급타점은 루트에 AND 로** 갔다.
+    //   "조건 만들기의 입구는 하나"가 깨지면 토글이 조용히 무시된다. 셀이 아닌 종류로 한 번 더 잠근다.
+    it("셀이 아닌 종류(테마 강도)도 'OR 로 추가'를 **탄다** — 붙는 곳을 정하는 손은 하나다", () => {
+        useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE]) });
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 조건")!); });
+        act(() => { fireEvent.click(byText(baseElement, "OR 로 추가")!); });
+        act(() => { fireEvent.click(byText(baseElement, "테마 강도")!); });
+        const e = useWorkbench.getState().filterExpr;
+        expect(e.kind).toBe("or");
+        expect(e.kind === "or" && e.of.map((c) => c.kind)).toEqual(["and", "cond"]);
+    });
+
     it("잎 부정 — ¬ 가 식에 실리고 줄에 표식이 선다", () => {
         useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE]) });
         const { container } = renderBoard();

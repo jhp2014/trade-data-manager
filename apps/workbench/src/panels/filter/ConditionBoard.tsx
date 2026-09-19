@@ -58,7 +58,6 @@ export function ConditionBoard({ panelId }: {
     const stages = useWorkbench(selectFilterStages);
     const toggleStage = useWorkbench((s) => s.toggleFilterStage);
     const removeStage = useWorkbench((s) => s.removeFilterStage);
-    const addStage = useWorkbench((s) => s.addFilterStage);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
     const setStage = useWorkbench((s) => s.setFilterStage);
     // 편집 대상의 **타입** — 팔레트 회색·결손 배지·칸 층위가 전부 이 하나로 갈린다(모드 스위치가 아니다).
@@ -112,8 +111,24 @@ export function ConditionBoard({ panelId }: {
     const exprIsEmpty = leafCount(expr) === 0 && refsOf(expr).length === 0;
     /** 삽입 지점의 사람 말 — 팝오버가 "여기에 붙는다"를 늘 적는다(모르는 채 누르지 않게). */
     const atLabel = picked === null ? "루트" : (findNode(expr, picked)?.kind === "or" ? "짚은 OR 묶음" : "짚은 AND 묶음");
+
+    /**
+     * 조건 만들기의 **유일한 입구** — 팔레트의 모든 종류가 이 하나를 지난다.
+     *
+     * ⚠ 한때 셀 종류만 `addStageAt` 을 타고 그룹·테마·급타점은 `addFilterStage`(루트에 AND)로 갔다.
+     * 그러면 `OR 로 추가` 를 켜고 그룹을 고르는 순간 **토글이 조용히 무시되고 기존 AND 에 합류한다**
+     * (실측이 잡은 자리). 붙는 곳을 정하는 손은 여기 하나여야 한다.
+     *
+     * 만든 조건의 id 를 돌려주는 이유: 연동을 새 행으로 옮기는 손(테마·급타점)이 그 id 를 쓴다.
+     * **"마지막 잎"으로 찾으면 안 된다** — 짚은 자리에 넣거나 OR 로 감싸면 새 잎이 끝이 아니다.
+     */
+    const addStageHere = (predicates: FilterPredicate[]): string | undefined => {
+        const before = new Set(selectFilterStages(useWorkbench.getState()).map((x) => x.id));
+        addStageAt(predicates, picked, addMode);
+        return selectFilterStages(useWorkbench.getState()).find((x) => !before.has(x.id))?.id;
+    };
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
-    const groupCreate = useGroupCreateFlow(addStage, setGroupEditor);
+    const groupCreate = useGroupCreateFlow((predicates) => { addStageHere(predicates ?? []); }, setGroupEditor);
 
     /**
      * 줄 이름 클릭 — 그 **종류의 편집면**으로. 1차원(날짜·시간·축 값)과 그룹은 **그 자리 팝오버**고,
@@ -241,7 +256,7 @@ export function ConditionBoard({ panelId }: {
                 {!v.isLoading && (
                     <AddCondition
                         setUniverse={universe}
-                        onCell={(p) => addStageAt([p], picked, addMode)}
+                        onCell={(p) => { addStageHere([p]); }}
                         mode={addMode}
                         onMode={setAddMode}
                         atLabel={atLabel}
@@ -252,12 +267,10 @@ export function ConditionBoard({ panelId }: {
                             // 행을 만든다(테마형) — (W,r) 기본값이 뜻을 갖고, **행이 있어야 축이 서고
                             // 열이 서서** "조건 없이 여러 (W,r) 을 열로 펼쳐 비교"가 성립한다.
                             if (nextHot === null) return; // 빈 자리 없음 — 겹치는 행을 만들지 않는다
-                            addStage([{ kind: "hotPoints", w: nextHot.w, r: nextHot.r, ranges: [] }]);
                             // **연동을 새 행으로 옮긴다** — 사다리가 매번 다른 (W,r) 을 집으므로 안 옮기면
-                            // 메뉴 라벨이 약속한 자리와 판이 실제로 보여주는 자리가 확정적으로 어긋난다
-                            // (addFilterStage 가 id 를 안 돌려줘 방금 append 된 마지막 행을 읽는다).
-                            const made = selectFilterStages(useWorkbench.getState()).at(-1);
-                            if (made) setLinkedHot(made.id);
+                            // 메뉴 라벨이 약속한 자리와 판이 실제로 보여주는 자리가 확정적으로 어긋난다.
+                            const made = addStageHere([{ kind: "hotPoints", w: nextHot.w, r: nextHot.r, ranges: [] }]);
+                            if (made) setLinkedHot(made);
                             openAndFocus(HOT_PANEL_ID);
                         }}
                         canAddHot={canAddHot}
@@ -266,9 +279,8 @@ export function ConditionBoard({ panelId }: {
                         onTheme={(e) => {
                             // 행만 만든다 — 판 연동은 별도 결정(pull). 방금 만든 행의 연동 목록을 바로 펼쳐
                             // 손이 이어지게 한다(무시하면 미연동 행으로 남는다 — 허용 상태).
-                            addStage([{ kind: "themeStrength", params: { ...DEFAULT_THEME_STRENGTH } }]);
-                            const made = selectFilterStages(useWorkbench.getState()).at(-1);
-                            if (made) setThemeLink({ stageId: made.id, x: e.clientX, y: e.clientY });
+                            const made = addStageHere([{ kind: "themeStrength", params: { ...DEFAULT_THEME_STRENGTH } }]);
+                            if (made) setThemeLink({ stageId: made, x: e.clientX, y: e.clientY });
                         }}
                     />
                 )}
