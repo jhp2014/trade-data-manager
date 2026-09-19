@@ -27,12 +27,21 @@ import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { FAIL, PIN, seriesColor } from "../../styles/palette.js";
 import { WorksetRowShell, visibleChips, type ChipItem } from "../WorksetChipRow.js";
 import { useFunnel } from "./FunnelContext.js";
+import type { ResolvedSet } from "./resolveSet.js";
 import { cloneDeficiencies, UNIVERSE_LABEL, UNIVERSES } from "./universe.js";
 import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
 import { textInput } from "./ui.js";
 
 const PINS_KEY = "wb.funnel.setPins";
 const parsePins = (o: unknown): string[] | null => (Array.isArray(o) ? o.filter((x): x is string => typeof x === "string") : null);
+
+/**
+ * 건수 표기 한 곳 — 칩 줄과 관리 판이 **같은 말**을 해야 한다(두 자리가 다른 수를 적으면 어느 쪽이
+ * 진짜냐가 생긴다). 이 리졸버는 **종단 집합만** 푼다 — 하루 집합의 건수는 여기서 셀 수 없다(날짜가
+ * 있어야 하고 평가가 5.7초다). "0건"이라고 적으면 조건이 아무것도 못 걸었다는 거짓말이 된다.
+ */
+const countLabel = (r: ResolvedSet): string =>
+    r.otherUniverse ? "하루 · 셀" : r.broken ? "—" : `${r.items.length.toLocaleString("ko-KR")}건`;
 
 const sectionHead: React.CSSProperties = { padding: "4px 10px 3px", fontSize: 9.5, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)" };
 
@@ -57,25 +66,18 @@ export function SetRow(): JSX.Element {
     const isOn = (ref: SetRef): boolean => selectedKey === setRefKey(ref);
     // 칩 클릭 = 선택 토글 — 같은 칩을 다시 누르면 연동으로 돌아온다(선택은 시선이지 상태 전환이 아니다).
     const toggle = (ref: SetRef): void => selectSet(isOn(ref) ? null : ref);
-    const countOf = (ref: SetRef): string => {
-        const r = v.resolveSet(ref);
-        // 이 리졸버는 **종단 집합만** 푼다 — 하루 집합의 건수는 여기서 셀 수 없다(날짜가 있어야 하고
-        // 평가가 5.7초다). "0건"이라고 적으면 조건이 아무것도 못 걸었다는 거짓말이 된다.
-        if (r.otherUniverse) return "하루 · 셀";
-        return r.broken ? "—" : `${r.items.length.toLocaleString("ko-KR")}건`;
-    };
+    const countOf = (ref: SetRef): string => countLabel(v.resolveSet(ref));
 
     const universeRef: SetRef = { kind: "universe" };
     const linkedRef: SetRef = { kind: "survivors" };
 
     const savedItems: ChipItem[] = savedSets.map((f) => {
         const ref: SetRef = { kind: "saved", setId: f.id };
-        const broken = v.resolveSet(ref).broken;
+        // ⚠ 표식이 없는 이유: 저장 집합의 깨짐은 **집합이 없을 때**뿐인데(resolveSaved) 이 목록은
+        // savedSets 를 도므로 늘 존재한다. 깨진 참조를 말하는 자리는 패널 바인딩과 조립 부품 줄이다.
         return {
-            key: f.id, label: broken ? `⚠ ${f.name}` : f.name, active: isOn(ref), color: PIN,
-            title: broken
-                ? `${f.name} — 참조가 깨졌습니다. 집합 관리에서 열어 다시 저장하세요.`
-                : `${f.name} — 필터 ${f.stages.length}개 · ${countOf(ref)}\n클릭 = 이 집합 보기(다시 누르면 연동)`,
+            key: f.id, label: f.name, active: isOn(ref), color: PIN,
+            title: `${f.name} — 필터 ${f.stages.length}개 · ${countOf(ref)}\n클릭 = 이 집합 보기(다시 누르면 연동)`,
             onClick: () => toggle(ref),
         };
     });
@@ -208,14 +210,14 @@ function SetManager({ pins, onTogglePin, onPick }: {
                                 style={{ ...textInput, flex: 1, minWidth: 0, fontSize: 11.5, padding: "2px 6px" }} />
                         ) : (
                             <button onClick={() => onPick(ref)}
-                                title={`${f.name} — 필터 ${f.stages.length}개 · ${r.broken ? "깨진 참조" : `${r.items.length.toLocaleString("ko-KR")}건`}${opened ? " · 보드에 열려 있음" : ""}\n클릭 = 이 집합 보기`}
+                                title={`${f.name} — 필터 ${f.stages.length}개 · ${countLabel(r)}${opened ? " · 보드에 열려 있음" : ""}\n클릭 = 이 집합 보기`}
                                 style={{
                                     flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent",
-                                    color: r.broken ? FAIL : "var(--text-primary)", padding: "3px 4px", cursor: "pointer",
+                                    color: "var(--text-primary)", padding: "3px 4px", cursor: "pointer",
                                     font: "inherit", fontSize: 11.5, fontWeight: active ? 700 : 400,
                                     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                                 }}>
-                                {r.broken ? "⚠ " : ""}{f.name}{opened ? <span style={{ marginLeft: 5, fontSize: 9.5, color: "var(--accent-primary)" }}>열림</span> : null}
+                                {f.name}{opened ? <span style={{ marginLeft: 5, fontSize: 9.5, color: "var(--accent-primary)" }}>열림</span> : null}
                             </button>
                         )}
                         <button onClick={() => onTogglePin(f.id)} aria-pressed={pinned} style={smallBtn("normal", pinned)}

@@ -58,15 +58,20 @@ export function parseSavedSets(o: unknown): SavedSet[] | null {
     if (!Array.isArray(o)) return null;
     const out: SavedSet[] = [];
     for (const raw of o) {
-        const f = raw as { id?: unknown; name?: unknown; stages?: unknown; pointDef?: unknown; universe?: unknown };
+        const f = raw as { id?: unknown; name?: unknown; stages?: unknown; part?: unknown; pointDef?: unknown; universe?: unknown };
         if (typeof f?.id !== "string" || typeof f?.name !== "string") continue;
+        // 옛 부위(part) 승계 — **"짚은 칸"이던 집합은 이 항목만 버린다**(2026-09-19 사용자 확정).
+        // 조용히 최종 생존으로 넓히지 않는 이유: 그 집합은 "단계 s1 의 fail 칸"을 뜻했고 생존자는
+        // 보통 훨씬 크고 성격이 다르다 — 이름만 같은 다른 모수를, 고정 구독 중인 패널이 표식 없이
+        // 그리게 된다. 옛 `cell` **바인딩**을 orphan 으로 큰 소리 내는 규칙(setRef.ts)과 같은 편이다.
+        // 생존자 부위·부위 없음은 그대로 산다(부위라는 개념만 없어졌을 뿐 집합은 멀쩡하다).
+        if (typeof f.part === "object" && f.part !== null && (f.part as { kind?: unknown }).kind === "cell") continue;
         const stages = parseStages(f.stages);
         if (!stages) continue;
         const universe = parseUniverse(f.universe); // 부재·오염 = 종단(집합 폐기 사유가 아니다)
         // 정의는 additive — 없거나 오염이면 필드 생략(열 때 현재 정의 유지). 집합 통째 폐기 사유가 아니다.
         const pointDef = f.pointDef !== undefined ? (parsePointDef(f.pointDef) ?? undefined) : undefined;
-        // 옛 저장물의 pointSource(출처 토글)·part(부위)는 조용히 버린다 — 출처가 하나가 됐고(2026-09-01),
-        // 부위는 5칸 진단과 함께 은퇴했다(2026-09-19). 둘 다 집합 폐기 사유가 아니다.
+        // 옛 저장물의 pointSource(출처 토글)는 조용히 버린다 — 출처가 하나가 됐다(2026-09-01).
         out.push({ id: f.id, name: f.name, stages, universe, ...(pointDef ? { pointDef } : {}) });
     }
     return out;

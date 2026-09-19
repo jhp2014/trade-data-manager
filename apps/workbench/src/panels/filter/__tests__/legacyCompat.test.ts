@@ -77,10 +77,12 @@ describe("옛 작업 깔때기 저장물", () => {
 });
 
 describe("옛 저장 집합", () => {
-    it("③ 전멸 감지 + 개수 보존 — 옛 부위(part)는 통째로 무시된다(2026-09-19 5칸 은퇴)", () => {
+    it("③ 전멸 감지 + 옛 '짚은 칸' 부위 집합만 버린다(2026-09-19 5칸 은퇴)", () => {
         const sets = parseSavedSets(LEGACY_SAVED_SETS);
         expect(sets).not.toBeNull();
-        expect(sets).toHaveLength(3); // 옛 부위가 무엇이었든(깨진 것 포함) 집합은 전부 산다
+        // set2·set3(부위=칸)만 버려진다 — 목록 통째 폐기가 아니다. 조용히 생존자로 넓히지 않는 이유는
+        // savedSetsSlice.parseSavedSets 주석 참조(이름만 같은 다른 모수가 된다).
+        expect(sets!.map((s) => s.id)).toEqual(["set1"]);
         for (const s of sets!) expect(s).not.toHaveProperty("part");
     });
 
