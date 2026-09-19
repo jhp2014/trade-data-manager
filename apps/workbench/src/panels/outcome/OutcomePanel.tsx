@@ -55,7 +55,7 @@ export function OutcomePanel({ panelId = "outcome-rails" }: { panelId?: string }
         : subject.time !== null ? pointKeyOf(subject.code, subject.date, subject.time)
             : chartKeyOf(subject.code, subject.date);
 
-    // 보는 집합 멤버 오버레이 — RailPanel 과 같은 규칙: 조건/집합/짚음이 걸렸을 때만(전부 멤버는 바탕색).
+    // 보는 집합 멤버 오버레이 — RailPanel 과 같은 규칙: 조건이나 집합이 걸렸을 때만(전부 멤버는 바탕색).
     // 바인딩은 **패널 것**이다(2026-09-18 단계 ④): 기본 연동 + 이 패널에 고정 가능, 하루 우주면 셀 집합.
     const bound = useBoundSet(panelId);
     const selectedView = bound.view;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
     activeStages, addStage, autoGrain, canAddPredicate,
-    funnelOrder, isPredicateDead, isPredicateEmpty, moveStage, parseStages, predicateGrain, removeStage,
+    funnelOrder, isPredicateDead, isPredicateEmpty, parseStages, predicateGrain, removeStage,
     renameGroupInStages, renameStage, resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
     type FilterPredicate, type FilterStage, type Grain, type GrainLookup,
 } from "../stage.js";
@@ -210,17 +210,7 @@ describe("편집 연산 — 전부 불변", () => {
         expect(base).toHaveLength(3);
     });
 
-    it("순서 바꾸기 — 원본은 안 건드린다", () => {
-        expect(moveStage(base, 0, 2).map((s) => s.id)).toEqual(["b", "c", "a"]);
-        expect(base.map((s) => s.id)).toEqual(["a", "b", "c"]);
-    });
-
-    it("범위 밖 이동은 그대로", () => {
-        expect(moveStage(base, 0, 9).map((s) => s.id)).toEqual(["a", "b", "c"]);
-        expect(moveStage(base, 1, 1).map((s) => s.id)).toEqual(["a", "b", "c"]);
-    });
-
-    it("끄기는 지우지 않는다 — 잠깐 빼보는 게 한계 기여도 확인 손짓이다", () => {
+    it("끄기는 지우지 않는다 — 잠깐 빼보는 게 '이 조건이 일을 하나'를 보는 손짓이다", () => {
         const next = toggleStage(base, "b");
         expect(next[1].enabled).toBe(false);
         expect(next).toHaveLength(3);

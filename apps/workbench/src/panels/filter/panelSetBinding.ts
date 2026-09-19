@@ -22,7 +22,7 @@ import type { Universe } from "./universe.js";
 export function parsePanelBinding(raw: unknown): SetRef | null {
     if (raw === null || raw === undefined) return null;
     const ref = parseSetRef(raw);
-    // 세션 3종(짚은 칸·항목 목록)은 정의가 세션 밖에 없어 저장되면 즉시 깨진다 — 파서가 이미 안 내놓지만
+    // 세션 참조(항목 목록)는 정의가 세션 밖에 없어 저장되면 즉시 깨진다 — 파서가 이미 안 내놓지만
     // 한 번 더 막는다(저장 경로와 읽기 경로가 같은 규칙을 지나야 한다).
     return ref !== null && isPersistableSetRef(ref) ? ref : null;
 }

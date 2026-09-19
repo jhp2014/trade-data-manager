@@ -3,7 +3,7 @@
 // 작업 깔때기(filterFunnelSlice — 조건 한 벌·시선·선택 포인터)와 일부러 갈라져 있다: 저쪽은 "지금 만지는
 // 조건", 여기는 "이름을 붙여 게시한 저장물"이라 수명이 다르다(깔때기는 편집마다 변하고, 저장물은
 // 저장·덮어쓰기에만 변한다). 접점은 putStages 하나 — 열기(openSet)도 "깔때기에 조건을 쓰는 손"이라
-// 같은 규칙(영속·시선·포인터 정리)을 지난다.
+// 같은 규칙(영속·포인터 정리)을 지난다.
 import type { StateCreator } from "zustand";
 import type { PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";

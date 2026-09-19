@@ -100,7 +100,7 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
     // 선택 집합 오버레이의 재료 — **선택 포인터가 보는 것**(viewOf(null)). 하루 항목은 뷰 계약이 이미
     // 타점으로 전개해 뒀다(∀). 아무것도 안 걸렸으면 null — 전부 멤버인 오버레이는 아무 말도 아니다.
     const selectedView = v.viewOf(null);
-    // 오버레이는 **조건/집합/짚음이 걸렸을 때만** — 월 시선만으로도 isFiltering 이 켜지는데, 그때의
+    // 오버레이는 **조건이나 집합이 걸렸을 때만** — 월 시선만으로도 isFiltering 이 켜지는데, 그때의
     // 멤버는 "그 달의 전부"라 레일에 칠하면 정보가 아니라 바탕색이다.
     const filtersOn = stages.some((st) => st.enabled !== false && st.predicates.length > 0);
     const pointerOn = useWorkbench((s) => s.selectedSetRef !== null) || filtersOn;

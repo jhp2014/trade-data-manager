@@ -362,15 +362,6 @@ export function toggleStage(stages: readonly FilterStage[], id: string): FilterS
     return stages.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s));
 }
 
-/** 단계 순서 바꾸기 — 결과는 안 변하고 **이야기만** 바뀐다(어느 단계가 무엇을 죽였나). */
-export function moveStage(stages: readonly FilterStage[], from: number, to: number): FilterStage[] {
-    if (from === to || from < 0 || from >= stages.length || to < 0 || to >= stages.length) return [...stages];
-    const next = [...stages];
-    const [m] = next.splice(from, 1);
-    next.splice(to, 0, m!);
-    return next;
-}
-
 export function setStagePredicates(stages: readonly FilterStage[], id: string, predicates: FilterPredicate[]): FilterStage[] {
     return stages.map((s) => (s.id === id ? { ...s, predicates } : s));
 }

@@ -71,8 +71,8 @@ export interface ToggleSpec extends ControlBase {
     activeColor?: string;
     /**
      * 지금은 누를 수 없다 — **사라지지 않고 흐려진다**(ActionSpec 과 같은 규약: 자리가 안 움직인다).
-     * 이유는 `help` 가 말해야 한다("짚은 칸은 고정할 수 없습니다 — …") — 흐린 채 말이 없으면
-     * 고장 난 것으로 읽힌다.
+     * 이유는 `help` 가 말해야 한다 — 흐린 채 말이 없으면 고장 난 것으로 읽힌다.
+     * (프로덕션 소비자는 지금 0이다. 레지스트리 공용 필드라 규약째 남긴다.)
      */
     disabled?: boolean;
 }

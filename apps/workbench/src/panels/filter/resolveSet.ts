@@ -244,8 +244,9 @@ const sessionDefCache = new Map<string, ResolvedFilter>();
 /**
  * 조건 한 벌을 정산까지. null = 작업 깔때기, 문자열 = 저장 집합의 id(**호출 전에 존재 확인**).
  * 작업 깔때기는 **훅의 정산을 재사용**한다(ctx.activeFilter — grain·비용 둘 다의 이유, 필드 주석 참조).
- * ⚠ 단계 순서는 깔때기 화면과 같은 규칙(funnelOrder — 하루 먼저)이어야 한다: 칸(근접 탈락)은 순서
- * 종속이라, 여기만 다른 순서로 접으면 짚은 칸과 다른 집합이 나온다.
+ * 단계 순서는 깔때기 화면과 같은 규칙(funnelOrder — 하루 먼저)을 그대로 쓴다. 3치 AND 는 교환법칙이
+ * 성립해 **결과는 순서와 무관**하지만(2026-09-19 칸 은퇴 이후 순서 종속 소비자가 없다), 같은 규칙을
+ * 쓰는 편이 화면과 여기를 나란히 읽게 한다.
  */
 function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
     if (setId === null && ctx.activeFilter) return ctx.activeFilter;
