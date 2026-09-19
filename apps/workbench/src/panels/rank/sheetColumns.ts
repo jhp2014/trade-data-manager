@@ -26,20 +26,17 @@ export const MIN_COL_W = 32;
  * 언제나 **id** 다: 값의 정체를 정하는 건 정의·T 지만 그걸 주소로 쓰면 그 값을 만질 때마다 주소가 바뀌어
  * 열 설정(폭·고정·숨김·정렬)이 리셋된다("축 키는 뜻의 주소" 규칙).
  *
- * 셋은 **배타**다 — 조립 뷰면 부품 열만, 아니고 결과 조건이 있으면 인스턴스 열만, 그 외엔 붙박이 열.
- * 이 배타성이 "부품 × 인스턴스" 곱셈을 막는 자리다(부품이 가르는 건 모수, 인스턴스가 가르는 건 T).
+ * 둘은 **배타**다 — 결과 조건이 있으면 인스턴스 열만, 그 외엔 붙박이 열.
+ * (옛 "부품 열"(조립 뷰)은 2026-09-19 조립층 철거와 함께 사라졌다 — 키 청소만 아래에 남는다.)
  */
 export interface OutScope {
-    kind: "part" | "inst";
+    kind: "inst";
     id: string;
-    /** 헤더 라벨의 접두(부품 이름 또는 "T 5%"). */
+    /** 헤더 라벨의 접두("T 5%"). */
     name: string;
-    /** 색점 — 부품은 조립 안 순번, 인스턴스는 조건 순번(둘 다 seriesColor). */
+    /** 색점 — 조건 순번(seriesColor). */
     color: string;
 }
-
-/** 옛 이름 — 조립(부품) 자리의 별칭. 소비자가 점진적으로 OutScope 로 옮겨간다. */
-export type OutPart = OutScope;
 
 export type Col =
     | { key: "name" }
@@ -96,17 +93,17 @@ export const COL_META: Record<ColKind, ColMeta> = {
 };
 
 /**
- * 열 주소 — **네 갈래**가 배타다:
+ * 열 주소 — **세 갈래**가 배타다:
  *   · 붙박이 결과 열 `out:<metric>`            (표시 T 기준)
- *   · 부품 열      `out:p:<setId>:<metric>`     (조립 뷰 — 모수가 다름, 값은 표시 T)
  *   · 인스턴스 열  `out:i:<stageId>:<metric>`   (결과 조건 — T 가 다름)
  *   · 차이 열      `dif:<id>`
- * 태그(`p`/`i`)가 없으면 id 접두 관습으로 갈라야 하는데 그건 조용히 깨진다 — 조각 수 + 태그가 판정 자다.
+ * 태그(`i`)가 없으면 id 접두 관습으로 갈라야 하는데 그건 조용히 깨진다 — 조각 수 + 태그가 판정 자다.
+ * 옛 부품 열 `out:p:<setId>:<metric>` 은 **더 안 만들고, 남아 있으면 청소한다**(pruneOutKeys).
  */
 export const colKey = (c: Col): string =>
     (c.key === "axis" ? `ax:${c.axisId}`
         : c.key === "dif" ? `dif:${c.id}`
-            : c.key === "out" ? (c.scope ? `out:${c.scope.kind === "part" ? "p" : "i"}:${c.scope.id}:${c.metric}` : `out:${c.metric}`)
+            : c.key === "out" ? (c.scope ? `out:i:${c.scope.id}:${c.metric}` : `out:${c.metric}`)
                 : c.key);
 export const colWidth = (c: Col): number =>
     c.key === "axis" && c.computed ? AXIS_VALUE_W : c.key === "out" ? OUTCOME_COL_META[c.metric].width : COL_META[c.key].width;
@@ -121,8 +118,7 @@ export const colHelp = (c: Col): string | null => {
     if (c.key === "dif") return "두 결과 열의 차(A − B) — 한쪽이라도 값이 없으면 값 없음. T 다른 두 조건 열을 빼면 옛 Δ 연장폭과 같은 뜻이다";
     if (c.key !== "out") return null;
     if (!c.scope) return OUTCOME_COL_META[c.metric].help;
-    const basis = c.scope.kind === "part" ? `부품 「${c.scope.name}」 의 정의(게이트 등) 기준` : `${c.scope.name} 조건의 허용 폭 기준`;
-    return `${basis} — ${OUTCOME_COL_META[c.metric].help}`;
+    return `${c.scope.name} 조건의 허용 폭 기준 — ${OUTCOME_COL_META[c.metric].help}`;
 };
 
 export interface SheetLayout {
@@ -265,10 +261,8 @@ export function pruneAxisKeys<T extends string[] | Record<string, unknown>>(cur:
  */
 export function pruneOutKeys<T extends string[] | Record<string, unknown>>(
     cur: T,
-    liveSetIds: readonly string[],
     liveStageIds: readonly string[] = [],
 ): T {
-    const liveParts = new Set(liveSetIds);
     const liveInsts = new Set(liveStageIds);
     const dead = (k: string): boolean => {
         if (!k.startsWith("out:")) return false;
@@ -276,7 +270,9 @@ export function pruneOutKeys<T extends string[] | Record<string, unknown>>(
         if (parts.length === 3) return true; // 태그 없는 옛 형식
         if (parts.length !== 4) return false;
         const [, tag, id] = parts as [string, string, string, string];
-        return tag === "p" ? !liveParts.has(id) : tag === "i" ? !liveInsts.has(id) : true;
+        // ⚠ `p`(옛 부품 열)는 **무조건 죽은 것**이다 — setId 가 살아 있는 저장 집합이어도 그 열은 다시
+        //   안 선다(조립층 철거). 살려 두면 열은 영영 안 서는데 폭·고정·숨김·순서 키만 남는다.
+        return tag === "i" ? !liveInsts.has(id) : true;
     };
     return pruneBy(cur, dead);
 }

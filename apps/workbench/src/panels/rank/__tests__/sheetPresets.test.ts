@@ -27,36 +27,36 @@ describe("presetHidden — 적용 = 전체 − cols", () => {
     });
 });
 
-describe("prunePresets — 죽은 축·부품 키 청소(다른 넷과 같은 사정)", () => {
+describe("prunePresets — 죽은 축·인스턴스 키 청소(다른 넷과 같은 사정)", () => {
     it("`ax:` 죽은 키만 버리고 붙박이 `out:`·기본 열은 남긴다", () => {
         const ps = [{ name: "p", cols: ["name", "ax:살", "ax:죽", "out:extHigh"] }];
-        expect(prunePresets(ps, ["살"], [])).toEqual([{ name: "p", cols: ["name", "ax:살", "out:extHigh"] }]);
+        expect(prunePresets(ps, ["살"])).toEqual([{ name: "p", cols: ["name", "ax:살", "out:extHigh"] }]);
     });
     it("지워진 자리의 태그형 4조각만 버린다 — 붙박이 2조각은 자리 무관이라 무접촉", () => {
-        const ps = [{ name: "p", cols: ["out:extHigh", "out:p:fs살:extHigh", "out:p:fs죽:extHigh", "out:i:s살:extHigh", "out:i:s죽:extHigh"] }];
-        expect(prunePresets(ps, [], ["fs살"], ["s살"]))
-            .toEqual([{ name: "p", cols: ["out:extHigh", "out:p:fs살:extHigh", "out:i:s살:extHigh"] }]);
+        const ps = [{ name: "p", cols: ["out:extHigh", "out:p:fs살:extHigh", "out:i:s살:extHigh", "out:i:s죽:extHigh"] }];
+        expect(prunePresets(ps, [], ["s살"]))
+            .toEqual([{ name: "p", cols: ["out:extHigh", "out:i:s살:extHigh"] }]);
     });
     it("바뀐 게 없으면 **같은 참조** — usePersistedState 저장 effect 가 헛돌지 않게", () => {
-        const ps = [{ name: "p", cols: ["name", "ax:살", "out:p:fs살:extHigh"] }];
-        expect(prunePresets(ps, ["살"], ["fs살"])).toBe(ps);
+        const ps = [{ name: "p", cols: ["name", "ax:살", "out:i:s살:extHigh"] }];
+        expect(prunePresets(ps, ["살"], ["s살"])).toBe(ps);
     });
 });
 
-describe("matchPresetCols — 결과 열 키는 부품 유무를 넘나들며 metric 으로 맞춘다", () => {
-    it("붙박이 2조각 키가 갈라진 열(4조각)도 살린다 — 부품이든 인스턴스든", () => {
-        expect(matchPresetCols(["name", "out:extHigh"], ["name", "date", "out:p:fs1:extHigh", "out:p:fs1:status"]))
-            .toEqual(["name", "out:p:fs1:extHigh"]);
+describe("matchPresetCols — 결과 열 키는 자리 유무를 넘나들며 metric 으로 맞춘다", () => {
+    it("붙박이 2조각 키가 갈라진 열(4조각)도 살린다", () => {
+        expect(matchPresetCols(["name", "out:extHigh"], ["name", "date", "out:i:s1:extHigh", "out:i:s1:status"]))
+            .toEqual(["name", "out:i:s1:extHigh"]);
         expect(matchPresetCols(["out:extHigh"], ["out:i:s1:extHigh", "out:i:s2:extHigh"]))
             .toEqual(["out:i:s1:extHigh", "out:i:s2:extHigh"]);
     });
     it("갈라진 뷰에서 저장한 키가 일반 뷰의 공용 결과 열도 살린다 · 축·기본 열은 정확 키 그대로", () => {
-        expect(matchPresetCols(["out:p:fs1:status", "ax:1"], ["out:status", "out:extHigh", "ax:1", "ax:2"]))
+        expect(matchPresetCols(["out:i:s1:status", "ax:1"], ["out:status", "out:extHigh", "ax:1", "ax:2"]))
             .toEqual(["out:status", "ax:1"]);
     });
-    it("같은 뷰의 자리별 프리셋은 정확 키만 — fs1 만 보기가 fs2 의 같은 metric 을 안 되살린다(멱등)", () => {
-        expect(matchPresetCols(["out:p:fs1:extHigh"], ["out:p:fs1:extHigh", "out:p:fs2:extHigh"]))
-            .toEqual(["out:p:fs1:extHigh"]);
+    it("같은 뷰의 자리별 프리셋은 정확 키만 — s1 만 보기가 s2 의 같은 metric 을 안 되살린다(멱등)", () => {
+        expect(matchPresetCols(["out:i:s1:extHigh"], ["out:i:s1:extHigh", "out:i:s2:extHigh"]))
+            .toEqual(["out:i:s1:extHigh"]);
     });
 });
 

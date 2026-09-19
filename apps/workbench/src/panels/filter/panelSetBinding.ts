@@ -9,7 +9,6 @@
 //   · 저장은 `panelUi[panelId].setPin`(additive) — 옛 `wb.setBinding.*` 는 **여전히 안 읽는다**
 //     (죽은 개념의 유령 부활 금지 · useSetBinding 머리 주석).
 import type { SavedSet } from "../../store/savedSetsSlice.js";
-import type { Assembly } from "../../store/assembliesSlice.js";
 import { isPersistableSetRef, parseSetRef, type SetRef } from "../../lib/setRef.js";
 import type { FilterStage } from "./stage.js";
 import type { Universe } from "./universe.js";
@@ -22,12 +21,16 @@ import type { Universe } from "./universe.js";
 export function parsePanelBinding(raw: unknown): SetRef | null {
     if (raw === null || raw === undefined) return null;
     const ref = parseSetRef(raw);
-    // 세션 참조(항목 목록)는 정의가 세션 밖에 없어 저장되면 즉시 깨진다 — 파서가 이미 안 내놓지만
-    // 한 번 더 막는다(저장 경로와 읽기 경로가 같은 규칙을 지나야 한다).
-    return ref !== null && isPersistableSetRef(ref) ? ref : null;
+    if (ref === null) return null;
+    // ⚠ **orphan 은 통과시킨다**(2026-09-19). 폐지된 종류(그룹·칸·조립)를 가리키던 핀이 여기서 걸러지면
+    // 조용히 연동으로 떨어져 그 패널이 **다른 집합을 그린다** — 이 파일 머리가 금지한 바로 그 실패다.
+    // 통과시키면 리졸버가 BROKEN 을 주고 화면이 "빈 집합 + 라벨"로 받는다(지워진 집합과 같은 대우).
+    // 세션 참조(항목 목록)는 그대로 막는다 — 정의가 세션 밖에 없어 저장되면 즉시 깨진다.
+    return isPersistableSetRef(ref) || ref.kind === "orphan" ? ref : null;
 }
 
-/** 이 참조를 핀으로 저장해도 되나 — 세션 3종은 못 한다(위 이유). */
+/** 이 참조를 **새로 핀으로 만들 수 있나** — 읽기(parsePanelBinding)와 다른 질문이다: 폐지된 잔해(orphan)는
+ *  읽어서 깨진 채로 보여줄 수는 있어도 새로 만들 수는 없다. 세션 참조도 못 한다. */
 export const canPin = (ref: SetRef | null): boolean => ref !== null && isPersistableSetRef(ref);
 
 /**
@@ -41,19 +44,12 @@ export const canPin = (ref: SetRef | null): boolean => ref !== null && isPersist
 export function targetUniverseOf(
     ref: SetRef | null,
     savedSets: readonly SavedSet[],
-    assemblies: readonly Assembly[],
     workingUniverse: Universe,
 ): Universe {
     if (ref === null) return workingUniverse;
     switch (ref.kind) {
         case "saved":
             return savedSets.find((s) => s.id === ref.setId)?.universe ?? workingUniverse;
-        case "assembly": {
-            // 조립의 부품은 한 우주다(불변식 ①) — 첫 부품이 대표한다. 빈 조립은 작업 우주.
-            const a = assemblies.find((x) => x.id === ref.id);
-            const first = a?.members.find((m) => savedSets.some((s) => s.id === m.setId));
-            return savedSets.find((s) => s.id === first?.setId)?.universe ?? workingUniverse;
-        }
         default:
             return workingUniverse;
     }
@@ -64,7 +60,6 @@ export function targetUniverseOf(
  * 리졸버(종단 전용)를 안 거치고 평가기(useCellSet)로 간다.
  *
  * `null` = 이 우주에서 풀 방법이 없는 바인딩(화면이 이유를 말해야 한다):
- *  · 조립 — 부품마다 하루 평가가 한 벌씩 붙어 비용이 부품 수만큼 는다. 값이 분명해지면 그때 연다.
  *  · 전체(universe) — 하루 우주의 "전체"는 그날 전 셀 ≈19만이다("조건 없음 = 안 보여줌" 규칙).
  *  · orphan·지워진 집합 — 가리키는 것이 없다.
  *
@@ -87,7 +82,6 @@ export function dayStagesOf(
 /** 하루 우주에서 이 바인딩을 못 푸는 이유 한 줄(풀 수 있으면 null) — 화면이 그대로 띄운다. */
 export function dayUnsupportedReason(ref: SetRef | null, savedSets: readonly SavedSet[]): string | null {
     if (dayStagesOf(ref, savedSets, []) !== null) return null;
-    if (ref?.kind === "assembly") return "조립은 하루 우주에서 아직 못 풉니다(부품마다 하루 평가가 붙습니다)";
     if (ref?.kind === "saved") return "(지워진 집합)";
     return "하루 우주에는 조건이 있어야 합니다 — 집합 편성에서 고르세요";
 }

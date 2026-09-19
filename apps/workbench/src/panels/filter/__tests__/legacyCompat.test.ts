@@ -9,7 +9,8 @@
 import { describe, it, expect } from "vitest";
 import { parseStages } from "../stage.js";
 import { parseSavedSets } from "../../../store/savedSetsSlice.js";
-import { LEGACY_SAVED_SETS, LEGACY_STAGES } from "./fixtures/legacyStores.js";
+import { parseLegacyAssemblies } from "../legacyAssemblies.js";
+import { LEGACY_ASSEMBLIES, LEGACY_SAVED_SETS, LEGACY_STAGES } from "./fixtures/legacyStores.js";
 
 const roundTrip = <T,>(v: T): unknown => JSON.parse(JSON.stringify(v));
 
@@ -94,5 +95,26 @@ describe("옛 저장 집합", () => {
     it("② 왕복 항등 — 집합도 저장→로드에서 그대로다", () => {
         const once = parseSavedSets(LEGACY_SAVED_SETS);
         expect(parseSavedSets(roundTrip(once))).toEqual(once);
+    });
+});
+
+// 조립층은 2026-09-19 에 철거됐지만 **저장물은 재워 뒀다** — 5단계 식 트리가 `OR(참조…)` 로 승계할
+// 재료다. 그 파서(legacyAssemblies)는 소비자가 0이라 아무도 안 보는 채로 썩을 수 있으므로, 승계가
+// 실제로 읽게 될 모양을 여기서 못 박는다. **죽은 부품(지워진 setId)도 거르지 않는다** — 승계가
+// "그때 그 사용자가 실제로 보던 것"을 읽어야 하고, 무엇이 죽었는지는 승계 시점에 판단할 일이다.
+describe("옛 조립(재워 둔 저장물 — 5단계 승계의 입력)", () => {
+    it("① 골든 — 파싱 결과가 글자까지 고정이다", () => {
+        expect(parseLegacyAssemblies(LEGACY_ASSEMBLIES)).toEqual([
+            { id: "asm1", name: "합집합", members: [{ setId: "set1", enabled: true }, { setId: "없는집합", enabled: true }] },
+        ]);
+    });
+
+    it("② 왕복 항등", () => {
+        const once = parseLegacyAssemblies(LEGACY_ASSEMBLIES);
+        expect(parseLegacyAssemblies(roundTrip(once))).toEqual(once);
+    });
+
+    it("③ 전멸 감지 — 통째 폐기가 없다", () => {
+        expect(parseLegacyAssemblies(LEGACY_ASSEMBLIES)).not.toBeNull();
     });
 });

@@ -7,7 +7,6 @@ describe("setRefKey — 같은 집합이면 같은 키", () => {
             { kind: "universe" } as SetRef,
             { kind: "survivors" } as SetRef,
             { kind: "saved", setId: "fs1" } as SetRef,
-            { kind: "assembly", id: "as1" } as SetRef,
             { kind: "orphan", label: "그룹 테마" } as SetRef,
             { kind: "items", label: "밴드", items: [{ stockCode: "A", date: "2026-07-01" }] } as SetRef,
         ].map(setRefKey);
@@ -25,20 +24,18 @@ describe("setRefKey — 같은 집합이면 같은 키", () => {
 });
 
 describe("parseSetRef — 영속 4종 + orphan", () => {
-    it("영속 4종과 orphan 은 왕복한다", () => {
+    it("영속 3종과 orphan 은 왕복한다", () => {
         const refs: SetRef[] = [
             { kind: "universe" },
             { kind: "survivors" },
             { kind: "saved", setId: "fs1" },
-            { kind: "assembly", id: "as1" },
             { kind: "orphan", label: "그룹 테마" },
         ];
         for (const r of refs) expect(parseSetRef(JSON.parse(JSON.stringify(r)))).toEqual(r);
     });
 
-    it("조립은 영속 대상이다 — 바인딩이 조립을 구독할 수 있다", () => {
-        expect(isPersistableSetRef({ kind: "assembly", id: "as1" })).toBe(true);
-        expect(parseSetRef({ kind: "assembly", id: "" })).toBeNull();
+    it("옛 조립 바인딩은 orphan — 조용히 연동으로 떨어지면 그 패널이 딴 집합을 그린다", () => {
+        expect(parseSetRef({ kind: "assembly", id: "as1" })).toEqual({ kind: "orphan", label: "옛 조립 바인딩" });
     });
 
     it("항목 목록(세션)은 저장 대상이 아니다 — 파서가 거부한다", () => {

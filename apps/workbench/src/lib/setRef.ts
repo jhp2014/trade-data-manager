@@ -1,9 +1,10 @@
 // 집합 참조(SetRef) — 패널이 바인딩하고 연동 슬롯에 오르는 **단 하나의 타입**.
 //
 // 집합 공장 재편(2026-08-20) 이후의 산지:
-//   · 영속 4종 : 유니버스(전체) / 최종 생존(작업 깔때기) / 저장 집합 / 조립(부품 합집합 — 2026-09-08)
-//     — 패널 바인딩으로 저장할 수 있다. 저장 집합·조립만이 이름 있는 저장물이고, 그룹·필터를 직접
+//   · 영속 3종 : 유니버스(전체) / 최종 생존(작업 깔때기) / 저장 집합
+//     — 패널 바인딩으로 저장할 수 있다. 저장 집합만이 이름 있는 저장물이고, 그룹·필터를 직접
 //     가리키는 영속 참조는 폐지됐다(그룹은 깔때기의 재료지 바인딩 대상이 아니다 — 잠깐 탐색은 연동 모드가 담당한다).
+//     (조립(∪)은 2026-09-19 철거 — OR 은 다음 판의 식 트리에서 `OR(참조…)` 로 돌아온다.)
 //   · 세션 1종 : 항목 목록(시트 밴드 등) — 내부 리졸빙에만 쓰이고 저장되지 않는다.
 //     (집합 난립 방지: 이름을 붙일 때만 저장물이 된다. 옛 "짚은 칸"은 2026-09-19 깔때기 진단
 //      은퇴와 함께 삭제 — 칸이라는 개념 자체가 없어졌다.)
@@ -20,13 +21,12 @@ export type SetRef =
     | { kind: "universe" }
     | { kind: "survivors" }
     | { kind: "saved"; setId: string }
-    | { kind: "assembly"; id: string }
     | { kind: "orphan"; label: string }
     | { kind: "items"; label: string; items: FunnelItem[] };
 
 /** 패널 바인딩으로 저장해도 되는 참조인가 — 항목 목록은 정의가 세션 밖에 없어 저장하면 즉시 깨진 참조다. */
 export const isPersistableSetRef = (r: SetRef): boolean =>
-    r.kind === "universe" || r.kind === "survivors" || r.kind === "saved" || r.kind === "assembly";
+    r.kind === "universe" || r.kind === "survivors" || r.kind === "saved";
 
 /**
  * 정규화 키 — 같은 집합을 가리키는 참조는 같은 키(리졸버 캐시·React 메모의 기준).
@@ -41,17 +41,16 @@ export function setRefKey(r: SetRef): string {
         case "universe": return "u";
         case "survivors": return "sv";
         case "saved": return `s${JSON.stringify([r.setId])}`;
-        case "assembly": return `a${JSON.stringify([r.id])}`;
         case "orphan": return `o${JSON.stringify([r.label])}`;
         case "items": return `it${JSON.stringify([r.label, r.items.map(funnelKey)])}`;
     }
 }
 
 /**
- * 영속본 파서 — **영속 4종 + orphan** 만 내놓는다. 옛 형식은 여기서 변환된다:
+ * 영속본 파서 — **영속 3종 + orphan** 만 내놓는다. 옛 형식은 여기서 변환된다:
  *   · `filter(null)`      → 최종 생존 (뜻이 같다 — 무손실)
  *   · `filter("fs…")`     → 저장 집합 (옛 저장 필터가 같은 id 의 집합으로 자동 전환되므로 — 무손실)
- *   · `group` / `cell`    → orphan (직접 바인딩 폐지 — 화면이 "깨진 참조 + 다시 고르기"로 받는다)
+ *   · `group`/`cell`/`assembly` → orphan (폐지된 바인딩 — 화면이 "깨진 참조 + 다시 고르기"로 받는다)
  * 참조가 가리키는 대상(저장 집합)이 아직 있는지는 여기서 안 본다 — 그건 리졸버의 일이고,
  * "깨진 참조 = 빈 집합 + 라벨"로 화면이 받는다(자동 폴백 금지).
  */
@@ -66,7 +65,9 @@ export function parseSetRef(o: unknown): SetRef | null {
         case "saved":
             return typeof r.setId === "string" && r.setId !== "" ? { kind: "saved", setId: r.setId } : null;
         case "assembly":
-            return typeof r.id === "string" && r.id !== "" ? { kind: "assembly", id: r.id } : null;
+            // 옛 조립 바인딩 — 조립층이 은퇴했다(2026-09-19). 저장물 자체는 legacyAssemblies 가 재워
+            // 두지만 **바인딩은 소리를 낸다**: 조용히 연동으로 떨어지면 그 패널이 딴 집합을 그린다.
+            return typeof r.id === "string" ? { kind: "orphan", label: "옛 조립 바인딩" } : null;
         case "orphan":
             return typeof r.label === "string" && r.label !== "" ? { kind: "orphan", label: r.label } : null;
         // ── 옛 형식(집합 공장 이전) — usePersistedState 는 다시 고를 때까지 옛 값을 그대로 두므로,

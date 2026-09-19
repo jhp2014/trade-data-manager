@@ -151,18 +151,19 @@ describe("pruneAxisKeys — 사라진 축의 유령 키 청소", () => {
     });
 });
 
-describe("pruneOutKeys — 지워진 자리(부품·인스턴스)의 유령 열 키 청소", () => {
+describe("pruneOutKeys — 지워진 인스턴스·옛 부품 열의 유령 키 청소", () => {
     it("태그형 4조각만 대상 — 붙박이 2조각·축·기본 열은 무접촉", () => {
-        expect(pruneOutKeys(["out:extHigh", "out:p:fs1:extHigh", "out:p:fs9:extHigh", "out:i:s1:extHigh", "out:i:s9:extHigh", "ax:9", "date"], ["fs1"], ["s1"]))
-            .toEqual(["out:extHigh", "out:p:fs1:extHigh", "out:i:s1:extHigh", "ax:9", "date"]);
-        expect(pruneOutKeys({ "out:p:fs9:status": 80, "out:status": 60 }, [], [])).toEqual({ "out:status": 60 });
+        // ⚠ `p`(옛 부품 열)는 setId 가 살아 있어도 **무조건 죽음**이다 — 조립층이 은퇴해 다시 안 선다.
+        expect(pruneOutKeys(["out:extHigh", "out:p:fs1:extHigh", "out:i:s1:extHigh", "out:i:s9:extHigh", "ax:9", "date"], ["s1"]))
+            .toEqual(["out:extHigh", "out:i:s1:extHigh", "ax:9", "date"]);
+        expect(pruneOutKeys({ "out:p:fs9:status": 80, "out:status": 60 }, [])).toEqual({ "out:status": 60 });
     });
     it("태그 없는 옛 3조각은 전부 유령 — 하루짜리 형식이라 살릴 게 없다", () => {
-        expect(pruneOutKeys(["out:fs1:extHigh", "out:extHigh"], ["fs1"], [])).toEqual(["out:extHigh"]);
+        expect(pruneOutKeys(["out:fs1:extHigh", "out:extHigh"], [])).toEqual(["out:extHigh"]);
     });
     it("버릴 게 없으면 같은 참조", () => {
-        const arr = ["out:extHigh", "out:p:fs1:extHigh", "out:i:s1:extHigh"];
-        expect(pruneOutKeys(arr, ["fs1"], ["s1"])).toBe(arr);
+        const arr = ["out:extHigh", "out:i:s1:extHigh"];
+        expect(pruneOutKeys(arr, ["s1"])).toBe(arr);
     });
 });
 
@@ -179,15 +180,12 @@ describe("결과 열(out) — 시트 전용 소스의 열", () => {
     it("colKey 이름공간 = `out:<id>`(축 `ax:` 와 구분)", () => {
         expect(colKey(out("extHigh"))).toBe("out:extHigh");
     });
-    it("갈라진 열 — colKey = `out:<태그>:<id>:<metric>` 이고 정렬 키 id 와 **같은 문자열**(열 설정·정렬이 키를 공유)", () => {
-        const part: Col = { key: "out", metric: "extHigh", scope: { kind: "part", id: "fs1", name: "눌림A", color: "#000" } };
+    it("갈라진 열 — colKey = `out:i:<id>:<metric>` 이고 정렬 키 id 와 **같은 문자열**(열 설정·정렬이 키를 공유)", () => {
         const inst: Col = { key: "out", metric: "extHigh", scope: { kind: "inst", id: "s9", name: "T 5%", color: "#000" } };
-        expect(colKey(part)).toBe("out:p:fs1:extHigh");
         expect(colKey(inst)).toBe("out:i:s9:extHigh");
-        expect(sortKeyId(sortKeyOf(part))).toBe(colKey(part));
         expect(sortKeyId(sortKeyOf(inst))).toBe(colKey(inst));
-        // 셋은 서로 다른 키다 — 기준이 다른 값이라 설정도 갈려야 한다(부품 = 모수, 인스턴스 = T).
-        expect(new Set([colKey(part), colKey(inst), colKey(out("extHigh"))]).size).toBe(3);
+        // 둘은 서로 다른 키다 — 기준이 다른 값이라 설정도 갈려야 한다(인스턴스가 가르는 건 T).
+        expect(new Set([colKey(inst), colKey(out("extHigh"))]).size).toBe(2);
     });
 
     it("차이 열 — colKey = `dif:<id>`(피연산자를 주소로 쓰지 않는다 — 한쪽 T 를 만질 때마다 설정이 리셋된다)", () => {

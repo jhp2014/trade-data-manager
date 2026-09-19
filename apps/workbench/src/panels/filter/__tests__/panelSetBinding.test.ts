@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { canPin, dayStagesOf, dayUnsupportedReason, parsePanelBinding, targetUniverseOf } from "../panelSetBinding.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
-import type { Assembly } from "../../../store/assembliesSlice.js";
 import type { FilterStage } from "../stage.js";
 
 // panelUi 는 무검증 JSON 가방이다 — 핀을 읽는 자리가 문지기고, **깨진 참조는 연동으로 폴백하지 않는다**
@@ -12,10 +11,10 @@ const set = (id: string, universe: SavedSet["universe"], stages: FilterStage[] =
     ({ id, name: id, stages, universe });
 
 describe("parsePanelBinding — 저장물 문지기", () => {
-    it("영속 4종만 통과한다", () => {
+    it("영속 3종이 통과한다", () => {
         expect(parsePanelBinding({ kind: "saved", setId: "fs1" })).toEqual({ kind: "saved", setId: "fs1" });
         expect(parsePanelBinding({ kind: "survivors" })).toEqual({ kind: "survivors" });
-        expect(parsePanelBinding({ kind: "assembly", id: "as1" })).toEqual({ kind: "assembly", id: "as1" });
+        expect(parsePanelBinding({ kind: "universe" })).toEqual({ kind: "universe" });
     });
 
     it("세션 참조(항목 목록)는 핀이 될 수 없다 — 정의가 세션 밖에 없다", () => {
@@ -37,29 +36,19 @@ describe("parsePanelBinding — 저장물 문지기", () => {
 
 describe("targetUniverseOf — 이 바인딩은 어느 우주로 풀리나", () => {
     const sets = [set("fs-long", "longitudinal"), set("fs-day", "daily")];
-    const assemblies: Assembly[] = [
-        { id: "as1", name: "하루 조립", members: [{ setId: "fs-day", enabled: true }] },
-        { id: "as2", name: "빈 조립", members: [] },
-    ];
-
     it("저장 집합은 자기 우주를 들고 다닌다", () => {
-        expect(targetUniverseOf({ kind: "saved", setId: "fs-day" }, sets, [], "longitudinal")).toBe("daily");
-        expect(targetUniverseOf({ kind: "saved", setId: "fs-long" }, sets, [], "daily")).toBe("longitudinal");
+        expect(targetUniverseOf({ kind: "saved", setId: "fs-day" }, sets, "longitudinal")).toBe("daily");
+        expect(targetUniverseOf({ kind: "saved", setId: "fs-long" }, sets, "daily")).toBe("longitudinal");
     });
 
     it("연동·전체·최종 생존은 **작업 깔때기의 우주**다", () => {
-        expect(targetUniverseOf(null, sets, [], "daily")).toBe("daily");
-        expect(targetUniverseOf({ kind: "survivors" }, sets, [], "daily")).toBe("daily");
-        expect(targetUniverseOf({ kind: "universe" }, sets, [], "longitudinal")).toBe("longitudinal");
-    });
-
-    it("조립은 첫 부품이 대표한다(부품은 한 우주 — 불변식 ①) · 빈 조립은 작업 우주", () => {
-        expect(targetUniverseOf({ kind: "assembly", id: "as1" }, sets, assemblies, "longitudinal")).toBe("daily");
-        expect(targetUniverseOf({ kind: "assembly", id: "as2" }, sets, assemblies, "daily")).toBe("daily");
+        expect(targetUniverseOf(null, sets, "daily")).toBe("daily");
+        expect(targetUniverseOf({ kind: "survivors" }, sets, "daily")).toBe("daily");
+        expect(targetUniverseOf({ kind: "universe" }, sets, "longitudinal")).toBe("longitudinal");
     });
 
     it("지워진 집합은 작업 우주로 읽는다 — 그 다음 판정(못 푸는 이유)이 사실을 말한다", () => {
-        expect(targetUniverseOf({ kind: "saved", setId: "없는것" }, sets, [], "daily")).toBe("daily");
+        expect(targetUniverseOf({ kind: "saved", setId: "없는것" }, sets, "daily")).toBe("daily");
     });
 });
 
@@ -75,8 +64,7 @@ describe("dayStagesOf / dayUnsupportedReason — 하루 우주에서 무엇을 �
     });
 
     it("풀 수 없는 바인딩은 null 이고 **이유가 따라온다**(조용한 빈 화면 금지)", () => {
-        expect(dayStagesOf({ kind: "assembly", id: "as1" }, sets, working)).toBeNull();
-        expect(dayUnsupportedReason({ kind: "assembly", id: "as1" }, sets)).toMatch(/조립/);
+        expect(dayStagesOf({ kind: "orphan", label: "옛 조립 바인딩" }, sets, working)).toBeNull();
         expect(dayStagesOf({ kind: "universe" }, sets, working)).toBeNull();
         expect(dayUnsupportedReason({ kind: "universe" }, sets)).toMatch(/조건이 있어야/);
         expect(dayUnsupportedReason({ kind: "saved", setId: "없는것" }, sets)).toBe("(지워진 집합)");

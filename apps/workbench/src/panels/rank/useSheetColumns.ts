@@ -165,12 +165,9 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     // 격자 축은 **잠깐 숨을 수 있다** — 격자 로딩 전(서버 축이 먼저 와서 이 청소가 도는 순간 격자 축은
     // 아직 목록에 없다). 죽은 게 아니라 보호 목록을 합쳐 넘긴다(레일 서랍과 같은 처방).
     // 부품 열(`out:<setId>:<metric>`)의 생사 기준 = 저장 집합 목록 — 스토어 생성 때 동기 로드라
-    // 축과 달리 로딩 가드가 필요 없다(savedSetsSlice.loadSavedSets).
     // 유령 청소의 생사 기준 — **저장물 자체**를 본다(지금 화면에 서 있는 목록이 아니라).
-    // ⚠ outScopes 를 기준으로 쓰면 조립 뷰로 잠깐 옮기는 것만으로 인스턴스 열의 고정·숨김·폭·프리셋이
-    //   영구 삭제된다(그때 outScopes 는 부품뿐이다). 부품이 savedSets 를 보는 것과 대칭이어야 한다.
-    const savedSets = useWorkbench((s) => s.savedSets);
-    const liveSetIds = useMemo(() => savedSets.map((s) => s.id), [savedSets]);
+    // ⚠ outScopes 를 기준으로 쓰면 뷰를 잠깐 옮기는 것만으로 인스턴스 열의 고정·숨김·폭·프리셋이
+    //   영구 삭제된다. 기준은 언제나 "그 조건이 저장물에 남아 있나"다.
     const allStages = useWorkbench(selectFilterStages);
     const liveStageIds = useMemo(
         () => allStages.filter((st) => st.predicates.some((p) => p.kind === "outcome")).map((st) => st.id),
@@ -187,8 +184,10 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         [allStages],
     );
     /**
-     * 차이 열 피연산자가 살아 있나 — **저장물 기준**(뷰 갈래 무관). 결과 열 키의 네 갈래를 그대로 읽는다:
-     * 붙박이는 언제나 살아 있고, 부품은 저장 집합이, 인스턴스는 결과 조건이 생사를 정한다.
+     * 차이 열 피연산자가 살아 있나 — **저장물 기준**(뷰 갈래 무관). 결과 열 키의 세 갈래를 그대로 읽는다:
+     * 붙박이는 언제나 살아 있고, 인스턴스는 결과 조건이 생사를 정한다. 옛 부품 열(`p`)은 언제나 죽음이다.
+     * ⚠ 그래서 **옛 부품 열 둘로 만든 차이 열은 여기서 영구 삭제된다**(2026-09-19 사용자 확정) —
+     * 피연산자가 다시 설 길이 없으므로 살려 두면 값이 영영 "—" 인 열만 남는다.
      */
     const operandAlive = useCallback((key: string): boolean => {
         if (!key.startsWith("out:")) return false; // 피연산자는 결과 열만(차이 열 중첩은 범위 밖)
@@ -196,29 +195,28 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         if (parts.length === 2) return true;
         if (parts.length !== 4) return false;
         const [, tag, id] = parts as [string, string, string, string];
-        return tag === "p" ? liveSetIds.includes(id) : tag === "i" ? liveStageIds.includes(id) : false;
-    }, [liveSetIds, liveStageIds]);
+        return tag === "i" && liveStageIds.includes(id);
+    }, [liveStageIds]);
 
     useEffect(() => {
         if (axesLoading || axes.length === 0) return;
         const ids = [...(pruneAxisIds ?? axes.map((a) => a.key)), ...GRID_AXIS_IDS, ...liveHotAxisIds];
         const liveDifIds = difsRef.current.map((d) => d.id);
-        const prune = <T extends string[] | Record<string, unknown>>(x: T): T => pruneDifKeys(pruneOutKeys(pruneAxisKeys(x, ids), liveSetIds, liveStageIds), liveDifIds);
+        const prune = <T extends string[] | Record<string, unknown>>(x: T): T => pruneDifKeys(pruneOutKeys(pruneAxisKeys(x, ids), liveStageIds), liveDifIds);
         setFrozenCols(prune);
         setHiddenCols(prune);
         setColWidths(prune);
         // 순서도 같은 체인 — **키를 지우는 건 여기 하나뿐이다**(드래그는 순서만 바꾼다, reorderCol 주석).
         setColOrder(prune);
         setCuts((c) => pruneAxisKeys(c, ids)); // 컷 키는 축뿐 — 갈라진 결과 열엔 컷이 없다
-        setPresets((p) => prunePresets(p, ids, liveSetIds, liveStageIds));
-        // 차이 열도 **저장물 기준**으로 판정한다 — "지금 화면에 선 열"로 재면 조립↔일반 뷰를 오가는
-        // 것만으로 소멸한다(위 ⚠ 와 같은 사고. 인스턴스 열은 조립 뷰에서 안 서고, 부품 열은 그 반대다).
+        setPresets((p) => prunePresets(p, ids, liveStageIds));
+        // 차이 열도 **저장물 기준**으로 판정한다 — "지금 화면에 선 열"로 재면 뷰를 오가는 것만으로 소멸한다.
         setDifs((ds) => {
             const next = ds.filter((d) => operandAlive(d.a) && operandAlive(d.b));
             return next.length === ds.length ? ds : next;
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [axes, axesLoading, pruneAxisIds, liveSetIds, liveStageIds, liveHotAxisIds]);
+    }, [axes, axesLoading, pruneAxisIds, liveStageIds, liveHotAxisIds]);
 
     // ── "저 열 보여줘"(타점 정보 → 여기) — 그 **열**로 가로 스크롤하고 잠깐 강조한다.
     //    열이 많으면 가로로 넘치므로 찾아 주는 일이 필요하다. 숨긴 열이면 먼저 꺼내 준다 —
@@ -255,14 +253,11 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
             // 갈라진 자리가 있으면 자리 순서 × 열 순서(같은 자리의 열들이 붙어 선다) — 없으면 붙박이 열.
             : outScopes && outScopes.length > 0
                 // 인스턴스 자리는 **결과 걷기 열만** 복제한다 — 시뮬은 T 무관이라 인스턴스로 갈리면
-                // 같은 값의 열이 조건 수만큼 늘 뿐이다(부품은 정의가 달라 시뮬도 갈린다).
+                // 같은 값의 열이 조건 수만큼 늘 뿐이다. 그래서 시뮬 열은 자리 없이 한 벌만 선다.
                 ? [
-                    ...outScopes.flatMap((sc) => (sc.kind === "part" ? OUTCOME_COL_IDS : OUTCOME_BASE_COL_IDS)
+                    ...outScopes.flatMap((sc) => OUTCOME_BASE_COL_IDS
                         .map((id): Col => ({ key: "out", metric: id, scope: sc }))),
-                    // 인스턴스 갈래에선 시뮬 열이 자리 없이 한 벌만 선다(값이 자리와 무관하므로).
-                    ...(outScopes.every((sc) => sc.kind === "inst")
-                        ? OUTCOME_COL_IDS.filter((id) => !OUTCOME_BASE_COL_IDS.includes(id)).map((id): Col => ({ key: "out", metric: id }))
-                        : []),
+                    ...OUTCOME_COL_IDS.filter((id) => !OUTCOME_BASE_COL_IDS.includes(id)).map((id): Col => ({ key: "out", metric: id })),
                 ]
                 : OUTCOME_COL_IDS.map((id): Col => ({ key: "out", metric: id }))),
         // 차이 열은 언제나 맨 뒤(피연산자 열보다 오른쪽이라 "빼는 순서"가 눈으로 읽힌다).

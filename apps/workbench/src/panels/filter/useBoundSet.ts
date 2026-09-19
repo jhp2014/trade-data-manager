@@ -81,7 +81,6 @@ export function useBoundSet(panelId: string): BoundSet {
 
     const funnel = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
-    const assemblies = useWorkbench((s) => s.assemblies);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const workingUniverse = useWorkbench((s) => s.filterUniverse);
     const workingStages = useWorkbench(selectFilterStages);
@@ -89,7 +88,7 @@ export function useBoundSet(panelId: string): BoundSet {
 
     /** 지금 따라가는 대상 — 핀이 있으면 그것, 없으면 전역 포인터(연동). */
     const target = pinned ?? selectedSetRef;
-    const universe = targetUniverseOf(target, savedSets, assemblies, workingUniverse);
+    const universe = targetUniverseOf(target, savedSets, workingUniverse);
     const daily = universe === "daily";
 
     const dayStages = useMemo(
@@ -130,8 +129,8 @@ export function useBoundSet(panelId: string): BoundSet {
     const label = useMemo(
         () => (target === null
             ? linkedTargetLabel(funnel.active.length)
-            : setRefLabel(target, savedSets, assemblies)),
-        [target, funnel.active.length, savedSets, assemblies],
+            : setRefLabel(target, savedSets)),
+        [target, funnel.active.length, savedSets],
     );
 
     const togglePin = useCallback(() => {

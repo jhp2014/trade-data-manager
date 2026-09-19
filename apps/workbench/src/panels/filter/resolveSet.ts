@@ -12,15 +12,13 @@
 // **넓어지는** 방향이라, 집합 하나 지웠는데 어느 패널이 전체를 보며 틀린 분모로 계속 읽게 된다.
 // "결손은 결손"(축 규칙 3)이 참조에도 적용되는 것.
 import {
-    expandUniverse, funnelKey, tallyFunnel,
+    expandUniverse, tallyFunnel,
     type ChartRef, type FunnelItem, type FunnelResult, type Grain, type PointDefinition,
 } from "@trade-data-manager/market/domain";
 import { expandToPointItems } from "../../lib/grainView.js";
 import { judgeKeyOf } from "../../lib/pointDef.js";
 import type { SetRef } from "../../lib/setRef.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
-import type { Assembly } from "../../store/assembliesSlice.js";
-import { unionGrain, unionOf, uniqueCounts, type UnionPart } from "./assembly.js";
 import { toFunnelStages, type EvalLookup } from "./evaluate.js";
 import { activeStages, funnelOrder, resolveAutoGrain, type FilterStage, type GrainLookup } from "./stage.js";
 
@@ -40,12 +38,10 @@ export interface SetResolveCtx {
     candidates: readonly ChartRef[];
     /** 그 하루의 타점 시각들(타점 0이면 빈 배열). */
     timesOf: (c: ChartRef) => readonly string[];
-    /** 작업 깔때기의 단계들(조건 한 벌) — survivors·cell 참조의 재료. */
+    /** 작업 깔때기의 단계들(조건 한 벌) — survivors 참조의 재료. */
     activeStages: readonly FilterStage[];
     /** 저장 집합 사전. undefined 반환 = 지워진 집합(깨진 참조). */
     savedSetOf: (id: string) => SavedSet | undefined;
-    /** 조립 사전. undefined 반환 = 지워진 조립(깨진 참조). */
-    assemblyOf: (id: string) => Assembly | undefined;
     /**
      * 정의 → 판정 재료. undefined(옛 저장물 — pointDef 없음)·현재 정의와 같은 키면 **현재 재료 그대로**
      * (비용 0). 다른 정의는 defDerived 캐시를 딛고 격자 축 값/줄·타점 시각·결과 단면을 그 정의 것으로
@@ -107,16 +103,6 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
         case "saved":
             return resolveSaved(ref.setId, ctx);
 
-        case "assembly": {
-            // 조립 = 켠 부품들의 합집합(순수 규칙은 assembly.ts). **죽은 부품은 그 부품만 빠진다** —
-            // 조립 전체를 BROKEN 으로 접지 않는 건 진단이 부품 단위라서다(UI 가 부품 줄에 깨짐을 표시한다).
-            // (옛 groupChain 의 "하나라도 죽으면 통째"와 다른 규칙 — 사용자 확정.)
-            const a = ctx.assemblyOf(ref.id);
-            if (a === undefined) return BROKEN;
-            const u = unionOf(liveUnionParts(a, ctx));
-            return { broken: false, grain: u.grain, items: u.items };
-        }
-
         case "items":
             return {
                 broken: false,
@@ -130,41 +116,19 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
     }
 }
 
-/** 켠·살아있는 부품들의 합집합 재료 — 부품의 전개 시각은 **그 부품 정의**의 것(자립). 조립 케이스와 타점 전개가 공유한다. */
-function liveUnionParts(a: Assembly, ctx: SetResolveCtx): UnionPart[] {
-    const parts: UnionPart[] = [];
-    for (const m of a.members) {
-        if (!m.enabled) continue;
-        const r = resolveSaved(m.setId, ctx);
-        if (r.broken) continue;
-        parts.push({ grain: r.grain, items: r.items, timesOf: ctx.materialsFor(ctx.savedSetOf(m.setId)?.pointDef).timesOf });
-    }
-    return parts;
-}
-
 /**
  * 참조의 하루→타점 전개(∀) — **자기 정의의 시각으로**. 이미 타점 층위면 그대로.
  *   · 저장 집합 = 그 집합 pointDef 의 시각(전개까지 자립 — "게이트 30 집합"의 타점은 게이트 30 세계의 것).
- *   · day 조립 = 부품마다 자기 정의로 전개한 뒤 합집합(= 타점 층위 union 과 동치 — 항목이 어느 부품에서
- *     왔는지 물을 필요가 원리적으로 없다).
- *   · 그 외(유니버스·그룹 체인·작업 깔때기 유래) = 현재 정의의 시각(ctx.timesOf).
+ *   · 그 외(유니버스·작업 깔때기 유래) = 현재 정의의 시각(ctx.timesOf).
  * viewedPointRefs(구독 패널의 타점 전개)가 쓴다 — 여기만 다른 시각을 쓰면 시트 행과 칩 건수가 갈린다.
  */
 export function expandRefToPoints(ref: SetRef, r: ResolvedSet, ctx: SetResolveCtx): FunnelItem[] {
     if (r.grain === "point") return [...r.items];
     if (ref.kind === "saved") return expandToPointItems(r.items, ctx.materialsFor(ctx.savedSetOf(ref.setId)?.pointDef).timesOf);
-    if (ref.kind === "assembly") {
-        const a = ctx.assemblyOf(ref.id);
-        if (a !== undefined) {
-            // 부품별 자기-정의 전개를 강제하려고 각 부품을 미리 타점으로 내린 뒤 합친다(중복은 unionOf 가 접는다).
-            const parts = liveUnionParts(a, ctx).map((p): UnionPart => ({ grain: "point", items: expandToPointItems(p.items, p.timesOf), timesOf: p.timesOf }));
-            return unionOf(parts).items;
-        }
-    }
     return expandToPointItems(r.items, ctx.timesOf);
 }
 
-/** 저장 집합 한 벌 — saved 참조와 조립의 부품이 같은 경로를 쓴다(두 벌이면 언젠가 다른 답을 낸다). */
+/** 저장 집합 한 벌 — 이름 붙은 저장물의 유일한 풀이 경로(두 벌이면 언젠가 다른 답을 낸다). */
 function resolveSaved(setId: string, ctx: SetResolveCtx): ResolvedSet {
     const s = ctx.savedSetOf(setId);
     if (s === undefined) return BROKEN;
@@ -177,54 +141,6 @@ function resolveSaved(setId: string, ctx: SetResolveCtx): ResolvedSet {
     if (s.universe !== "longitudinal") return { broken: false, otherUniverse: true, grain: "day", items: [] };
     const r = resolveDef(setId, ctx);
     return { broken: false, grain: r.grain, items: r.tally.survivors, pending: r.tally.pendingCount };
-}
-
-/** 조립 진단 — 부품별 (건수 · 고유 기여 · 미배치 · 깨짐) + 합집합 크기. SetManager 펼침이 소비한다.
- *  고유 기여의 키는 **합집합과 같은 층위**로 만든다(층위가 갈리면 같은 항목이 다른 키가 되어 전부 고유로 부푼다). */
-export interface AssemblyPartDiag {
-    setId: string;
-    enabled: boolean;
-    broken: boolean;
-    /** 부품 고유 층위의 건수(칩 툴팁과 같은 자). */
-    count: number;
-    /** 합집합 층위에서 이 부품만 든 항목 수 — "이 부품을 빼면 합집합이 얼마나 주나". 꺼짐·깨짐은 0. */
-    unique: number;
-    /** 그 부품 정의 유니버스의 전 단계 AND 미배치 — 생존도 탈락도 아닌 결손(조용히 안 사라진다). */
-    pending: number;
-}
-export interface AssemblyDiag {
-    grain: Grain;
-    /** 합집합 크기(켠 부품들, 중복 접힘). */
-    total: number;
-    parts: AssemblyPartDiag[];
-}
-
-export function assemblyDiagOf(id: string, ctx: SetResolveCtx): AssemblyDiag | null {
-    const a = ctx.assemblyOf(id);
-    if (a === undefined) return null;
-    const resolved = a.members.map((m) => ({ m, set: ctx.savedSetOf(m.setId), r: resolveSaved(m.setId, ctx) }));
-    const live = resolved.filter((p) => p.m.enabled && !p.r.broken);
-    const grain = unionGrain(live.map((p) => p.r));
-    // 켠 부품들의 합집합-층위 키 집합 — day 부품의 전개는 그 부품 정의의 시각으로(리졸버의 규칙 그대로).
-    const keySets = live.map((p) => {
-        const items = grain === "point" ? expandToPointItems(p.r.items, ctx.materialsFor(p.set?.pointDef).timesOf) : p.r.items;
-        return new Set(items.map(funnelKey));
-    });
-    const uniques = uniqueCounts(keySets);
-    const union = new Set<string>();
-    for (const s of keySets) for (const k of s) union.add(k);
-    const parts: AssemblyPartDiag[] = resolved.map(({ m, r }) => {
-        const li = live.findIndex((p) => p.m.setId === m.setId);
-        return {
-            setId: m.setId,
-            enabled: m.enabled,
-            broken: r.broken,
-            count: r.items.length,
-            unique: li >= 0 ? uniques[li]! : 0,
-            pending: r.pending ?? 0,
-        };
-    });
-    return { grain, total: union.size, parts };
 }
 
 /** 리졸버 호출 한 번(= ctx 한 벌) 안에서 조건 정산을 정의(작업 깔때기 | 저장 집합)당 한 번만 —

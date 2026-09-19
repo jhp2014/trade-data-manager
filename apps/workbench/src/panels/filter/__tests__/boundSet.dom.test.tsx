@@ -74,7 +74,7 @@ beforeEach(() => {
     evalSpy.mockClear();
     useWorkbench.setState({
         focus: { ...useWorkbench.getState().focus, date: DATE, code: "", time: null },
-        panelUi: {}, savedSets: [], assemblies: [], selectedSetRef: null,
+        panelUi: {}, savedSets: [], selectedSetRef: null,
         filterUniverse: "daily", filterStages: [wideStage],
     });
 });
@@ -94,19 +94,16 @@ describe("useBoundSet — 하루 우주", () => {
         expect(evalSpy).not.toHaveBeenCalled();
     });
 
-    it("풀 수 없는 바인딩(조립)은 **거르는 빈 집합 + 이유**다 — isFiltering 을 끄면 소비자가 전 우주를 그린다", () => {
+    it("폐지된 종류를 가리키던 핀(옛 조립)은 **거르는 빈 집합 + 이유**다 — 조용히 연동으로 떨어지면 딴 집합을 그린다", () => {
         useWorkbench.setState({
-            assemblies: [{ id: "as1", name: "조립", members: [{ setId: "fs-day", enabled: true }] }],
             savedSets: [savedDaily],
-            panelUi: { a: { setPin: { kind: "assembly", id: "as1" } } },
+            panelUi: { a: { setPin: { kind: "assembly", id: "as1" } } }, // 저장물에 남은 옛 조립 핀
         });
         renderProbes(["a"]);
-        expect(seen.a!.universe).toBe("daily");
         expect(seen.a!.view.viewedItems).toHaveLength(0);
         // 이 둘이 이 검사의 본론이다 — 시트·시뮬은 `isFiltering` 으로 "거르나"를 가른다.
         expect(seen.a!.view.isFiltering, "거르고 있다(빈 집합)").toBe(true);
         expect(seen.a!.view.broken, "이유가 있다").toBe(true);
-        expect(seen.a!.day.unsupported).toMatch(/조립/);
     });
 
     it("최종 생존은 작업 깔때기의 조건으로 풀린다 — 연동과 같은 것을 본다", () => {

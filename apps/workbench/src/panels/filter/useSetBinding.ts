@@ -8,19 +8,14 @@
 // 옛 고정 바인딩의 영속(`wb.setBinding.*`)은 **여전히 안 읽는다** — 폐지된 개념의 저장물이라 변환할
 // 대상이 없고, 새 핀은 `panelUi[panelId].setPin` 이라는 다른 자리에 산다.
 import type { SavedSet } from "../../store/savedSetsSlice.js";
-import type { Assembly } from "../../store/assembliesSlice.js";
 import type { SetRef } from "../../lib/setRef.js";
 
-/** 집합 참조의 이름 — 저장 집합·조립은 저장 사전에서 찾는다(지워졌으면 그렇게 말한다). ∪ 접두는 여기 한 곳. */
-export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[], assemblies: readonly Assembly[]): string {
+/** 집합 참조의 이름 — 저장 집합은 저장 사전에서 찾는다(지워졌으면 그렇게 말한다). */
+export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[]): string {
     switch (ref.kind) {
         case "universe": return "전체";
         case "survivors": return "최종 생존";
         case "saved": return savedSets.find((f) => f.id === ref.setId)?.name ?? "(지워진 집합)";
-        case "assembly": {
-            const a = assemblies.find((x) => x.id === ref.id);
-            return a ? `∪ ${a.name}` : "(지워진 조립)";
-        }
         case "orphan": return `${ref.label} (폐지된 바인딩)`;
         case "items": return ref.label;
     }

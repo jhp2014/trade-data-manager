@@ -20,8 +20,8 @@ import type { Col } from "./sheetColumns.js";
 export type SortKey =
     | { kind: "name" | "date" | "time" | "points" | "comment" }
     | { kind: "axis"; axisId: string }
-    /** scope = 갈라진 결과 열의 자리(부품 = 모수가 다름 / 인스턴스 = T 가 다름) — colKey 와 짝. */
-    | { kind: "out"; metric: OutcomeColId; scope?: { kind: "part" | "inst"; id: string } }
+    /** scope = 갈라진 결과 열의 자리(인스턴스 = T 가 다름) — colKey 와 짝. */
+    | { kind: "out"; metric: OutcomeColId; scope?: OutScopeRef }
     /** 차이 열(A − B) — id 가 곧 주소. */
     | { kind: "dif"; id: string };
 export type SortKind = SortKey["kind"];
@@ -39,7 +39,7 @@ export const sortKeyOf = (c: Col): SortKey =>
 export const sortKeyId = (k: SortKey): string =>
     (k.kind === "axis" ? `ax:${k.axisId}`
         : k.kind === "dif" ? `dif:${k.id}`
-            : k.kind === "out" ? `out:${k.scope ? `${k.scope.kind === "part" ? "p" : "i"}:${k.scope.id}:` : ""}${k.metric}`
+            : k.kind === "out" ? `out:${k.scope ? `i:${k.scope.id}:` : ""}${k.metric}`
                 : k.kind);
 export const sameSortKey = (a: SortKey, b: SortKey): boolean => sortKeyId(a) === sortKeyId(b);
 /** 체인에서 그 키의 단 번호(1부터). 없으면 0 — 헤더 배지가 그대로 쓴다. */
@@ -83,7 +83,9 @@ function parseStep(o: unknown): SortStep | null {
     // 갈라진 열 정렬(scope)은 모양이 맞을 때만 — 오염이면 필드째 벗겨 공용 결과 열 정렬로 읽는다(관대).
     if (k.kind === "out" && k.scope !== undefined) {
         const sc = k.scope as { kind?: unknown; id?: unknown };
-        if (!sc || (sc.kind !== "part" && sc.kind !== "inst") || typeof sc.id !== "string") delete k.scope;
+        // 옛 부품 자리("part")도 여기서 벗겨진다 — 조립층이 은퇴해 그 열이 다시 안 서므로,
+        // 정렬은 공용 결과 열로 관대하게 떨어진다(정렬이 통째로 깨지는 것보다 낫다).
+        if (!sc || sc.kind !== "inst" || typeof sc.id !== "string") delete k.scope;
     }
     if (k.kind === "dif" && typeof k.id !== "string") return null;
     return s as SortStep;
@@ -112,7 +114,7 @@ export interface SortCtx {
 }
 
 /** 값 접근자에 넘기는 자리 참조 — 열 기술자의 OutScope 에서 표시용 필드를 뺀 것. */
-export interface OutScopeRef { kind: "part" | "inst"; id: string }
+export interface OutScopeRef { kind: "inst"; id: string }
 
 /** 한 키에서 이 행의 값. **null = 값 없음**(미배치·미산정·미기입) → 방향 무관 바닥. */
 export function sortValueOf(k: SortKey, row: SheetRow, ctx: SortCtx): string | number | null {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { usePointRows } from "../lib/usePointRows.js";
-import { useLabelRows, useOutcomeSlices, useSimAt, useTradeSim, type OutcomesView, type SimView } from "../lib/PointGridsContext.js";
+import { useLabelRows, useOutcomeSlices, useTradeSim, type OutcomesView } from "../lib/PointGridsContext.js";
 import { useDisplayT } from "./outcome/outcomeLink.js";
 import { seriesColor } from "../styles/palette.js";
 import { colKey, type OutScope } from "./rank/sheetColumns.js";
@@ -10,7 +10,7 @@ import { buildDaySheetRows, buildSheetRows, type SheetRow } from "./rank/rankShe
 import { useSheetColumns } from "./rank/useSheetColumns.js";
 import {
     DEFAULT_CHAIN, buildSheetGroups, dropSort, parseSortChain, pushSort, resetSort, resolveCutKeys,
-    sortSheetRows, type SortChain, type SortCtx, type SortKey,
+    sortSheetRows, type OutScopeRef, type SortChain, type SortCtx, type SortKey,
 } from "./rank/sheetSort.js";
 import { buildAxisIndex, orderKeyByPoint, type AxisIndex } from "../lib/rankIndex.js";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -134,45 +134,22 @@ function SheetBody({ panelId, rowMode, setRowMode, navRef }: {
     //    안 된다. 포인터는 우주를 못 넘는다). 하루 우주면 같은 계약을 셀 평가기가 채운다.
     const linked = useBoundSet(panelId);
 
-    // ── 조립 뷰 판정 — 보는 집합이 조립이면 결과 열이 **부품별**로 갈라지고(부품 정의의 값), 필터 방식은
-    //    좁히기로 고정된다(흐리게의 행 원천이 현재 정의라 조립 멤버가 행째 안 보인다 — decisions.md 「집합 조립」).
-    //    ⚠ 기준은 전역 포인터가 아니라 **이 패널이 실제로 따라가는 참조**(linked.target)다 — 고정한
-    //    패널이 전역 포인터를 읽으면 행은 A 인데 결과 열은 ∪B 의 부품별로 갈린다(리뷰가 잡은 자리).
-    const assemblies = useWorkbench((s) => s.assemblies);
-    const savedSets = useWorkbench((s) => s.savedSets);
-    const pointDefCur = useWorkbench((s) => s.pointDef);
-    const boundRef = linked.target;
-    const viewingAssembly = useMemo(
-        () => (boundRef?.kind === "assembly" ? (assemblies.find((a) => a.id === boundRef.id) ?? null) : null),
-        [boundRef, assemblies],
-    );
-    // 결과 열이 갈라지는 자리 — **배타 3갈래**(decisions.md 「허용 폭 T 의 인스턴스화」):
-    //   조립 뷰면 부품(모수가 다름) / 아니고 결과 조건이 있으면 인스턴스(T 가 다름) / 그 외 붙박이.
-    // 이 배타성이 "부품 × 인스턴스" 곱셈을 막는다.
+    // 결과 열이 갈라지는 자리 — 결과 조건이 있으면 **인스턴스**(T 가 다름), 그 외 붙박이.
+    // (옛 조립 뷰의 "부품별" 갈래는 2026-09-19 조립층 철거와 함께 사라졌다 — 5단계 식 트리에서
+    //  OR 이 돌아올 때 열을 다시 가를지는 그때 판단한다.)
     // ⚠ 셀렉터 안에서 filter 하지 않는다 — 매번 새 배열이라 **스토어의 모든 갱신**이 이 컴포넌트를
     //   깨우고 시트 전량 재정렬로 번진다(zustand 는 얕은 비교). stages 를 그대로 구독하고 여기서 접는다.
     const allStages = useWorkbench(selectFilterStages);
     const outcomeStages = useMemo(() => allStages.filter((st) => st.predicates.some((pr) => pr.kind === "outcome")), [allStages]);
     const outScopes = useMemo<OutScope[] | undefined>(() => {
         if (dayMode) return undefined;
-        if (viewingAssembly) {
-            const out: OutScope[] = [];
-            // 색 = 조립 안 순번(끔·죽은 부품 포함 인덱스) — SetManager 부품 색점과 같은 규칙이라 눈이 잇는다.
-            viewingAssembly.members.forEach((m, i) => {
-                if (!m.enabled) return;
-                const set = savedSets.find((s) => s.id === m.setId);
-                if (!set) return;
-                out.push({ kind: "part", id: m.setId, name: set.name, color: seriesColor(i) });
-            });
-            return out.length > 0 ? out : undefined;
-        }
         // 결과 조건마다 열 한 벌 — **꺼둔 조건도 선다**(탐색 = 꺼진 행: 거르지 않고 값만 본다).
         const inst = outcomeStages.map((st, i): OutScope => {
             const pr = st.predicates.find((x) => x.kind === "outcome");
             return { kind: "inst", id: st.id, name: `T ${pr?.kind === "outcome" ? pr.t : 0}%`, color: seriesColor(i) };
         });
         return inst.length > 0 ? inst : undefined;
-    }, [viewingAssembly, dayMode, savedSets, outcomeStages]);
+    }, [dayMode, outcomeStages]);
 
     // ── 열 구성(고정·숨김·폭·컷 + 되짚기) — 넷 다 축 키를 들어 청소 규칙이 같으므로 한 훅이 소유한다.
     // 유령 키 청소 기준은 전체 축 — day 모드의 좁힌 목록으로 프룬하면 공유 컷의 point 축 키가 지워진다.
@@ -212,8 +189,7 @@ function SheetBody({ panelId, rowMode, setRowMode, navRef }: {
 
     // 필터 표시 모드 — narrow(교집합만) / dim(전체 유지, 밴드 밖 흐리게). 영속.
     const [filterMode, setFilterMode] = usePersistedState<"narrow" | "dim">(FILTERMODE_KEY, (o) => (o === "dim" ? "dim" : o === "narrow" ? "narrow" : null), "narrow");
-    // 조립 뷰는 좁히기 고정 — 흐리게의 행 원천(allPoints)이 현재 정의라 부품 정의의 타점이 행째 안 선다.
-    const filterModeEff = viewingAssembly ? "narrow" : filterMode;
+    const filterModeEff = filterMode;
 
     // 행 집합: narrow + 필터 활성 → 매칭 집합만. dim 또는 무필터 → 전체(밴드 밖은 렌더에서 흐리게).
     const rowPoints = useMemo<readonly ReviewPointKey[]>(() => {
@@ -261,16 +237,6 @@ function SheetBody({ panelId, rowMode, setRowMode, navRef }: {
     // 부품별 파생(조립 뷰) — 2026-09-18 B: 행·걷기가 라벨(정의 무관)이 되면서 부품이 가르는 건
     // **시뮬 노브**(payload 의 sim)뿐이다. 결과 단면은 전역 한 벌(표시 T — 부품끼리 같은 값), 시뮬은
     // useSimAt 파라미터 벌 캐시를 지난다("모수 밖" 판정은 모수가 라벨로 통일돼 소멸).
-    const simAt = useSimAt();
-    const partSim = useMemo(() => {
-        const m = new Map<string, SimView>();
-        for (const sc of outScopes ?? []) {
-            if (sc.kind !== "part") continue;
-            const def = savedSets.find((s) => s.id === sc.id)?.pointDef ?? pointDefCur;
-            m.set(sc.id, simAt(def.sim));
-        }
-        return m;
-    }, [outScopes, savedSets, pointDefCur, simAt]);
     /** 인스턴스 열의 단면 — 그 조건의 T 로(모수는 현재 정의와 같다). */
     const instSlice = useMemo(() => {
         const m = new Map<string, OutcomesView>();
@@ -280,16 +246,15 @@ function SheetBody({ panelId, rowMode, setRowMode, navRef }: {
         }
         return m;
     }, [outcomeStages, sliceAt]);
-    // scope 가 오면 갈라진 열 — 인스턴스 = 그 T 의 단면. 부품의 결과는 전역과 같다(행·걷기가 라벨로
-    // 정의 무관이 됐다, 2026-09-18 B — 부품이 가르는 건 시뮬 노브뿐).
-    const outcomeOf = useMemo(() => (row: SheetRow, scope?: { kind: "part" | "inst"; id: string }) => {
+    // scope 가 오면 갈라진 열 — 인스턴스 = 그 T 의 단면.
+    const outcomeOf = useMemo(() => (row: SheetRow, scope?: OutScopeRef) => {
         const k = rowKey(row);
         if (scope?.kind === "inst") return instSlice.get(scope.id)?.byKey.get(k);
         return outcomes.byKey.get(k);
     }, [outcomes, instSlice]);
-    // 시뮬은 **T 무관**이라 인스턴스로 안 갈린다 — 부품(payload 의 sim 노브)만 가른다.
-    const simOf = useMemo(() => (row: SheetRow, scope?: { kind: "part" | "inst"; id: string }) =>
-        (scope?.kind === "part" ? partSim.get(scope.id) : sim)?.byKey.get(rowKey(row)), [sim, partSim]);
+    // 시뮬은 **T 무관**이라 인스턴스로 안 갈린다 — 열이 여럿이어도 값은 한 벌이다.
+    const simOf = useMemo(() => (row: SheetRow, _scope?: OutScopeRef) =>
+        sim?.byKey.get(rowKey(row)), [sim]);
     /** 차이 열 값 — 피연산자 열의 **같은 접근자**를 두 번 부른다(값 정의가 한 곳이라 정렬·칸이 못 갈린다). */
     const difOf = useMemo(() => {
         // ⚠ 재료는 **숨김 이전 목록**(cols.baseOutCols)이다 — displayCols 를 물면 피연산자 열을 숨기는
@@ -495,8 +460,7 @@ function SheetBody({ panelId, rowMode, setRowMode, navRef }: {
             value: cellMode, set: (v) => setCellMode(parseCellMode(v) ?? "number"),
         },
         {
-            // 조립 뷰에서는 감춘다(좁히기 고정) — 흐리게의 행 원천이 현재 정의라 조립 멤버가 행째 안 보인다.
-            kind: "choice", id: "filterMode", name: "필터 방식", available: bandsActive && !viewingAssembly,
+            kind: "choice", id: "filterMode", name: "필터 방식", available: bandsActive,
             help: "매칭만 남길까, 전체를 두고 밖을 흐리게 할까",
             values: [{ v: "narrow", label: "좁히기" }, { v: "dim", label: "흐리게" }],
             value: filterMode, set: (v) => setFilterMode(v === "dim" ? "dim" : "narrow"),

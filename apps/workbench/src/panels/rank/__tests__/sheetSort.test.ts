@@ -96,10 +96,13 @@ describe("정렬 체인", () => {
     });
 });
 
-describe("갈라진 결과 열 정렬(out + scope) — 조립 뷰의 부품 · 결과 조건 인스턴스", () => {
+describe("갈라진 결과 열 정렬(out + scope) — 결과 조건 인스턴스", () => {
     it("영속 왕복 보존 · 오염된 scope 는 필드만 벗겨 공용 결과 열로 읽는다(관대)", () => {
-        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh", scope: { kind: "part", id: "fs1" } }, dir: -1 }];
+        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh", scope: { kind: "inst", id: "s1" } }, dir: -1 }];
         expect(parseSortChain(JSON.parse(JSON.stringify(chain)))).toEqual(chain);
+        // 옛 부품 자리("part")도 필드만 벗겨진다 — 그 열이 다시 안 서므로 공용 결과 열로 떨어진다.
+        expect(parseSortChain([{ key: { kind: "out", metric: "extHigh", scope: { kind: "part", id: "fs1" } }, dir: -1 }]))
+            .toEqual([{ key: { kind: "out", metric: "extHigh" }, dir: -1 }]);
         expect(parseSortChain([{ key: { kind: "out", metric: "extHigh", scope: { kind: "nope", id: 3 } }, dir: -1 }]))
             .toEqual([{ key: { kind: "out", metric: "extHigh" }, dir: -1 }]);
     });
@@ -120,7 +123,7 @@ describe("갈라진 결과 열 정렬(out + scope) — 조립 뷰의 부품 · �
             difOf: () => null,
         };
         const rows = [row("A"), row("B")];
-        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh", scope: { kind: "part", id: "fs1" } }, dir: -1 }];
+        const chain: SortChain = [{ key: { kind: "out", metric: "extHigh", scope: { kind: "inst", id: "fs1" } }, dir: -1 }];
         expect(codes(sortSheetRows(rows, chain, perScope))).toEqual(["B", "A"]);
         // scope 없는 공용 열은 그 ctx 에서 전 행 바닥 — 폴백(날짜·종목)순.
         expect(codes(sortSheetRows(rows, [{ key: { kind: "out", metric: "extHigh" }, dir: -1 }], perScope))).toEqual(["A", "B"]);
