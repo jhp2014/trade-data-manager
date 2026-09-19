@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
-    activeStages, addStage, autoGrain, canAddPredicate,
-    funnelOrder, isPredicateDead, isPredicateEmpty, parseStages, predicateGrain, removeStage,
-    renameGroupInStages, renameStage, resolveAutoGrain, setStagePredicates, stageGrain, stageKind, toggleStage,
+    activeStages, autoGrain, canAddPredicate,
+    funnelOrder, isPredicateDead, isPredicateEmpty, parseStages, predicateGrain,
+    renameGroupInStages, resolveAutoGrain, stageGrain, stageKind,
     type FilterPredicate, type FilterStage, type Grain, type GrainLookup,
 } from "../stage.js";
 import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
@@ -200,34 +200,8 @@ describe("funnelOrder — 하루 단계가 타점 단계보다 앞", () => {
     });
 });
 
-describe("편집 연산 — 전부 불변", () => {
-    const base = [stage("a", []), stage("b", []), stage("c", [])];
-
-    it("추가는 끝에 붙고 켜진 상태로 시작", () => {
-        const next = addStage(base);
-        expect(next).toHaveLength(4);
-        expect(next[3].enabled).toBe(true);
-        expect(base).toHaveLength(3);
-    });
-
-    it("끄기는 지우지 않는다 — 잠깐 빼보는 게 '이 조건이 일을 하나'를 보는 손짓이다", () => {
-        const next = toggleStage(base, "b");
-        expect(next[1].enabled).toBe(false);
-        expect(next).toHaveLength(3);
-    });
-
-    it("제거·조건 교체·이름", () => {
-        expect(removeStage(base, "b").map((s) => s.id)).toEqual(["a", "c"]);
-        const withPred = setStagePredicates(base, "a", [{ kind: "date", ranges: [] }]);
-        expect(withPred[0].predicates).toHaveLength(1);
-        expect(renameStage(base, "a", " 돌파 ")[0].name).toBe("돌파");
-    });
-
-    it("빈 이름은 자동 라벨로 되돌린다(undefined)", () => {
-        const named = renameStage(base, "a", "돌파");
-        expect(renameStage(named, "a", "   ")[0].name).toBeUndefined();
-    });
-});
+// 편집 연산의 리스트판은 2026-09-19 에 지웠다(stage.ts 머리 주석) — 실물은 식 트리판이고
+// 그 검사는 `expr.test.ts`(mapLeaves/filterLeaves/appendLeaf)와 `filterFunnelSlice.test.ts` 에 있다.
 
 describe("parseStages — 반쯤 살아난 조건은 없느니만 못하다", () => {
     it("정상 저장본을 읽는다", () => {

@@ -347,7 +347,12 @@ const isAxisKind = (k: PredicateKind): boolean => k === "axisBand" || k === "axi
 // (옛 canAddGroupLiteral 은 scope 저장으로 소멸 — "이 scope 에서 고를 수 있는 그룹인가"는 층위가
 //  아니라 멤버십 롤업의 질문이라 재료가 다르다. 팔레트가 lib/groupGrain 의 분류로 목록을 거른다.)
 
-// ── 편집 연산(전부 불변) ────────────────────────────────────────────────────
+// ── 편집 연산 ──────────────────────────────────────────────────────────────
+//
+// ⚠ 리스트 편집 연산(addStage·removeStage·toggleStage·setStagePredicates·replaceStage·renameStage)은
+//   2026-09-19 에 **지웠다**. 조건 한 벌이 리스트에서 식 트리가 된 뒤로 실물 구현은 `expr.ts` 의
+//   mapLeaves/filterLeaves/appendLeaf 와 그 위의 슬라이스 액션뿐이고, 같은 규칙을 두 벌로 들고 있으면
+//   언젠가 한쪽만 고쳐진다(빈 이름 = 자동 라벨 같은 규칙이 조용히 갈린다).
 
 export const newStageId = (): string => `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -355,34 +360,6 @@ export const newStageId = (): string => `s${Date.now().toString(36)}${Math.rando
 export const newStage = (predicates: FilterPredicate[] = []): FilterStage =>
     ({ id: newStageId(), enabled: true, predicates });
 
-export function addStage(stages: readonly FilterStage[], predicates: FilterPredicate[] = []): FilterStage[] {
-    return [...stages, newStage(predicates)];
-}
-
-export function removeStage(stages: readonly FilterStage[], id: string): FilterStage[] {
-    return stages.filter((s) => s.id !== id);
-}
-
-export function toggleStage(stages: readonly FilterStage[], id: string): FilterStage[] {
-    return stages.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s));
-}
-
-export function setStagePredicates(stages: readonly FilterStage[], id: string, predicates: FilterPredicate[]): FilterStage[] {
-    return stages.map((s) => (s.id === id ? { ...s, predicates } : s));
-}
-
-/**
- * 칸 하나를 **통째로** 갈아 끼운다(id 로 찾아서). 술어만 바꾸는 setStagePredicates 와 달리
- * 칸 수준 필드(전이)까지 한 번에 간다 — 부분 패치 API 로 하면 "안 건드림"과 "지움"을 구분할 수 없다.
- */
-export function replaceStage(stages: readonly FilterStage[], next: FilterStage): FilterStage[] {
-    return stages.map((s) => (s.id === next.id ? next : s));
-}
-
-export function renameStage(stages: readonly FilterStage[], id: string, name: string): FilterStage[] {
-    const trimmed = name.trim();
-    return stages.map((s) => (s.id === id ? { ...s, name: trimmed === "" ? undefined : trimmed } : s));
-}
 
 // ── 영속 검증 ──────────────────────────────────────────────────────────────
 

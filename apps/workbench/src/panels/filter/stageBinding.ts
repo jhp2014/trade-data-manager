@@ -11,7 +11,7 @@
 // ⚠ 그룹은 레일이 아니다(순서가 없다) — railKeyOf 가 null 을 준다. 그룹 조건은 보드에서 리스트로 관리하고
 // 필터 여러 개가 될 수 있다(테마A / 돌파형을 나눠 걸어야 각각을 따로 끄고 켤 수 있다).
 import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
-import { addStage, newStage, removeStage, setStagePredicates, unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
+import { newStage, unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 import { addLeafAt, filterLeaves, leavesOf, mapLeaves, type SetExpr } from "./expr.js";
 
 /** 레일 하나를 가리키는 열쇠. 축은 id 로, 결과는 지표로, 날짜·시간은 종류만으로 유일하다. */
@@ -89,40 +89,12 @@ export function predicateOfKind<K extends PredicateKind>(
 }
 
 /**
- * 레일 편집을 필터 리스트에 반영.
- *   · 술어가 있으면 — 그 레일의 **첫 필터**에서 이 레일의 술어만 갈아끼우고, 없으면 새로 만든다.
- *   · null(조건 없음) 이면 — 이 레일의 술어를 지운다. 필터에 아무 술어도 안 남으면 필터째 지운다
- *     (빈 필터를 남기면 화면에 아무 일도 안 하는 줄이 쌓인다).
- * 갈아끼우는 범위는 **이 레일의 술어뿐**이다 — 옛 저장본은 한 필터에 다른 레일의 술어(다른 축의
- * 밴드·값구간)가 같이 있을 수 있는데, 통째 교체는 그은 선 하나가 안 보이는 형제 조건까지 조용히 지웠다.
- * 같은 레일 안에서는 종류가 달라도 교체된다(밴드 ↔ 값구간 — 한 축의 두 손잡이라 자리가 하나다).
- * 둘 이상 매여 있으면 첫 것만 건드린다 — 나머지는 목록에서 손으로 정리하게 두는 편이 낫다.
- */
-export function applyRailPredicate(
-    stages: readonly FilterStage[],
-    key: RailKey,
-    predicate: FilterPredicate | null,
-): FilterStage[] {
-    const first = stagesFor(stages, key)[0];
-    if (!first) return predicate === null ? [...stages] : addStage(stages, [predicate]);
-
-    const others = first.predicates.filter((p) => {
-        const k = railKeyOf(p);
-        return k === null || !sameRailKey(k, key);
-    });
-    if (predicate === null) {
-        return others.length > 0 ? setStagePredicates(stages, first.id, others) : removeStage(stages, first.id);
-    }
-    return setStagePredicates(stages, first.id, [...others, predicate]);
-}
-
-/**
- * 같은 규칙의 **식 트리 판** — 리스트판(위)과 한 쌍이다. 규칙을 두 벌로 쓰지 않으려고 판정(`stagesFor`)과
- * 술어 솎기는 그대로 쓰고, 달라지는 건 "어디에 쓰나"뿐이다: 붙이기는 루트에, 고치기·지우기는 그 잎에.
+ * 레일 편집을 **식 트리**에 반영 — 이 규칙의 유일한 구현이다(리스트 전용 판은 2026-09-19 삭제:
+ * 같은 규칙이 두 벌이면 언젠가 한쪽만 고쳐진다).
+ *   · 술어가 있으면 — 주소가 가리키는 잎에서 이 레일의 술어만 갈아끼우고, 없으면 새로 만든다.
+ *   · null(조건 없음) 이면 — 그 잎에서 이 레일의 술어를 지운다. 아무 술어도 안 남으면 잎째 지운다.
  *
- * ⚠ 리스트판을 `leavesOf` → `exprOfStages` 로 감싸 쓰지 않는 이유: 그러면 **트리가 평평해진다**.
- * 지금은 루트 AND 하나뿐이라 티가 안 나지만, 묶음이 생기는 순간 선을 그을 때마다 사용자의 구조가
- * 조용히 무너진다.
+ * ⚠ 트리를 **평평하게 만들지 않는다**(잎 목록으로 내렸다 되짚으면 묶음·부정·참조가 통째로 사라진다).
  */
 export function applyRailToExpr(
     e: SetExpr,

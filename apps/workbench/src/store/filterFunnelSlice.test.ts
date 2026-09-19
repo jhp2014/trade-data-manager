@@ -62,3 +62,19 @@ describe("선택 포인터 — 깔때기를 만지는 순간 작업 깔때기로
         expect(store.getState().selectedSetRef).toBeNull();
     });
 });
+
+// 리스트 편집 연산을 지운 뒤(2026-09-19) **이름 규칙의 유일한 구현**은 이 액션이다 — 옛 stage.ts
+// `renameStage` 가 같은 규칙을 한 벌 더 들고 있었고, 두 벌이면 언젠가 한쪽만 고쳐진다.
+describe("조건 개명 — 빈 이름은 자동 라벨로 되돌린다", () => {
+    it("공백은 다듬고, 전부 공백이면 이름을 지운다(undefined = 자동 라벨)", async () => {
+        stubStorage();
+        const store = await loadStore();
+        store.getState().addFilterStage([datePred]);
+        const id = selectFilterStages(store.getState())[0]!.id;
+
+        store.getState().renameFilterStage(id, "  돌파  ");
+        expect(selectFilterStages(store.getState())[0]!.name).toBe("돌파");
+        store.getState().renameFilterStage(id, "   ");
+        expect(selectFilterStages(store.getState())[0]!.name).toBeUndefined();
+    });
+});

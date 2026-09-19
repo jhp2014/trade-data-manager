@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { applyRailPredicate, predicateFor, railKeyOf, sameRailKey, stagesFor, type RailKey } from "../stageBinding.js";
+import { applyRailToExpr, predicateFor, railKeyOf, sameRailKey, stagesFor, type RailKey } from "../stageBinding.js";
+import { exprOfStages, leavesOf } from "../expr.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
 
 const stage = (id: string, predicates: FilterPredicate[]): FilterStage => ({ id, enabled: true, predicates });
@@ -7,6 +8,15 @@ const band = (axisId: string, lo: string): FilterPredicate => ({ kind: "axisBand
 const value = (axisId: string, v: number): FilterPredicate => ({ kind: "axisValue", axisId, ranges: [{ from: { kind: "value", value: v } }] });
 const dates: FilterPredicate = { kind: "date", ranges: [{ from: "2026-07-01", to: "2026-07-31" }] };
 const AX: RailKey = { kind: "axis", axisId: "a1" };
+
+/**
+ * 레일 쓰기의 **리스트 관점** — 식 트리 판(applyRailToExpr)을 주소 없이 부르고 잎 목록으로 읽는다.
+ * 주소(stageId)를 안 주는 길이 곧 옛 1:1 규칙이라(결과·급타점 전문 패널의 연동 거울이 쓰는 길),
+ * 이 검사들이 그 규칙의 유일한 증인이다. 리스트 전용 구현은 2026-09-19 에 지웠다 — 같은 규칙을
+ * 두 벌로 들고 있으면 언젠가 한쪽만 고쳐진다.
+ */
+const applyRailPredicate = (stages: FilterStage[], key: RailKey, predicate: FilterPredicate | null): FilterStage[] =>
+    leavesOf(applyRailToExpr(exprOfStages(stages), key, predicate));
 
 describe("railKeyOf — 그룹만 레일이 없다", () => {
     it("축은 id 로, 날짜·시간은 종류로", () => {
@@ -45,7 +55,7 @@ describe("stagesFor · predicateFor", () => {
     });
 });
 
-describe("applyRailPredicate — 레일 하나 = 필터 하나", () => {
+describe("레일 쓰기(주소 없음) — 레일 하나 = 필터 하나", () => {
     it("처음 그으면 새 필터가 생긴다", () => {
         const next = applyRailPredicate([], AX, band("a1", "x"));
         expect(next).toHaveLength(1);
