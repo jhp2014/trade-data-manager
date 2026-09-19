@@ -2,8 +2,8 @@
 //
 // 이 판이 지는 일은 관리다: 무엇이 걸렸나(요약 줄) · 켜기/끄기 · 삭제 · 생성(＋ 조건).
 // **값 편집은 여기 없다** — 종류마다 제일 잘 보여주는
-// 편집면이 따로 있고(레일 = 필터 레일 패널 · 테마 = 테마 순위 패널 · 그룹 = 그 자리 팝오버),
-// 줄의 이름을 누르면 거기로 데려간다.
+// 편집면이 따로 있다: **1차원(날짜·시간·축 값)과 그룹은 그 자리 팝오버**, 2차원(결과·급타점·테마)만
+// 전용 패널이다(분포가 2차원이라 팝오버에 안 들어간다). 줄의 이름을 누르면 그리로 간다.
 //
 // ⚠ 불변식: **깔때기 참여는 이 목록에서 항상 전부 보인다.** 조건이 어디서 태어나든(레일을 긋든,
 // 저장 집합을 갈아 끼우든) 여기 줄로 서야 한다 — 안 보이는데 숫자가 달라지는 사고를 막는 규칙이라
@@ -28,10 +28,11 @@ import { GrainSection, Note } from "./grain.js";
 import type { CellValueRange } from "@trade-data-manager/market/domain";
 import { CellStageFields } from "./CellPredicateFields.js";
 import { kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
-import { GroupEditors, type GroupEditorAnchor } from "./ConditionEditors.js";
+import { GroupEditors, RailEditors, type GroupEditorAnchor, type RailEditor } from "./ConditionEditors.js";
+import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
-import { HOT_REVEAL, OUTCOME_REVEAL, RAIL_REVEAL, useRevealSender } from "./boardReveal.js";
+import { HOT_REVEAL, OUTCOME_REVEAL, useRevealSender } from "./boardReveal.js";
 import { OUTCOME_PANEL_ID } from "../outcome/outcomePanelIds.js";
 import { HOT_PANEL_ID } from "../hot/hotPanelIds.js";
 import { useLinkedHot } from "../hot/hotLink.js";
@@ -41,13 +42,13 @@ import { stageKind, type FilterPredicate, type FilterStage, type Grain, type Pre
 
 const GRAINS: Grain[] = ["day", "point"];
 /** 종류별 편집면 — 줄 이름을 누르면 여기로 데려간다. 결과 패널 id 는 공용 상수(주소가 세 곳이라 잎 모듈). */
-const RAIL_PANEL = "filter-rails-1";
 /** 조건판 타입 밑동 — 테마 연동 목록·새 조건판 발급이 쓴다(특정 인스턴스는 바인딩이 가리킨다). */
 const THEME_RANK_BASE = "theme-rank";
 const OUTCOME_PANEL = OUTCOME_PANEL_ID;
 
 export function ConditionBoard(): JSX.Element {
     const v = useFunnel();
+    const axes = useRankAxes();
     const stages = useWorkbench(selectFilterStages);
     const toggleStage = useWorkbench((s) => s.toggleFilterStage);
     const removeStage = useWorkbench((s) => s.removeFilterStage);
@@ -58,7 +59,6 @@ export function ConditionBoard(): JSX.Element {
     const setUniverse = useWorkbench((s) => s.filterUniverse);
 
     // ── 편집면으로 데려가기 ──
-    const sendReveal = useRevealSender(RAIL_REVEAL);
     const sendOutcomeReveal = useRevealSender(OUTCOME_REVEAL);
     const sendHotReveal = useRevealSender(HOT_REVEAL);
     const { setLinked: setLinkedOutcome } = useLinkedOutcome(); // 결과 줄 클릭 = 그 조건으로 연동 이동(판의 T 가 따라온다)
@@ -77,13 +77,15 @@ export function ConditionBoard(): JSX.Element {
         return pid !== undefined && dockSlots.includes(pid) ? pid : undefined;
     };
     const [groupEditor, setGroupEditor] = useState<GroupEditorAnchor | null>(null);
+    // 1차원 조건(날짜·시간·축 값)의 편집면 — 2026-09-19 부터 **이 보드가 직접 연다**(레일 패널 철거).
+    const [railEditor, setRailEditor] = useState<RailEditor | null>(null);
+    const applyRail = useWorkbench((s) => s.applyFilterRail);
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
     const groupCreate = useGroupCreateFlow(addStage, setGroupEditor);
 
     /**
-     * 줄 이름 클릭 — 그 **종류의 편집면**으로. 레일은 패널 경계를 넘으므로 신호를 남기고 열고(닫혀
-     * 있었다면 첫 렌더 전이라 즉시 스크롤이 안 된다 — boardReveal 머리 주석), 테마는 연동을 옮긴 뒤
-     * 패널을 세우고, 그룹은 판이 따로 없어 그 자리 팝오버를 연다(보드 밖 층이라 예외).
+     * 줄 이름 클릭 — 그 **종류의 편집면**으로. 1차원(날짜·시간·축 값)과 그룹은 **그 자리 팝오버**고,
+     * 2차원(결과·급타점·테마)만 전용 패널로 데려간다(분포가 2차원이라 팝오버에 안 들어간다).
      */
     const openEditor = (stage: FilterStage, e: React.MouseEvent): void => {
         switch (stageKind(stage)) {
@@ -99,7 +101,7 @@ export function ConditionBoard(): JSX.Element {
                 setGroupEditor({ stageId: stage.id, scope: gp?.scope ?? "day", x: e.clientX, y: e.clientY });
                 return;
             }
-            // ⚠ default 로 흘리면 필터 레일 패널로 가는데 거기엔 결과 줄이 없다(조용한 무반응) — 명시 분기.
+            // ⚠ 결과·급타점은 전용 판이 진다 — 팝오버로 흘리면 그릴 분포가 없다(조용한 무반응).
             case "outcome":
                 // 연동을 이 조건으로 옮긴다 — 판의 표시 T 가 그 조건의 T 가 돼야 레일에 그 컷이 보인다.
                 setLinkedOutcome(stage.id);
@@ -116,9 +118,20 @@ export function ConditionBoard(): JSX.Element {
                 sendHotReveal(stage.id);
                 openAndFocus(HOT_PANEL_ID);
                 return;
+            case "date":
+                setRailEditor({ kind: "date", x: e.clientX, y: e.clientY });
+                return;
+            case "time":
+                setRailEditor({ kind: "time", x: e.clientX, y: e.clientY });
+                return;
+            case "axisValue": {
+                const ap = stage.predicates.find((p): p is Extract<FilterPredicate, { kind: "axisValue" }> => p.kind === "axisValue");
+                if (ap) setRailEditor({ kind: "axisValue", axisId: ap.axisId, x: e.clientX, y: e.clientY });
+                return;
+            }
             default:
-                sendReveal(stage.id);
-                openAndFocus(RAIL_PANEL);
+                // 배치줄(axisBand)·셀 술어 등 — 줄 안에서 만지거나 아직 전용 편집면이 없는 종류.
+                return;
         }
     };
 
@@ -137,7 +150,7 @@ export function ConditionBoard(): JSX.Element {
                         <GrainSection key={grain} grain={grain}
                             right={grain === "point" && hasTheme ? <ThemeMaterialBadge /> : undefined}>
                             {entries.length === 0 && (
-                                <Note>없음 — 아래 <b>＋ 조건</b> 으로 만들거나, 필터 레일에서 그으면 여기 생깁니다</Note>
+                                <Note>없음 — 아래 <b>＋ 조건</b> 으로 만듭니다</Note>
                             )}
                             {entries.map(({ stage }) => {
                                 rowNo++;
@@ -167,7 +180,8 @@ export function ConditionBoard(): JSX.Element {
                     <AddCondition
                         setUniverse={setUniverse}
                         onCell={(p) => addStage([p])}
-                        onRails={() => openAndFocus(RAIL_PANEL)}
+                        axes={axes.axes}
+                        onRail={(ed) => setRailEditor(ed)}
                         onOutcome={() => openAndFocus(OUTCOME_PANEL)}
                         onHot={() => {
                             // 행을 만든다(테마형) — (W,r) 기본값이 뜻을 갖고, **행이 있어야 축이 서고
@@ -225,7 +239,10 @@ export function ConditionBoard(): JSX.Element {
                     onClose={() => setThemeLink(null)} />
             )}
 
-            {/* 그룹 팔레트(팝오버) — 그룹만 전용 판이 없어 그 자리에서 연다. 레일 갈래는 레일 패널이 진다. */}
+            {/* 1차원 조건 팝오버 — 날짜·시간·축 값. 쓰기는 applyFilterRail 한 줄(조건 하나 = 줄 하나). */}
+            <RailEditors editor={railEditor} stages={stages} write={applyRail} onClose={() => setRailEditor(null)} />
+
+            {/* 그룹 팔레트(팝오버) — 그룹도 같은 층. 2차원(결과·급타점·테마)만 전용 패널이 진다. */}
             <GroupEditors editor={groupEditor} stages={stages}
                 draft={groupCreate.draft} onDraftChange={groupCreate.setDraft} onCloseCreate={groupCreate.close}
                 removeStage={removeStage} setPredicates={setPredicates}
@@ -237,17 +254,23 @@ export function ConditionBoard(): JSX.Element {
 /**
  * ＋ 조건 — 조건이 태어나는 입구 하나. 고르면 그 종류의 편집면이 열린다.
  *
- * ⚠ 레일만 **행을 안 만든다**: 계산 축·날짜에는 "기본값"이 없고("5% 위"가 상위 3건인지 300건인지는
- * 분포를 봐야 안다), 이 앱의 규칙은 빈 술어 필터를 남기지 않는 것이다. 그래서 레일은 판으로 데려가고
- * 거기서 긋는 순간 조건이 된다(레일 하나 = 필터 하나). 테마·그룹은 기본값이 뜻을 갖거나 팔레트에서
- * 곧바로 식을 쓰므로 행을 만든다.
+ * ⚠ 1차원(날짜·시간·축 값)은 **행을 안 만든다**: 계산 축·날짜에는 "기본값"이 없고("5% 위"가 상위
+ * 3건인지 300건인지는 분포를 봐야 안다), 이 앱의 규칙은 빈 술어 필터를 남기지 않는 것이다. 그래서
+ * 팝오버를 열고 **거기서 값이 커밋되는 순간** 조건이 된다. 테마·그룹은 기본값이 뜻을 갖거나
+ * 팔레트에서 곧바로 식을 쓰므로 행을 만든다.
+ *
+ * 계산 축은 수십 개라 메뉴에 다 못 편다 — "계산 축"을 고르면 **같은 팝오버 안에서** 축 목록으로
+ * 한 겹 들어간다(팝오버를 겹쳐 띄우면 바깥 클릭 해제가 서로를 먹는다).
  */
-function AddCondition({ setUniverse, onCell, onRails, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot }: {
+function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot }: {
     /** 편집 대상의 우주 — 팔레트는 **숨기지 않고 회색**으로 세운다(대수는 한 벌, 결손은 사실). */
     setUniverse: Universe;
     /** 셀 조건 만들기 — 전용 편집 판이 없는 종류라 기본 payload 로 줄을 만들고 그 자리에서 만진다. */
     onCell: (p: FilterPredicate) => void;
-    onRails: () => void;
+    /** 계산 축 목록 — "계산 축" 을 고르면 이 목록으로 한 겹 들어간다(팝오버 안에서 화면을 바꾼다). */
+    axes: readonly { key: string; name: string }[];
+    /** 1차원 조건 편집면 열기 — 그 자리에서 긋는 순간 조건이 된다(빈 조건은 안 만든다). */
+    onRail: (ed: RailEditor) => void;
     onOutcome: () => void;
     /** 그룹 입구 둘(하루/타점) — scope 는 태어나는 자리에서 확정된다(편집 판에 토글이 없다). */
     onGroup: (scope: Grain, e: React.MouseEvent) => void;
@@ -259,16 +282,21 @@ function AddCondition({ setUniverse, onCell, onRails, onOutcome, onGroup, onThem
     nextHot: { w: number; r: number } | null;
 }): JSX.Element {
     const [open, setOpen] = useState(false);
+    /** 팝오버 안의 한 겹 — null = 종류 목록, "axis" = 계산 축 목록. 닫으면 늘 종류 목록으로 되돌린다. */
+    const [pane, setPane] = useState<null | "axis">(null);
+    const close = (): void => { setOpen(false); setPane(null); };
     // 해제(바깥 클릭·Esc)는 수제 백드롭이 아니라 공용 규칙 한 벌 — 어떤 영역이 mousedown 을 삼켜도
     // 캡처 단계라 일관되게 닫힌다(useDismiss 머리 주석). 판정 범위 = 손잡이+판(손잡이 클릭은 토글이 처리).
     const wrapRef = useRef<HTMLDivElement>(null);
-    useDismiss(wrapRef, () => setOpen(false), open);
-    const item = (label: string, hint: string, run: (e: React.MouseEvent) => void, kind?: PredicateKind): JSX.Element => {
+    useDismiss(wrapRef, close, open);
+    /** 메뉴 한 줄. `keepOpen` 은 **판 안에서 한 겹 들어가는** 항목뿐이다(계산 축 목록) — 나머지는
+     *  고르는 순간 편집면이 열리므로 메뉴가 닫혀야 한다. */
+    const item = (label: string, hint: string, run: (e: React.MouseEvent) => void, kind?: PredicateKind, keepOpen = false): JSX.Element => {
         // 결손은 **숨기지 않는다** — 회색 + 이유. 숨기면 "그 우주엔 그런 문법이 없다"가 되어, 나중에
         // 재료가 생겨도 합치는 공사가 다시 필요해진다(decisions 「집합」: 대수는 한 벌).
         const why = kind ? kindDeficiency(kind, setUniverse) : null;
         return (
-            <button onClick={(e) => { if (why) return; setOpen(false); run(e); }} title={why ?? hint} disabled={why !== null}
+            <button onClick={(e) => { if (why) return; if (!keepOpen) close(); run(e); }} title={why ?? hint} disabled={why !== null}
                 style={{
                     display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent",
                     color: why ? "var(--text-tertiary)" : "var(--text-primary)", cursor: why ? "default" : "pointer",
@@ -281,7 +309,7 @@ function AddCondition({ setUniverse, onCell, onRails, onOutcome, onGroup, onThem
     const atLeast = (value: number): CellValueRange => ({ from: { kind: "value", value } });
     return (
         <div ref={wrapRef} style={{ position: "relative", padding: "6px 2px 2px" }}>
-            <button onClick={() => setOpen(!open)}
+            <button onClick={() => (open ? close() : setOpen(true))}
                 title="조건 만들기 — 종류를 고르면 그 조건의 편집면이 열립니다"
                 style={{ fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer" }}>
                 ＋ 조건 {open ? "▴" : "▾"}
@@ -304,7 +332,31 @@ function AddCondition({ setUniverse, onCell, onRails, onOutcome, onGroup, onThem
                             {item("시각", "장중 시각 창 — 09:00~10:30 처럼", () => onCell({ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }), "time")}
                         </>
                     )}
-                    {item("레일 — 계산 축 · 날짜 · 시간", "필터 레일 판으로 — 분포를 보며 그으면 그 자리에서 조건이 됩니다(빈 조건은 안 만듭니다)", onRails, "axisValue")}
+                    {pane === "axis" ? (
+                        <>
+                            <button onClick={() => setPane(null)}
+                                style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-tertiary)", cursor: "pointer", font: "inherit", fontSize: 10.5, padding: "4px 10px" }}>
+                                ◂ 종류
+                            </button>
+                            <div style={{ maxHeight: 220, overflowY: "auto" }}>
+                                {axes.length === 0
+                                    ? <span style={{ display: "block", fontSize: 11, padding: "5px 10px", color: "var(--text-tertiary)" }}>축이 아직 없습니다</span>
+                                    : axes.map((a) => (
+                                        <button key={a.key} onClick={(e) => { close(); onRail({ kind: "axisValue", axisId: a.key, x: e.clientX, y: e.clientY }); }}
+                                            title={`${a.name} — 분포를 보며 값 구간을 정합니다`}
+                                            style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: "4px 10px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                            {a.name}
+                                        </button>
+                                    ))}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                    {item("날짜", "날짜 구간 — 26.07.01~26.07.31 처럼", (e) => onRail({ kind: "date", x: e.clientX, y: e.clientY }), "date")}
+                    {/* 하루 우주엔 위에 이미 "시각"(기본값으로 줄을 만든다)이 있다 — 같은 종류의 입구를
+                        둘 세우지 않는다. 종단에는 기본값이 뜻이 없어 팝오버로만 만든다. */}
+                    {setUniverse !== "daily" && item("시간", "장중 시각 창 — 09:00~10:30 처럼", (e) => onRail({ kind: "time", x: e.clientX, y: e.clientY }), "time")}
+                    {item("계산 축 — 값 구간", "축을 고르면 분포를 보며 값 구간을 정합니다(빈 조건은 안 만듭니다)", () => setPane("axis"), "axisValue", true)}
                     {item("결과 — 시그널 이후", "시그널 결과 판으로 — 연장 고점·저가(미래 값) 분포를 보며 그으면 조건이 됩니다", onOutcome, "outcome")}
                     {/* 그룹은 입구가 둘 — scope(질문의 층위)가 여기서 확정된다. 팔레트는 그 낟알의
                         그룹만 보여준다(그룹의 낟알 = 조건의 scope, 1:1 — 같은 그룹이 입구에 따라 다른
@@ -319,6 +371,8 @@ function AddCondition({ setUniverse, onCell, onRails, onOutcome, onGroup, onThem
                             title="급타점 인스턴스는 3개까지입니다 — 열이 늘면 화면이 먼저 무너집니다. 하나 지우고 다시 만드세요">
                             급타점 수 (3개 한도)
                         </span>}
+                        </>
+                    )}
                 </div>
             )}
         </div>

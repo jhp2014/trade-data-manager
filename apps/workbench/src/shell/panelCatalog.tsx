@@ -17,7 +17,6 @@ import { WorksetPanel } from "../panels/WorksetPanel.js";
 import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
 import { RankSheetPanel } from "../panels/RankSheetPanel.js";
 import { FilterFunnelPanel } from "../panels/FilterFunnelPanel.js";
-import { RailPanel } from "../panels/filter/RailPanel.js";
 import { NormOverlayPanel } from "../panels/norm/NormOverlayPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
 import { NewsPanel } from "../panels/NewsPanel.js";
@@ -101,10 +100,9 @@ export const PANEL_TYPES: PanelType[] = [
     // 집합 편성 — 조건을 걸어 집합을 만드는 자리(다른 패널은 그 집합을 구독만 한다).
     // component 키는 "filterFunnel" 그대로 — 저장 프리셋에 박히는 값이라 이름이 바뀌어도 못 건드린다.
     { idBase: "filter-funnel", component: "filterFunnel", title: "집합 편성", plane: "eod", render: (id) => <FilterFunnelPanel panelId={id} /> },
-    // 필터 레일 — 1차원 조건(축·날짜·시간)을 분포 보며 긋는 자리. 편성 보드와 **같은 조건**을 다른
-    // 렌즈로 본다(사본 없음) — 그어진 컷이 곧 보드의 행이다.
-    { idBase: "filter-rails", component: "filterRails", title: "필터 레일", plane: "eod", render: (id) => <RailPanel panelId={id} /> },
-    // 시그널 결과 — 시그널 **이후**(미래) 값의 분포·조건(과거/미래 패널 경계 — 필터 레일의 형제).
+    // (필터 레일 패널은 2026-09-19 철거 — 1차원 조건의 편집면이 편성 보드의 팝오버 하나가 됐다.
+    //  저장 레이아웃·프리셋에 남은 "filterRails" 는 sanitizeLayout 자가치유가 걷어낸다.)
+    // 시그널 결과 — 시그널 **이후**(미래) 값의 분포·조건(과거/미래 패널 경계).
     // 결과 시트 패널(outcomeSheet)은 2026-09-04 폐지 — 결과 열이 기존 시트(rankSheet)의 열 프리셋으로 들어갔다.
     // 옛 배치에 남은 id 는 sanitizeLayout 자가치유가 걷어낸다(옛 map·rankSkeleton* 과 같은 길).
     { idBase: "outcome-rails", component: "outcomeRails", title: "시그널 결과", plane: "eod", render: (id) => <OutcomePanel panelId={id} /> },

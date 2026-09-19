@@ -1,8 +1,8 @@
 // 시그널 결과 패널 — **시그널 이후(미래)를 긋는 판**. 규칙: .claude/decisions.md "시그널 결과" 절.
 //
-// 필터 레일 패널의 형제다: 같은 Rail/railModel 관용구, 같은 깔때기 직결(그으면 그 자리에서 집합 편성의
-// 행이 된다 — 사본·동기화 없음). 갈리는 건 경계 하나 — 저긴 시그널 봉까지(과거·특징), 여긴 그 이후
-// (미래·결과)다. 결과 값은 축 피드에 없으므로 이 패널이 그 분포·조건의 유일한 자리다.
+// **2차원 전용 판**이다(급타점 패널의 형제): 전제(허용 폭 T)가 정해져야 값이 정해져서 1차원 팝오버에
+// 안 들어간다. 깔때기 직결은 그대로 — 그으면 그 자리에서 집합 편성의 행이 된다(사본·동기화 없음).
+// 결과 값은 축 피드에 없으므로 이 패널이 그 분포·조건의 유일한 자리다.
 //
 // 맨 위 **T 레일은 필터가 아니다** — 모수를 안 거르고 아래 레일들의 값을 바꾸는 전제라 색을 가른다
 // (앰버 = LEG_HIGH, 조건 빨강 금지). 2026-09-09 인스턴스화 이후 T 는 **조건마다 하나**이고, 이 판은
@@ -48,7 +48,7 @@ export function OutcomePanel({ panelId = "outcome-rails" }: { panelId?: string }
     const stages = useWorkbench(selectFilterStages);
     const applyRail = useWorkbench((s) => s.applyFilterRail);
 
-    // 마커·멤버 오버레이 — 필터 레일 패널과 같은 계약(subject 판정·viewOf). 결과 레일은 전부 타점 층위라
+    // 마커·멤버 오버레이 — 레일 위젯의 공용 규약과 같은 계약(subject 판정·viewOf). 결과 레일은 전부 타점 층위라
     // 마커 키는 타점 키만 의미가 있다(하루 선택은 값 맵 miss 로 자연히 안 선다).
     const subject = useSubject();
     const markerKey = subject === null ? null

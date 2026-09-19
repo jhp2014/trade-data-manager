@@ -45,10 +45,12 @@ export function parseRangeRow(
     return { from, to, valid: readable && enough && ordered, touched };
 }
 
-export function RangeTextEditor({ anchor, title, hint, rows: initial, placeholders, parse, allowOpen = false, allowEmptyCommit = false, onCommit, onClose }: {
+export function RangeTextEditor({ anchor, title, hint, above, rows: initial, placeholders, parse, allowOpen = false, allowEmptyCommit = false, onCommit, onClose }: {
     anchor: { x: number; y: number };
     title: string;
     hint?: string;
+    /** 제목 아래·입력 줄 위에 서는 보조 그림(축 값 편집기의 미니 분포). 없으면 아무것도 안 선다. */
+    above?: React.ReactNode;
     /** 초기 표시 문자열(표기 형식 그대로). 없으면 빈 줄 하나. */
     rows?: { from: string; to: string }[];
     placeholders: [string, string];
@@ -81,6 +83,7 @@ export function RangeTextEditor({ anchor, title, hint, rows: initial, placeholde
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={240} maxWidth={300} padding={0} placement="beside" offset={8}>
             <MenuLabel>{title} · 여러 구간 = 또는</MenuLabel>
             {hint && <div style={{ padding: "0 10px 6px", fontSize: 10.5, color: "var(--text-tertiary)" }}>{hint}</div>}
+            {above}
             <div style={{ padding: "0 10px 8px", display: "flex", flexDirection: "column", gap: 5 }}>
                 {rows.map((r, i) => {
                     const bad = parsed[i]!.touched && !parsed[i]!.valid;

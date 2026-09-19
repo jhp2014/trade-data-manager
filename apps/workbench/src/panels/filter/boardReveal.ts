@@ -19,11 +19,9 @@ export interface BoardReveal {
     at: number;
 }
 
-/** 되짚기 신호가 사는 세션 자리. 키 = 데려갈 화면(레일 패널 등). */
+/** 되짚기 신호가 사는 세션 자리. 키 = 데려갈 화면(결과·급타점 패널). */
 export const REVEAL_SCOPE = "funnelReveal";
-/** 레일 줄(축·날짜·시간)이 사는 화면의 자리 — 보내는 손과 받는 화면이 이 키 하나로 만난다. */
-export const RAIL_REVEAL = "rails";
-/** 결과 술어가 사는 화면(결과 패널) — 필터 레일과 편집면이 다르다(과거/미래 패널 경계). */
+/** 결과 술어가 사는 화면(결과 패널) — 2차원이라 팝오버에 안 들어가고 전용 판이 진다. */
 export const OUTCOME_REVEAL = "outcome";
 /** 급타점 패널의 되짚기 채널 — 편집면이 달라 결과와 키를 가른다(신호가 섞이면 엉뚱한 판이 열린다). */
 export const HOT_REVEAL = "hot";

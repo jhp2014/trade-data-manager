@@ -9,7 +9,6 @@ import type { ReactNode } from "react";
 import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
 import { DEFAULT_THEME_STRENGTH } from "../../../lib/themeStrength.js";
-import { REVEAL_SCOPE, RAIL_REVEAL } from "../boardReveal.js";
 import { ConditionBoard } from "../ConditionBoard.js";
 
 const A = "005930", B = "000660";
@@ -51,7 +50,7 @@ describe("한 목록 — 종류를 가리지 않고 걸린 것이 전부 선다"
     it("조건이 없으면 어디서 만드는지 적는다 — 빈 자리로 두면 왜 없는지 모른다", () => {
         const { container } = renderBoard();
         expect(container.textContent).toContain("＋ 조건");
-        expect(container.textContent).toContain("필터 레일에서 그으면");
+        expect(container.textContent).toContain("으로 만듭니다");
     });
 });
 
@@ -72,12 +71,11 @@ describe("줄에는 값 편집 손잡이가 없다 — 편집면은 종류마다
 });
 
 describe("이름 클릭 — 그 종류의 편집면으로", () => {
-    it("레일 조건은 되짚기 신호를 남긴다(패널 경계를 넘으므로 세션 자리에)", () => {
+    it("1차원 조건(날짜)은 **그 자리 팝오버**를 연다 — 패널 경계를 안 넘는다(2026-09-19 레일 패널 철거)", () => {
         useWorkbench.setState({ filterStages: [DATE_STAGE] });
-        const { container } = renderBoard();
+        const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(byText(container, "26.07.06~26.07.07")!); });
-        const signal = useWorkbench.getState().sessionUi[REVEAL_SCOPE]?.[RAIL_REVEAL] as { stageId: string } | undefined;
-        expect(signal?.stageId).toBe("d1");
+        expect(baseElement.textContent).toContain("날짜 구간");
     });
 
     it("테마 조건 — 미연동 행 이름 클릭 = 연동 메뉴(pull: 이 보드가 유일한 연동 손잡이)", () => {
@@ -135,10 +133,19 @@ describe("＋ 조건 — 생성 입구 하나", () => {
     });
 
     // ⚠ 이 검사가 Q2 의 수용 기준 — 계산 축엔 기본값이 없고(분포를 봐야 안다) 빈 술어 필터는 안 만든다.
-    it("레일은 **행을 만들지 않는다** — 판으로 데려갈 뿐이다(긋는 순간 조건)", () => {
+    it("1차원 조건은 **행을 만들지 않는다** — 팝오버만 열고 값이 커밋돼야 조건이 된다", () => {
+        const { container, baseElement } = renderBoard();
+        openMenu(container);
+        act(() => { fireEvent.click(byText(container, "날짜")!); });
+        expect(stages()).toHaveLength(0);
+        expect(baseElement.textContent).toContain("날짜 구간"); // 편집면은 그 자리에 열린다
+    });
+
+    it("계산 축은 팝오버 **안에서 한 겹** 들어간다 — 팝오버를 겹쳐 띄우면 바깥 클릭 해제가 서로를 먹는다", () => {
         const { container } = renderBoard();
         openMenu(container);
-        act(() => { fireEvent.click(byText(container, "레일 — 계산 축")!); });
+        act(() => { fireEvent.click(byText(container, "계산 축 — 값 구간")!); });
+        expect(byText(container, "◂ 종류")).toBeDefined();
         expect(stages()).toHaveLength(0);
     });
 
