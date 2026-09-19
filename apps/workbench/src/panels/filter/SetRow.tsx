@@ -100,7 +100,7 @@ export function SetRow(): JSX.Element {
             <HeaderPopover width={300} align="start" closeOnOutside
                 trigger={(_open, toggleOpen) => (
                     <button onClick={toggleOpen}
-                        title={`집합 관리 — 저장 · 고정 · 열기 · 이름변경 · 삭제 · 조립(OR)${rest.length > 0 ? ` (줄에 없는 집합 ${rest.length}개)` : ""}`}
+                        title={`집합 관리 — 저장 · 고정 · 열기 · 이름변경 · 삭제${rest.length > 0 ? ` (줄에 없는 집합 ${rest.length}개)` : ""}`}
                         style={{
                             flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 10.5, padding: "1px 7px",
                             borderRadius: 9, border: "0.5px dashed var(--border-strong)", background: "transparent",

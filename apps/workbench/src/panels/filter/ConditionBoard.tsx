@@ -13,6 +13,7 @@
 // 순서는 하루 엔진이 비용 오름차순으로 스스로 정한다. 결과 목록은 없다: 멤버 열람은 구독 패널의 몫이다.
 import { useMemo, useRef, useState } from "react";
 import { useDismiss } from "../../ui/useDismiss.js";
+import { HeaderPopover } from "../../components/HeaderPopover.js";
 import { createPanelSlot, openAndFocus, openPanelExact } from "../../lib/openPanel.js";
 import { DEFAULT_THEME_STRENGTH } from "../../lib/themeStrength.js";
 import { useRankSections } from "../../lib/useRankSections.js";
@@ -281,17 +282,11 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
     /** 다음에 만들 자리 — 라벨이 **무엇이 생길지** 미리 말한다(늘 같은 값이 아니라서). */
     nextHot: { w: number; r: number } | null;
 }): JSX.Element {
-    const [open, setOpen] = useState(false);
-    /** 팝오버 안의 한 겹 — null = 종류 목록, "axis" = 계산 축 목록. 닫으면 늘 종류 목록으로 되돌린다. */
+    /** 팝오버 안의 한 겹 — null = 종류 목록, "axis" = 계산 축 목록. 트리거를 누를 때마다 되돌린다. */
     const [pane, setPane] = useState<null | "axis">(null);
-    const close = (): void => { setOpen(false); setPane(null); };
-    // 해제(바깥 클릭·Esc)는 수제 백드롭이 아니라 공용 규칙 한 벌 — 어떤 영역이 mousedown 을 삼켜도
-    // 캡처 단계라 일관되게 닫힌다(useDismiss 머리 주석). 판정 범위 = 손잡이+판(손잡이 클릭은 토글이 처리).
-    const wrapRef = useRef<HTMLDivElement>(null);
-    useDismiss(wrapRef, close, open);
     /** 메뉴 한 줄. `keepOpen` 은 **판 안에서 한 겹 들어가는** 항목뿐이다(계산 축 목록) — 나머지는
      *  고르는 순간 편집면이 열리므로 메뉴가 닫혀야 한다. */
-    const item = (label: string, hint: string, run: (e: React.MouseEvent) => void, kind?: PredicateKind, keepOpen = false): JSX.Element => {
+    const item = (close: () => void, label: string, hint: string, run: (e: React.MouseEvent) => void, kind?: PredicateKind, keepOpen = false): JSX.Element => {
         // 결손은 **숨기지 않는다** — 회색 + 이유. 숨기면 "그 우주엔 그런 문법이 없다"가 되어, 나중에
         // 재료가 생겨도 합치는 공사가 다시 필요해진다(decisions 「집합」: 대수는 한 벌).
         const why = kind ? kindDeficiency(kind, setUniverse) : null;
@@ -308,28 +303,31 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
     };
     const atLeast = (value: number): CellValueRange => ({ from: { kind: "value", value } });
     return (
-        <div ref={wrapRef} style={{ position: "relative", padding: "6px 2px 2px" }}>
-            <button onClick={() => (open ? close() : setOpen(true))}
-                title="조건 만들기 — 종류를 고르면 그 조건의 편집면이 열립니다"
-                style={{ fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer" }}>
-                ＋ 조건 {open ? "▴" : "▾"}
-            </button>
-            {open && (
-                <div style={{
-                    position: "absolute", left: 2, bottom: "100%", zIndex: 5, minWidth: 210,
-                    background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 5,
-                    boxShadow: "0 2px 8px rgba(0,0,0,.12)", padding: "3px 0",
-                }}>
+        <div style={{ padding: "6px 2px 2px" }}>
+            {/* ⚠ 이 판은 **포털 + fixed** 여야 한다(HeaderPopover). 옛 방식(스크롤 컨테이너 안의
+                absolute + bottom:100%)은 항목이 늘자 판이 패널 위로 솟아 dockview 탭 스트립에
+                덮였다 — 위쪽 항목들이 클릭 자체가 안 됐다(2026-09-19 실측). 같은 패널의 집합 관리
+                판이 이미 이 물건을 쓴다(뷰포트 클램프·탈착 감지가 거기 들어 있다). */}
+            <HeaderPopover width={230} align="start" closeOnOutside
+                trigger={(open, toggle) => (
+                    <button onClick={() => { setPane(null); toggle(); }}
+                        title="조건 만들기 — 종류를 고르면 그 조건의 편집면이 열립니다"
+                        style={{ fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer" }}>
+                        ＋ 조건 {open ? "▴" : "▾"}
+                    </button>
+                )}>
+                {(close) => (
+                <div style={{ overflowY: "auto", padding: "3px 0" }}>
                     {/* 하루·셀 우주의 종류들 — 전용 판이 없어 **여기서 만들고 줄에서 만진다**. */}
                     {setUniverse === "daily" && (
                         <>
-                            {item("등락률", "그 분의 등락률(UN %) — 값은 줄에서 만집니다", () => onCell({ kind: "cellValue", field: "ratePct", ranges: [atLeast(5)] }), "cellValue")}
-                            {item("누적대금", "그 분까지의 세션 누적 거래대금(억)", () => onCell({ kind: "cellValue", field: "cumAmountEok", ranges: [atLeast(100)] }), "cellValue")}
-                            {item("분봉고가", "그 분 봉의 고가(UN %)", () => onCell({ kind: "cellValue", field: "minuteHighPct", ranges: [atLeast(5)] }), "cellValue")}
-                            {item("존순위", "테마 존 안 순위(작을수록 위) — 분 단면을 굽는 비싼 재료입니다", () => onCell({ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }] }), "cellValue")}
-                            {item("전고 돌파", "직전 W 거래일 고가를 분봉 고가가 넘는 분(당일 제외)", () => onCell({ kind: "priorHighBreak", days: 20 }), "priorHighBreak")}
-                            {item("격자 Point", "기준선 있는 차트의 격자 파생 Point 좌표", () => onCell({ kind: "gridPoint" }), "gridPoint")}
-                            {item("시각", "장중 시각 창 — 09:00~10:30 처럼", () => onCell({ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }), "time")}
+                            {item(close, "등락률", "그 분의 등락률(UN %) — 값은 줄에서 만집니다", () => onCell({ kind: "cellValue", field: "ratePct", ranges: [atLeast(5)] }), "cellValue")}
+                            {item(close, "누적대금", "그 분까지의 세션 누적 거래대금(억)", () => onCell({ kind: "cellValue", field: "cumAmountEok", ranges: [atLeast(100)] }), "cellValue")}
+                            {item(close, "분봉고가", "그 분 봉의 고가(UN %)", () => onCell({ kind: "cellValue", field: "minuteHighPct", ranges: [atLeast(5)] }), "cellValue")}
+                            {item(close, "존순위", "테마 존 안 순위(작을수록 위) — 분 단면을 굽는 비싼 재료입니다", () => onCell({ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }] }), "cellValue")}
+                            {item(close, "전고 돌파", "직전 W 거래일 고가를 분봉 고가가 넘는 분(당일 제외)", () => onCell({ kind: "priorHighBreak", days: 20 }), "priorHighBreak")}
+                            {item(close, "격자 Point", "기준선 있는 차트의 격자 파생 Point 좌표", () => onCell({ kind: "gridPoint" }), "gridPoint")}
+                            {item(close, "시각", "장중 시각 창 — 09:00~10:30 처럼", () => onCell({ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }), "time")}
                         </>
                     )}
                     {pane === "axis" ? (
@@ -352,20 +350,20 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
                         </>
                     ) : (
                         <>
-                    {item("날짜", "날짜 구간 — 26.07.01~26.07.31 처럼", (e) => onRail({ kind: "date", x: e.clientX, y: e.clientY }), "date")}
+                    {item(close, "날짜", "날짜 구간 — 26.07.01~26.07.31 처럼", (e) => onRail({ kind: "date", x: e.clientX, y: e.clientY }), "date")}
                     {/* 하루 우주엔 위에 이미 "시각"(기본값으로 줄을 만든다)이 있다 — 같은 종류의 입구를
                         둘 세우지 않는다. 종단에는 기본값이 뜻이 없어 팝오버로만 만든다. */}
-                    {setUniverse !== "daily" && item("시간", "장중 시각 창 — 09:00~10:30 처럼", (e) => onRail({ kind: "time", x: e.clientX, y: e.clientY }), "time")}
-                    {item("계산 축 — 값 구간", "축을 고르면 분포를 보며 값 구간을 정합니다(빈 조건은 안 만듭니다)", () => setPane("axis"), "axisValue", true)}
-                    {item("결과 — 시그널 이후", "시그널 결과 판으로 — 연장 고점·저가(미래 값) 분포를 보며 그으면 조건이 됩니다", onOutcome, "outcome")}
+                    {setUniverse !== "daily" && item(close, "시간", "장중 시각 창 — 09:00~10:30 처럼", (e) => onRail({ kind: "time", x: e.clientX, y: e.clientY }), "time")}
+                    {item(close, "계산 축 — 값 구간", "축을 고르면 분포를 보며 값 구간을 정합니다(빈 조건은 안 만듭니다)", () => setPane("axis"), "axisValue", true)}
+                    {item(close, "결과 — 시그널 이후", "시그널 결과 판으로 — 연장 고점·저가(미래 값) 분포를 보며 그으면 조건이 됩니다", onOutcome, "outcome")}
                     {/* 그룹은 입구가 둘 — scope(질문의 층위)가 여기서 확정된다. 팔레트는 그 낟알의
                         그룹만 보여준다(그룹의 낟알 = 조건의 scope, 1:1 — 같은 그룹이 입구에 따라 다른
                         질문이 되는 모호함을 입구에서 끊는다). */}
-                    {item("그룹 (하루)", "그룹 식 — 하루가 행. 하루 그룹만 고를 수 있습니다", (e) => onGroup("day", e), "group")}
-                    {item("그룹 (타점)", "그룹 식 — 좌표 라벨이 붙은 타점이 행이 됩니다(타점 그룹만 고를 수 있습니다)", (e) => onGroup("point", e), "group")}
-                    {item("테마 강도", "기본값으로 켜진 행을 만들고, 어느 조건판에 연동할지 고릅니다(pull)", onTheme, "themeStrength")}
+                    {item(close, "그룹 (하루)", "그룹 식 — 하루가 행. 하루 그룹만 고를 수 있습니다", (e) => onGroup("day", e), "group")}
+                    {item(close, "그룹 (타점)", "그룹 식 — 좌표 라벨이 붙은 타점이 행이 됩니다(타점 그룹만 고를 수 있습니다)", (e) => onGroup("point", e), "group")}
+                    {item(close, "테마 강도", "기본값으로 켜진 행을 만들고, 어느 조건판에 연동할지 고릅니다(pull)", onTheme, "themeStrength")}
                     {canAddHot
-                        ? item(nextHot === null ? "급타점 수" : `급타점 수 (${nextHot.w}분/${nextHot.r}%)`,
+                        ? item(close, nextHot === null ? "급타점 수" : `급타점 수 (${nextHot.w}분/${nextHot.r}%)`,
                             "아직 안 쓰인 자리로 행을 만들고 급타점 판에서 엽니다 — 짧은 시간에 급한 재돌파가 몇 번 지나갔나", onHot)
                         : <span style={{ display: "block", fontSize: 11.5, padding: "5px 10px", color: "var(--text-tertiary)" }}
                             title="급타점 인스턴스는 3개까지입니다 — 열이 늘면 화면이 먼저 무너집니다. 하나 지우고 다시 만드세요">
@@ -374,7 +372,8 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
                         </>
                     )}
                 </div>
-            )}
+                )}
+            </HeaderPopover>
         </div>
     );
 }

@@ -121,12 +121,15 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
 });
 
 describe("＋ 조건 — 생성 입구 하나", () => {
+    // ⚠ 메뉴는 **포털(document.body)** 로 뜬다 — 스크롤 컨테이너 안 absolute 로 두면 판이 패널 위로
+    //   솟아 dockview 탭 스트립에 덮인다(2026-09-19 실측). 그래서 항목은 container 가 아니라
+    //   baseElement 에서 찾는다.
     const openMenu = (c: HTMLElement): void => { act(() => { fireEvent.click(byText(c, "＋ 조건")!); }); };
 
     it("테마 강도 = 켜진 기본값 행이 선다", () => {
-        const { container } = renderBoard();
+        const { container, baseElement } = renderBoard();
         openMenu(container);
-        act(() => { fireEvent.click(byText(container, "테마 강도")!); });
+        act(() => { fireEvent.click(byText(baseElement, "테마 강도")!); });
         expect(stages()).toHaveLength(1);
         expect(stages()[0]!.enabled).toBe(true);
         expect(stages()[0]!.predicates[0]!.kind).toBe("themeStrength");
@@ -136,16 +139,16 @@ describe("＋ 조건 — 생성 입구 하나", () => {
     it("1차원 조건은 **행을 만들지 않는다** — 팝오버만 열고 값이 커밋돼야 조건이 된다", () => {
         const { container, baseElement } = renderBoard();
         openMenu(container);
-        act(() => { fireEvent.click(byText(container, "날짜")!); });
+        act(() => { fireEvent.click(byText(baseElement, "날짜")!); });
         expect(stages()).toHaveLength(0);
         expect(baseElement.textContent).toContain("날짜 구간"); // 편집면은 그 자리에 열린다
     });
 
     it("계산 축은 팝오버 **안에서 한 겹** 들어간다 — 팝오버를 겹쳐 띄우면 바깥 클릭 해제가 서로를 먹는다", () => {
-        const { container } = renderBoard();
+        const { container, baseElement } = renderBoard();
         openMenu(container);
-        act(() => { fireEvent.click(byText(container, "계산 축 — 값 구간")!); });
-        expect(byText(container, "◂ 종류")).toBeDefined();
+        act(() => { fireEvent.click(byText(baseElement, "계산 축 — 값 구간")!); });
+        expect(byText(baseElement, "◂ 종류")).toBeDefined();
         expect(stages()).toHaveLength(0);
     });
 
@@ -154,10 +157,10 @@ describe("＋ 조건 — 생성 입구 하나", () => {
     it("그룹 입구는 둘(하루/타점) — 팔레트만 열고, 식을 쓰기 전엔 필터가 아니다(draft)", () => {
         const { container, baseElement } = renderBoard();
         openMenu(container);
-        expect(byText(container, "그룹 조건")).toBeUndefined(); // 옛 단일 입구는 없다
-        expect(byText(container, "그룹 (하루)")).toBeDefined();
-        expect(byText(container, "그룹 (타점)")).toBeDefined();
-        act(() => { fireEvent.click(byText(container, "그룹 (하루)")!); });
+        expect(byText(baseElement, "그룹 조건")).toBeUndefined(); // 옛 단일 입구는 없다
+        expect(byText(baseElement, "그룹 (하루)")).toBeDefined();
+        expect(byText(baseElement, "그룹 (타점)")).toBeDefined();
+        act(() => { fireEvent.click(byText(baseElement, "그룹 (하루)")!); });
         expect(stages()).toHaveLength(0);
         expect(baseElement.textContent).toContain("그룹 조건 (하루)"); // 팔레트 머리가 층위를 말한다
     });
@@ -175,7 +178,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
             wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
         });
         openMenu(container);
-        act(() => { fireEvent.click(byText(container, "그룹 (하루)")!); });
+        act(() => { fireEvent.click(byText(baseElement, "그룹 (하루)")!); });
         const palette = [...baseElement.querySelectorAll("button")].map((b) => b.textContent ?? "");
         expect(palette.some((t) => t.includes("돌파형"))).toBe(true);
         expect(palette.some((t) => t.includes("눌림"))).toBe(false); // 타점 그룹은 하루 질문을 못 받는다
@@ -194,7 +197,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
             wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
         });
         openMenu(container);
-        act(() => { fireEvent.click(byText(container, "그룹 (타점)")!); });
+        act(() => { fireEvent.click(byText(baseElement, "그룹 (타점)")!); });
         const palette = (): string[] => [...baseElement.querySelectorAll("button")].map((b) => b.textContent ?? "");
         expect(palette().some((t) => t.includes("눌림"))).toBe(true);
         expect(palette().some((t) => t.includes("돌파형"))).toBe(false); // day 그룹은 point 질문을 못 받는다
