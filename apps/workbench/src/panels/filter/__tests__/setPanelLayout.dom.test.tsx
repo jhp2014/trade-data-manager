@@ -136,13 +136,3 @@ describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는
         expect(useWorkbench.getState().savedSets.map((x) => x.name)).toEqual(["돌파2", "눌림"]);
     });
 });
-
-describe("층위 머리 띠는 안 붙는다 — 스크롤 중 레일 위를 지나가지 않는다", () => {
-    it("보드의 '하루'·'타점' 띠에 sticky 가 없다", () => {
-        const { container } = renderPanel();
-        const band = [...container.querySelectorAll("div")].find((d) => d.textContent?.startsWith("하루종목"))
-            ?? [...container.querySelectorAll("span")].find((s) => s.textContent === "하루")?.parentElement;
-        expect(band).toBeDefined();
-        expect(band!.style.position).not.toBe("sticky");
-    });
-});

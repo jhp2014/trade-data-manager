@@ -22,7 +22,7 @@ import { ConditionBoard } from "./filter/ConditionBoard.js";
 import { FunnelHeader } from "./filter/FunnelHeader.js";
 import { SetRow } from "./filter/SetRow.js";
 
-export function FilterFunnelPanel({ panelId: _panelId }: { panelId: string }): JSX.Element {
+export function FilterFunnelPanel({ panelId }: { panelId: string }): JSX.Element {
     const v = useFunnel();
 
     return (
@@ -32,7 +32,7 @@ export function FilterFunnelPanel({ panelId: _panelId }: { panelId: string }): J
             <SetRow />
 
             <div style={{ flex: 1, minHeight: 0 }}>
-                <ConditionBoard />
+                <ConditionBoard panelId={panelId} />
             </div>
         </div>
     );

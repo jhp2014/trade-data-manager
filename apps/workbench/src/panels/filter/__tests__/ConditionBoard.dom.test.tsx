@@ -22,7 +22,7 @@ const points: SeedPoint[] = [{ stockCode: A, date: DATES[0], time: "09:30:00", n
 const SEED: Seed = { candidateDays, points };
 
 const renderBoard = (): ReturnType<typeof render> =>
-    render(<ConditionBoard />, {
+    render(<ConditionBoard panelId="filter-funnel-1" />, {
         wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers>,
     });
 
@@ -175,7 +175,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
             memberships: [{ stockCode: A, date: DATES[0], groupNames: ["돌파형"] }],
             pointMemberships: [{ stockCode: A, date: DATES[0], time: "09:30:00", groupNames: ["눌림"] }],
         };
-        const { container, baseElement } = render(<ConditionBoard />, {
+        const { container, baseElement } = render(<ConditionBoard panelId="filter-funnel-1" />, {
             wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
         });
         openMenu(container);
@@ -194,7 +194,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
             memberships: [{ stockCode: A, date: DATES[0], groupNames: ["돌파형"] }], // 돌파형 = day 그룹
             pointMemberships: [{ stockCode: A, date: DATES[0], time: "09:30:00", groupNames: ["눌림"] }], // 눌림 = 타점 그룹
         };
-        const { container, baseElement } = render(<ConditionBoard />, {
+        const { container, baseElement } = render(<ConditionBoard panelId="filter-funnel-1" />, {
             wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
         });
         openMenu(container);
@@ -224,7 +224,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
                 predicates: [{ kind: "group" as const, expr: { groups: [{ literals: [{ groupId: "눌림", neg: false }] }] }, scope: "point" as const }],
             }]),
         });
-        const { container, baseElement } = render(<ConditionBoard />, {
+        const { container, baseElement } = render(<ConditionBoard panelId="filter-funnel-1" />, {
             wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
         });
         act(() => { fireEvent.click(byText(container, "눌림")!); }); // 줄 이름 → 그 자리 팔레트(편집)
@@ -247,5 +247,49 @@ describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
         expect(stages()[0]!.enabled).toBe(false);
         act(() => { fireEvent.click(buttons(container).find((b) => b.title === "이 조건 지우기")!); });
         expect(stages()).toHaveLength(0);
+    });
+});
+
+// 7단계 — 식 트리 편집면. 괄호를 손으로 치지 않고 **두 버튼**이 중첩을 만든다는 것이 핵심 계약이다.
+describe("식 트리 — 묶음·부정·삽입 지점", () => {
+    const stage2 = { id: "d2", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
+
+    it("묶음은 연산자 뱃지와 자식 수를 말한다 — AND 기본", () => {
+        useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE, stage2]) });
+        const { container } = renderBoard();
+        expect(byText(container, "AND")).toBeDefined();
+        expect(container.textContent).toContain("모두 · 2");
+    });
+
+    it("뱃지 클릭 = AND ↔ OR 토글", () => {
+        useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE, stage2]) });
+        const { container } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "AND")!); });
+        expect(useWorkbench.getState().filterExpr.kind).toBe("or");
+        expect(container.textContent).toContain("하나라도 · 2");
+    });
+
+    // ⚠ 이 검사가 7단계의 수용 기준 — 사용자는 괄호를 안 치고 "OR 로 추가"만 고른다.
+    it("AND 자리에서 'OR 로 추가' 하면 **OR 묶음이 새로 생기며** 둘을 담는다", () => {
+        useWorkbench.setState({ filterUniverse: "daily", filterExpr: exprOfStages([DATE_STAGE]) });
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 조건")!); });
+        act(() => { fireEvent.click(byText(baseElement, "OR 로 추가")!); });
+        act(() => { fireEvent.click(byText(baseElement, "등락률")!); });
+        // 짚은 자리(루트 AND)가 **OR 묶음으로 감싸인다** — 뜻은 `기존 ∨ 새것` 이고, 그게 사용자가
+        // "OR 로 추가"로 기대하는 것이다. 괄호는 이 규칙의 결과로 생긴다(손으로 안 친다).
+        const e = useWorkbench.getState().filterExpr;
+        expect(e.kind).toBe("or");
+        expect(e.kind !== "cond" && e.of.map((c) => c.kind)).toEqual(["and", "cond"]);
+    });
+
+    it("잎 부정 — ¬ 가 식에 실리고 줄에 표식이 선다", () => {
+        useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE]) });
+        const { container } = renderBoard();
+        const negBtn = buttons(container).find((b) => b.title.startsWith("이 조건 부정"));
+        expect(negBtn).toBeDefined();
+        act(() => { fireEvent.click(negBtn!); });
+        const e = useWorkbench.getState().filterExpr;
+        expect(e.kind !== "cond" && e.of[0]!.neg).toBe(true);
     });
 });

@@ -13,13 +13,16 @@ import { stageKind, type FilterStage } from "./stage.js";
 import { iconBtn } from "./ui.js";
 
 export function FilterRow({
-    no, stage, label, dead, deficiency, cellFields, linked, linkedLabel, onLinkedClick,
-    onOpen, onToggle, onRemove,
+    no, stage, label, dead, deficiency, cellFields, neg, linked, linkedLabel, onLinkedClick,
+    onOpen, onToggle, onNegate, onRemove,
 }: {
     no: number;
     stage: FilterStage;
     label: string;
     dead: boolean;
+    /** 이 잎이 부정돼 있나 — 부정은 식의 것이지 조건의 것이 아니라 밖에서 받는다. */
+    neg?: boolean;
+    onNegate?: () => void;
     /**
      * 이 우주에서 **결손**인 이유들(빈 배열 = 온전히 평가된다). 죽은 참조(dead)와 **다른 표식**이어야
      * 한다 — 죽음은 고쳐야 할 것이고, 결손은 사실이다(재료가 생기면 문법 변경 없이 켜진다).
@@ -51,6 +54,10 @@ export function FilterRow({
                 <span style={{ flexShrink: 0, fontSize: 9.5, color: "var(--text-tertiary)", border: "1px solid var(--border-default)", borderRadius: 3, padding: "0 4px" }}>
                     {kindLabel(stageKind(stage))}
                 </span>
+                {neg === true && (
+                    <span title="이 조건의 부정 — 결손은 되살아나지 않습니다(모름의 부정은 모름)"
+                        style={{ flexShrink: 0, fontSize: 11, color: FAIL }}>¬</span>
+                )}
                 <button onClick={onOpen} title={`${label} — 클릭 = 이 조건의 편집면으로`}
                     style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", border: "none", background: "transparent", padding: 0, font: "inherit", cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: dead ? FAIL : "var(--text-primary)", textAlign: "left" }}>
                     {label}
@@ -74,6 +81,10 @@ export function FilterRow({
                     )}
                     {/* 끄기는 지우기와 다르다 — 잠깐 빼보는 것이 "이 조건이 일을 하나"를 보는 유일한 손짓이다. */}
                     <button onClick={onToggle} title={stage.enabled ? "이 조건 끄기(빼고 보기)" : "다시 켜기"} style={iconBtn}>{stage.enabled ? "◉" : "○"}</button>
+                    {onNegate !== undefined && (
+                        <button onClick={onNegate} title={neg === true ? "부정 해제" : "이 조건 부정(¬)"}
+                            style={{ ...iconBtn, color: neg === true ? FAIL : undefined }}>¬</button>
+                    )}
                     <button onClick={onRemove} title="이 조건 지우기" style={{ ...iconBtn, color: FAIL }}>✕</button>
                 </span>
             </div>

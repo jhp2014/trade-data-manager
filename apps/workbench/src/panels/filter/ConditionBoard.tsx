@@ -11,8 +11,9 @@
 //
 // 목록의 순서는 **표시 순서일 뿐**이다(2026-09-19) — 하루 칸이 앞에 서는 것도 읽기 편의고, 평가
 // 순서는 하루 엔진이 비용 오름차순으로 스스로 정한다. 결과 목록은 없다: 멤버 열람은 구독 패널의 몫이다.
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useDismiss } from "../../ui/useDismiss.js";
+import { usePanelUi } from "../../store/usePanelUi.js";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
 import { createPanelSlot, openAndFocus, openPanelExact } from "../../lib/openPanel.js";
 import { DEFAULT_THEME_STRENGTH } from "../../lib/themeStrength.js";
@@ -25,11 +26,13 @@ import { parseSlotId } from "../../shell/panelSlots.js";
 import { FILTER } from "../../styles/palette.js";
 import { FilterRow } from "./FilterRow.js";
 import { useFunnel } from "./FunnelContext.js";
-import { GrainSection, Note } from "./grain.js";
+import { Note } from "./grain.js";
 import type { CellValueRange } from "@trade-data-manager/market/domain";
 import { CellStageFields } from "./CellPredicateFields.js";
 import { kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
 import { GroupEditors, RailEditors, type GroupEditorAnchor, type RailEditor } from "./ConditionEditors.js";
+import { ExprTree, type ExprTreeHandlers } from "./ExprTree.js";
+import { findNode, negOf, negateNode, removeNode, toggleOperator } from "./expr.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
@@ -41,13 +44,15 @@ import { useLinkedOutcome } from "../outcome/outcomeLink.js";
 import { stageLabel } from "./label.js";
 import { stageKind, type FilterPredicate, type FilterStage, type Grain, type PredicateKind } from "./stage.js";
 
-const GRAINS: Grain[] = ["day", "point"];
 /** 종류별 편집면 — 줄 이름을 누르면 여기로 데려간다. 결과 패널 id 는 공용 상수(주소가 세 곳이라 잎 모듈). */
 /** 조건판 타입 밑동 — 테마 연동 목록·새 조건판 발급이 쓴다(특정 인스턴스는 바인딩이 가리킨다). */
 const THEME_RANK_BASE = "theme-rank";
 const OUTCOME_PANEL = OUTCOME_PANEL_ID;
 
-export function ConditionBoard(): JSX.Element {
+export function ConditionBoard({ panelId }: {
+    /** 접힘 상태(보기)가 사는 자리 — 슬롯 낟알이라 같은 집합을 두 패널이 다르게 접을 수 있다. */
+    panelId: string;
+}): JSX.Element {
     const v = useFunnel();
     const axes = useRankAxes();
     const stages = useWorkbench(selectFilterStages);
@@ -81,6 +86,20 @@ export function ConditionBoard(): JSX.Element {
     // 1차원 조건(날짜·시간·축 값)의 편집면 — 2026-09-19 부터 **이 보드가 직접 연다**(레일 패널 철거).
     const [railEditor, setRailEditor] = useState<RailEditor | null>(null);
     const applyRail = useWorkbench((s) => s.applyFilterRail);
+    // 식과 그 편집 손 — 노드 편집(부정·연산자·묶음 삭제)은 전부 setExpr 하나를 지난다.
+    const expr = useWorkbench((s) => s.filterExpr);
+    const setExpr = useWorkbench((s) => s.setFilterExpr);
+    const addStageAt = useWorkbench((s) => s.addFilterStageAt);
+    /** 짚은 노드 = **삽입 지점**. 세션 한정 — 새로고침 뒤 "어디에 붙더라"를 기억하게 두지 않는다. */
+    const [pickedRaw, setPicked] = useState<string | null>(null);
+    /** 접힘은 **보기**라 저장물이 아니라 패널 UI 에 산다(식과 함께 저장하면 저장물이 화면 사정으로 더러워진다). */
+    const [flipped, setFlipped] = usePanelUi<string[]>(panelId, "exprFlipped", []);
+    /** 다음 조건을 **어떤 연산자로** 붙일까 — "AND 로 추가 / OR 로 추가" 두 버튼이 정한다(괄호는 그 결과). */
+    const [addMode, setAddMode] = useState<"and" | "or">("and");
+    // 짚은 노드가 지워졌으면 루트로 되돌린다(유령 삽입 지점 금지).
+    const picked = pickedRaw !== null && findNode(expr, pickedRaw) !== null ? pickedRaw : null;
+    /** 삽입 지점의 사람 말 — 팝오버가 "여기에 붙는다"를 늘 적는다(모르는 채 누르지 않게). */
+    const atLabel = picked === null ? "루트" : (findNode(expr, picked)?.kind === "or" ? "짚은 OR 묶음" : "짚은 AND 묶음");
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
     const groupCreate = useGroupCreateFlow(addStage, setGroupEditor);
 
@@ -137,50 +156,66 @@ export function ConditionBoard(): JSX.Element {
     };
 
     const hasTheme = useMemo(() => stages.some((s) => stageKind(s) === "themeStrength"), [stages]);
-
-    let rowNo = 0;
+    const labelOf = useCallback(
+        (id: string) => {
+            const st = stages.find((x) => x.id === id);
+            return st ? stageLabel(st, v.labelLook) : "(지워진 조건)";
+        },
+        [stages, v.labelLook],
+    );
+    const treeHandlers = useMemo<ExprTreeHandlers>(() => ({
+        renderLeaf: (stage, no) => (
+            <FilterRow
+                key={stage.id}
+                no={no}
+                stage={stage}
+                label={stageLabel(stage, v.labelLook)}
+                dead={v.deadStageIds.includes(stage.id)}
+                deficiency={stageDeficiency(stage, setUniverse)}
+                cellFields={<CellStageFields stage={stage} onPatch={setStage} />}
+                neg={negOf(expr, stage.id)}
+                linked={false}
+                linkedLabel={stageKind(stage) === "themeStrength" ? (livePanelOf(stage.id) !== undefined ? slotTitleOf(livePanelOf(stage.id)!) : "미연동") : undefined}
+                onLinkedClick={(e) => setThemeLink({ stageId: stage.id, x: e.clientX, y: e.clientY })}
+                onOpen={(e) => openEditor(stage, e)}
+                onToggle={() => toggleStage(stage.id)}
+                onNegate={() => setExpr(negateNode(expr, stage.id))}
+                onRemove={() => removeStage(stage.id)}
+            />
+        ),
+        labelOf,
+        pickedId: picked,
+        onPick: (id) => setPicked((cur) => (cur === id ? null : id)),
+        flippedIds: flipped,
+        onToggleOpen: (id) => setFlipped(flipped.includes(id) ? flipped.filter((x) => x !== id) : [...flipped, id]),
+        onToggleOperator: (id) => setExpr(toggleOperator(expr, id)),
+        onNegate: (id) => setExpr(negateNode(expr, id)),
+        onRemoveNode: (id) => setExpr(removeNode(expr, id)),
+        onOpenLeaf: (id, e) => {
+            const st = stages.find((x) => x.id === id);
+            if (st) openEditor(st, e);
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }), [expr, stages, v.labelLook, v.deadStageIds, setUniverse, picked, flipped, livePanelOf]);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }} onClick={() => setPicked(null)}>
                 <PointDefHead />
                 {v.isLoading && <Note>불러오는 중…</Note>}
-                {!v.isLoading && GRAINS.map((grain) => {
-                    const entries = v.stagesOrdered.filter((e) => e.grain === grain);
-                    return (
-                        <GrainSection key={grain} grain={grain}
-                            right={grain === "point" && hasTheme ? <ThemeMaterialBadge /> : undefined}>
-                            {entries.length === 0 && (
-                                <Note>없음 — 아래 <b>＋ 조건</b> 으로 만듭니다</Note>
-                            )}
-                            {entries.map(({ stage }) => {
-                                rowNo++;
-                                return (
-                                    <FilterRow
-                                        key={stage.id}
-                                        no={rowNo}
-                                        stage={stage}
-                                        label={stageLabel(stage, v.labelLook)}
-                                        dead={v.deadStageIds.includes(stage.id)}
-                                        deficiency={stageDeficiency(stage, setUniverse)}
-                                        cellFields={<CellStageFields stage={stage} onPatch={setStage} />}
-                                        linked={false}
-                                        linkedLabel={stageKind(stage) === "themeStrength" ? (livePanelOf(stage.id) !== undefined ? slotTitleOf(livePanelOf(stage.id)!) : "미연동") : undefined}
-                                        onLinkedClick={(e) => setThemeLink({ stageId: stage.id, x: e.clientX, y: e.clientY })}
-                                        onOpen={(e) => openEditor(stage, e)}
-                                        onToggle={() => toggleStage(stage.id)}
-                                        onRemove={() => removeStage(stage.id)}
-                                    />
-                                );
-                            })}
-                        </GrainSection>
-                    );
-                })}
+                {!v.isLoading && hasTheme && <ThemeMaterialBadge />}
+                {!v.isLoading && stages.length === 0 && (
+                    <Note>없음 — 아래 <b>＋ 조건</b> 으로 만듭니다</Note>
+                )}
+                {!v.isLoading && stages.length > 0 && <ExprTree expr={expr} handlers={treeHandlers} />}
 
                 {!v.isLoading && (
                     <AddCondition
                         setUniverse={setUniverse}
-                        onCell={(p) => addStage([p])}
+                        onCell={(p) => addStageAt([p], picked, addMode)}
+                        mode={addMode}
+                        onMode={setAddMode}
+                        atLabel={atLabel}
                         axes={axes.axes}
                         onRail={(ed) => setRailEditor(ed)}
                         onOutcome={() => openAndFocus(OUTCOME_PANEL)}
@@ -241,7 +276,9 @@ export function ConditionBoard(): JSX.Element {
             )}
 
             {/* 1차원 조건 팝오버 — 날짜·시간·축 값. 쓰기는 applyFilterRail 한 줄(조건 하나 = 줄 하나). */}
-            <RailEditors editor={railEditor} stages={stages} write={applyRail} onClose={() => setRailEditor(null)} />
+            <RailEditors editor={railEditor} stages={stages}
+                write={(key, predicate) => applyRail(key, predicate, picked, addMode)}
+                onClose={() => setRailEditor(null)} />
 
             {/* 그룹 팔레트(팝오버) — 그룹도 같은 층. 2차원(결과·급타점·테마)만 전용 패널이 진다. */}
             <GroupEditors editor={groupEditor} stages={stages}
@@ -263,7 +300,7 @@ export function ConditionBoard(): JSX.Element {
  * 계산 축은 수십 개라 메뉴에 다 못 편다 — "계산 축"을 고르면 **같은 팝오버 안에서** 축 목록으로
  * 한 겹 들어간다(팝오버를 겹쳐 띄우면 바깥 클릭 해제가 서로를 먹는다).
  */
-function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot }: {
+function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot, mode, onMode, atLabel }: {
     /** 편집 대상의 우주 — 팔레트는 **숨기지 않고 회색**으로 세운다(대수는 한 벌, 결손은 사실). */
     setUniverse: Universe;
     /** 셀 조건 만들기 — 전용 편집 판이 없는 종류라 기본 payload 로 줄을 만들고 그 자리에서 만진다. */
@@ -281,6 +318,11 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
     canAddHot: boolean;
     /** 다음에 만들 자리 — 라벨이 **무엇이 생길지** 미리 말한다(늘 같은 값이 아니라서). */
     nextHot: { w: number; r: number } | null;
+    /** 붙이는 연산자 — 이 둘이 **괄호를 손으로 안 치게 하는 장치**다(decisions 「집합 편성 재설계」). */
+    mode: "and" | "or";
+    onMode: (m: "and" | "or") => void;
+    /** 어디에 붙는지 사람 말로 — 모르는 채 누르지 않게 판이 늘 적는다. */
+    atLabel: string;
 }): JSX.Element {
     /** 팝오버 안의 한 겹 — null = 종류 목록, "axis" = 계산 축 목록. 트리거를 누를 때마다 되돌린다. */
     const [pane, setPane] = useState<null | "axis">(null);
@@ -318,6 +360,23 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
                 )}>
                 {(close) => (
                 <div style={{ overflowY: "auto", padding: "3px 0" }}>
+                    {/* ⚠ 괄호는 손으로 치지 않는다 — 이 두 버튼이 중첩을 만든다. AND 묶음에서 "OR 로 추가"를
+                        누르면 그 자리에 OR 묶음이 생기며 기존 조건과 새 조건이 담긴다(expr.addLeafAt). */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 10px 5px", borderBottom: "1px solid var(--border-subtle)" }}>
+                        {(["and", "or"] as const).map((m) => (
+                            <button key={m} onClick={() => onMode(m)}
+                                title={m === "and" ? "지금 자리에 AND 로 붙인다(모두 만족)" : "지금 자리에 OR 로 붙인다(하나라도) — 자리가 AND 면 OR 묶음이 새로 생긴다"}
+                                style={{
+                                    font: "inherit", fontSize: 10, padding: "1px 7px", borderRadius: 3, cursor: "pointer",
+                                    border: `1px solid ${mode === m ? "var(--accent-primary)" : "var(--border-default)"}`,
+                                    background: mode === m ? "var(--accent-soft)" : "transparent",
+                                    color: mode === m ? "var(--accent-primary)" : "var(--text-secondary)",
+                                }}>
+                                {m === "and" ? "AND 로 추가" : "OR 로 추가"}
+                            </button>
+                        ))}
+                        <span style={{ marginLeft: "auto", fontSize: 9.5, color: "var(--text-tertiary)" }}>{atLabel}</span>
+                    </div>
                     {/* 하루·셀 우주의 종류들 — 전용 판이 없어 **여기서 만들고 줄에서 만진다**. */}
                     {setUniverse === "daily" && (
                         <>

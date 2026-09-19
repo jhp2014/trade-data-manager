@@ -61,16 +61,6 @@ export function Note({ children }: { children: ReactNode }): JSX.Element {
     return <div style={{ padding: "4px 10px 8px", fontSize: 10.5, color: "var(--text-tertiary)" }}>{children}</div>;
 }
 
-/** 층위 한 칸 — Section 의 층위 어휘 래퍼(기존 소비자 시그니처 유지). */
-export function GrainSection({ grain, right, footer, children }: {
-    grain: Grain;
-    right?: ReactNode;
-    footer?: ReactNode;
-    children: ReactNode;
-}): JSX.Element {
-    return (
-        <Section title={GRAIN_TITLE[grain]} unit={GRAIN_UNIT[grain]} hint={GRAIN_HINT[grain]} right={right} footer={footer}>
-            {children}
-        </Section>
-    );
-}
+// (층위 칸 GrainSection 은 2026-09-19 식 트리 도입과 함께 폐지 — 보드의 구조가 하루/타점 2칸이
+//  아니라 **사용자가 만든 트리**가 됐다. 층위는 머리글의 낟알 표시가 말하고, 조건의 종류는 줄 뱃지가
+//  말한다. Section/Note 는 다른 소비자가 계속 쓴다.)

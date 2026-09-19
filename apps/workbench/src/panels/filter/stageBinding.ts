@@ -12,7 +12,7 @@
 // 필터 여러 개가 될 수 있다(테마A / 돌파형을 나눠 걸어야 각각을 따로 끄고 켤 수 있다).
 import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { addStage, newStage, removeStage, setStagePredicates, unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
-import { appendLeaf, filterLeaves, leavesOf, mapLeaves, type SetExpr } from "./expr.js";
+import { addLeafAt, filterLeaves, leavesOf, mapLeaves, type SetExpr } from "./expr.js";
 
 /** 레일 하나를 가리키는 열쇠. 축은 id 로, 결과는 지표로, 날짜·시간은 종류만으로 유일하다. */
 export type RailKey =
@@ -124,9 +124,16 @@ export function applyRailPredicate(
  * 지금은 루트 AND 하나뿐이라 티가 안 나지만, 묶음이 생기는 순간 선을 그을 때마다 사용자의 구조가
  * 조용히 무너진다.
  */
-export function applyRailToExpr(e: SetExpr, key: RailKey, predicate: FilterPredicate | null): SetExpr {
+export function applyRailToExpr(
+    e: SetExpr,
+    key: RailKey,
+    predicate: FilterPredicate | null,
+    /** 새로 만들 때의 삽입 지점·연산자(7단계) — 없으면 루트에 AND 로 붙는다(옛 동작). */
+    at: string | null = null,
+    mode: "and" | "or" = "and",
+): SetExpr {
     const first = stagesFor(leavesOf(e), key)[0];
-    if (!first) return predicate === null ? e : appendLeaf(e, newStage([predicate]));
+    if (!first) return predicate === null ? e : addLeafAt(e, at, newStage([predicate]), mode);
 
     const others = first.predicates.filter((p) => {
         const k = railKeyOf(p);

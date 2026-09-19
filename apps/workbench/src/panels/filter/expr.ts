@@ -130,6 +130,89 @@ export function appendLeaf(e: SetExpr, stage: FilterStage): SetExpr {
 export const activeExpr = (e: SetExpr): SetExpr =>
     filterLeaves(e, (s) => s.enabled && s.predicates.some((p) => !isPredicateEmpty(p)));
 
+// ── 노드 편집(7단계 — 편집면이 쓰는 자들) ─────────────────────────────────
+//
+// 주소는 **노드 id** 하나다: 잎은 `stage.id`, 묶음은 `id`. 편집면은 "짚은 노드"를 그 id 로 들고,
+// 삽입·부정·연산자 토글·삭제가 전부 같은 주소를 쓴다.
+
+/** 이 잎이 부정돼 있나 — 부정은 **식의 것**이라 조건(FilterStage)이 아니라 여기서 묻는다. */
+export function negOf(e: SetExpr, id: string): boolean {
+    const n = findNode(e, id);
+    return n !== null && n.neg === true;
+}
+
+/** 이 노드의 주소 — 잎은 조건 id, 묶음은 노드 id. */
+export const idOf = (e: SetExpr): string => (e.kind === "cond" ? e.stage.id : e.id);
+
+/** 트리에서 노드 하나를 찾는다(없으면 null). 짚은 노드가 지워졌는지 화면이 확인하는 자. */
+export function findNode(e: SetExpr, id: string): SetExpr | null {
+    if (idOf(e) === id) return e;
+    if (e.kind === "cond") return null;
+    for (const c of e.of) {
+        const hit = findNode(c, id);
+        if (hit !== null) return hit;
+    }
+    return null;
+}
+
+/** 노드 하나를 바꿔 끼운다 — 안 바뀐 가지는 참조가 유지된다. */
+export function replaceNode(e: SetExpr, id: string, fn: (n: SetExpr) => SetExpr): SetExpr {
+    if (idOf(e) === id) return fn(e);
+    if (e.kind === "cond") return e;
+    let changed = false;
+    const of = e.of.map((c) => {
+        const n = replaceNode(c, id, fn);
+        if (n !== c) changed = true;
+        return n;
+    });
+    return changed ? { ...e, of } : e;
+}
+
+/** 부정 토글 — 잎·묶음 어디에나 붙는다(부재 = 거짓이라 필드를 지운다). */
+export const negateNode = (e: SetExpr, id: string): SetExpr =>
+    replaceNode(e, id, (n) => {
+        if (n.neg === true) { const { neg: _drop, ...rest } = n; return rest as SetExpr; }
+        return { ...n, neg: true };
+    });
+
+/** 연산자 토글(AND ↔ OR) — 묶음에만. 잎을 누르면 아무 일도 안 난다. */
+export const toggleOperator = (e: SetExpr, id: string): SetExpr =>
+    replaceNode(e, id, (n) => (n.kind === "cond" ? n : { ...n, kind: n.kind === "and" ? "or" : "and" } as SetExpr));
+
+/** 노드 삭제 — 빈 묶음은 같이 접힌다(filterLeaves 와 같은 규칙). 루트는 비워질 뿐 안 사라진다. */
+export function removeNode(e: SetExpr, id: string): SetExpr {
+    if (idOf(e) === id) return emptyExpr();
+    const walk = (n: SetExpr): SetExpr | null => {
+        if (n.kind === "cond") return idOf(n) === id ? null : n;
+        if (idOf(n) === id) return null;
+        const of = n.of.map(walk).filter((c): c is SetExpr => c !== null);
+        if (of.length === 0) return null;
+        return of.length === n.of.length && of.every((c, i) => c === n.of[i]) ? n : { ...n, of };
+    };
+    return walk(e) ?? emptyExpr();
+}
+
+/**
+ * 조건 붙이기 — **괄호를 손으로 치지 않게 하는 자**다.
+ *
+ *  · `mode === "and"` — 짚은 노드가 AND 면 그 안에 붙인다. 아니면(OR·잎) 그 자리를 **AND 묶음으로
+ *    감싸고** 둘을 담는다.
+ *  · `mode === "or"`  — 대칭. 짚은 노드가 OR 면 그 안에, 아니면 OR 묶음으로 감싼다.
+ *
+ * 그래서 사용자는 "AND 로 추가 / OR 로 추가" 둘만 고르고, 중첩은 그 결과로 생긴다.
+ * 짚은 노드가 없거나(null) 트리에 없으면 루트에 붙인다.
+ */
+export function addLeafAt(e: SetExpr, at: string | null, stage: FilterStage, mode: "and" | "or"): SetExpr {
+    const leaf: SetExpr = { kind: "cond", stage };
+    const target = at !== null && findNode(e, at) !== null ? at : idOf(e);
+    return replaceNode(e, target, (n) => {
+        if (n.kind === mode) return { ...n, of: [...n.of, leaf] };
+        // 자리를 묶음으로 감싼다 — 감싸는 묶음은 **부정을 안 물려받는다**(¬(a) 를 ¬(a ∧ b) 로 바꾸면
+        // 사용자가 건 적 없는 뜻이 된다). 부정은 감싸인 노드에 그대로 남는다.
+        return { kind: mode, id: newNodeId(), of: [n, leaf] };
+    });
+}
+
 // ── 저장물 파싱 ────────────────────────────────────────────────────────────
 //
 // ⚠ **잎 단위로 관대하다**(2026-09-19 확정). `parseStages` 는 술어 하나만 못 읽어도 저장본을 통째
