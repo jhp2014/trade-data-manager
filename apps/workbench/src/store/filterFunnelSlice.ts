@@ -17,11 +17,14 @@ import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
 import type { SetRef } from "../lib/setRef.js";
 import {
-    addStage, parseStages, removeStage, renameGroupInStages, renameStage, replaceStage, setStagePredicates, toggleStage,
+    newStage, parseStages, renameGroupInStages,
     type FilterPredicate, type FilterStage,
 } from "../panels/filter/stage.js";
+import {
+    appendLeaf, emptyExpr, exprOfStages, filterLeaves, leavesOf, mapLeaves, parseExpr, type SetExpr,
+} from "../panels/filter/expr.js";
 import { persistSavedSets } from "./savedSetsSlice.js";
-import { applyRailPredicate, type RailKey } from "../panels/filter/stageBinding.js";
+import { applyRailToExpr, type RailKey } from "../panels/filter/stageBinding.js";
 import { parseUniverse, type Universe } from "../panels/filter/universe.js";
 import { migrateProbeStages } from "../panels/filter/legacyProbe.js";
 import { backupRawOnce, hasStored, loadJson, persistedField, saveJson } from "./persist.js";
@@ -30,7 +33,8 @@ import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
 /** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
 const GAZE_PRESENCE_KEY = "wb.workset.presenceFilter.v2"; // v2: 골격 존재 리터럴 리셋
 
-const STAGES_KEY = "wb.filterStages.v4"; // 지금 쓰는 단일 벌 — v4: 허용 폭 T 인스턴스화(결과 술어가 t 를 든다).
+const EXPR_KEY = "wb.filterExpr.v1"; // 지금 쓰는 단일 벌 — 식 트리(2026-09-19).
+const STAGES_KEY = "wb.filterStages.v4"; // 옛 평평한 리스트 — **승계해서 읽는다**(AND(잎…)).
 // 옛 결과 술어엔 t 가 없고 그 기준(정의의 T1)은 복원할 수 없다 — 사용자 확정 "기존 저장물은 버린다"에 따라
 // 승계 코드 없이 키를 올린다. parseStages 는 술어 하나만 못 읽어도 저장본 통째를 버리므로 부분 승계는 애초에 불가.
 const SLOTS_KEY = "wb.filterSlots"; // 슬롯 시절 — 활성 칸 하나만 이어받는다(나머지 칸은 버린다)
@@ -45,22 +49,33 @@ const LEGACY_STAGES_KEY = "wb.filterStages"; // 슬롯 이전의 단일 벌
 const UNIVERSE_FIELD = persistedField<Universe>("wb.filterUniverse", (raw) => parseUniverse(raw), "longitudinal");
 
 /**
- * 조건 한 벌 읽기 — 지금 키 → 슬롯의 활성 칸 → 슬롯 이전의 단일 벌 순.
- * 슬롯의 **활성 칸만** 살린다: 나머지 두 칸은 이름이 없어 살려 둘 자리가 없고(집합은 이름이 있어야 한다),
- * 슬롯을 안 쓰던 사람에게는 애초에 빈 칸이다. 옛 키는 안 지운다 — 새 키가 서면 자연히 안 읽힌다.
+ * 식 읽기 — 새 키(식 트리) → 옛 평평한 리스트(`AND(잎…)` 로 승계).
+ *
+ * ⚠ 승계는 **무손실**이다(2026-09-19): 옛 리스트의 단계들이 그대로 루트 AND 의 잎이 되고,
+ * **노드 id = 옛 `stage.id` 를 그대로 쓴다**. id 를 새로 뽑으면 시트 인스턴스 결과 열(`out:i:<id>`)·
+ * 급타점 축(`c:hot:<id>`)·테마 연동(`wb.themeRankBindings.v1`)이 전부 주소를 잃고, 유령 청소가
+ * 저장물 기준이라 열 폭·고정·숨김과 연동이 **첫 실행에 조용히 영구 삭제**된다.
+ *
+ * 옛 키는 안 지운다 — 새 키가 서면 자연히 안 읽힌다.
  */
-const loadStages = (): FilterStage[] => {
-    // 셀 술어가 저장물에 실리기 **전에** 원문을 한 번 뜬다(단계 ②의 되돌림 경로 — persist.backupRawOnce).
-    backupRawOnce(STAGES_KEY, "pre-universe");
+const loadExpr = (): SetExpr => {
+    // 식 트리로 바뀌기 **전에** 원문을 한 번 뜬다(되돌림 경로 — 새 모양이 실린 저장물을 옛 코드가
+    // 읽으면 통째 폐기라 코드 롤백만으로는 복구가 안 된다. 단계 ② 의 pre-universe 와 같은 수).
+    backupRawOnce(STAGES_KEY, "pre-expr");
+    const fresh = loadJson(EXPR_KEY, (o) => parseExpr(o, parseStages));
+    if (fresh) return fresh;
     // v4 리셋 이전 키들(v3·v2·슬롯·최초)은 읽지 않는다 — 옛 leaf·t 없는 결과 술어가 되살아나는 뒷문이 된다.
     void SLOTS_KEY;
     void LEGACY_STAGES_KEY;
-    return loadJson(STAGES_KEY, parseStages) ?? [];
+    return exprOfStages(loadJson(STAGES_KEY, parseStages) ?? []);
 };
 
 export interface FilterFunnelSlice {
-    /** 조건 한 벌(영속). 읽기는 selectFilterStages 로 — 소비자가 필드 이름에 매이지 않게. */
-    filterStages: FilterStage[];
+    /**
+     * 작업 깔때기의 **식**(영속) — 2026-09-19 부터 리스트가 아니라 트리다.
+     * 평평한 목록을 읽는 소비자는 `selectFilterStages`(= leavesOf 투영)를 그대로 쓴다.
+     */
+    filterExpr: SetExpr;
     /**
      * 지금 만지는 조건이 사는 **우주**(영속). 편성 패널은 이 값으로 **디스패치**한다 —
      * 전역 "모드 스위치"가 아니라 **편집 대상의 타입**이다(decisions 「집합」: 토글이 서는 자리는
@@ -119,22 +134,22 @@ export interface FilterFunnelSlice {
  * 조건 한 벌 읽기 — 소비자(깔때기·보드)는 이 선택자만 읽는다. 저장 모양이 바뀌어도(슬롯 3칸이었던
  * 시절처럼) 소비자는 안 바뀌라고 두는 자리다.
  */
-export const selectFilterStages = (s: Pick<FilterFunnelSlice, "filterStages">): FilterStage[] => s.filterStages;
+export const selectFilterStages = (s: Pick<FilterFunnelSlice, "filterExpr">): FilterStage[] => leavesOf(s.filterExpr);
 
 /** 단계는 손으로 쌓는 것이라 매 편집이 곧 영속 — 새로고침에 조건이 날아가면 깔때기를 다시 짜야 한다.
  *
  *  export 인 이유: 저장 집합 열기(savedSetsSlice.openSet)도 "깔때기에 조건 한 벌을 쓰는 손"이라
  *  같은 규칙(영속·포인터 정리)을 지나야 한다 — 두 슬라이스의 유일한 접점이다. */
-export const putStages = (
-    stages: FilterStage[],
+export const putExpr = (
+    expr: SetExpr,
     /** 집합을 열 때만 준다 — 그 집합의 우주로 깔때기가 갈아탄다(편집 경로는 우주를 안 건드린다). */
     universe?: Universe,
-): Pick<FilterFunnelSlice, "filterStages" | "selectedSetRef"> & Partial<Pick<FilterFunnelSlice, "filterUniverse">> => {
-    saveJson(STAGES_KEY, stages);
+): Pick<FilterFunnelSlice, "filterExpr" | "selectedSetRef"> & Partial<Pick<FilterFunnelSlice, "filterUniverse">> => {
+    saveJson(EXPR_KEY, expr);
     // 깔때기를 만졌다 = 선택 포인터는 작업 깔때기로 복귀 — 칩에서 고른 집합을 보던 중이라도, 조건을
     // 고치는 손은 "지금 이걸 보겠다"는 뜻이다(연동 패널이 편집을 따라와야 편집의 대가가 보인다).
     return {
-        filterStages: stages,
+        filterExpr: expr,
         selectedSetRef: null,
         ...(universe !== undefined ? { filterUniverse: UNIVERSE_FIELD.save(universe) } : {}),
     };
@@ -147,13 +162,16 @@ export const putStages = (
  * ⚠ 판정이 "비었나"가 아니라 "**키가 있나**"인 이유: 조건을 **일부러 다 지운** 사용자도 빈 배열을
  * 저장해 둔다. 내용으로 재면 그 사람의 재시작 때 지운 조건이 되살아난다("내가 지운 게 돌아왔다").
  */
-const initialStages = (universe: Universe): FilterStage[] => {
-    const saved = loadStages();
-    if (universe !== "daily" || hasStored(STAGES_KEY)) return saved;
+const initialExpr = (universe: Universe): SetExpr => {
+    const saved = loadExpr();
+    // ⚠ "저장한 적 있나" 는 **두 키를 다** 본다 — 새 키만 보면 옛 사용자(v4 만 있는 사람)에게
+    //    이주가 다시 돌아 지운 조건이 되살아난다("내가 지운 게 돌아왔다").
+    if (universe !== "daily" || hasStored(EXPR_KEY) || hasStored(STAGES_KEY)) return saved;
     const seeded = migrateProbeStages();
     if (seeded === null) return saved;
-    saveJson(STAGES_KEY, seeded);
-    return seeded;
+    const e = exprOfStages(seeded);
+    saveJson(EXPR_KEY, e);
+    return e;
 };
 
 // ⚠ 우주는 **슬라이스 생성 시점에** 읽는다 — 모듈 상수로 굳히면 `persistedField.load` 가 함수인
@@ -162,7 +180,7 @@ const initialStages = (universe: Universe): FilterStage[] => {
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => {
     const universe = UNIVERSE_FIELD.load();
     return {
-    filterStages: initialStages(universe),
+    filterExpr: initialExpr(universe),
     filterUniverse: universe,
     selectedSetRef: null,
     gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
@@ -185,29 +203,37 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     setFilterUniverse: (u) => set((s) => {
         if (s.filterUniverse === u) return {};
         const seeded = u === "daily" ? migrateProbeStages(s.panelUi) : null;
-        return putStages(seeded ?? [], u);
+        return putExpr(seeded === null ? emptyExpr() : exprOfStages(seeded), u);
     }),
 
-    addFilterStage: (predicates) => set((s) => putStages(addStage(selectFilterStages(s), predicates ?? []))),
-    applyFilterRail: (key, predicate) => set((s) => putStages(applyRailPredicate(selectFilterStages(s), key, predicate))),
-    removeFilterStage: (id) => set((s) => putStages(removeStage(selectFilterStages(s), id))),
-    toggleFilterStage: (id) => set((s) => putStages(toggleStage(selectFilterStages(s), id))),
-    setFilterStagePredicates: (id, predicates) => set((s) => putStages(setStagePredicates(selectFilterStages(s), id, predicates))),
-    setFilterStage: (next) => set((s) => putStages(replaceStage(selectFilterStages(s), next))),
-    renameFilterStage: (id, name) => set((s) => putStages(renameStage(selectFilterStages(s), id, name))),
+    // ⚠ 쓰기 API 의 **주소는 여전히 노드 id**(= 옛 stage.id)다 — 시그니처가 안 바뀌어 소비자가 그대로다.
+    //   바뀐 건 구현뿐: 리스트 편집 → 트리 편집(mapLeaves/filterLeaves/appendLeaf).
+    addFilterStage: (predicates) => set((s) => putExpr(appendLeaf(s.filterExpr, newStage(predicates ?? [])))),
+    applyFilterRail: (key, predicate) => set((s) => putExpr(applyRailToExpr(s.filterExpr, key, predicate))),
+    removeFilterStage: (id) => set((s) => putExpr(filterLeaves(s.filterExpr, (x) => x.id !== id))),
+    toggleFilterStage: (id) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => (x.id === id ? { ...x, enabled: !x.enabled } : x)))),
+    setFilterStagePredicates: (id, predicates) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => (x.id === id ? { ...x, predicates } : x)))),
+    setFilterStage: (next) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => (x.id === next.id ? next : x)))),
+    renameFilterStage: (id, name) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => {
+        if (x.id !== id) return x;
+        const n = name.trim();
+        // 빈 이름 = 자동 라벨로 되돌리기(옛 renameStage 의 규칙 그대로 — 필드를 지운다).
+        if (n === "") { const { name: _drop, ...rest } = x; return rest; }
+        return { ...x, name: n };
+    }))),
     renameGroupInFilters: (from, to) => set((s) => {
-        const stages = renameGroupInStages(selectFilterStages(s), from, to);
+        const expr = mapLeaves(s.filterExpr, (x) => renameGroupInStages([x], from, to)[0]!);
         const sets = s.savedSets.map((f) => {
-            const st = renameGroupInStages(f.stages, from, to);
-            return st === f.stages ? f : { ...f, stages: st };
+            const ex = mapLeaves(f.expr, (x) => renameGroupInStages([x], from, to)[0]!);
+            return ex === f.expr ? f : { ...f, expr: ex };
         });
         const setsTouched = sets.some((f, i) => f !== s.savedSets[i]);
-        if (stages !== s.filterStages) saveJson(STAGES_KEY, stages);
+        if (expr !== s.filterExpr) saveJson(EXPR_KEY, expr);
         return {
-            ...(stages !== s.filterStages ? { filterStages: stages } : {}),
+            ...(expr !== s.filterExpr ? { filterExpr: expr } : {}),
             ...(setsTouched ? { savedSets: persistSavedSets(sets) } : {}),
         };
     }),
-    clearFilterStages: () => set(() => putStages([])),
+    clearFilterStages: () => set(() => putExpr(emptyExpr())),
     };
 };

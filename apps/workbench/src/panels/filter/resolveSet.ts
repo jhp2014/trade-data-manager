@@ -19,7 +19,8 @@ import { expandToPointItems } from "../../lib/grainView.js";
 import { judgeKeyOf } from "../../lib/pointDef.js";
 import type { SetRef } from "../../lib/setRef.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
-import { toFunnelStages, type EvalLookup } from "./evaluate.js";
+import { toFunnelStage, type EvalLookup } from "./evaluate.js";
+import { activeExpr, exprOfStages, leavesOf, type SetExpr } from "./expr.js";
 import { activeStages, funnelOrder, resolveAutoGrain, type FilterStage, type GrainLookup } from "./stage.js";
 
 /**
@@ -172,7 +173,9 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
     if (hit !== undefined) return hit;
 
     const set = setId === null ? undefined : ctx.savedSetOf(setId);
-    const stages = setId === null ? ctx.activeStages : (set?.stages ?? []);
+    // 작업 깔때기는 ctx 가 이미 잎 목록으로 준다(훅이 만든 재료) — 저장 집합은 제 식을 그대로 쓴다.
+    const expr: SetExpr = setId === null ? exprOfStages(ctx.activeStages) : (set?.expr ?? exprOfStages([]));
+    const stages = leavesOf(expr);
     // 저장 집합은 자기 정의로 평가된다 — 정의 사본이 없는 옛 저장물은 현재 정의(관대 병합 규칙 그대로).
     const mat = ctx.materialsFor(set?.pointDef);
 
@@ -194,10 +197,14 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
         }
     }
 
-    const active = activeStages(funnelOrder(stages, mat.grainLook).map((e) => e.stage));
+    // 평가에 들어가는 식 — 꺼졌거나 빈 잎은 걷힌다(activeExpr). `active` 는 그 잎 목록이라
+    // "필터 N"·라벨 등 평평한 목록을 읽던 소비자가 그대로 산다.
+    const evaluated = activeExpr(expr);
+    const active = activeStages(funnelOrder(leavesOf(evaluated), mat.grainLook).map((e) => e.stage));
     const grain = resolveAutoGrain(stages, mat.grainLook);
     const items = expandUniverse(ctx.candidates, grain, mat.timesOf);
-    const r: ResolvedFilter = { grain, active, tally: tallyFunnel(items, toFunnelStages(active, mat.evalLook)) };
+    // ⚠ 단계는 **하나**다(식 전체) — 잎마다 한 단계로 쪼개면 AND 가 두 번 적용돼 OR 묶음이 틀린다.
+    const r: ResolvedFilter = { grain, active, tally: tallyFunnel(items, [toFunnelStage(evaluated, mat.evalLook)]) };
     memo.set(setId, r);
     if (sessionKey !== null) sessionDefCache.set(sessionKey, r);
     return r;

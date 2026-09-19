@@ -9,6 +9,7 @@
 //   통째로 다시 그려지고, 더 나쁘게는 그 사이의 5칸 숫자가 전부 미배치로 부풀어 **사용자가 그걸 사실로
 //   읽는다**. 숫자가 틀렸다는 신호가 화면 어디에도 안 뜨는 종류다.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { exprOfStages } from "../expr.js";
 import { renderHook, act } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
@@ -48,13 +49,13 @@ const dateStage = (id: string, from: string, to: string, enabled = true): Filter
     ({ id, enabled, predicates: [{ kind: "date", ranges: [{ from, to }] }] });
 
 // 조건 한 벌은 하나다 — 소비자는 selectFilterStages 로만 읽는다(저장 모양은 슬라이스의 사정).
-const setStages = (stages: FilterStage[]): void => { act(() => { useWorkbench.setState({ filterStages: stages }); }); };
+const setStages = (stages: FilterStage[]): void => { act(() => { useWorkbench.setState({ filterExpr: exprOfStages(stages) }); }); };
 
 beforeEach(() => {
-    useWorkbench.setState({ filterStages: [] });
+    useWorkbench.setState({ filterExpr: exprOfStages([]) });
 });
 afterEach(() => {
-    useWorkbench.setState({ filterStages: [] });
+    useWorkbench.setState({ filterExpr: exprOfStages([]) });
     localStorage.clear();
     vi.unstubAllGlobals();
 });

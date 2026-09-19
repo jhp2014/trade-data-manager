@@ -11,7 +11,8 @@
 // ⚠ 그룹은 레일이 아니다(순서가 없다) — railKeyOf 가 null 을 준다. 그룹 조건은 보드에서 리스트로 관리하고
 // 필터 여러 개가 될 수 있다(테마A / 돌파형을 나눠 걸어야 각각을 따로 끄고 켤 수 있다).
 import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
-import { addStage, removeStage, setStagePredicates, unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
+import { addStage, newStage, removeStage, setStagePredicates, unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
+import { appendLeaf, filterLeaves, leavesOf, mapLeaves, type SetExpr } from "./expr.js";
 
 /** 레일 하나를 가리키는 열쇠. 축은 id 로, 결과는 지표로, 날짜·시간은 종류만으로 유일하다. */
 export type RailKey =
@@ -113,4 +114,28 @@ export function applyRailPredicate(
         return others.length > 0 ? setStagePredicates(stages, first.id, others) : removeStage(stages, first.id);
     }
     return setStagePredicates(stages, first.id, [...others, predicate]);
+}
+
+/**
+ * 같은 규칙의 **식 트리 판** — 리스트판(위)과 한 쌍이다. 규칙을 두 벌로 쓰지 않으려고 판정(`stagesFor`)과
+ * 술어 솎기는 그대로 쓰고, 달라지는 건 "어디에 쓰나"뿐이다: 붙이기는 루트에, 고치기·지우기는 그 잎에.
+ *
+ * ⚠ 리스트판을 `leavesOf` → `exprOfStages` 로 감싸 쓰지 않는 이유: 그러면 **트리가 평평해진다**.
+ * 지금은 루트 AND 하나뿐이라 티가 안 나지만, 묶음이 생기는 순간 선을 그을 때마다 사용자의 구조가
+ * 조용히 무너진다.
+ */
+export function applyRailToExpr(e: SetExpr, key: RailKey, predicate: FilterPredicate | null): SetExpr {
+    const first = stagesFor(leavesOf(e), key)[0];
+    if (!first) return predicate === null ? e : appendLeaf(e, newStage([predicate]));
+
+    const others = first.predicates.filter((p) => {
+        const k = railKeyOf(p);
+        return k === null || !sameRailKey(k, key);
+    });
+    if (predicate === null) {
+        return others.length > 0
+            ? mapLeaves(e, (s) => (s.id === first.id ? { ...s, predicates: others } : s))
+            : filterLeaves(e, (s) => s.id !== first.id);
+    }
+    return mapLeaves(e, (s) => (s.id === first.id ? { ...s, predicates: [...others, predicate] } : s));
 }

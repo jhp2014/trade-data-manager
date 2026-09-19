@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { evalGroupExpr3, evalPredicate3, evalStage, toFunnelStages, type EvalLookup } from "../evaluate.js";
+import { exprOfStages, type SetExpr } from "../expr.js";
+import { evalExpr, evalGroupExpr3, evalPredicate3, evalStage, toFunnelStage, type EvalLookup } from "../evaluate.js";
 import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
 import type { FunnelItem } from "@trade-data-manager/market/domain";
@@ -196,11 +197,20 @@ describe("evalStage / toFunnelStages — 단계는 술어들의 AND", () => {
         expect(evalStage(s, item, look())).toBeUndefined();
     });
 
-    it("core 깔때기가 먹는 모양으로 넘긴다", () => {
-        const stages = [stage([{ kind: "group", expr: lit("g1"), scope: "day" }])];
-        const out = toFunnelStages(stages, look());
-        expect(out[0].id).toBe("s1");
-        expect(out[0].verdictOf(item)).toBe(true);
+    it("core 깔때기가 먹는 모양으로 넘긴다 — 식 전체가 **한 단계**다", () => {
+        const e = exprOfStages([stage([{ kind: "group", expr: lit("g1"), scope: "day" }])]);
+        const out = toFunnelStage(e, look());
+        expect(out.verdictOf(item)).toBe(true);
+    });
+
+    // ⚠ 잎마다 한 단계로 쪼개면 정산의 AND 가 한 번 더 걸려 OR 이 틀린다 — 그 접기는 evalExpr 이 진다.
+    it("OR 묶음 — 하나라도 참이면 참, 부정은 결손을 되살리지 않는다(not3)", () => {
+        const yes = stage([{ kind: "group", expr: lit("g1"), scope: "day" }]);
+        const no = stage([{ kind: "group", expr: lit("없는그룹"), scope: "day" }]);
+        const or: SetExpr = { kind: "or", id: "n1", of: [{ kind: "cond", stage: yes }, { kind: "cond", stage: no }] };
+        expect(evalExpr(or, item, look())).toBe(true);
+        // 부정한 OR = 드모르간으로 AND(¬…) — 여기선 yes 가 참이라 거짓이 된다.
+        expect(evalExpr({ ...or, neg: true }, item, look())).toBe(false);
     });
 });
 

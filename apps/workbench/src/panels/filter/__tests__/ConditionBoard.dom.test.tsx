@@ -4,6 +4,7 @@
 //   ③ 이름 클릭 = 그 종류의 편집면으로(레일 = 신호, 테마 = 연동, 그룹 = 그 자리 팝오버)
 //   ④ ＋ 조건 = 생성 입구 하나. **레일만 행을 안 만든다**(빈 술어 필터 금지 · 긋는 순간 조건)
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { exprOfStages } from "../expr.js";
 import { act, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
@@ -33,13 +34,13 @@ const stages = (): ReturnType<typeof selectFilterStages> => selectFilterStages(u
 const DATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[0], to: DATES[1] }] }] };
 const THEME_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "themeStrength" as const, params: { ...DEFAULT_THEME_STRENGTH } }] };
 
-const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [], sessionUi: {}, themeBindings: {} };
+const RESET = { filterExpr: exprOfStages([]), funnelSelection: null, selectedSetRef: null, savedSets: [], sessionUi: {}, themeBindings: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
 describe("한 목록 — 종류를 가리지 않고 걸린 것이 전부 선다", () => {
     it("레일에서 만든 조건(날짜)도, 테마 행도 같은 목록에 요약 줄로 선다", () => {
-        useWorkbench.setState({ filterStages: [DATE_STAGE, THEME_STAGE] });
+        useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE, THEME_STAGE]) });
         const { container } = renderBoard();
         expect(container.textContent).toContain("26.07.06~26.07.07"); // 날짜 요약
         expect(container.textContent).toContain("존 30/40 · 등락"); // 테마 요약(칩·패널과 같은 한 벌)
@@ -56,7 +57,7 @@ describe("한 목록 — 종류를 가리지 않고 걸린 것이 전부 선다"
 
 describe("줄에는 값 편집 손잡이가 없다 — 편집면은 종류마다 따로", () => {
     it("컷 레일도 스텝퍼도 트랙도 서지 않는다", () => {
-        useWorkbench.setState({ filterStages: [DATE_STAGE, THEME_STAGE] });
+        useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE, THEME_STAGE]) });
         const { container } = renderBoard();
         expect(container.querySelector('[title^="빈 곳을 끌면"]')).toBeNull(); // 레일 트랙
         expect(container.querySelector('[title^="누르거나 끌어서"]')).toBeNull(); // 컷 레일
@@ -64,7 +65,7 @@ describe("줄에는 값 편집 손잡이가 없다 — 편집면은 종류마다
     });
 
     it("줄은 요약 한 줄이 전부다 — 5칸 진단(새로 죽임)은 은퇴했다", () => {
-        useWorkbench.setState({ filterStages: [DATE_STAGE] });
+        useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE]) });
         const { container } = renderBoard();
         expect(container.textContent).not.toContain("새로 죽임");
     });
@@ -72,14 +73,14 @@ describe("줄에는 값 편집 손잡이가 없다 — 편집면은 종류마다
 
 describe("이름 클릭 — 그 종류의 편집면으로", () => {
     it("1차원 조건(날짜)은 **그 자리 팝오버**를 연다 — 패널 경계를 안 넘는다(2026-09-19 레일 패널 철거)", () => {
-        useWorkbench.setState({ filterStages: [DATE_STAGE] });
+        useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE]) });
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(byText(container, "26.07.06~26.07.07")!); });
         expect(baseElement.textContent).toContain("날짜 구간");
     });
 
     it("테마 조건 — 미연동 행 이름 클릭 = 연동 메뉴(pull: 이 보드가 유일한 연동 손잡이)", () => {
-        useWorkbench.setState({ filterStages: [DATE_STAGE, THEME_STAGE] });
+        useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE, THEME_STAGE]) });
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(byText(container, "존 30/40")!); });
         // 자동 연동 폐지 — 세션 포인터 대신 메뉴가 뜬다(미연동 조건판 목록 + 새 조건판).
@@ -91,7 +92,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
     });
 
     it("소멸된 판을 가리키는 바인딩 = 읽기 시점 미연동 — 배지가 죽은 판 이름을 말하지 않는다", () => {
-        useWorkbench.setState({ filterStages: [THEME_STAGE] });
+        useWorkbench.setState({ filterExpr: exprOfStages([THEME_STAGE]) });
         // 슬롯 대장(기본 시딩)에 없는 판 id — ×로 소멸된 판이 남긴 바인딩의 모양.
         act(() => { useWorkbench.getState().bindTheme("t1", "theme-rank-9"); });
         const { container } = renderBoard();
@@ -100,7 +101,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
     });
 
     it("고아 바인딩은 후보를 점유하지 않는다 — 죽은 행이 가리키는 판도 목록에 선다(2026-09-17 실사용 버그)", () => {
-        useWorkbench.setState({ filterStages: [THEME_STAGE] });
+        useWorkbench.setState({ filterExpr: exprOfStages([THEME_STAGE]) });
         // 살아 있지 않은 행 id 가 기본 판(슬롯 1)을 가리키는 고아 — 집합 적용의 통째 교체가 남기는 모양.
         act(() => { useWorkbench.getState().bindTheme("dead-row", "theme-rank-1"); });
         const { container, baseElement } = renderBoard();
@@ -109,7 +110,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
     });
 
     it("연동된 테마 행 — 배지가 판 이름을 말하고, 배지 클릭 = 변경/해제 메뉴", () => {
-        useWorkbench.setState({ filterStages: [THEME_STAGE] });
+        useWorkbench.setState({ filterExpr: exprOfStages([THEME_STAGE]) });
         act(() => { useWorkbench.getState().bindTheme("t1", "theme-rank-1"); });
         const { container, baseElement } = renderBoard();
         expect(container.textContent).toContain("◆ 테마 순위 [조건]");
@@ -218,10 +219,10 @@ describe("＋ 조건 — 생성 입구 하나", () => {
             pointMemberships: [{ stockCode: A, date: DATES[0], time: "09:30:00", groupNames: ["눌림", "재돌파"] }],
         };
         useWorkbench.setState({
-            filterStages: [{
+            filterExpr: exprOfStages([{
                 id: "pg", enabled: true,
                 predicates: [{ kind: "group" as const, expr: { groups: [{ literals: [{ groupId: "눌림", neg: false }] }] }, scope: "point" as const }],
-            }],
+            }]),
         });
         const { container, baseElement } = render(<ConditionBoard />, {
             wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
@@ -240,7 +241,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
 //   배열 인덱스의 사상이 어긋나면 숫자가 조용히 틀린다. 층위를 넘는 드롭 차단도 여기서 잰다.
 describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
     it("◉ 토글로 깔때기에서 빼고, ✕ 로 지운다", () => {
-        useWorkbench.setState({ filterStages: [DATE_STAGE] });
+        useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE]) });
         const { container } = renderBoard();
         act(() => { fireEvent.click(buttons(container).find((b) => b.title.startsWith("이 조건 끄기"))!); });
         expect(stages()[0]!.enabled).toBe(false);

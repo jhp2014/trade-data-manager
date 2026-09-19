@@ -18,6 +18,7 @@ import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { passesPoint, type SectionRanks, type ThemeProjection } from "../../lib/themeStrength.js";
 import { isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { isPredicateEmpty, unknownPredicate, type AxisBound, type FilterPredicate, type FilterStage } from "./stage.js";
+import type { SetExpr } from "./expr.js";
 
 /** 판정에 필요한 바깥 재료. 없는 것은 전부 `undefined` = 판단 불가(탈락 아님). */
 export interface EvalLookup {
@@ -238,11 +239,34 @@ export function evalStage(s: FilterStage, item: FunnelItem, look: EvalLookup): V
 }
 
 /**
- * 단계 리스트를 core 깔때기가 먹는 모양으로. 정산은 술어를 모르고, 판정은 정산을 모른다 —
- * 이 함수 하나가 그 둘을 잇는 유일한 자리다.
+ * 식 하나의 3치 판정 — 잎은 조건, 묶음은 `and3`/`or3`, 부정은 `not3`.
+ *
+ * ⚠ **부정은 결손을 되살리지 않는다**(`not3(모름) = 모름`). 그래서 "존 순위 3위 이내가 **아닌** 것"을
+ * 걸어도 테마 재료가 없는 항목은 통과가 아니라 여전히 모름이다 — 값을 지어내지 않는다는 규칙이
+ * 부정에서도 똑같이 선다. 체감은 종류마다 갈리고(라벨·그룹은 재료가 늘 있어 깨끗, 테마·결과는
+ * 결손이 남는다), 화면은 그 사실을 결손 수 한 줄로 말한다.
+ *
+ * 빈 묶음: AND 는 공허참, OR 은 공허거짓(`and3([])`/`or3([])` 의 값 그대로). 평가 전에 `activeExpr`
+ * 이 빈 묶음을 접으므로 실제로는 루트가 비었을 때만 닿는다.
  */
-export const toFunnelStages = (
-    stages: readonly FilterStage[],
+export function evalExpr(e: SetExpr, item: FunnelItem, look: EvalLookup): Verdict {
+    const v = e.kind === "cond"
+        ? evalStage(e.stage, item, look)
+        : e.kind === "and"
+            ? and3(e.of.map((c) => evalExpr(c, item, look)))
+            : or3(e.of.map((c) => evalExpr(c, item, look)));
+    return e.neg === true ? not3(v) : v;
+}
+
+/**
+ * 식을 core 깔때기가 먹는 모양으로 — **단계 하나**다. 정산은 술어를 모르고, 판정은 정산을 모른다.
+ *
+ * 왜 잎마다 한 단계가 아니라 식 전체가 한 단계인가: 정산이 하는 일이 전 단계 3치 AND 하나뿐이라
+ * (2026-09-19 5칸 은퇴) 단계를 여럿으로 쪼개면 **AND 가 두 번** 적용된다 — OR 묶음이 들어오는 순간
+ * 그게 틀린 답이 된다. 트리의 접기는 여기(evalExpr) 하나가 진다.
+ */
+export const toFunnelStage = (
+    e: SetExpr,
     look: EvalLookup,
-): { id: string; verdictOf: (item: FunnelItem) => Verdict }[] =>
-    stages.map((s) => ({ id: s.id, verdictOf: (item: FunnelItem) => evalStage(s, item, look) }));
+): { id: string; verdictOf: (item: FunnelItem) => Verdict } =>
+    ({ id: "expr", verdictOf: (item: FunnelItem) => evalExpr(e, item, look) });

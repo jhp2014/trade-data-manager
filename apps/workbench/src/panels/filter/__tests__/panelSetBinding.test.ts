@@ -2,13 +2,14 @@ import { describe, it, expect } from "vitest";
 import { canPin, dayStagesOf, dayUnsupportedReason, parsePanelBinding, targetUniverseOf } from "../panelSetBinding.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import type { FilterStage } from "../stage.js";
+import { exprOfStages } from "../expr.js";
 
 // panelUi 는 무검증 JSON 가방이다 — 핀을 읽는 자리가 문지기고, **깨진 참조는 연동으로 폴백하지 않는다**
 // (조용한 폴백 = 다른 집합을 보여주는 실패).
 
 const stage = (id: string): FilterStage => ({ id, enabled: true, predicates: [] });
 const set = (id: string, universe: SavedSet["universe"], stages: FilterStage[] = []): SavedSet =>
-    ({ id, name: id, stages, universe });
+    ({ id, name: id, expr: exprOfStages(stages), universe });
 
 describe("parsePanelBinding — 저장물 문지기", () => {
     it("영속 3종이 통과한다", () => {

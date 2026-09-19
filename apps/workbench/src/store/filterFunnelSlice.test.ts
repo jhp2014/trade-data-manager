@@ -34,13 +34,14 @@ describe("조건 한 벌 로드·이관", () => {
 });
 
 describe("편집은 곧 영속", () => {
-    it("단계를 더하면 지금 키에 그대로 실린다", async () => {
+    it("조건을 더하면 지금 키에 **식**으로 실린다 — 루트 AND 의 잎", async () => {
         const storage = stubStorage();
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
         expect(selectFilterStages(store.getState())).toHaveLength(1);
-        const saved = JSON.parse(storage.get("wb.filterStages.v4")!) as unknown[];
-        expect(saved).toHaveLength(1);
+        const saved = JSON.parse(storage.get("wb.filterExpr.v1")!) as { kind: string; of: unknown[] };
+        expect(saved.kind).toBe("and");
+        expect(saved.of).toHaveLength(1);
     });
 });
 

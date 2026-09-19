@@ -3,6 +3,7 @@
 // 여기서 재는 건 조건 판정이 아니라 **자리**다: 처음 열었을 때 보이는 게 보드인가, 집합 줄이 늘 서서
 // "지금 보는 집합"을 말하는가, 관리(저장·고정·열기·이름·삭제)가 줄 끝 판 **하나**에 사는가(우클릭 없음).
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { exprOfStages, leavesOf } from "../expr.js";
 import { fireEvent, render, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
@@ -33,7 +34,7 @@ const btnByTitle = (c: HTMLElement, prefix: string): HTMLElement => {
 const chipByText = (c: HTMLElement, text: string): HTMLElement | undefined =>
     [...c.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(text));
 
-const RESET = { filterStages: [], selectedSetRef: null, savedSets: [], panelUi: {} };
+const RESET = { filterExpr: exprOfStages([]), selectedSetRef: null, savedSets: [], panelUi: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
@@ -57,7 +58,7 @@ describe("집합 줄은 상시 한 줄 — 처음 보이는 것이 곧 본론(�
 });
 
 describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는 그 값", () => {
-    const ONE = [{ id: "fs1", name: "돌파", stages: [], universe: "longitudinal" as const }];
+    const ONE = [{ id: "fs1", name: "돌파", expr: exprOfStages([]), universe: "longitudinal" as const }];
 
     it("저장 집합은 고정 없이는 줄에 안 서고(⋯ 판에만), 고르면 줄에 서며 다시 누르면 연동으로 돌아온다", () => {
         useWorkbench.setState({ savedSets: ONE });
@@ -103,7 +104,7 @@ describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는
     it("저장 — 판의 이름 입력으로, 같은 이름이면 버튼이 덮어쓰기로 바뀐다(브라우저 prompt 없음)", () => {
         useWorkbench.setState({
             savedSets: ONE,
-            filterStages: [{ id: "st1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }],
+            filterExpr: exprOfStages([{ id: "st1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }]),
         });
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 관리"));
@@ -115,11 +116,11 @@ describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는
         fireEvent.keyDown(input, { key: "Enter" });
         const sets = useWorkbench.getState().savedSets;
         expect(sets.map((x) => x.name)).toEqual(["돌파", "새 집합"]);
-        expect(sets[1]!.stages).toHaveLength(1);
+        expect(leavesOf(sets[1]!.expr)).toHaveLength(1);
     });
 
     it("이름 바꾸기 — 행의 이름 버튼 → 입력 → Enter. 다른 집합과 같은 이름은 무시된다", () => {
-        useWorkbench.setState({ savedSets: [...ONE, { id: "fs2", name: "눌림", stages: [], universe: "longitudinal" as const }] });
+        useWorkbench.setState({ savedSets: [...ONE, { id: "fs2", name: "눌림", expr: exprOfStages([]), universe: "longitudinal" as const }] });
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 관리"));
         const mgr = baseElement as HTMLElement;

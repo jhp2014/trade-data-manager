@@ -29,6 +29,7 @@ import { WorksetRowShell, visibleChips, type ChipItem } from "../WorksetChipRow.
 import { useFunnel } from "./FunnelContext.js";
 import type { ResolvedSet } from "./resolveSet.js";
 import { cloneDeficiencies, UNIVERSE_LABEL, UNIVERSES } from "./universe.js";
+import { leafCount, leavesOf } from "./expr.js";
 import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
 import { textInput } from "./ui.js";
 
@@ -76,7 +77,7 @@ export function SetRow(): JSX.Element {
         // savedSets 를 도므로 늘 존재한다. 깨진 참조를 말하는 자리는 패널 바인딩과 조립 부품 줄이다.
         return {
             key: f.id, label: f.name, active: isOn(ref), color: PIN,
-            title: `${f.name} — 필터 ${f.stages.length}개 · ${countOf(ref)}\n클릭 = 이 집합 보기(다시 누르면 연동)`,
+            title: `${f.name} — 조건 ${leafCount(f.expr)}개 · ${countOf(ref)}\n클릭 = 이 집합 보기(다시 누르면 연동)`,
             onClick: () => toggle(ref),
         };
     });
@@ -190,7 +191,7 @@ function SetManager({ pins, onTogglePin, onPick }: {
                 const editing = renaming === f.id;
                 const r = v.resolveSet(ref);
                 const other = f.universe !== setUniverse; // 다른 우주 — 숨기지 않고 회색 + 복제 손잡이
-                const willLose = other ? cloneDeficiencies(f.stages, setUniverse) : [];
+                const willLose = other ? cloneDeficiencies(leavesOf(f.expr), setUniverse) : [];
                 return (
                     <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 6px 2px 4px", background: active ? "var(--accent-soft)" : "transparent" }}>
                         {editing ? (
@@ -200,7 +201,7 @@ function SetManager({ pins, onTogglePin, onPick }: {
                                 style={{ ...textInput, flex: 1, minWidth: 0, fontSize: 11.5, padding: "2px 6px" }} />
                         ) : (
                             <button onClick={() => onPick(ref)}
-                                title={`${f.name} — 필터 ${f.stages.length}개 · ${countLabel(r)}${opened ? " · 보드에 열려 있음" : ""}\n클릭 = 이 집합 보기`}
+                                title={`${f.name} — 조건 ${leafCount(f.expr)}개 · ${countLabel(r)}${opened ? " · 보드에 열려 있음" : ""}\n클릭 = 이 집합 보기`}
                                 style={{
                                     flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent",
                                     color: "var(--text-primary)", padding: "3px 4px", cursor: "pointer",

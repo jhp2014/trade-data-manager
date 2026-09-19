@@ -29,9 +29,10 @@ import { projectionOf } from "../../lib/useThemeProjection.js";
 import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import { unionNames } from "../../lib/groupIndex.js";
 import type { SetRef } from "../../lib/setRef.js";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { useWorkbench } from "../../store/workbench.js";
 import { buildAxisOrderIndex, buildAxisOrderIndexes } from "./axisLookup.js";
-import { resolveBound, toFunnelStages, type EvalLookup } from "./evaluate.js";
+import { resolveBound, toFunnelStage, type EvalLookup } from "./evaluate.js";
+import { activeExpr, leavesOf } from "./expr.js";
 import type { LabelLookup } from "./label.js";
 import type { DefMaterials, ResolvedSet, SetResolveCtx } from "./resolveSet.js";
 import { useSetViews, type ViewedSet } from "./useSetViews.js";
@@ -98,7 +99,10 @@ const hasHotPredicate = (stages: readonly FilterStage[]): boolean =>
 
 /** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
 export function useFilterFunnel(): FunnelView {
-    const stages = useWorkbench(selectFilterStages);
+    // 식(트리)은 평가가 쓰고, 잎 목록(stages)은 화면·재료 게이트가 쓴다 — 둘은 같은 저장물의 두 얼굴이다.
+    // ⚠ 셀렉터 안에서 파생 배열을 만들지 않는다(zustand 얕은 비교) — 항등 셀렉터로 받고 여기서 접는다.
+    const expr = useWorkbench((s) => s.filterExpr);
+    const stages = useMemo(() => leavesOf(expr), [expr]);
     const savedSets = useWorkbench((s) => s.savedSets);
 
     const gv = useGroups();
@@ -113,14 +117,14 @@ export function useFilterFunnel(): FunnelView {
     // themeInUse 게이트와 같은 이유: 안 그러면 T 레일을 만질 때마다 결과와 무관한 화면 전체의
     // 정산·저장 집합 캐시가 materialsEpoch 를 타고 통째 재계산된다.
     const outcomeInUse = useMemo(
-        () => hasOutcomePredicate(stages) || savedSets.some((f) => hasOutcomePredicate(f.stages)),
+        () => hasOutcomePredicate(stages) || savedSets.some((f) => hasOutcomePredicate(leavesOf(f.expr))),
         [stages, savedSets],
     );
     const outcomesEff = outcomeInUse ? sliceAt : null;
     // 급타점 재료 — 결과와 같은 게이트 규칙(안 쓰면 상수로 끊어 무관한 화면의 정산 재계산을 막는다).
     const hotAt = useHotCounts();
     const hotInUse = useMemo(
-        () => hasHotPredicate(stages) || savedSets.some((f) => hasHotPredicate(f.stages)),
+        () => hasHotPredicate(stages) || savedSets.some((f) => hasHotPredicate(leavesOf(f.expr))),
         [stages, savedSets],
     );
     const hotEff = hotInUse ? hotAt : null;
@@ -141,7 +145,7 @@ export function useFilterFunnel(): FunnelView {
     // stale 의 멤버십 refetch 가 evalLook → materialsEpoch 를 올려, 테마와 무관한 화면 전체의
     // 정산·저장 집합 캐시가 주기적으로 통째 재계산된다.
     const themeInUse = useMemo(
-        () => hasThemePredicate(stages) || savedSets.some((f) => hasThemePredicate(f.stages)),
+        () => hasThemePredicate(stages) || savedSets.some((f) => hasThemePredicate(leavesOf(f.expr))),
         [stages, savedSets],
     );
     const sectionRanksAt = themeInUse ? sections.sectionAt : NO_SECTION;
@@ -266,9 +270,12 @@ export function useFilterFunnel(): FunnelView {
         [makeEvalLook, placements, ax.computedValues, outcomesEff, hotEff],
     );
 
-    // ── 정산 ── 표시와 정산이 **같은 순서**를 봐야 한다(하루 먼저) — 어긋나면 "상류"가 화면과 다른 걸 가리킨다.
+    // ── 정산 ── 화면 순서는 하루 먼저(funnelOrder). 결과는 순서와 무관하지만(3치 AND 교환법칙)
+    //    목록과 정산이 같은 목록을 보게 두면 "필터 N"과 화면이 어긋날 일이 없다.
     const stagesOrdered = useMemo(() => funnelOrder(stages, grainLook), [stages, grainLook]);
     const active = useMemo(() => activeStages(stagesOrdered.map((e) => e.stage)), [stagesOrdered]);
+    /** 평가에 들어가는 식 — 꺼졌거나 빈 잎은 걷힌다. 묶음 구조는 그대로 산다(평평하게 접지 않는다). */
+    const evalExprMemo = useMemo(() => activeExpr(expr), [expr]);
 
     // 사전이 온 뒤에만 해상도를 확정한다 — 로딩 중의 모름은 "없음"이 아니다.
     const grain = isLoading ? "day" : resolveAutoGrain(stages, grainLook);
@@ -284,9 +291,11 @@ export function useFilterFunnel(): FunnelView {
         return expandUniverse(cand.candidates, grain, timesOfCur);
     }, [isLoading, cand.candidates, grain, timesOfCur]);
 
+    // ⚠ 단계는 **하나**다(식 전체) — 잎마다 한 단계로 쪼개면 정산의 AND 가 한 번 더 걸려
+    //   OR 묶음이 틀린 답을 낸다(트리의 접기는 evalExpr 하나가 진다).
     const result = useMemo<FunnelResult | null>(
-        () => (isLoading ? null : tallyFunnel(items, toFunnelStages(active, evalLook))),
-        [isLoading, items, active, evalLook],
+        () => (isLoading ? null : tallyFunnel(items, [toFunnelStage(evalExprMemo, evalLook)])),
+        [isLoading, items, evalExprMemo, evalLook],
     );
 
     /**

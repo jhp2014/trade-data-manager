@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { exprOfStages } from "../expr.js";
 import { DEFAULT_POINT_DEFINITION, type ChartRef, type FunnelItem, type PointDefinition } from "@trade-data-manager/market/domain";
 import type { SetRef } from "../../../lib/setRef.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
@@ -38,10 +39,10 @@ const groupStage = (id: string, groupId: string): FilterStage =>
 // 작업 깔때기 = 날짜 ≤ 07-02. 저장 집합은 전부 자기 조건 사본으로 판정한다.
 const activeStages: FilterStage[] = [dateStage("d1", "2026-07-01", "2026-07-02")];
 const savedSets = new Map<string, SavedSet>([
-    ["fs1", { id: "fs1", name: "테마 생존", stages: [groupStage("g1", "테마")], universe: "longitudinal" }],
-    ["fs2", { id: "fs2", name: "날짜 넓힘", stages: [dateStage("d9", "2026-07-01", "2026-07-03")], universe: "longitudinal" }],
+    ["fs1", { id: "fs1", name: "테마 생존", expr: exprOfStages([groupStage("g1", "테마")]), universe: "longitudinal" }],
+    ["fs2", { id: "fs2", name: "날짜 넓힘", expr: exprOfStages([dateStage("d9", "2026-07-01", "2026-07-03")]), universe: "longitudinal" }],
     // 하루 집합 — 이 기계가 **안 푸는** 종류(조건은 종단 술어라 여기서도 풀리긴 하지만 우주가 다르다).
-    ["fs-day", { id: "fs-day", name: "오늘 후보", stages: [dateStage("d1", "2026-07-01", "2026-07-03")], universe: "daily" }],
+    ["fs-day", { id: "fs-day", name: "오늘 후보", expr: exprOfStages([dateStage("d1", "2026-07-01", "2026-07-03")]), universe: "daily" }],
 ]);
 
 const grainLook = { hasGroup: (n: string) => knownGroups.has(n), axisScope: () => undefined };
@@ -189,7 +190,7 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
         const overwritten: SetResolveCtx = {
             ...base,
             savedSetOf: (id) => (id === "fs1"
-                ? { id: "fs1", name: "테마 생존", stages: [dateStage("d2", "2026-07-01", "2026-07-01")], universe: "longitudinal" as const }
+                ? { id: "fs1", name: "테마 생존", expr: exprOfStages([dateStage("d2", "2026-07-01", "2026-07-01")]), universe: "longitudinal" as const }
                 : savedSets.get(id)),
         };
         const r = resolveSetRef({ kind: "saved", setId: "fs1" }, overwritten);
@@ -212,8 +213,8 @@ describe("저장 집합의 자기-정의 평가 — 재료가 정의를 따라�
     // 같은 조건 사본·다른 정의 — 게이트 50 정의는 A 에 타점 하나, 30 정의는 둘(더 낮은 게이트 = 더 많은 시그널 설정).
     const stagesSame: FilterStage[] = [timeStage("tt", "09:00", "10:30")]; // C(11:00)는 조건 밖 — 현재 정의 평가에서도 빠진다
     const sets = new Map<string, SavedSet>([
-        ["g50", { id: "g50", name: "게이트50", stages: stagesSame, universe: "longitudinal", pointDef: defGate(50) }],
-        ["g30", { id: "g30", name: "게이트30", stages: stagesSame, universe: "longitudinal", pointDef: defGate(30) }],
+        ["g50", { id: "g50", name: "게이트50", expr: exprOfStages(stagesSame), universe: "longitudinal", pointDef: defGate(50) }],
+        ["g30", { id: "g30", name: "게이트30", expr: exprOfStages(stagesSame), universe: "longitudinal", pointDef: defGate(30) }],
     ]);
     const timesOf50 = (c: { stockCode: string; date: string }): string[] => (chartKey(c) === chartKey(A) ? ["09:30:00"] : []);
     const timesOf30 = (c: { stockCode: string; date: string }): string[] => (chartKey(c) === chartKey(A) ? ["09:30:00", "10:00:00"] : []);
@@ -238,7 +239,7 @@ describe("저장 집합의 자기-정의 평가 — 재료가 정의를 따라�
 
     it("day 층위 저장 집합의 타점 전개(expandRefToPoints)도 **자기 정의의 시각**으로", () => {
         const dsets = new Map(sets);
-        dsets.set("d50", { id: "d50", name: "day50", stages: [dateStage("dd", "2026-07-01", "2026-07-03")], universe: "longitudinal" as const, pointDef: defGate(50) });
+        dsets.set("d50", { id: "d50", name: "day50", expr: exprOfStages([dateStage("dd", "2026-07-01", "2026-07-03")]), universe: "longitudinal" as const, pointDef: defGate(50) });
         const c2: SetResolveCtx = { ...dctx, savedSetOf: (id) => dsets.get(id) };
 
         const savedRef = { kind: "saved", setId: "d50" } as const;
@@ -250,7 +251,7 @@ describe("저장 집합의 자기-정의 평가 — 재료가 정의를 따라�
 
     it("정의 사본 없는 옛 저장물은 현재 정의로 평가된다", () => {
         const old = new Map(sets);
-        old.set("noDef", { id: "noDef", name: "옛것", stages: stagesSame, universe: "longitudinal" as const });
+        old.set("noDef", { id: "noDef", name: "옛것", expr: exprOfStages(stagesSame), universe: "longitudinal" as const });
         const octx: SetResolveCtx = { ...dctx, savedSetOf: (id) => old.get(id) };
         // 현재 재료(timesOf)의 시각: A 둘 + C 하나 — 그중 조건(≤10:30)에 드는 A 둘.
         expect(codesOf(resolveSetRef({ kind: "saved", setId: "noDef" }, octx))).toEqual(["1@09:30", "1@10:00"]);

@@ -3,6 +3,7 @@
 //  ② 고정(핀)은 전역 선택을 안 따라가고, 재마운트를 건너 살아남는다.
 //  ③ 조건이 없으면 **하루 재료를 안 당긴다**(/day-replay 는 한 날 ~15MB — setup 의 네트워크 그물이 증인).
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { exprOfStages } from "../expr.js";
 import { act, render } from "@testing-library/react";
 import type { DayReplay, MinuteDerived } from "@trade-data-manager/wire";
 import { kstToUnix } from "@trade-data-manager/market/domain";
@@ -65,7 +66,7 @@ const renderProbes = (ids: string[], withSnapshot = true): ReturnType<typeof ren
 };
 
 const savedDaily: SavedSet = {
-    id: "fs-day", name: "오늘 후보", stages: [wideStage],
+    id: "fs-day", name: "오늘 후보", expr: exprOfStages([wideStage]),
     universe: "daily",
 };
 
@@ -75,7 +76,7 @@ beforeEach(() => {
     useWorkbench.setState({
         focus: { ...useWorkbench.getState().focus, date: DATE, code: "", time: null },
         panelUi: {}, savedSets: [], selectedSetRef: null,
-        filterUniverse: "daily", filterStages: [wideStage],
+        filterUniverse: "daily", filterExpr: exprOfStages([wideStage]),
     });
 });
 
@@ -88,7 +89,7 @@ describe("useBoundSet — 하루 우주", () => {
     });
 
     it("조건이 없으면 재료를 안 당긴다 — 빈 집합이고 네트워크도 안 친다", () => {
-        useWorkbench.setState({ filterStages: [] });
+        useWorkbench.setState({ filterExpr: exprOfStages([]) });
         renderProbes(["a"], false); // 재료를 안 심었다: 당기면 setup 의 네트워크 그물이 이 테스트를 죽인다
         expect(seen.a!.view.viewedItems).toHaveLength(0);
         expect(evalSpy).not.toHaveBeenCalled();
@@ -118,11 +119,11 @@ describe("useBoundSet — 하루 우주", () => {
 describe("useBoundSet — 종단 집합에 고정한 패널", () => {
     it("작업 우주를 하루로 갈아타도 **제 집합을 계속 푼다**(④ 의 목표 시나리오)", () => {
         const savedLong: SavedSet = {
-            id: "fs-long", name: "9월 돌파", stages: [],
+            id: "fs-long", name: "9월 돌파", expr: exprOfStages([]),
             universe: "longitudinal",
         };
         useWorkbench.setState({
-            filterUniverse: "longitudinal", filterStages: [], savedSets: [savedLong],
+            filterUniverse: "longitudinal", filterExpr: exprOfStages([]), savedSets: [savedLong],
             panelUi: { a: { setPin: { kind: "saved", setId: "fs-long" } } },
         });
         renderProbes(["a"]);
@@ -144,7 +145,7 @@ describe("useBoundSet — 종단 집합에 고정한 패널", () => {
 describe("useBoundSet — 고정(핀)", () => {
     it("고정하면 전역 선택을 안 따라간다 — 연동 패널만 따라간다", () => {
         // 포인터는 **우주를 못 넘는다**(단계 ② 불변식 ①) — 작업 우주를 집합과 맞춰 둔다.
-        useWorkbench.setState({ filterUniverse: "daily", filterStages: [], savedSets: [savedDaily] });
+        useWorkbench.setState({ filterUniverse: "daily", filterExpr: exprOfStages([]), savedSets: [savedDaily] });
         renderProbes(["pinned", "linked"]);
 
         // 포인터가 없을 때 눌러도 **뭔가는 묶인다** — 연동이 실제로 풀리는 대상(최종 생존)이다.

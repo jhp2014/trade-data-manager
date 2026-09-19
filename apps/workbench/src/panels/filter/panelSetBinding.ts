@@ -11,6 +11,7 @@
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { isPersistableSetRef, parseSetRef, type SetRef } from "../../lib/setRef.js";
 import type { FilterStage } from "./stage.js";
+import { leavesOf } from "./expr.js";
 import type { Universe } from "./universe.js";
 
 /**
@@ -74,7 +75,7 @@ export function dayStagesOf(
     if (ref === null || ref.kind === "survivors") return workingStages;
     if (ref.kind === "saved") {
         const s = savedSets.find((x) => x.id === ref.setId);
-        return s ? s.stages : null;
+        return s ? leavesOf(s.expr) : null;
     }
     return null;
 }

@@ -5,6 +5,7 @@
 //  ① 순회와 렌더가 **같은 목록** — 화면에 선 행 수 = 머리글 카운터 = w/s 가 밟는 순서.
 //  ② 목록이 안 선 상태(조건이 너무 넓음·로딩)에서는 **순회가 멈춘다** — 없는 행으로 시선이 안 샌다.
 import { describe, it, expect, beforeEach } from "vitest";
+import { exprOfStages } from "../filter/expr.js";
 import { act, render, screen } from "@testing-library/react";
 import type { DayReplay, MinuteDerived } from "@trade-data-manager/wire";
 import { kstToUnix } from "@trade-data-manager/market/domain";
@@ -56,7 +57,7 @@ const renderDaily = (stages: FilterStage[], data: DayReplay = snapshot, dates: s
     };
     const client = seededClient(seed);
     client.setQueryData(["data-dates"], dates); // 기본값은 하루뿐 = 이웃이 없다 = 프리페치도 없다
-    useWorkbench.setState({ filterUniverse: "daily", filterStages: stages });
+    useWorkbench.setState({ filterUniverse: "daily", filterExpr: exprOfStages(stages) });
     render(
         <Providers client={client}>
             <Harness />
@@ -149,7 +150,7 @@ describe("작업 대상 — 하루 우주", () => {
         // 재료를 안 심고 그린다: 당기면 setup 의 네트워크 그물이 이 테스트를 실패시킨다(그게 이 검사의 눈이다).
         const client = seededClient({});
         client.setQueryData(["data-dates"], [DATE]);
-        useWorkbench.setState({ filterUniverse: "daily", filterStages: [] });
+        useWorkbench.setState({ filterUniverse: "daily", filterExpr: exprOfStages([]) });
         render(
             <Providers client={client}>
                 <Harness />

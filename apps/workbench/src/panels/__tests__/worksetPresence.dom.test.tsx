@@ -7,6 +7,7 @@
 // 한다(머리글 라벨) — 고르는 손은 집합 편성 패널 하나다(두 곳이면 어느 쪽이 조종석인지 흐려진다).
 // ④ 프리셋에 닿는 길은 **화면에 하나뿐**이어야 한다(줄이 켜져 있으면 줄, 꺼져 있으면 + 필터 판).
 import { describe, it, expect, beforeEach } from "vitest";
+import { exprOfStages } from "../filter/expr.js";
 import { act, screen, fireEvent } from "@testing-library/react";
 import { renderWithProviders, type Seed } from "../../test/renderPanel.js";
 import { useWorkbench } from "../../store/workbench.js";
@@ -145,7 +146,7 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
     });
 
     it("집합은 **읽기만** — 머리글 라벨이 보는 집합을 말하고, 고르는 칩은 이 패널에 없다(집합 편성의 몫)", () => {
-        useWorkbench.setState({ savedSets: [{ id: "fs1", name: "돌파", stages: [], universe: "longitudinal" }] });
+        useWorkbench.setState({ savedSets: [{ id: "fs1", name: "돌파", expr: exprOfStages([]), universe: "longitudinal" }] });
         renderWithProviders(<WorksetPanel />, SEED);
         expect(screen.getByTitle(/^지금 보는 집합: 연동/)).toBeTruthy();
         expect(screen.queryByTitle(/^유니버스/)).toBeNull(); // 집합 칩 줄이 없다(월 줄의 "전체"는 다른 채널)

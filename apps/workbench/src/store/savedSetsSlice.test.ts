@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { exprOfStages, leavesOf } from "../panels/filter/expr.js";
 import { datePred, loadStore, stubStorage } from "../test/funnelStoreHarness.js";
 import { selectFilterStages } from "./filterFunnelSlice.js";
 
@@ -27,9 +28,9 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
         const again = store.getState().savedSets;
         expect(again).toHaveLength(1); // 새 항목이 아니라 엎어쓰기
         expect(again[0].id).toBe(id); // 바인딩 참조(id)가 새 정의를 따라온다
-        expect(again[0].stages).toHaveLength(2);
+        expect(leavesOf(again[0].expr)).toHaveLength(2);
 
-        const saved = JSON.parse(storage.get("wb.savedSets.v3")!) as { id: string }[];
+        const saved = JSON.parse(storage.get("wb.savedSets.v4")!) as { id: string }[];
         expect(saved).toHaveLength(1);
     });
 
@@ -44,8 +45,8 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
 
     it("옛 키(wb.savedSets·wb.filterFunnelSets)는 읽지 않는다 — v2 리셋(골격 leaf 부활 금지)", async () => {
         stubStorage({
-            "wb.filterFunnelSets": [{ id: "fs1", name: "깔때기 시절", stages: [] }],
-            "wb.savedSets": [{ id: "fs2", name: "v1 시절", stages: [], universe: "longitudinal" as const }],
+            "wb.filterFunnelSets": [{ id: "fs1", name: "깔때기 시절", expr: exprOfStages([]) }],
+            "wb.savedSets": [{ id: "fs2", name: "v1 시절", expr: exprOfStages([]), universe: "longitudinal" as const }],
         });
         const store = await loadStore();
         expect(store.getState().savedSets).toEqual([]);
@@ -53,7 +54,7 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
 
     it("지금 키(v3)는 그대로 읽는다", async () => {
         stubStorage({
-            "wb.savedSets.v3": [{ id: "fs2", name: "새것", stages: [], universe: "longitudinal" as const }],
+            "wb.savedSets.v3": [{ id: "fs2", name: "새것", expr: exprOfStages([]), universe: "longitudinal" as const }],
         });
         const store = await loadStore();
         expect(store.getState().savedSets.map((s) => s.name)).toEqual(["새것"]);
@@ -74,10 +75,10 @@ describe("자립 저장물 — 열기·덮어쓰기·삭제", () => {
         expect(selectFilterStages(store.getState())).toHaveLength(1);
 
         store.getState().addFilterStage([datePred]); // 편집 — 저장물은 아직 1개 조건
-        expect(store.getState().savedSets[0].stages).toHaveLength(1);
+        expect(leavesOf(store.getState().savedSets[0].expr)).toHaveLength(1);
 
         store.getState().overwriteSet(id); // 명시적 덮어쓰기 — 이제 2개
-        expect(store.getState().savedSets[0].stages).toHaveLength(2);
+        expect(leavesOf(store.getState().savedSets[0].expr)).toHaveLength(2);
     });
 
     it("그 집합을 지우면 '열어 둔 집합'이 풀린다 — 덮어쓰기 버튼이 없는 것을 가리키면 안 된다", async () => {
@@ -144,11 +145,11 @@ describe("저장 집합 — 타점 정의 payload (additive, 키 상향 없음)"
         store0.getState().addFilterStage([datePred]);
         store0.getState().saveSet("옛집합");
         // 저장물에서 새 필드를 지워 "옛 포맷"을 흉내낸다.
-        const raw = JSON.parse(storage.get("wb.savedSets.v3")!) as Record<string, unknown>[];
+        const raw = JSON.parse(storage.get("wb.savedSets.v4")!) as Record<string, unknown>[];
         for (const f of raw) {
             delete f.pointDef;
         }
-        storage.set("wb.savedSets.v3", JSON.stringify(raw));
+        storage.set("wb.savedSets.v4", JSON.stringify(raw));
 
         vi.resetModules();
         const store = await loadStore();
@@ -163,9 +164,9 @@ describe("저장 집합 — 타점 정의 payload (additive, 키 상향 없음)"
         const store0 = await loadStore();
         store0.getState().addFilterStage([datePred]);
         store0.getState().saveSet("오염");
-        const raw = JSON.parse(storage.get("wb.savedSets.v3")!) as Record<string, unknown>[];
+        const raw = JSON.parse(storage.get("wb.savedSets.v4")!) as Record<string, unknown>[];
         raw[0].pointDef = "garbage";
-        storage.set("wb.savedSets.v3", JSON.stringify(raw));
+        storage.set("wb.savedSets.v4", JSON.stringify(raw));
 
         vi.resetModules();
         const store = await loadStore();

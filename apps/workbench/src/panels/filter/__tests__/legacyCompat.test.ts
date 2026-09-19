@@ -8,6 +8,7 @@
 //   ③ 전멸  — 어떤 픽스처도 null 이 아니다(= 통째 폐기 0건).
 import { describe, it, expect } from "vitest";
 import { parseStages } from "../stage.js";
+import { exprOfStages, leavesOf, parseExpr } from "../expr.js";
 import { parseSavedSets } from "../../../store/savedSetsSlice.js";
 import { parseLegacyAssemblies } from "../legacyAssemblies.js";
 import { LEGACY_ASSEMBLIES, LEGACY_SAVED_SETS, LEGACY_STAGES } from "./fixtures/legacyStores.js";
@@ -116,5 +117,34 @@ describe("옛 조립(재워 둔 저장물 — 5단계 승계의 입력)", () => 
 
     it("③ 전멸 감지 — 통째 폐기가 없다", () => {
         expect(parseLegacyAssemblies(LEGACY_ASSEMBLIES)).not.toBeNull();
+    });
+});
+
+// 2026-09-19 5단계 — 조건이 리스트에서 **식 트리**가 됐다. 승계는 무손실이어야 하고, 특히
+// **잎 id 가 옛 stage.id 그대로**여야 한다: 시트 인스턴스 결과 열(`out:i:<id>`)·급타점 축
+// (`c:hot:<id>`)·테마 연동(`wb.themeRankBindings.v1`)이 전부 그 id 를 주소로 쓰고, 유령 청소가
+// 저장물 기준이라 주소가 갈리면 열 폭·고정·숨김과 연동이 **첫 실행에 조용히 영구 삭제**된다.
+describe("옛 평평한 조건 리스트 → 식 트리", () => {
+    it("① 골든 — 루트 AND 의 잎이 되고 순서·id 가 그대로다", () => {
+        const stages = parseStages(LEGACY_STAGES)!;
+        const e = exprOfStages(stages);
+        expect(e.kind).toBe("and");
+        expect(leavesOf(e).map((s) => s.id)).toEqual(stages.map((s) => s.id));
+    });
+
+    it("② 왕복 항등 — 승계한 식이 저장→로드에서 그대로다", () => {
+        const e = exprOfStages(parseStages(LEGACY_STAGES)!);
+        expect(parseExpr(roundTrip(e), parseStages)).toEqual(e);
+    });
+
+    it("③ 전멸 감지 — 승계에서 통째 폐기가 없다", () => {
+        expect(parseExpr(roundTrip(exprOfStages(parseStages(LEGACY_STAGES)!)), parseStages)).not.toBeNull();
+    });
+
+    it("옛 저장 집합도 같은 규칙 — stages 갈래가 expr 로 올라오고 잎 id 가 유지된다", () => {
+        const sets = parseSavedSets(LEGACY_SAVED_SETS)!;
+        const legacy = (LEGACY_SAVED_SETS as { id: string; stages?: unknown }[]).find((x) => x.id === "set1")!;
+        const expected = parseStages(legacy.stages)!.map((s) => s.id);
+        expect(leavesOf(sets.find((x) => x.id === "set1")!.expr).map((s) => s.id)).toEqual(expected);
     });
 });

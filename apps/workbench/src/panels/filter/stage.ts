@@ -351,8 +351,12 @@ const isAxisKind = (k: PredicateKind): boolean => k === "axisBand" || k === "axi
 
 export const newStageId = (): string => `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
+/** 새 조건 하나 — 식 트리와 평평한 리스트가 **같은 자를 쓰게** 여기 한 곳에서 만든다. */
+export const newStage = (predicates: FilterPredicate[] = []): FilterStage =>
+    ({ id: newStageId(), enabled: true, predicates });
+
 export function addStage(stages: readonly FilterStage[], predicates: FilterPredicate[] = []): FilterStage[] {
-    return [...stages, { id: newStageId(), enabled: true, predicates }];
+    return [...stages, newStage(predicates)];
 }
 
 export function removeStage(stages: readonly FilterStage[], id: string): FilterStage[] {
