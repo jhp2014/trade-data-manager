@@ -8,7 +8,7 @@ import type { StateCreator } from "zustand";
 import type { PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import { parseStages } from "../panels/filter/stage.js";
-import { exprOfStages, findNode, hasCycle, parseExpr, refNode, replaceNode, ROOT_ID, type SetExpr } from "../panels/filter/expr.js";
+import { exprOfStages, findNode, hasCycle, idOf, parseExpr, refNode, replaceNode, ROOT_ID, type SetExpr } from "../panels/filter/expr.js";
 import { LEGACY_ASSEMBLIES_KEY, parseLegacyAssemblies } from "../panels/filter/legacyAssemblies.js";
 import { effectiveUniverse, universeOfExpr, parseUniverse, type Universe } from "../panels/filter/universe.js";
 import { putExpr } from "./filterFunnelSlice.js";
@@ -49,9 +49,40 @@ export interface SavedSet {
 
 /** 저장 집합 영속 — 슬라이스 밖(그룹 개명 승계)에서도 같은 키로 쓰기 위한 유일한 출구. */
 export const persistSavedSets = (sets: SavedSet[]): SavedSet[] => {
-    saveJson(SAVED_SETS_KEY, sets);
-    return sets;
+    const next = reconcileUniverses(sets);
+    saveJson(SAVED_SETS_KEY, next);
+    return next;
 };
+
+/**
+ * 참조가 바뀌면 **참조하는 쪽의 우주도 다시 굳힌다** — 쓰기 경로 하나(persistSavedSets)에서.
+ *
+ * ⚠ 없으면 갈린다: `A = OR(∈B)` 를 저장한 뒤 B 를 열어 하루 조건으로 덮어쓰면 B 만 daily 가 되고
+ * A 는 옛 파생값(종단)으로 남는다. 그 순간 `refUniverse`("저장물 값을 그대로 믿는다")의 전제가 깨져
+ * A 가 종단 기계로 풀리고 **조건이 있는데 아무것도 안 걸리는 빈 집합**이 조용히 나온다.
+ *
+ * ⚠ **파생이 null(중립 조건뿐·참조 못 품)이면 저장값을 그대로 둔다.** 우주 선언 시절의 저장물 중에는
+ * "시각 조건 하나만 든 하루 집합"처럼 조건이 우주를 안 정하는 것이 있다 — 그걸 종단으로 밀면 승계가
+ * 사용자의 집합을 조용히 다른 우주로 옮긴다. 모르면 마지막으로 알던 값이 최선이다.
+ *
+ * 되풀이는 집합 수만큼이면 충분하다(참조 그래프는 비순환 — 저장 때 거절한다).
+ */
+function reconcileUniverses(sets: SavedSet[]): SavedSet[] {
+    let cur = sets;
+    for (let pass = 0; pass <= sets.length; pass++) {
+        const look = refUniverse(cur);
+        let changed = false;
+        const next = cur.map((x) => {
+            const u = universeOfExpr(x.expr, look);
+            if (u === null || u === x.universe) return x;
+            changed = true;
+            return { ...x, universe: u };
+        });
+        if (!changed) return cur;
+        cur = next;
+    }
+    return cur;
+}
 
 /**
  * 저장물 파싱 — **항목 단위로 건너뛴다**(집합 하나가 깨져도 나머지는 산다). 조건 배열 안쪽의
@@ -99,7 +130,7 @@ export function parseSavedSets(o: unknown): SavedSet[] | null {
  *
  * 한 번 올리고 나면 새 키에 실려 다시 안 돈다(옛 키는 안 지운다 — 되돌림 경로).
  */
-function migrateAssemblies(sets: SavedSet[], universe: Universe): SavedSet[] {
+function migrateAssemblies(sets: SavedSet[]): SavedSet[] {
     const legacy = loadJson(LEGACY_ASSEMBLIES_KEY, parseLegacyAssemblies);
     if (!legacy || legacy.length === 0) return sets;
     const out = [...sets];
@@ -108,11 +139,15 @@ function migrateAssemblies(sets: SavedSet[], universe: Universe): SavedSet[] {
         if (members.length === 0) continue;
         let name = `∪ ${a.name}`;
         for (let i = 2; out.some((x) => x.name === name); i++) name = `∪ ${a.name} ${i}`;
+        const expr: SetExpr = { kind: "or", id: ROOT_ID, of: members.map((m) => refNode(m.setId)) };
         out.push({
             id: a.id, // 옛 조립 id 를 그대로 — 그 조립을 가리키던 핀이 나중에 이어질 수 있는 유일한 끈이다
             name,
-            expr: { kind: "or", id: ROOT_ID, of: members.map((m) => refNode(m.setId)) },
-            universe,
+            expr,
+            // ⚠ 우주는 **여기서도 파생**한다 — 고정값(종단)으로 박으면 부품이 하루 집합인 조립이
+            //   종단 기계로 풀려 "조건이 있는데 아무것도 안 걸리는 빈 집합"이 조용히 나온다.
+            //   이 식은 잎이 하나도 없으므로 참조를 보는 universeOfExpr 이 유일한 답이다.
+            universe: effectiveUniverse(universeOfExpr(expr, refUniverse(out))),
         });
     }
     return out;
@@ -126,8 +161,8 @@ const loadSavedSets = (): SavedSet[] => {
     // v3(평평한 리스트)를 **승계해서 읽는다** — 같은 파서가 stages 갈래로 받아 AND(잎…) 로 올린다.
     // 옛 조립도 이때 함께 올라온다(OR(참조…)). 새 키에 실리는 순간 둘 다 다시 안 돈다.
     const v3 = loadJson(SAVED_SETS_V3_KEY, (o) => (Array.isArray(o) ? o : null));
-    if (v3) return persistSavedSets(migrateAssemblies(parseSavedSets(v3) ?? [], "longitudinal"));
-    const onlyAssemblies = migrateAssemblies([], "longitudinal");
+    if (v3) return persistSavedSets(migrateAssemblies(parseSavedSets(v3) ?? []));
+    const onlyAssemblies = migrateAssemblies([]);
     if (onlyAssemblies.length > 0) return persistSavedSets(onlyAssemblies);
     // v3 리셋 이전 키들(v2·wb.savedSets·LEGACY)은 읽지 않는다 — 옛 leaf·t 없는 결과 술어의 뒷문이 된다.
     void LEGACY_SETS_KEY;
@@ -201,7 +236,13 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         const sets = persistSavedSets([...s.savedSets, saved]);
         // 그 자리는 참조로 — **부정은 참조에 남긴다**(¬(a∧b) 를 승격했는데 부정이 사라지면 뜻이 갈린다).
         const neg = node.neg === true;
-        const next = replaceNode(s.filterExpr, nodeId, () => (neg ? { ...refNode(id), neg: true } : refNode(id)));
+        const ref: SetExpr = neg ? { ...refNode(id), neg: true } : refNode(id);
+        // ⚠ **루트는 늘 묶음**이다(parseExpr·appendLeaf 의 불변식) — 루트를 통째 승격하면 그 자리에
+        //   참조가 앉아 루트가 잎이 된다. 메모리에서만 깨지고 새로고침하면 `AND(참조)` 로 감싸여 돌아와
+        //   저장 전후의 모양이 갈린다. 감싸는 것은 여기서 한다(뜻은 같다 — 한 항짜리 AND).
+        const next = nodeId === idOf(s.filterExpr)
+            ? ({ kind: "and", id: ROOT_ID, of: [ref] } as SetExpr)
+            : replaceNode(s.filterExpr, nodeId, () => ref);
         return { savedSets: sets, openedSetId: id, ...putExpr(next) };
     }),
     overwriteSet: (id) => set((s) => {

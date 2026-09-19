@@ -333,6 +333,8 @@ function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
 /**
  * 하루의 발화 셀 — 종목별 dense 타임라인 단일 패스.
  * 같은 (code,min)은 한 항목에 **발화한 최상위 가지 id** 가 쌓이고, 정렬은 분↑ → 코드↑(결정론).
+ * ⚠ tags 안의 가지 순서는 **선언 순서가 아니라 비용 순서**다(compile 이 children 을 tier 로 정렬한다).
+ *   화면이 순서에 뜻을 주면 안 된다 — 뜻이 있는 건 "어느 가지가 발화했나"라는 집합뿐이다.
  *
  * ⚠ 루트가 OR 이면 **가지를 단락하지 않는다** — 어느 가지가 발화했는지(tags·byCondition)가 화면의
  * 재료라서다. 안쪽 OR 은 단락한다(그건 아무도 안 묻는다). 옛 엔진도 조건을 전부 돌았으므로 비용 동일.
@@ -355,7 +357,10 @@ export function evaluateCellsExpr(
     let slots = 0;
     const root = compile(pruned, () => slots++);
     // 태그를 다는 단위 = **루트의 직속 가지**(루트가 OR 일 때). 그 외엔 루트 자신 하나.
-    const branches = pruned.kind === "or" ? root.children : [root];
+    // ⚠ **부정된 루트 OR 은 쪼개지 않는다** — 가지를 직접 돌면 `runNode(root)` 를 안 지나 `root.neg` 가
+    //   통째로 증발하고 `¬(a ∨ b)` 가 정확히 반대 집합(`a ∨ b`)으로 평가된다. 부정은 가지별로 분배되지
+    //   않으므로(드모르간은 구조를 바꾼다) 그때는 루트 하나로 돈다 — 태그가 한 종류로 줄 뿐이다.
+    const branches = pruned.kind === "or" && pruned.neg !== true ? root.children : [root];
     for (const b of branches) byCondition.set(b.node.id, 0);
 
     // 사전계산 소요 — 식이 안 쓰는 재료는 만들지 않는다. **트리를 걸어야 한다**: 평평한 2중 루프로

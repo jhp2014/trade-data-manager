@@ -32,7 +32,7 @@ import { CellStageFields } from "./CellPredicateFields.js";
 import { effectiveUniverse, kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
 import { GroupEditors, RailEditors, type GroupEditorAnchor, type RailEditor } from "./ConditionEditors.js";
 import { ExprTree, type ExprTreeHandlers } from "./ExprTree.js";
-import { findNode, negOf, negateNode, refsOf, removeNode, toggleOperator } from "./expr.js";
+import { findNode, leafCount, negOf, negateNode, refsOf, removeNode, toggleOperator } from "./expr.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
@@ -81,10 +81,12 @@ export function ConditionBoard({ panelId }: {
     // 바인딩이 가리키는 판이 **슬롯 대장에 살아 있을 때만** 연동으로 읽는다 — 판을 ×로 소멸해도
     // 바인딩은 남는데(고아 = 읽기 시점 해석 규칙), 카탈로그가 이름을 지어내(slotTitleOf) 죽은 판을
     // 배지에 계속 말하고 이름 클릭이 그 판을 되살리는 사고가 났다(2026-09-17 실사용).
-    const livePanelOf = (stageId: string): string | undefined => {
+    // ⚠ `useCallback` 인 이유: 아래 `treeHandlers` 의 의존성에 들어간다. 매 렌더 새로 만들면 메모가
+    //   사실상 무효가 되어 트리 전체가 렌더마다 새 핸들러를 받는다.
+    const livePanelOf = useCallback((stageId: string): string | undefined => {
         const pid = bindings[stageId];
         return pid !== undefined && dockSlots.includes(pid) ? pid : undefined;
-    };
+    }, [bindings, dockSlots]);
     const [groupEditor, setGroupEditor] = useState<GroupEditorAnchor | null>(null);
     // 1차원 조건(날짜·시간·축 값)의 편집면 — 2026-09-19 부터 **이 보드가 직접 연다**(레일 패널 철거).
     const [railEditor, setRailEditor] = useState<RailEditor | null>(null);
@@ -106,6 +108,8 @@ export function ConditionBoard({ panelId }: {
     const [addMode, setAddMode] = useState<"and" | "or">("and");
     // 짚은 노드가 지워졌으면 루트로 되돌린다(유령 삽입 지점 금지).
     const picked = pickedRaw !== null && findNode(expr, pickedRaw) !== null ? pickedRaw : null;
+    /** 식이 비었나 — 조건 잎도 참조도 없을 때만 참(위 게이트 주석). */
+    const exprIsEmpty = leafCount(expr) === 0 && refsOf(expr).length === 0;
     /** 삽입 지점의 사람 말 — 팝오버가 "여기에 붙는다"를 늘 적는다(모르는 채 누르지 않게). */
     const atLabel = picked === null ? "루트" : (findNode(expr, picked)?.kind === "or" ? "짚은 OR 묶음" : "짚은 AND 묶음");
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
@@ -147,14 +151,14 @@ export function ConditionBoard({ panelId }: {
                 openAndFocus(HOT_PANEL_ID);
                 return;
             case "date":
-                setRailEditor({ kind: "date", x: e.clientX, y: e.clientY });
+                setRailEditor({ kind: "date", stageId: stage.id, x: e.clientX, y: e.clientY });
                 return;
             case "time":
-                setRailEditor({ kind: "time", x: e.clientX, y: e.clientY });
+                setRailEditor({ kind: "time", stageId: stage.id, x: e.clientX, y: e.clientY });
                 return;
             case "axisValue": {
                 const ap = stage.predicates.find((p): p is Extract<FilterPredicate, { kind: "axisValue" }> => p.kind === "axisValue");
-                if (ap) setRailEditor({ kind: "axisValue", axisId: ap.axisId, x: e.clientX, y: e.clientY });
+                if (ap) setRailEditor({ kind: "axisValue", axisId: ap.axisId, stageId: stage.id, x: e.clientX, y: e.clientY });
                 return;
             }
             default:
@@ -226,10 +230,13 @@ export function ConditionBoard({ panelId }: {
                 <PointDefHead />
                 {v.isLoading && <Note>불러오는 중…</Note>}
                 {!v.isLoading && hasTheme && <ThemeMaterialBadge />}
-                {!v.isLoading && stages.length === 0 && (
+                {/* ⚠ 게이트는 **잎 수가 아니라 식이 비었나**다 — 참조는 잎이 아니라서(leavesOf 주석)
+                    잎 수로 재면 `OR(참조…)`(승계된 옛 조립·루트 통째 승격)가 "없음"이라 말하면서
+                    트리도 안 그려 **참조를 지울 손이 사라진다**. */}
+                {!v.isLoading && exprIsEmpty && (
                     <Note>없음 — 아래 <b>＋ 조건</b> 으로 만듭니다</Note>
                 )}
-                {!v.isLoading && stages.length > 0 && <ExprTree expr={expr} handlers={treeHandlers} />}
+                {!v.isLoading && !exprIsEmpty && <ExprTree expr={expr} handlers={treeHandlers} />}
 
                 {!v.isLoading && (
                     <AddCondition
@@ -297,9 +304,11 @@ export function ConditionBoard({ panelId }: {
                     onClose={() => setThemeLink(null)} />
             )}
 
-            {/* 1차원 조건 팝오버 — 날짜·시간·축 값. 쓰기는 applyFilterRail 한 줄(조건 하나 = 줄 하나). */}
+            {/* 1차원 조건 팝오버 — 날짜·시간·축 값. 쓰기는 applyFilterRail 한 줄.
+                ⚠ 주소(stageId)를 **반드시** 준다 — `undefined` 로 보내면 "그 레일 키의 첫 잎" 이라는
+                옛 1:1 규칙으로 떨어져 `날짜A ∨ 날짜B` 를 못 만든다(stageBinding 의 주소 주석). */}
             <RailEditors editor={railEditor} stages={stages}
-                write={(key, predicate) => applyRail(key, predicate, picked, addMode)}
+                write={(key, predicate, stageId) => applyRail(key, predicate, picked, addMode, stageId ?? null)}
                 onClose={() => setRailEditor(null)} />
 
             {/* 그룹 팔레트(팝오버) — 그룹도 같은 층. 2차원(결과·급타점·테마)만 전용 패널이 진다. */}
@@ -404,18 +413,19 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
                         ))}
                         <span style={{ marginLeft: "auto", fontSize: 9.5, color: "var(--text-tertiary)" }}>{atLabel}</span>
                     </div>
-                    {/* 하루·셀 우주의 종류들 — 전용 판이 없어 **여기서 만들고 줄에서 만진다**. */}
-                    {setUniverse !== "longitudinal" && (
-                        <>
-                            {item(close, "등락률", "그 분의 등락률(UN %) — 값은 줄에서 만집니다", () => onCell({ kind: "cellValue", field: "ratePct", ranges: [atLeast(5)] }), "cellValue")}
-                            {item(close, "누적대금", "그 분까지의 세션 누적 거래대금(억)", () => onCell({ kind: "cellValue", field: "cumAmountEok", ranges: [atLeast(100)] }), "cellValue")}
-                            {item(close, "분봉고가", "그 분 봉의 고가(UN %)", () => onCell({ kind: "cellValue", field: "minuteHighPct", ranges: [atLeast(5)] }), "cellValue")}
-                            {item(close, "존순위", "테마 존 안 순위(작을수록 위) — 분 단면을 굽는 비싼 재료입니다", () => onCell({ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }] }), "cellValue")}
-                            {item(close, "전고 돌파", "직전 W 거래일 고가를 분봉 고가가 넘는 분(당일 제외)", () => onCell({ kind: "priorHighBreak", days: 20 }), "priorHighBreak")}
-                            {item(close, "격자 Point", "기준선 있는 차트의 격자 파생 Point 좌표", () => onCell({ kind: "gridPoint" }), "gridPoint")}
-                            {item(close, "시각", "장중 시각 창 — 09:00~10:30 처럼", () => onCell({ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }), "time")}
-                        </>
-                    )}
+                    {/* 하루·셀 우주의 종류들 — 전용 판이 없어 **여기서 만들고 줄에서 만진다**.
+                        ⚠ **숨기지 않는다**(decisions 「집합」: 대수는 한 벌, 결손은 사실) — 우주가 종단으로
+                        파생되면 `item` 이 결손 지도를 물어 **회색 + 이유**로 세운다. 숨기면 "그 우주엔 그런
+                        문법이 없다"가 되어, 왜 못 고르는지도 안 보이고 재료가 생겨도 합치는 공사가 다시 든다. */}
+                    {item(close, "등락률", "그 분의 등락률(UN %) — 값은 줄에서 만집니다", () => onCell({ kind: "cellValue", field: "ratePct", ranges: [atLeast(5)] }), "cellValue")}
+                    {item(close, "누적대금", "그 분까지의 세션 누적 거래대금(억)", () => onCell({ kind: "cellValue", field: "cumAmountEok", ranges: [atLeast(100)] }), "cellValue")}
+                    {item(close, "분봉고가", "그 분 봉의 고가(UN %)", () => onCell({ kind: "cellValue", field: "minuteHighPct", ranges: [atLeast(5)] }), "cellValue")}
+                    {item(close, "존순위", "테마 존 안 순위(작을수록 위) — 분 단면을 굽는 비싼 재료입니다", () => onCell({ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }] }), "cellValue")}
+                    {item(close, "전고 돌파", "직전 W 거래일 고가를 분봉 고가가 넘는 분(당일 제외)", () => onCell({ kind: "priorHighBreak", days: 20 }), "priorHighBreak")}
+                    {item(close, "격자 Point", "기준선 있는 차트의 격자 파생 Point 좌표", () => onCell({ kind: "gridPoint" }), "gridPoint")}
+                    {/* 시각은 **중립 종류**다(양쪽 우주에 산다) — 종단에선 아래 「시간」이 같은 종류를 레일
+                        편집면으로 연다. 여기서만 안 보이는 것이지 문법이 사라지는 게 아니라 조건부로 둔다. */}
+                    {setUniverse !== "longitudinal" && item(close, "시각", "장중 시각 창 — 09:00~10:30 처럼", () => onCell({ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }), "time")}
                     {pane === "axis" ? (
                         <>
                             <button onClick={() => setPane(null)}

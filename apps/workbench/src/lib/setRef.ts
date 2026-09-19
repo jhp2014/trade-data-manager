@@ -50,7 +50,8 @@ export function setRefKey(r: SetRef): string {
  * 영속본 파서 — **영속 3종 + orphan** 만 내놓는다. 옛 형식은 여기서 변환된다:
  *   · `filter(null)`      → 최종 생존 (뜻이 같다 — 무손실)
  *   · `filter("fs…")`     → 저장 집합 (옛 저장 필터가 같은 id 의 집합으로 자동 전환되므로 — 무손실)
- *   · `group`/`cell`/`assembly` → orphan (폐지된 바인딩 — 화면이 "깨진 참조 + 다시 고르기"로 받는다)
+ *   · `assembly("as…")`   → 저장 집합 (승계가 **같은 id** 로 조립을 집합으로 올렸다 — 무손실)
+ *   · `group`/`cell`      → orphan (폐지된 바인딩 — 화면이 "깨진 참조 + 다시 고르기"로 받는다)
  * 참조가 가리키는 대상(저장 집합)이 아직 있는지는 여기서 안 본다 — 그건 리졸버의 일이고,
  * "깨진 참조 = 빈 집합 + 라벨"로 화면이 받는다(자동 폴백 금지).
  */
@@ -65,9 +66,12 @@ export function parseSetRef(o: unknown): SetRef | null {
         case "saved":
             return typeof r.setId === "string" && r.setId !== "" ? { kind: "saved", setId: r.setId } : null;
         case "assembly":
-            // 옛 조립 바인딩 — 조립층이 은퇴했다(2026-09-19). 저장물 자체는 legacyAssemblies 가 재워
-            // 두지만 **바인딩은 소리를 낸다**: 조용히 연동으로 떨어지면 그 패널이 딴 집합을 그린다.
-            return typeof r.id === "string" ? { kind: "orphan", label: "옛 조립 바인딩" } : null;
+            // 옛 조립 바인딩 — 조립층은 은퇴했지만(2026-09-19) 승계가 **조립 id 를 그대로 써서**
+            // `OR(참조…)` 저장 집합을 만들었다(savedSetsSlice.migrateAssemblies). 그러니 같은 id 의
+            // 저장 집합으로 잇는 것이 무손실이다 — 아래 `filter` 갈래와 같은 근거다.
+            // 승계가 못 올린 조립(멤버가 전부 꺼져 있던 것)은 그 id 의 집합이 없어 리졸버가
+            // "(지워진 집합)"으로 소리를 낸다 — 조용한 연동 폴백이 아니다.
+            return typeof r.id === "string" && r.id !== "" ? { kind: "saved", setId: r.id } : null;
         case "orphan":
             return typeof r.label === "string" && r.label !== "" ? { kind: "orphan", label: r.label } : null;
         // ── 옛 형식(집합 공장 이전) — usePersistedState 는 다시 고를 때까지 옛 값을 그대로 두므로,

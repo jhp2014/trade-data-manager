@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { exprOfStages } from "../expr.js";
+import { exprOfStages, refNode, type SetExpr } from "../expr.js";
 import { DEFAULT_POINT_DEFINITION, type ChartRef, type FunnelItem, type PointDefinition } from "@trade-data-manager/market/domain";
 import type { SetRef } from "../../../lib/setRef.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
@@ -69,6 +69,8 @@ const ctx: SetResolveCtx = {
     candidates: [A, B, C],
     timesOf,
     activeStages,
+    // 작업 식은 **식 그대로** 온다 — 잎 목록에서 되짚으면 묶음·부정·참조가 사라진다(ctx 필드 주석).
+    workingExpr: exprOfStages(activeStages),
     savedSetOf: (id) => savedSets.get(id),
     // 정의 사본 없는 저장물 = 현재 재료(실물과 같은 규칙 — 정의별 재료는 전용 테스트에서 갈아 끼운다).
     materialsFor: () => ({ timesOf, evalLook, grainLook }),
@@ -133,7 +135,7 @@ describe("저장 집합 — 자립 저장물의 풀이(판정 엔진은 깔때�
 
 describe("작업 깔때기", () => {
     it("단계가 하나도 안 걸린 작업 깔때기의 생존 = 전부(공허참)", () => {
-        const empty: SetResolveCtx = { ...ctx, activeStages: [] };
+        const empty: SetResolveCtx = { ...ctx, activeStages: [], workingExpr: exprOfStages([]) };
         expect(codesOf(resolveSetRef({ kind: "survivors" }, empty))).toEqual(["1", "2", "3"]);
     });
 
@@ -171,7 +173,7 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
         expect(n1).toBeGreaterThan(0);
 
         // 작업 깔때기 조건만 바뀐 새 ctx(레일 편집) — 저장 집합의 정의·재료는 그대로라 정산이 안 돈다.
-        const edited: SetResolveCtx = { ...base, activeStages: [] };
+        const edited: SetResolveCtx = { ...base, activeStages: [], workingExpr: exprOfStages([]) };
         expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs1" }, edited))).toEqual(["1", "2"]);
         expect(calls()).toBe(n1);
 
@@ -201,7 +203,7 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
     it("작업 깔때기는 세션 캐시를 안 탄다 — 편집마다 정의가 달라 세대 안에서 무한히 쌓인다", () => {
         const base: SetResolveCtx = { ...ctx, materialsEpoch: "정찰-세대-4" };
         expect(codesOf(resolveSetRef({ kind: "survivors" }, base))).toEqual(["1", "2"]);
-        const edited: SetResolveCtx = { ...base, activeStages: [] };
+        const edited: SetResolveCtx = { ...base, activeStages: [], workingExpr: exprOfStages([]) };
         expect(codesOf(resolveSetRef({ kind: "survivors" }, edited))).toEqual(["1", "2", "3"]); // 편집이 즉시 반영
     });
 });
@@ -271,5 +273,44 @@ describe("항목 목록(세션) — 판정 없이 그대로", () => {
 
     it("전부 하루면 day 층위", () => {
         expect(resolveSetRef({ kind: "items", label: "x", items: [{ stockCode: "000002", date: "2026-07-02" }] }, ctx).grain).toBe("day");
+    });
+});
+
+// ── 참조 잎(∈ 집합) ────────────────────────────────────────────────────────
+//
+// 승격(이름 붙이기)과 옛 조립 승계가 만드는 모양이고, 여기가 **무검증 구간이던 자리**다.
+// 두 가지를 잠근다: ① 작업 식의 참조도 풀린다(기본값 "늘 모름"으로 두면 승격 직후 전량 미배치)
+// ② 낟알이 갈려도 키가 화해된다(안 하면 오류도 결손도 없이 **정확한 공집합**).
+describe("참조 잎 — 작업 식에서도 풀린다", () => {
+    const refTo = (setId: string): SetExpr => ({ kind: "and", id: "root", of: [refNode(setId)] });
+
+    it("작업 식의 `∈ 저장 집합` 이 저장 후와 **같은 답**을 낸다", () => {
+        // fs2 = 날짜 ≤ 07-03 → A·B·C. 참조 하나만 든 작업 식도 그 셋이어야 한다.
+        const c: SetResolveCtx = { ...ctx, activeStages: [], workingExpr: refTo("fs2") };
+        expect(codesOf(resolveSetRef({ kind: "survivors" }, c))).toEqual(["1", "2", "3"]);
+    });
+
+    it("지워진 집합을 가리키는 참조는 **결손**이지 거짓이 아니다 — 전량 미배치", () => {
+        const c: SetResolveCtx = { ...ctx, activeStages: [], workingExpr: refTo("없는집합") };
+        const r = resolveSetRef({ kind: "survivors" }, c);
+        expect(r.items).toEqual([]);
+        expect(r.pending, "결손이면 미배치로 센다(값을 지어내지 않는다)").toBeGreaterThan(0);
+    });
+
+    it("낟알이 갈려도 멤버십이 화해된다 — 타점 집합 참조 × 하루 항목은 ∃", () => {
+        // 참조 대상이 **타점 낟알**이 되도록 시각 조건을 건 집합을 둔다(A@09:30 하나).
+        const pointSet: SavedSet = {
+            id: "fs-pt", name: "타점 집합",
+            expr: exprOfStages([stage("tt", [{ kind: "time", ranges: [{ from: "09:00", to: "09:40" }] }])]),
+            universe: "longitudinal",
+        };
+        const c: SetResolveCtx = {
+            ...ctx, activeStages: [], workingExpr: refTo("fs-pt"),
+            savedSetOf: (id) => (id === "fs-pt" ? pointSet : savedSets.get(id)),
+        };
+        const r = resolveSetRef({ kind: "survivors" }, c);
+        // 참조가 타점 집합이므로 **바깥 낟알도 타점으로 올라간다**(refGrainOf) — 차트 행으로 안 뭉갠다.
+        expect(r.grain).toBe("point");
+        expect(codesOf(r)).toEqual(["1@09:30"]);
     });
 });

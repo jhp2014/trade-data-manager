@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { evaluateCells, type CellMaterials, type CellStock } from "../engine.js";
-import type { CellConditions, Transition } from "../predicate.js";
+import { evaluateCells, evaluateCellsExpr, type CellMaterials, type CellStock } from "../engine.js";
+import type { CellConditions, CellExpr, Transition } from "../predicate.js";
 import { kstToUnix } from "../../kst.js";
 
 // 픽스처 — 09:00 부터 1분 간격 dense 타임라인(probe 테스트와 같은 모양).
@@ -267,5 +267,26 @@ describe("evaluateCells — 종목 그룹째 자르기(limitBy)", () => {
         const b = stock("B", { n: 5, rate: [9, 9, 9, 9, 9] });
         const r = evaluateCells([a, b], NO_MAT, rateCond(5), { limit: 3 });
         expect(r.hits.map((h) => `${h.code}@${h.min - MIN0}`)).toEqual(["A@0", "B@0", "A@1"]);
+    });
+});
+
+describe("evaluateCellsExpr — 루트의 부정", () => {
+    const rate5 = (id: string): CellExpr =>
+        ({ kind: "pred", id, pred: { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] } });
+    const s = stock("A", { n: 5, rate: [0, 9, 9, 0, 9] });
+
+    // ⚠ 루트 OR 은 태그를 달려고 **가지를 직접 돈다**(byCondition·tags 가 화면 재료라서). 그때
+    //   `runNode(root)` 를 안 지나 `root.neg` 가 통째로 증발하면 `¬(a ∨ b)` 가 정확히 **반대 집합**으로
+    //   평가된다 — 오류도 결손도 없이 틀린 답이라, 이 검사가 유일한 증인이다.
+    it("¬(a ∨ b) 는 a ∨ b 의 여집합이다 — 가지를 쪼개 돌더라도 부정이 안 사라진다", () => {
+        const or: CellExpr = { kind: "or", id: "root", of: [rate5("x"), rate5("y")] };
+        expect(mins(evaluateCellsExpr([s], NO_MAT, or))).toEqual([1, 2, 4]);
+        expect(mins(evaluateCellsExpr([s], NO_MAT, { ...or, neg: true }))).toEqual([0, 3]);
+    });
+
+    it("¬(a ∧ b) 도 같은 규칙 — 루트 AND 는 원래 쪼개지 않는다", () => {
+        const and: CellExpr = { kind: "and", id: "root", of: [rate5("x")] };
+        expect(mins(evaluateCellsExpr([s], NO_MAT, and))).toEqual([1, 2, 4]);
+        expect(mins(evaluateCellsExpr([s], NO_MAT, { ...and, neg: true }))).toEqual([0, 3]);
     });
 });

@@ -123,12 +123,14 @@ export function useBoundSet(panelId: string): BoundSet {
     );
 
     // 이름만 — **우주 뱃지는 라벨 컴포넌트가 따로 그린다**(색·툴팁이 다른 채널이고, 같은 이름의
-    // 집합이 두 우주에 있을 수 있다 — ⧉ 복제).
+    // 집합이 두 우주에 있을 수 있다).
     const label = useMemo(
         () => (target === null
-            ? linkedTargetLabel(funnel.active.length)
+            // ⚠ 잎 수가 아니라 **거르고 있나**다 — `OR(참조…)` 작업 식은 잎이 0 이라 "전체"라고
+            //   말하는데 실제로는 참조로 좁혀져 있다(useSetViews.isFiltering 과 한 규칙).
+            ? linkedTargetLabel(funnel.viewOf(null).isFiltering)
             : setRefLabel(target, savedSets)),
-        [target, funnel.active.length, savedSets],
+        [target, funnel, savedSets],
     );
 
     const togglePin = useCallback(() => {

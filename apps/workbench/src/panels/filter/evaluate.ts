@@ -12,7 +12,7 @@
 // 판정 규칙은 안 바뀌어야 하고, 그래야 규칙만 테스트로 못박을 수 있다.
 // 3치 대수(and3·or3·not3)는 **도메인의 것**이다 — 여기서 다시 정의하면 "모름을 어떻게 다루나"라는
 // 같은 규칙이 두 곳에서 각자 자란다. 이 파일은 그 대수로 술어를 조립하는 일만 한다.
-import { and3, funnelKey, not3, or3, type FunnelItem, type Verdict } from "@trade-data-manager/market/domain";
+import { and3, funnelKey, not3, or3, type FunnelItem, type Grain, type Verdict } from "@trade-data-manager/market/domain";
 import { rowKeyToChartKey } from "../../lib/pointKey.js";
 import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { passesPoint, type SectionRanks, type ThemeProjection } from "../../lib/themeStrength.js";
@@ -256,7 +256,7 @@ export function evalExpr(e: SetExpr, item: FunnelItem, look: EvalLookup, refs: R
         const m = refs(e.setId);
         // ⚠ **깨진 참조는 결손이지 거짓이 아니다** — 지워진 집합을 "안 맞았다"로 세면 그 가지가
         //   조용히 빈 집합이 된다. 모름으로 두면 결손 수가 그 사실을 말한다(값을 지어내지 않는다).
-        v = m === null ? undefined : m.has(funnelKey(item));
+        v = m === null ? undefined : refHas(m, item);
     } else v = e.kind === "and"
         ? and3(e.of.map((c) => evalExpr(c, item, look, refs)))
         : or3(e.of.map((c) => evalExpr(c, item, look, refs)));
@@ -264,10 +264,37 @@ export function evalExpr(e: SetExpr, item: FunnelItem, look: EvalLookup, refs: R
 }
 
 /**
- * 참조 멤버십 사전 — `setId` → 그 집합의 항목 키 집합. **null = 못 푼다**(지워진 집합·순환·다른 우주).
+ * 참조 멤버십 사전 — `setId` → 그 집합의 멤버. **null = 못 푼다**(지워진 집합·순환·다른 우주).
  * 키는 `funnelKey` 다(항목 동일성의 유일한 자 — 여기서 다른 키를 쓰면 같은 항목이 서로 다른 것이 된다).
+ *
+ * ⚠ **낟알을 같이 들고 나온다.** 참조가 가리키는 집합의 낟알과 바깥 식의 낟알은 다를 수 있고(잎이
+ * 하나도 없는 `OR(참조…)` 는 바깥이 day 로 파생된다), 키를 그대로 맞춰 보면 `code|date|09:30` 과
+ * `code|date|` 가 영원히 안 맞아 **오류도 결손도 아닌 정확한 공집합**이 된다. 옛 조립에 있던 낟알
+ * 화해(`expandRefToPoints`)의 자리가 여기다.
  */
-export type RefMembers = (setId: string) => ReadonlySet<string> | null;
+export interface RefMemberSet {
+    /** 그 집합이 낸 항목의 낟알 — day 면 멤버십이 차트(종목,날짜) 단위다. */
+    grain: Grain;
+    /** 정확 키(`funnelKey`) 집합 — 낟알이 같을 때 쓴다. */
+    keys: ReadonlySet<string>;
+    /** 차트 키(`종목|날짜|`) 집합 — 낟알이 갈릴 때의 화해면(∃/올림 둘 다 이 하나로 선다). */
+    dayKeys: ReadonlySet<string>;
+}
+
+export type RefMembers = (setId: string) => RefMemberSet | null;
+
+/**
+ * 참조 멤버십 판정 — 낟알 조합 넷의 답이 여기 한 곳에 있다.
+ *  · 집합 day × 항목 point — 그 차트가 뽑혔으면 **그 차트의 타점은 전부 멤버**(day 판정의 올림).
+ *  · 집합 point × 항목 day — 그 차트에 **뽑힌 타점이 하나라도 있으면** 멤버(∃ — day 축의 상향 규칙과 같은 자).
+ *  · 낟알이 같으면 정확 키.
+ */
+export const refHas = (m: RefMemberSet, item: FunnelItem): boolean => {
+    const itemIsDay = item.time === undefined || item.time === "";
+    return m.grain === "day" || itemIsDay
+        ? m.dayKeys.has(`${item.stockCode}|${item.date}|`)
+        : m.keys.has(funnelKey(item));
+};
 
 /**
  * 식을 core 깔때기가 먹는 모양으로 — **단계 하나**다. 정산은 술어를 모르고, 판정은 정산을 모른다.

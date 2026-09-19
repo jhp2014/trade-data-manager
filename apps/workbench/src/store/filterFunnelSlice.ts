@@ -98,7 +98,7 @@ export interface FilterFunnelSlice {
      * 보드에서 레일을 그은 결과 — 그 레일의 필터를 만들거나 갈아끼우거나(술어) 지운다(null).
      * 규칙은 stageBinding(순수)에 있고 여기서는 영속과 시선 정리만 한다.
      */
-    applyFilterRail: (key: RailKey, predicate: FilterPredicate | null, at?: string | null, mode?: "and" | "or") => void;
+    applyFilterRail: (key: RailKey, predicate: FilterPredicate | null, at?: string | null, mode?: "and" | "or", stageId?: string | null) => void;
     /**
      * 식 통째 교체 — 노드 편집(부정·연산자 토글·묶음 삭제)이 이 하나를 지난다.
      * 순수 규칙은 `expr.ts` 가 들고, 여기는 영속과 포인터 복귀만 한다(putExpr 와 같은 계약).
@@ -201,7 +201,7 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     addFilterStage: (predicates) => set((s) => putExpr(appendLeaf(s.filterExpr, newStage(predicates ?? [])))),
     addFilterStageAt: (predicates, at, mode) => set((s) => putExpr(addLeafAt(s.filterExpr, at, newStage(predicates), mode))),
     setFilterExpr: (expr) => set(() => putExpr(expr)),
-    applyFilterRail: (key, predicate, at = null, mode = "and") => set((s) => putExpr(applyRailToExpr(s.filterExpr, key, predicate, at, mode))),
+    applyFilterRail: (key, predicate, at = null, mode = "and", stageId) => set((s) => putExpr(applyRailToExpr(s.filterExpr, key, predicate, at, mode, stageId))),
     removeFilterStage: (id) => set((s) => putExpr(filterLeaves(s.filterExpr, (x) => x.id !== id))),
     toggleFilterStage: (id) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => (x.id === id ? { ...x, enabled: !x.enabled } : x)))),
     setFilterStagePredicates: (id, predicates) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => (x.id === id ? { ...x, predicates } : x)))),

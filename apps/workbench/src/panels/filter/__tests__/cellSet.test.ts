@@ -88,6 +88,47 @@ describe("toCellExpr — 꺼짐·빈 술어는 부재다", () => {
         expect(expr).toBeNull();
         expect(stages).toEqual([]);
     });
+
+    // ⚠ 이 검사가 본론이다 — 전부 꺼진 식만 보면 "부재와 결손을 한 null 로 합류시킨" 버그가 안 잡힌다
+    //   (그때도 답이 null 이라 통과한다). **섞인 AND** 에서만 드러난다.
+    it("AND 안에서 잎 하나를 꺼도 **나머지가 그대로 산다** — 끄기는 결손이 아니라 부재다", () => {
+        const on = stage("keep", cell.predicates);
+        const off = stage("off", cell.predicates, { enabled: false });
+        const { expr, stages } = toCellExpr(exprOfStages([on, off]));
+        expect(leafIds(exprOfStages([on, off])), "꺼진 잎만 빠지고 묶음은 산다").toEqual(["keep"]);
+        expect(expr).not.toBeNull();
+        expect(stages.map((x) => x.stageId), "꺼진 잎은 결손이 아니다 — 이유가 붙지 않는다").toEqual(["keep"]);
+    });
+
+    it("OR 에서 잎을 꺼도 나머지 가지가 선다", () => {
+        const e: SetExpr = {
+            kind: "or", id: "root",
+            of: [
+                { kind: "cond", stage: stage("off", cell.predicates, { enabled: false }) },
+                { kind: "cond", stage: stage("live", cell.predicates) },
+            ],
+        };
+        expect(leafIds(e)).toEqual(["live"]);
+    });
+});
+
+describe("toCellExpr — 결손 수는 덜 세어지지 않는다", () => {
+    // ⚠ AND 가 k 번째에서 접힐 때 형제를 끝까지 안 걸으면 **뒤쪽 형제가 status 에 아예 안 실려**
+    //   화면의 결손 수가 그만큼 적게 나온다("결손은 조용히 사라지지 않는다"가 제 구현에서 새던 자리).
+    it("오염된 AND 의 **뒤쪽 형제도** status 에 실린다", () => {
+        const e: SetExpr = {
+            kind: "and", id: "root",
+            of: [
+                { kind: "cond", stage: axis },                                    // 결손(종단 술어)
+                { kind: "cond", stage: stage("after1", cell.predicates) },        // 뒤쪽 형제 둘
+                { kind: "cond", stage: stage("after2", cell.predicates) },
+            ],
+        };
+        const { expr, stages } = toCellExpr(e);
+        expect(expr).toBeNull();
+        expect(stages.map((x) => x.stageId).sort()).toEqual(["a1", "after1", "after2"]);
+        expect(stages.every((x) => !x.counted), "묶음째 빠졌으므로 전부 결손으로 선다").toBe(true);
+    });
 });
 
 describe("toCellExpr — 부정", () => {

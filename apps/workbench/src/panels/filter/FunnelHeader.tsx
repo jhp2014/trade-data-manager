@@ -19,6 +19,7 @@ import { HeaderControls, type ControlSpec } from "../../components/HeaderControl
 import { selectFilterStages, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
 import { FAIL, POINT_DEF } from "../../styles/palette.js";
 import { effectiveUniverse, UNIVERSE_LABEL } from "./universe.js";
+import { leafCount, refsOf } from "./expr.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 
 export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
@@ -30,13 +31,17 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
     const derived = useWorkbench(selectFilterUniverse);
     const setUniverse = effectiveUniverse(derived);
     const date = useWorkbench((s) => s.focus.date);
+    const expr = useWorkbench((s) => s.filterExpr);
+    const exprIsEmpty = leafCount(expr) === 0 && refsOf(expr).length === 0;
 
     const controls = useMemo<ControlSpec[]>(() => [
         {
-            kind: "action", id: "clearStages", name: "비우기", disabled: stages.length === 0,
+            // ⚠ 참조도 "걸린 것"이다 — 잎 수로만 재면 `OR(참조…)` 집합을 연 화면에서 비우기가
+            //   막혀 참조를 지울 손이 없다(ConditionBoard 의 같은 게이트와 한 규칙).
+            kind: "action", id: "clearStages", name: "비우기", disabled: exprIsEmpty,
             help: "걸린 필터 전부 지우기 — 저장한 집합은 안 변한다(자립 사본이라)", run: clearStages,
         },
-    ], [stages.length, clearStages]);
+    ], [exprIsEmpty, clearStages]);
 
     return (
         <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>

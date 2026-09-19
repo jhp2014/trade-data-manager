@@ -30,8 +30,8 @@ import { useAutoPoints } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { useThemeKnobParams } from "./themeLink.js";
 import { cellMaterialsOf } from "./cellMaterials.js";
-import { isPredicateEmpty, type FilterStage } from "./stage.js";
-import { leavesOf, type SetExpr } from "./expr.js";
+import type { FilterStage } from "./stage.js";
+import { activeExpr, leavesOf, type SetExpr } from "./expr.js";
 import { stageDeficiency } from "./universe.js";
 
 /**
@@ -47,9 +47,11 @@ export interface CellStageStatus {
     counted: boolean;
     /** counted=false 일 때의 이유(결손 지도의 문장 그대로). */
     reasons: string[];
-    /** 이 칸이 걸린 셀 수(counted 일 때만 뜻이 있다). */
-    hits: number;
 }
+// ⚠ 옛 `hits`(칸별 발화 수)는 **지웠다**(2026-09-19 리뷰) — 엔진의 `byCondition` 키가 칸 id 가 아니라
+//   **루트의 직속 가지 id** 라(5칸 은퇴 이후) 루트가 AND 면 모든 칸이 0 이었다. 소비자가 없는 채로
+//   "0 건"이라는 그럴듯한 거짓을 들고 있던 필드다. 칸별 수가 다시 필요하면 그건 **부분식 단독 평가**라
+//   decisions 의 "노드 건수" 규칙(하루는 루트만)을 먼저 지나야 한다.
 
 export interface CellSetView {
     /** 정렬·상한이 적용된 목록 — **순회도 렌더도 이 배열 하나만 본다**. */
@@ -78,7 +80,12 @@ export interface CellSetView {
  * "결손 술어가 든 **칸**을 통째로 뺀다"와 정확히 같은 규칙이고, OR 가지 하나가 빠지는 건
  * 나머지 가지가 그대로 서므로 안전하다.
  */
-export function toCellExpr(expr: SetExpr): { expr: CellExpr | null; stages: CellStageStatus[] } {
+export function toCellExpr(input: SetExpr): { expr: CellExpr | null; stages: CellStageStatus[] } {
+    // ⚠ **부재를 먼저 걷는다** — 꺼진 잎·빈 술어는 결손이 아니라 **없는 것**이다. 아래 walk 의 null 은
+    //   "이 우주에서 평가할 수 없다"(결손)만 뜻해야 하고, 둘을 한 null 로 합류시키면 AND 오염 규칙이
+    //   부재까지 먹어 **잎 하나를 끄면 그 묶음이 통째로 사라진다**(종단 경로는 activeExpr 로 먼저
+    //   걷어내므로 멀쩡해, 같은 식이 두 우주에서 다른 답을 내던 자리다).
+    const expr = activeExpr(input);
     const status: CellStageStatus[] = [];
     /** 이 가지가 빠질 때, 그 안의 멀쩡한 잎들에게 이유를 달아 준다(조용히 사라지지 않게). */
     const poison = (e: SetExpr, why: string): void => {
@@ -90,13 +97,12 @@ export function toCellExpr(expr: SetExpr): { expr: CellExpr | null; stages: Cell
     const walk = (e: SetExpr): CellExpr | null => {
         if (e.kind === "cond") {
             const s = e.stage;
-            if (!s.enabled || !s.predicates.some((p) => !isPredicateEmpty(p))) return null; // 꺼짐·빈 술어 = 부재
             const reasons = stageDeficiency(s, "daily");
             if (reasons.length > 0) {
-                status.push({ stageId: s.id, counted: false, reasons, hits: 0 });
+                status.push({ stageId: s.id, counted: false, reasons });
                 return null;
             }
-            status.push({ stageId: s.id, counted: true, reasons: [], hits: 0 });
+            status.push({ stageId: s.id, counted: true, reasons: [] });
             // 결손 0 = 전부 셀 술어(위 게이트가 보장). 조건 하나가 술어 **여럿**을 들 수 있으므로
             // 그때는 AND 묶음으로 세운다 — 첫 술어만 싣던 옛 실수가 여기서 재발하지 않게.
             const preds = s.predicates as CellPredicate[];
@@ -121,17 +127,18 @@ export function toCellExpr(expr: SetExpr): { expr: CellExpr | null; stages: Cell
             return null;
         }
         const of: CellExpr[] = [];
+        let poisoned = false;
         for (const c of e.of) {
             const r = walk(c);
-            if (r === null) {
-                if (e.kind === "and") {
-                    // AND 는 오염된다 — 결손 형제 하나가 이 묶음 전체를 빼낸다(위 주석).
-                    poison(e, "같은 묶음에 이 우주에서 평가할 수 없는 조건이 있어 묶음째 빠졌습니다");
-                    return null;
-                }
-                continue; // OR 은 그 가지만 빠진다
-            }
+            // ⚠ AND 가 오염돼도 **형제를 끝까지 걷는다** — 여기서 바로 빠져나오면 뒤쪽 형제가 walk 를
+            //   안 지나 `status` 에 아예 안 실리고, 화면의 결손 수가 그만큼 덜 세어진다("결손은 조용히
+            //   사라지지 않는다"가 제 구현에서 새던 자리). 걷는 값은 싸다 — 평가가 아니라 번역이다.
+            if (r === null) { if (e.kind === "and") poisoned = true; continue; } // OR 은 그 가지만 빠진다
             of.push(r);
+        }
+        if (poisoned) {
+            poison(e, "같은 묶음에 이 우주에서 평가할 수 없는 조건이 있어 묶음째 빠졌습니다");
+            return null;
         }
         if (of.length === 0) return null;
         return e.kind === "and"
@@ -261,11 +268,6 @@ export function useCellSet(expr: SetExpr | null, date: string, opts?: CellEvalOp
         [stocks],
     );
 
-    const stageStatus = useMemo<CellStageStatus[]>(
-        () => narrowed.stages.map((st) => ({ ...st, hits: result?.byCondition.get(st.stageId) ?? 0 })),
-        [narrowed, result],
-    );
-
     return {
         hits: result?.hits ?? EMPTY_HITS,
         items,
@@ -273,7 +275,7 @@ export function useCellSet(expr: SetExpr | null, date: string, opts?: CellEvalOp
         limit: result?.limit ?? 0,
         truncated: result?.truncated ?? false,
         tooWide: result?.tooWide ?? false,
-        stages: stageStatus,
+        stages: narrowed.stages,
         byCode,
         // 재료 게이트는 **그 재료를 쓰는 조건이 있을 때만** 선다 — 칸을 지웠는데 격자 실패가 화면을
         // 죽이면 "지웠다"가 거짓말이 된다.

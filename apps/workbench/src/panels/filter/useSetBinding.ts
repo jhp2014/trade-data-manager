@@ -25,7 +25,7 @@ export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[]): string
  * 연동(포인터 없음)이 **지금 실제로 풀리는 대상** — 최종 생존 > 전체(조건 0개). 칩 이름은 "연동"
  * 하나지만 라벨은 풀린 대상을 같이 말해야 "뭘 보고 있나"에 답이 된다.
  */
-export function linkedTargetLabel(activeCount: number): string {
-    return `연동 · ${activeCount > 0 ? "최종 생존" : "전체"}`;
+export function linkedTargetLabel(filtering: boolean): string {
+    return `연동 · ${filtering ? "최종 생존" : "전체"}`;
 }
 

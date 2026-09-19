@@ -34,8 +34,11 @@ describe("parseSetRef — 영속 4종 + orphan", () => {
         for (const r of refs) expect(parseSetRef(JSON.parse(JSON.stringify(r)))).toEqual(r);
     });
 
-    it("옛 조립 바인딩은 orphan — 조용히 연동으로 떨어지면 그 패널이 딴 집합을 그린다", () => {
-        expect(parseSetRef({ kind: "assembly", id: "as1" })).toEqual({ kind: "orphan", label: "옛 조립 바인딩" });
+    it("옛 조립 바인딩은 **같은 id 의 저장 집합**으로 이어진다 — 승계가 조립 id 를 그대로 썼다", () => {
+        // 승계(migrateAssemblies)가 `OR(참조…)` 집합을 조립 id 로 만들어 두므로 이건 무손실이다.
+        // 승계가 못 올린 조립은 그 id 의 집합이 없어 리졸버가 "(지워진 집합)"으로 소리를 낸다.
+        expect(parseSetRef({ kind: "assembly", id: "as1" })).toEqual({ kind: "saved", setId: "as1" });
+        expect(parseSetRef({ kind: "assembly", id: "" }), "빈 id 는 주소가 아니다").toBeNull();
     });
 
     it("항목 목록(세션)은 저장 대상이 아니다 — 파서가 거부한다", () => {

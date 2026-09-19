@@ -92,7 +92,7 @@ export function SetRow(): JSX.Element {
             <GazeChip label="연동" active={selectedSetRef === null} color={PIN}
                 onClick={() => selectSet(null)}
                 title={`이 보드를 따라간다 — 조건이 있으면 최종 생존, 없으면 전체
-지금: ${linkedTargetLabel(v.active.length)} · ${countOf(linkedRef)}`} />
+지금: ${linkedTargetLabel(v.viewOf(null).isFiltering)} · ${countOf(linkedRef)}`} />
             {shown.length > 0 && <Divider />}
             {shown.map((it) => (
                 <GazeChip key={it.key} label={it.label} active={it.active} color={PIN}

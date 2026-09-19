@@ -34,7 +34,7 @@ import { buildAxisOrderIndex, buildAxisOrderIndexes } from "./axisLookup.js";
 import { resolveBound, toFunnelStage, type EvalLookup } from "./evaluate.js";
 import { activeExpr, leavesOf } from "./expr.js";
 import type { LabelLookup } from "./label.js";
-import type { DefMaterials, ResolvedSet, SetResolveCtx } from "./resolveSet.js";
+import { refGrainOf, refMembersOf, type DefMaterials, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
 import { useSetViews, type ViewedSet } from "./useSetViews.js";
 import {
     activeStages, funnelOrder, isPredicateDead, resolveAutoGrain,
@@ -277,25 +277,10 @@ export function useFilterFunnel(): FunnelView {
     /** 평가에 들어가는 식 — 꺼졌거나 빈 잎은 걷힌다. 묶음 구조는 그대로 산다(평평하게 접지 않는다). */
     const evalExprMemo = useMemo(() => activeExpr(expr), [expr]);
 
-    // 사전이 온 뒤에만 해상도를 확정한다 — 로딩 중의 모름은 "없음"이 아니다.
-    const grain = isLoading ? "day" : resolveAutoGrain(stages, grainLook);
-
     /** 현재 정의의 타점 시각 — 유니버스 전개·setCtx.timesOf·materialsFor(현재)가 같은 실물을 문다. */
     const timesOfCur = useCallback(
         (c: { stockCode: string; date: string }): readonly string[] => timesByChart.get(chartKey(c)) ?? [],
         [timesByChart],
-    );
-
-    const items = useMemo<FunnelItem[]>(() => {
-        if (isLoading) return [];
-        return expandUniverse(cand.candidates, grain, timesOfCur);
-    }, [isLoading, cand.candidates, grain, timesOfCur]);
-
-    // ⚠ 단계는 **하나**다(식 전체) — 잎마다 한 단계로 쪼개면 정산의 AND 가 한 번 더 걸려
-    //   OR 묶음이 틀린 답을 낸다(트리의 접기는 evalExpr 하나가 진다).
-    const result = useMemo<FunnelResult | null>(
-        () => (isLoading ? null : tallyFunnel(items, [toFunnelStage(evalExprMemo, evalLook)])),
-        [isLoading, items, evalExprMemo, evalLook],
     );
 
     /**
@@ -352,23 +337,60 @@ export function useFilterFunnel(): FunnelView {
     );
 
     /**
+     * 리졸버 재료 — **정산(result) 없이** 서는 벌. 작업 깔때기의 정산이 참조를 풀려면 리졸버가 먼저
+     * 있어야 하고(참조 = 저장 집합의 정산), 리졸버 ctx 는 그 정산을 `activeFilter` 로 문다 — 그 순환을
+     * 여기서 끊는다. 저장 집합의 풀이는 `activeFilter` 를 안 보므로 이 벌만으로 온전하다.
+     */
+    const baseCtx = useMemo<SetResolveCtx>(
+        () => ({
+            candidates: cand.candidates,
+            timesOf: timesOfCur,
+            activeStages: stages,
+            workingExpr: expr,
+            savedSetOf: (id) => savedSets.find((f) => f.id === id),
+            materialsFor,
+            materialsEpoch,
+            evalLook,
+            grainLook,
+        }),
+        [cand.candidates, timesOfCur, evalLook, grainLook, stages, savedSets, materialsFor, materialsEpoch],
+    );
+
+    /** 작업 식의 참조를 푸는 손 — 저장 집합 경로와 **같은 자**를 쓴다(두 벌이면 언젠가 다른 답을 낸다). */
+    const workingRefs = useMemo(() => refMembersOf(baseCtx, null), [baseCtx]);
+
+    // 사전이 온 뒤에만 해상도를 확정한다 — 로딩 중의 모름은 "없음"이 아니다.
+    // 낟알은 잎과 **참조 둘 다**가 정한다 — 참조를 빼면 잎 없는 조립(`OR(참조…)`)이 day 로 떨어져
+    // 타점 행이 차트 행으로 조용히 뭉개진다(resolveSet.refGrainOf 의 주석과 같은 자리).
+    const grain: Grain = isLoading
+        ? "day"
+        : (resolveAutoGrain(stages, grainLook) === "point" || refGrainOf(evalExprMemo, baseCtx, null) === "point"
+            ? "point"
+            : "day");
+
+    const items = useMemo<FunnelItem[]>(() => {
+        if (isLoading) return [];
+        return expandUniverse(cand.candidates, grain, timesOfCur);
+    }, [isLoading, cand.candidates, grain, timesOfCur]);
+
+    // ⚠ 단계는 **하나**다(식 전체) — 잎마다 한 단계로 쪼개면 정산의 AND 가 한 번 더 걸려
+    //   OR 묶음이 틀린 답을 낸다(트리의 접기는 evalExpr 하나가 진다).
+    // ⚠ 참조 해결자를 **반드시 넘긴다** — 기본값(늘 null)으로 두면 승격(이름 붙이기) 직후 작업 식의
+    //   참조가 전부 모름이 되어 루트 AND 가 전량 미배치가 된다(저장하면 제대로 풀려 "같은 식이
+    //   작업 중과 저장 후에 다른 답"이 되던 자리).
+    const result = useMemo<FunnelResult | null>(
+        () => (isLoading ? null : tallyFunnel(items, [toFunnelStage(evalExprMemo, evalLook, workingRefs)])),
+        [isLoading, items, evalExprMemo, evalLook, workingRefs],
+    );
+
+    /**
      * 리졸버 재료 한 벌 — **재료가 하나라도 바뀌면 새로 선다.** useSetViews 의 리졸버·뷰 캐시 수명이
      * 이 객체의 참조 동일성에 매여 있다(낡은 ctx 로 캐시가 살아남으면 낡은 집합을 돌려준다).
      * 작업 깔때기의 정산(result)을 activeFilter 로 그대로 꽂는다 — 이유는 SetResolveCtx 필드 주석 참조.
      */
     const setCtx = useMemo<SetResolveCtx>(
-        () => ({
-            candidates: cand.candidates,
-            timesOf: timesOfCur,
-            activeStages: stages,
-            savedSetOf: (id) => savedSets.find((f) => f.id === id),
-            materialsFor,
-            ...(result !== null ? { activeFilter: { grain, active, tally: result } } : {}),
-            materialsEpoch,
-            evalLook,
-            grainLook,
-        }),
-        [cand.candidates, timesOfCur, evalLook, grainLook, stages, savedSets, materialsFor, grain, active, result, materialsEpoch],
+        () => (result === null ? baseCtx : { ...baseCtx, activeFilter: { grain, active, tally: result } }),
+        [baseCtx, grain, active, result],
     );
 
     const { resolveSet, viewOf } = useSetViews(result, setCtx);

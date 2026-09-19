@@ -19,8 +19,8 @@ import { expandToPointItems } from "../../lib/grainView.js";
 import { judgeKeyOf } from "../../lib/pointDef.js";
 import type { SetRef } from "../../lib/setRef.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
-import { toFunnelStage, type EvalLookup } from "./evaluate.js";
-import { activeExpr, exprOfStages, leavesOf, type SetExpr } from "./expr.js";
+import { toFunnelStage, type EvalLookup, type RefMembers } from "./evaluate.js";
+import { activeExpr, exprOfStages, leavesOf, refsOf, type SetExpr } from "./expr.js";
 import { activeStages, funnelOrder, resolveAutoGrain, type FilterStage, type GrainLookup } from "./stage.js";
 
 /**
@@ -39,8 +39,14 @@ export interface SetResolveCtx {
     candidates: readonly ChartRef[];
     /** 그 하루의 타점 시각들(타점 0이면 빈 배열). */
     timesOf: (c: ChartRef) => readonly string[];
-    /** 작업 깔때기의 단계들(조건 한 벌) — survivors 참조의 재료. */
+    /** 작업 깔때기의 단계들(조건 한 벌) — 평평한 잎 목록을 읽던 소비자용(라벨·카운트). */
     activeStages: readonly FilterStage[];
+    /**
+     * 작업 깔때기의 **식 그대로** — survivors 참조의 재료.
+     * ⚠ 잎 목록에서 `exprOfStages` 로 되짚으면 **묶음·부정·참조가 통째로 사라진다**(전부 AND 한 벌이
+     * 된다). 평평한 리스트 시절의 잔재라 그때는 무손실이었지만 지금은 조용히 다른 집합을 낸다.
+     */
+    workingExpr: SetExpr;
     /** 저장 집합 사전. undefined 반환 = 지워진 집합(깨진 참조). */
     savedSetOf: (id: string) => SavedSet | undefined;
     /**
@@ -79,7 +85,7 @@ export interface ResolvedSet {
     /** 고유 층위 — 판정이 일어난 알갱이. 표시 변환(전개/투영)은 소비 패널의 일이다. */
     grain: Grain;
     items: FunnelItem[];
-    /** 저장 집합만: 전 단계 AND 미배치 수(그 정의 유니버스 기준) — 조립 부품 줄이 병기해 결손이 조용히 안 사라진다. */
+    /** 전 단계 AND 미배치 수(그 정의 유니버스 기준) — 결손이 조용히 사라지지 않게 병기한다. */
     pending?: number;
     /**
      * **다른 우주의 집합**이라 이 맥락에서 풀 수 없다(2026-09-18 단계 ② 불변식 ①).
@@ -98,7 +104,9 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
 
         case "survivors": {
             const r = resolveDef(null, ctx);
-            return { broken: false, grain: r.grain, items: r.tally.survivors };
+            // 미배치(결손) 수를 **여기서도** 낸다 — 저장 집합 경로만 내면 같은 사실이 작업 깔때기에서만
+            // 조용히 사라진다(참조가 깨졌을 때 "빈 집합"과 "전량 결손"이 화면에서 구분이 안 된다).
+            return { broken: false, grain: r.grain, items: r.tally.survivors, pending: r.tally.pendingCount };
         }
 
         case "saved":
@@ -140,18 +148,44 @@ export function expandRefToPoints(ref: SetRef, r: ResolvedSet, ctx: SetResolveCt
  */
 const resolving = new Set<string>();
 
-function refMembersOf(ctx: SetResolveCtx, selfId: string | null): (setId: string) => ReadonlySet<string> | null {
+export function refMembersOf(ctx: SetResolveCtx, selfId: string | null): RefMembers {
     return (setId) => {
         if (setId === selfId || resolving.has(setId)) return null; // 순환 — 결손으로 끊는다
         resolving.add(setId);
         try {
             const r = resolveSaved(setId, ctx);
             if (r.broken || r.otherUniverse === true) return null;
-            return new Set(r.items.map(funnelKey));
+            // 낟알과 두 키 집합을 같이 낸다 — 판정(낟알 화해)은 evaluate.refHas 한 곳이다.
+            return {
+                grain: r.grain,
+                keys: new Set(r.items.map(funnelKey)),
+                dayKeys: new Set(r.items.map((i) => `${i.stockCode}|${i.date}|`)),
+            };
         } finally {
             resolving.delete(setId);
         }
     };
+}
+
+/**
+ * 참조가 끌어올리는 낟알 — 참조 하나라도 point 집합이면 이 식의 항목도 point 여야 한다.
+ *
+ * ⚠ 이게 없으면 **잎이 하나도 없는 `OR(참조…)`**(= 승계된 옛 조립)이 day 로 파생되고, 참조가 point
+ * 집합이면 화해가 ∃ 로 떨어져 **타점 행이 차트 행으로 조용히 뭉개진다**. 옛 조립의 `expandRefToPoints`
+ * 가 하던 일의 절반(낟알 승격)이 여기고, 나머지 절반(키 화해)은 `refHas` 다.
+ */
+export function refGrainOf(expr: SetExpr, ctx: SetResolveCtx, selfId: string | null): Grain | null {
+    for (const id of refsOf(expr)) {
+        if (id === selfId || resolving.has(id)) continue;
+        resolving.add(id);
+        try {
+            const r = resolveSaved(id, ctx);
+            if (!r.broken && r.otherUniverse !== true && r.grain === "point") return "point";
+        } finally {
+            resolving.delete(id);
+        }
+    }
+    return null;
 }
 
 /** 저장 집합 한 벌 — 이름 붙은 저장물의 유일한 풀이 경로(두 벌이면 언젠가 다른 답을 낸다). */
@@ -199,7 +233,7 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
 
     const set = setId === null ? undefined : ctx.savedSetOf(setId);
     // 작업 깔때기는 ctx 가 이미 잎 목록으로 준다(훅이 만든 재료) — 저장 집합은 제 식을 그대로 쓴다.
-    const expr: SetExpr = setId === null ? exprOfStages(ctx.activeStages) : (set?.expr ?? exprOfStages([]));
+    const expr: SetExpr = setId === null ? ctx.workingExpr : (set?.expr ?? exprOfStages([]));
     const stages = leavesOf(expr);
     // 저장 집합은 자기 정의로 평가된다 — 정의 사본이 없는 옛 저장물은 현재 정의(관대 병합 규칙 그대로).
     const mat = ctx.materialsFor(set?.pointDef);
@@ -228,7 +262,10 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
     // "필터 N"·라벨 등 평평한 목록을 읽던 소비자가 그대로 산다.
     const evaluated = activeExpr(expr);
     const active = activeStages(funnelOrder(leavesOf(evaluated), mat.grainLook).map((e) => e.stage));
-    const grain = resolveAutoGrain(stages, mat.grainLook);
+    // 낟알은 잎과 **참조 둘 다**가 정한다 — 참조를 빼면 잎 없는 조립이 day 로 떨어진다(refGrainOf).
+    const grain: Grain = resolveAutoGrain(stages, mat.grainLook) === "point" || refGrainOf(evaluated, ctx, setId) === "point"
+        ? "point"
+        : "day";
     const items = expandUniverse(ctx.candidates, grain, mat.timesOf);
     // ⚠ 단계는 **하나**다(식 전체) — 잎마다 한 단계로 쪼개면 AND 가 두 번 적용돼 OR 묶음이 틀린다.
     const r: ResolvedFilter = {

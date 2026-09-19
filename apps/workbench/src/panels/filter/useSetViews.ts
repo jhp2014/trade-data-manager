@@ -12,6 +12,7 @@ import { chartKey } from "../../lib/pointKey.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { expandRefToPoints, resolveSetRef, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
+import { refsOf } from "./expr.js";
 import { usePresenceIndex } from "../../lib/usePresence.js";
 import { emptyPresence, hasActiveDnf, matchesPresenceDnf } from "../../lib/presence.js";
 
@@ -91,7 +92,11 @@ export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): Se
     // activeFilter 는 로딩 중에만 없다 — 그때는 어차피 아래 로딩 가드가 isFiltering 을 끈다.
     // 월·존재필터 시선도 "걸림"이다 — 조건 없이 시선만 좁혀도 구독 패널은 그만큼만 그려야 한다(안 그러면
     // 작업셋에서 달/필터를 눌렀는데 옆 패널이 무반응인, 시선이 두 벌이던 시절의 어긋남이 재생산된다).
-    const isFiltering = (ctx.activeFilter?.active.length ?? 0) > 0 || gazeMonths !== null || presenceOn;
+    // ⚠ **참조도 "걸림"이다** — `active` 는 잎 목록이라 `OR(참조…)` 작업 식이 0 으로 세어진다.
+    //   그러면 계약상 "제한 없음"이 되어 시트·시뮬이 전 모수를 그리는데, 정산의 생존은 그 참조로
+    //   좁혀진 수다 — 머리글은 N 을 말하고 구독 패널은 전부를 그리는 어긋남이 된다.
+    const isFiltering = (ctx.activeFilter?.active.length ?? 0) > 0 || refsOf(ctx.workingExpr).length > 0
+        || gazeMonths !== null || presenceOn;
     const viewedChartKeys = useMemo(() => new Set(viewedItems.map((i) => chartKey(i))), [viewedItems]);
     const viewedPointRefs = useMemo(() => {
         const out: { stockCode: string; date: string; time: string }[] = [];
