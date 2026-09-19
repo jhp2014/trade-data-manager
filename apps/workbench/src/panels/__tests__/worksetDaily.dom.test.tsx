@@ -57,7 +57,7 @@ const renderDaily = (stages: FilterStage[], data: DayReplay = snapshot, dates: s
     };
     const client = seededClient(seed);
     client.setQueryData(["data-dates"], dates); // 기본값은 하루뿐 = 이웃이 없다 = 프리페치도 없다
-    useWorkbench.setState({ filterUniverse: "daily", filterExpr: exprOfStages(stages) });
+    useWorkbench.setState({ filterExpr: exprOfStages(stages) });
     render(
         <Providers client={client}>
             <Harness />
@@ -146,17 +146,22 @@ describe("작업 대상 — 하루 우주", () => {
         expect(useWorkbench.getState().focus.date, "tooWide 의 0건은 빈 날이 아니다").toBe(DATE);
     });
 
-    it("조건이 없으면 하루 재료를 **당기지 않는다** — 라벨 층만 서고 목록은 '조건 없음'을 말한다", () => {
+    // ⚠ 2026-09-19 9단계(우주 파생) 이후 **"하루 우주 + 조건 0개"는 존재하지 않는다** — 우주가
+    //   조건에서 나오므로 조건이 없으면 미정(= 종단)이다. 그래서 이 검사가 재는 것은 "하루 재료를
+    //   안 당긴다" 하나로 좁혀졌고, 그게 원래 이 검사의 눈이었다(네트워크 그물).
+    it("조건이 없으면 하루 재료를 **당기지 않는다** — 우주가 미정이라 셀 목록 자체가 안 선다", () => {
         // 재료를 안 심고 그린다: 당기면 setup 의 네트워크 그물이 이 테스트를 실패시킨다(그게 이 검사의 눈이다).
         const client = seededClient({});
         client.setQueryData(["data-dates"], [DATE]);
-        useWorkbench.setState({ filterUniverse: "daily", filterExpr: exprOfStages([]) });
+        useWorkbench.setState({ filterExpr: exprOfStages([]) });
         render(
             <Providers client={client}>
                 <Harness />
             </Providers>,
         );
         expect(cellRows()).toHaveLength(0);
-        expect(screen.getByText(/조건 0/)).toBeTruthy();
+        // 하루 층이 아예 안 섰다는 증거 — 대신 종단 쪽 손잡이(달 시선)가 서 있다.
+        expect(screen.queryByText(/너무 넓습니다/)).toBeNull();
+        expect(screen.getByTitle(/모든 달/)).toBeTruthy();
     });
 });

@@ -77,8 +77,7 @@ beforeEach(() => {
     evalSpy.mockClear();
     useWorkbench.setState({
         focus: { ...useWorkbench.getState().focus, date: DATE, code: "", time: null },
-        panelUi: {}, savedSets: [], selectedSetRef: null,
-        filterUniverse: "daily", filterExpr: exprOfStages([wideStage]),
+        panelUi: {}, savedSets: [], selectedSetRef: null, filterExpr: exprOfStages([wideStage]),
     });
 });
 
@@ -90,10 +89,12 @@ describe("useBoundSet — 하루 우주", () => {
         expect(evalSpy, "같은 (조건, 날짜, opts) 는 한 번만 평가한다").toHaveBeenCalledTimes(1);
     });
 
-    it("조건이 없으면 재료를 안 당긴다 — 빈 집합이고 네트워크도 안 친다", () => {
+    // 우주 파생(9단계) 이후 조건 0개 = 우주 미정 = 종단이라, 하루 경로가 아예 안 선다.
+    it("조건이 없으면 재료를 안 당긴다 — 네트워크도 안 친다", () => {
         useWorkbench.setState({ filterExpr: exprOfStages([]) });
         renderProbes(["a"], false); // 재료를 안 심었다: 당기면 setup 의 네트워크 그물이 이 테스트를 죽인다
-        expect(seen.a!.view.viewedItems).toHaveLength(0);
+        expect(seen.a!.universe, "조건 0개 = 우주 미정 = 종단").toBe("longitudinal");
+        expect(seen.a!.day.on, "하루 경로가 안 선다 — 이게 이 검사의 본론이다").toBe(false);
         expect(evalSpy).not.toHaveBeenCalled();
     });
 
@@ -124,8 +125,7 @@ describe("useBoundSet — 종단 집합에 고정한 패널", () => {
             id: "fs-long", name: "9월 돌파", expr: exprOfStages([]),
             universe: "longitudinal",
         };
-        useWorkbench.setState({
-            filterUniverse: "longitudinal", filterExpr: exprOfStages([]), savedSets: [savedLong],
+        useWorkbench.setState({ filterExpr: exprOfStages([]), savedSets: [savedLong],
             panelUi: { a: { setPin: { kind: "saved", setId: "fs-long" } } },
         });
         renderProbes(["a"]);
@@ -136,7 +136,8 @@ describe("useBoundSet — 종단 집합에 고정한 패널", () => {
         // 작업 깔때기만 하루로 — 고정한 패널은 종단 그대로여야 한다.
         // ⚠ **항목 수를 본다**: 한때 리졸버가 맥락 우주와 대조해 여기서 조용히 빈 집합이 됐는데,
         //   universe·broken 만 보면 그 증상이 안 잡힌다(둘 다 그대로였다 — 리뷰가 잡은 테스트 구멍).
-        act(() => useWorkbench.getState().setFilterUniverse("daily"));
+        // 우주는 파생이라 토글이 없다(2026-09-19 9단계) — **하루 전용 조건을 걸어** 작업 우주를 옮긴다.
+        act(() => useWorkbench.getState().addFilterStage([{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] }]));
         expect(seen.a!.universe).toBe("longitudinal");
         expect(seen.a!.day.on).toBe(false);
         expect(seen.a!.view.broken).toBe(false);
@@ -146,8 +147,9 @@ describe("useBoundSet — 종단 집합에 고정한 패널", () => {
 
 describe("useBoundSet — 고정(핀)", () => {
     it("고정하면 전역 선택을 안 따라간다 — 연동 패널만 따라간다", () => {
-        // 포인터는 **우주를 못 넘는다**(단계 ② 불변식 ①) — 작업 우주를 집합과 맞춰 둔다.
-        useWorkbench.setState({ filterUniverse: "daily", filterExpr: exprOfStages([]), savedSets: [savedDaily] });
+        // 포인터는 **우주를 못 넘는다**(단계 ② 불변식 ①) — 우주는 파생이라 토글이 없으니
+        // 작업 식에 **하루 전용 조건**(wideStage)을 둬서 집합과 우주를 맞춘다.
+        useWorkbench.setState({ filterExpr: exprOfStages([wideStage]), savedSets: [savedDaily] });
         renderProbes(["pinned", "linked"]);
 
         // 포인터가 없을 때 눌러도 **뭔가는 묶인다** — 연동이 실제로 풀리는 대상(최종 생존)이다.

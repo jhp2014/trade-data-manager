@@ -23,11 +23,12 @@ import {
 import {
     addLeafAt, appendLeaf, emptyExpr, exprOfStages, filterLeaves, leavesOf, mapLeaves, parseExpr, type SetExpr,
 } from "../panels/filter/expr.js";
-import { persistSavedSets } from "./savedSetsSlice.js";
+
 import { applyRailToExpr, type RailKey } from "../panels/filter/stageBinding.js";
-import { parseUniverse, type Universe } from "../panels/filter/universe.js";
+import { effectiveUniverse, universeOfExpr, type Universe } from "../panels/filter/universe.js";
+import { persistSavedSets, refUniverse, type SavedSet } from "./savedSetsSlice.js";
 import { migrateProbeStages } from "../panels/filter/legacyProbe.js";
-import { backupRawOnce, hasStored, loadJson, persistedField, saveJson } from "./persist.js";
+import { backupRawOnce, hasStored, loadJson, saveJson } from "./persist.js";
 import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
 
 /** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
@@ -40,13 +41,8 @@ const STAGES_KEY = "wb.filterStages.v4"; // 옛 평평한 리스트 — **승계
 const SLOTS_KEY = "wb.filterSlots"; // 슬롯 시절 — 활성 칸 하나만 이어받는다(나머지 칸은 버린다)
 const LEGACY_STAGES_KEY = "wb.filterStages"; // 슬롯 이전의 단일 벌
 
-/**
- * 작업 깔때기의 **우주**(2026-09-18 단계 ②) — 배열 키(`wb.filterStages.v4`)와 **별도 스칼라 키**다.
- * 배열 키를 `{universe, stages}` 래퍼로 감싸는 안은 기각: 모양이 바뀌면 키 상향을 강제하고,
- * 키를 올리면 `parseStages` 의 all-or-nothing 과 맞물려 사용자의 조건이 전멸한다.
- * 부재 = 종단(우주가 없던 시절의 행동 그대로).
- */
-const UNIVERSE_FIELD = persistedField<Universe>("wb.filterUniverse", (raw) => parseUniverse(raw), "longitudinal");
+// (옛 `wb.filterUniverse` 스칼라 키는 2026-09-19 9단계로 **안 읽는다** — 우주가 조건에서 파생되므로
+//  저장할 것이 없다. 키는 안 지운다: 새 코드가 안 읽으면 자연히 죽는다.)
 
 /**
  * 식 읽기 — 새 키(식 트리) → 옛 평평한 리스트(`AND(잎…)` 로 승계).
@@ -76,18 +72,7 @@ export interface FilterFunnelSlice {
      * 평평한 목록을 읽는 소비자는 `selectFilterStages`(= leavesOf 투영)를 그대로 쓴다.
      */
     filterExpr: SetExpr;
-    /**
-     * 지금 만지는 조건이 사는 **우주**(영속). 편성 패널은 이 값으로 **디스패치**한다 —
-     * 전역 "모드 스위치"가 아니라 **편집 대상의 타입**이다(decisions 「집합」: 토글이 서는 자리는
-     * "＋ 새 집합" 한 번뿐).
-     */
-    filterUniverse: Universe;
-    /**
-     * 우주 갈아타기 — **조건을 비우는 것이 동반된다**(= 새 집합). 조건을 남긴 채 우주만 바꾸는
-     * 손잡이는 만들지 않는다: 그게 기각된 "전역 모드 스위치"의 다른 이름이고, 우주를 넘기는
-     * 정식 경로는 **⧉ 다른 우주로 복제**(결손 경고를 지나는 명시적 행위)다.
-     */
-    setFilterUniverse: (u: Universe) => void;
+
     /**
      * 선택 포인터 — 집합 편성 패널 안의 **단 하나의 선택**. null = 작업 깔때기(최종 생존),
      * 참조 = 집합 칩에서 고른 것. 연동 패널과 레일 오버레이가 전부 이 하나를 본다.
@@ -146,37 +131,43 @@ export interface FilterFunnelSlice {
  */
 export const selectFilterStages = (s: Pick<FilterFunnelSlice, "filterExpr">): FilterStage[] => leavesOf(s.filterExpr);
 
+/**
+ * 지금 만지는 조건이 사는 **우주** — 2026-09-19 부터 **파생**이다(저장 필드도 토글도 없다).
+ * null = 아직 안 정해짐(중립 조건뿐이거나 조건 0개). 평가·표시는 effectiveUniverse 로 확정한다.
+ */
+export const selectFilterUniverse = (s: Pick<FilterFunnelSlice, "filterExpr"> & { savedSets: readonly SavedSet[] }): Universe | null =>
+    universeOfExpr(s.filterExpr, refUniverse(s.savedSets));
+
 /** 단계는 손으로 쌓는 것이라 매 편집이 곧 영속 — 새로고침에 조건이 날아가면 깔때기를 다시 짜야 한다.
  *
  *  export 인 이유: 저장 집합 열기(savedSetsSlice.openSet)도 "깔때기에 조건 한 벌을 쓰는 손"이라
  *  같은 규칙(영속·포인터 정리)을 지나야 한다 — 두 슬라이스의 유일한 접점이다. */
 export const putExpr = (
     expr: SetExpr,
-    /** 집합을 열 때만 준다 — 그 집합의 우주로 깔때기가 갈아탄다(편집 경로는 우주를 안 건드린다). */
-    universe?: Universe,
-): Pick<FilterFunnelSlice, "filterExpr" | "selectedSetRef"> & Partial<Pick<FilterFunnelSlice, "filterUniverse">> => {
+): Pick<FilterFunnelSlice, "filterExpr" | "selectedSetRef"> => {
     saveJson(EXPR_KEY, expr);
     // 깔때기를 만졌다 = 선택 포인터는 작업 깔때기로 복귀 — 칩에서 고른 집합을 보던 중이라도, 조건을
     // 고치는 손은 "지금 이걸 보겠다"는 뜻이다(연동 패널이 편집을 따라와야 편집의 대가가 보인다).
     return {
         filterExpr: expr,
         selectedSetRef: null,
-        ...(universe !== undefined ? { filterUniverse: UNIVERSE_FIELD.save(universe) } : {}),
     };
 };
 
 /**
- * 첫 상태의 조건 한 벌 — **저장한 적이 없고** 이미 하루 우주면 옛 패널 조건을 1회 이주한다.
- * 전환 훅(setFilterUniverse)만으로는 단계 ② 에서 이미 하루로 넘어가 있던 사용자가 기회를 영영 잃는다.
+ * 첫 상태의 조건 한 벌 — **한 번도 저장한 적이 없으면** 옛 "탐색 후보" 패널의 조건을 1회 이주한다.
  *
  * ⚠ 판정이 "비었나"가 아니라 "**키가 있나**"인 이유: 조건을 **일부러 다 지운** 사용자도 빈 배열을
  * 저장해 둔다. 내용으로 재면 그 사람의 재시작 때 지운 조건이 되살아난다("내가 지운 게 돌아왔다").
+ * 두 키를 다 보는 이유도 같다 — 새 키만 보면 옛 사용자(v4 만 있는 사람)에게 이주가 다시 돈다.
+ *
+ * ⚠ 옛 조건은 **우주를 안 묻는다**(2026-09-19 9단계): 심을 조건 자체가 하루 전용이라 심는 순간
+ * 우주가 하루로 파생된다. 옛 스칼라 키(`wb.filterUniverse`)를 읽어 문을 지키던 자리가 여기였다.
+ * 재이주 방지는 legacyProbe 자신의 도장(MIGRATED_KEY)이 계속 맡는다.
  */
-const initialExpr = (universe: Universe): SetExpr => {
+const initialExpr = (): SetExpr => {
     const saved = loadExpr();
-    // ⚠ "저장한 적 있나" 는 **두 키를 다** 본다 — 새 키만 보면 옛 사용자(v4 만 있는 사람)에게
-    //    이주가 다시 돌아 지운 조건이 되살아난다("내가 지운 게 돌아왔다").
-    if (universe !== "daily" || hasStored(EXPR_KEY) || hasStored(STAGES_KEY)) return saved;
+    if (hasStored(EXPR_KEY) || hasStored(STAGES_KEY)) return saved;
     const seeded = migrateProbeStages();
     if (seeded === null) return saved;
     const e = exprOfStages(seeded);
@@ -184,14 +175,9 @@ const initialExpr = (universe: Universe): SetExpr => {
     return e;
 };
 
-// ⚠ 우주는 **슬라이스 생성 시점에** 읽는다 — 모듈 상수로 굳히면 `persistedField.load` 가 함수인
-//    이유(선언과 생성 사이에 값이 안 굳게 · 생성자를 직접 불러 초기값을 검사하는 persist.dom.test)가
-//    무효가 된다.
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => {
-    const universe = UNIVERSE_FIELD.load();
     return {
-    filterExpr: initialExpr(universe),
-    filterUniverse: universe,
+    filterExpr: initialExpr(),
     selectedSetRef: null,
     gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
     gazePresence: loadJson(GAZE_PRESENCE_KEY, parsePresenceDnf) ?? [],
@@ -201,20 +187,14 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     selectSet: (ref) => set((s) => {
         if (ref?.kind === "saved") {
             const set = s.savedSets.find((x) => x.id === ref.setId);
-            if (set && set.universe !== s.filterUniverse) return {};
+            // 포인터는 우주를 안 넘는다(불변식 ①) — 양쪽 다 **파생값**으로 잰다.
+            const here = effectiveUniverse(universeOfExpr(s.filterExpr, refUniverse(s.savedSets)));
+            if (set && effectiveUniverse(universeOfExpr(set.expr, refUniverse(s.savedSets))) !== here) return {};
         }
         return { selectedSetRef: ref };
     }),
     setGazeMonths: (months) => set(() => ({ gazeMonths: months })),
     setGazePresence: (dnf) => set(() => { saveJson(GAZE_PRESENCE_KEY, dnf); return { gazePresence: dnf }; }),
-
-    // 우주 전환 = 조건 비우기 동반(위 필드 주석). 포인터 정리는 putStages 의 규칙을 그대로 탄다.
-    // 예외 하나 — 하루로 **처음** 갈아탈 때만 옛 "탐색 후보" 패널의 조건을 이주해 심는다(1회, legacyProbe).
-    setFilterUniverse: (u) => set((s) => {
-        if (s.filterUniverse === u) return {};
-        const seeded = u === "daily" ? migrateProbeStages(s.panelUi) : null;
-        return putExpr(seeded === null ? emptyExpr() : exprOfStages(seeded), u);
-    }),
 
     // ⚠ 쓰기 API 의 **주소는 여전히 노드 id**(= 옛 stage.id)다 — 시그니처가 안 바뀌어 소비자가 그대로다.
     //   바뀐 건 구현뿐: 리스트 편집 → 트리 편집(mapLeaves/filterLeaves/appendLeaf).

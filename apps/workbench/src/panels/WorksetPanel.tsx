@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hmsToMinute, minuteToHms } from "@trade-data-manager/market/domain";
-import { selectFilterStages, useWorkbench } from "../store/workbench.js";
+import { selectFilterStages, selectFilterUniverse, useWorkbench } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
 import type { CellHit } from "@trade-data-manager/market/domain";
@@ -91,7 +91,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
 
     // ── 하루·셀 우주 — 편집 중인 집합의 타입이 이 패널의 모습을 정한다(decisions 「집합」 단계 ③).
     //    종단이면 지금까지의 3층 목록 그대로, 하루면 그날의 셀 ∪ 라벨 2층 목록이 된다.
-    const setUniverse = useWorkbench((s) => s.filterUniverse);
+    const setUniverse = useWorkbench(selectFilterUniverse);
     const stages = useWorkbench(selectFilterStages);
     const expr = useWorkbench((s) => s.filterExpr);
     const isDaily = setUniverse === "daily";

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { selectFilterStages, useWorkbench, type ChartView } from "../store/workbench.js";
+import { selectFilterStages, selectFilterUniverse, useWorkbench, type ChartView } from "../store/workbench.js";
 import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
 import type { FilterStage } from "./filter/stage.js";
 import { usePanelUi } from "../store/usePanelUi.js";
@@ -101,7 +101,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // ── 표식의 **두 소스는 갈라 둔다**(2026-09-18 단계 ③):
     //    ◇ = **현재 집합의 후보**(하루·셀 우주) · 다리 표식(드롭 캡·띠) = 격자 파생.
     //    한 memo 에서 뽑으면 ◇ 를 집합으로 옮기는 손이 다리 표식을 같이 죽인다.
-    const setUniverse = useWorkbench((s) => s.filterUniverse);
+    const setUniverse = useWorkbench(selectFilterUniverse);
     const funnelStages = useWorkbench(selectFilterStages);
     const funnelExpr = useWorkbench((s) => s.filterExpr);
     // 집합 평가는 **이 차트가 집합의 날짜를 보고 있을 때만** — 다른 날짜 차트가 두 번째 평가(와 15MB

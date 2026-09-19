@@ -10,7 +10,7 @@ import type { WorkbenchState } from "./workbench.js";
 import { parseStages } from "../panels/filter/stage.js";
 import { exprOfStages, findNode, hasCycle, parseExpr, refNode, replaceNode, ROOT_ID, type SetExpr } from "../panels/filter/expr.js";
 import { LEGACY_ASSEMBLIES_KEY, parseLegacyAssemblies } from "../panels/filter/legacyAssemblies.js";
-import { parseUniverse, type Universe } from "../panels/filter/universe.js";
+import { effectiveUniverse, universeOfExpr, parseUniverse, type Universe } from "../panels/filter/universe.js";
 import { putExpr } from "./filterFunnelSlice.js";
 import { parsePointDef } from "../lib/pointDef.js";
 import { persistPointDef } from "./pointDefSlice.js";
@@ -146,13 +146,6 @@ export interface SavedSetsSlice {
      * 덮어쓰기를 눌러야 실제로 바뀐다(보드에서 만지는 동안 고정 구독 패널이 작업 중간 상태를 받지 않게).
      */
     openSet: (id: string) => void;
-    /**
-     * **다른 우주로 복제**(⧉) — 조건을 **그대로** 옮긴 새 집합을 만든다. 이 추상화가 값을 치르는 자리:
-     * 종단에서 검증한 조건을 오늘 후보에 그대로 적용하는 경로다.
-     * ⚠ 결손이 될 조건도 **버리지 않는다** — 결손은 사실이지 삭제 사유가 아니고, 재료가 생기면
-     * 문법 변경 없이 켜진다는 약속이 여기서 지켜진다(경고는 화면이 먼저 보여준다).
-     */
-    cloneSetToUniverse: (id: string, universe: Universe) => void;
     /** 이름만 바꾼다(id·조건 유지 — 바인딩이 id 로 따라오므로 이름은 표시물일 뿐). 빈 이름·다른 집합과 같은 이름은 무시. */
     renameSet: (id: string, name: string) => void;
     deleteSet: (id: string) => void;
@@ -166,6 +159,14 @@ export interface SavedSetsSlice {
     openedSetId: string | null;
 }
 
+/**
+ * 참조가 가리키는 집합의 우주 — 저장물이 **들고 있는 값을 그대로** 믿는다.
+ * 그 값은 저장 시점에 같은 규칙(universeOfExpr)으로 파생해 굳힌 것이라 재귀가 필요 없고,
+ * 순환은 saveSet/overwriteSet 이 미리 거절한다. 없는 집합(지워진 참조)은 null = 우주를 안 정한다.
+ */
+export const refUniverse = (sets: readonly SavedSet[]) => (id: string): Universe | null =>
+    sets.find((x) => x.id === id)?.universe ?? null;
+
 export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSetsSlice> = (set) => ({
     savedSets: loadSavedSets(),
     openedSetId: null,
@@ -175,7 +176,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     saveSet: (name) => set((s) => {
         const n = name.trim();
         const expr = s.filterExpr;
-        const universe = s.filterUniverse;
+        const universe = effectiveUniverse(universeOfExpr(expr, refUniverse(s.savedSets)));
         const at = s.savedSets.findIndex((x) => x.name === n);
         // ⚠ **순환 참조 거절** — 자기를 (건너서라도) 참조하는 집합은 평가가 무한히 내려가고 드릴다운
         //   빵부스러기도 끝이 없다. 엎어쓰기일 때만 생길 수 있다(새 id 는 아직 아무도 안 가리킨다).
@@ -196,7 +197,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         const node = findNode(s.filterExpr, nodeId);
         if (n === "" || node === null || s.savedSets.some((x) => x.name === n)) return {};
         const id = `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-        const saved: SavedSet = { id, name: n, expr: node, universe: s.filterUniverse, pointDef: s.pointDef };
+        const saved: SavedSet = { id, name: n, expr: node, universe: effectiveUniverse(universeOfExpr(node, refUniverse(s.savedSets))), pointDef: s.pointDef };
         const sets = persistSavedSets([...s.savedSets, saved]);
         // 그 자리는 참조로 — **부정은 참조에 남긴다**(¬(a∧b) 를 승격했는데 부정이 사라지면 뜻이 갈린다).
         const neg = node.neg === true;
@@ -210,7 +211,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         // 조건·정의만 바뀐다(이름 유지). 같은 조건에서 나온 형제 집합이 있어도 **이 하나만** — 느리지만 암묵이 없다.
         // 우주도 함께 굳힌다 — 덮어쓰기는 "지금 만지는 것"을 그 집합으로 밀어 넣는 손짓이라, 우주만
         // 옛것으로 남으면 조건과 우주가 갈린 집합이 생긴다(그 순간 결손 지도가 거짓말한다).
-        const next = s.savedSets.map((x) => (x.id === id ? { ...x, expr: s.filterExpr, universe: s.filterUniverse, pointDef: s.pointDef } : x));
+        const next = s.savedSets.map((x) => (x.id === id ? { ...x, expr: s.filterExpr, universe: effectiveUniverse(universeOfExpr(s.filterExpr, refUniverse(s.savedSets))), pointDef: s.pointDef } : x));
         saveJson(SAVED_SETS_KEY, next);
         return { savedSets: next };
     }),
@@ -220,26 +221,10 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         // 사본이 작업 깔때기로(식 공유는 안전 — 편집 함수들이 늘 새 노드를 만든다).
         // 정의도 그 집합의 것으로 되돌린다(같은 영속 경로 persistPointDef) — 없는 옛 저장물은 현재 정의 유지.
         return {
-            ...putExpr(f.expr, f.universe),
+            ...putExpr(f.expr),
             openedSetId: id,
             ...(f.pointDef ? { pointDef: persistPointDef(f.pointDef) } : {}),
         };
-    }),
-    cloneSetToUniverse: (id, universe) => set((s) => {
-        const src = s.savedSets.find((x) => x.id === id);
-        if (!src || src.universe === universe) return {};
-        const base = `${src.name} (${universe === "daily" ? "하루" : "종단"})`;
-        // 이름 충돌은 꼬리 숫자로 — 같은 이름 덮어쓰기(saveSet 규칙)는 복제의 뜻이 아니다.
-        let name = base;
-        for (let i = 2; s.savedSets.some((x) => x.name === name); i++) name = `${base} ${i}`;
-        const copy: SavedSet = {
-            id: `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-            name,
-            expr: src.expr,
-            universe,
-            ...(src.pointDef ? { pointDef: src.pointDef } : {}),
-        };
-        return { savedSets: persistSavedSets([...s.savedSets, copy]) };
     }),
     renameSet: (id, name) => set((s) => {
         const n = name.trim();

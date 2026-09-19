@@ -33,6 +33,12 @@ const stages = (): ReturnType<typeof selectFilterStages> => selectFilterStages(u
 
 const DATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[0], to: DATES[1] }] }] };
 const THEME_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "themeStrength" as const, params: { ...DEFAULT_THEME_STRENGTH } }] };
+/**
+ * 하루 우주로 **끌어내리는** 조건 — 우주는 파생이라(9단계) 셀 종류 메뉴는 이런 조건이 있어야 뜬다.
+ * ⚠ 일부러 **누적대금**이다: 줄에 선 칩의 라벨이 팔레트 항목 이름과 겹치면(`등락률 ≥ 5` vs 팔레트
+ *   `등락률`) `byText` 의 startsWith 가 칩을 먼저 집어, 메뉴 대신 편집면이 열린다.
+ */
+const CELL_STAGE = { id: "c1", enabled: true, predicates: [{ kind: "cellValue" as const, field: "cumAmountEok" as const, ranges: [{ from: { kind: "value" as const, value: 100 } }] }] };
 
 const RESET = { filterExpr: exprOfStages([]), funnelSelection: null, selectedSetRef: null, savedSets: [], sessionUi: {}, themeBindings: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
@@ -271,7 +277,7 @@ describe("식 트리 — 묶음·부정·삽입 지점", () => {
 
     // ⚠ 이 검사가 7단계의 수용 기준 — 사용자는 괄호를 안 치고 "OR 로 추가"만 고른다.
     it("AND 자리에서 'OR 로 추가' 하면 **OR 묶음이 새로 생기며** 둘을 담는다", () => {
-        useWorkbench.setState({ filterUniverse: "daily", filterExpr: exprOfStages([DATE_STAGE]) });
+        useWorkbench.setState({ filterExpr: exprOfStages([CELL_STAGE]) });
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(byText(container, "＋ 조건")!); });
         act(() => { fireEvent.click(byText(baseElement, "OR 로 추가")!); });
@@ -280,7 +286,7 @@ describe("식 트리 — 묶음·부정·삽입 지점", () => {
         // "OR 로 추가"로 기대하는 것이다. 괄호는 이 규칙의 결과로 생긴다(손으로 안 친다).
         const e = useWorkbench.getState().filterExpr;
         expect(e.kind).toBe("or");
-        expect(e.kind !== "cond" && e.of.map((c) => c.kind)).toEqual(["and", "cond"]);
+        expect(e.kind === "or" && e.of.map((c) => c.kind)).toEqual(["and", "cond"]);
     });
 
     it("잎 부정 — ¬ 가 식에 실리고 줄에 표식이 선다", () => {
@@ -290,6 +296,6 @@ describe("식 트리 — 묶음·부정·삽입 지점", () => {
         expect(negBtn).toBeDefined();
         act(() => { fireEvent.click(negBtn!); });
         const e = useWorkbench.getState().filterExpr;
-        expect(e.kind !== "cond" && e.of[0]!.neg).toBe(true);
+        expect(e.kind === "and" && e.of[0]!.neg).toBe(true);
     });
 });

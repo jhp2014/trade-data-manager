@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { cloneDeficiencies, kindDeficiency, parseUniverse, predicateDeficiency, stageDeficiency, UNIVERSES, type Universe } from "../universe.js";
+import { committingUniverse, effectiveUniverse, kindDeficiency, parseUniverse, predicateDeficiency, stageDeficiency, universeOfExpr, universeOfStages, UNIVERSES, type Universe } from "../universe.js";
+import { exprOfStages, refNode } from "../expr.js";
 import type { FilterPredicate, PredicateKind } from "../stage.js";
 
 // 이 표가 **스펙**이고 테스트는 그 사본이다 — 결손 지도의 단일 출처(universe.ts)가 여기와 어긋나면
@@ -54,7 +55,7 @@ describe("predicateDeficiency — payload 까지 본다", () => {
     });
 });
 
-describe("칸·복제", () => {
+describe("칸·우주 파생", () => {
     const cellStage = { id: "s1", enabled: true, predicates: [{ kind: "cellValue" as const, field: "ratePct" as const, ranges: [{ from: { kind: "value" as const, value: 5 } }] }] };
     const timeStage = { id: "s2", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: "09:00", to: "10:00" }] }] };
 
@@ -64,10 +65,36 @@ describe("칸·복제", () => {
         expect(stageDeficiency(timeStage, "longitudinal")).toEqual([]);
     });
 
-    it("복제 경고는 **결손이 되는 칸만** 집는다 — 온전한 칸은 조용하다", () => {
-        const warn = cloneDeficiencies([cellStage, timeStage], "longitudinal");
-        expect(warn.map((w) => w.stageId)).toEqual(["s1"]);
-        expect(cloneDeficiencies([cellStage, timeStage], "daily")).toEqual([]);
+    // ── 우주 **파생**(2026-09-19 9단계) — 선언 필드도 토글도 없다. 조건이 우주를 정한다.
+    it("한쪽에만 사는 종류가 우주를 정한다 — 양쪽에 사는 종류(중립)는 안 정한다", () => {
+        expect(committingUniverse("cellValue")).toBe("daily");   // 종단에서 결손
+        expect(committingUniverse("axisValue")).toBe("longitudinal"); // 하루에서 결손
+        expect(committingUniverse("date")).toBe("longitudinal");  // 날짜는 하루에선 변수다
+        expect(committingUniverse("time"), "시각은 양쪽에 산다 = 중립").toBeNull();
+    });
+
+    it("조건이 없거나 중립뿐이면 **미정**이고, 확정값은 종단으로 떨어진다", () => {
+        expect(universeOfStages([])).toBeNull();
+        expect(universeOfStages([timeStage])).toBeNull();
+        expect(effectiveUniverse(null)).toBe("longitudinal");
+        expect(universeOfStages([timeStage, cellStage]), "첫 한쪽-전용이 정한다").toBe("daily");
+    });
+
+    // ⚠ 이게 참조를 보는 이유다 — `A ∨ B`(둘 다 하루 집합)는 **조건 잎이 하나도 없다**.
+    //   참조를 안 보면 종단으로 파생돼 하루 패널이 제 집합을 못 찾는다.
+    it("조립(참조만 든 식)의 우주는 참조가 정한다", () => {
+        const assembled = { kind: "or" as const, id: "g1", of: [refNode("s-a"), refNode("s-b")] };
+        const noRefs = (): null => null;
+        expect(universeOfExpr(assembled, noRefs), "가리키는 집합을 모르면 미정").toBeNull();
+        expect(universeOfExpr(assembled, (id) => (id === "s-a" ? "daily" : null))).toBe("daily");
+        // 지워진 참조는 우주를 안 정한다 — 그 뒤의 조건 잎이 정한다.
+        const mixed = { kind: "and" as const, id: "g2", of: [refNode("사라진것"), { kind: "cond" as const, stage: cellStage }] };
+        expect(universeOfExpr(mixed, noRefs)).toBe("daily");
+    });
+
+    it("잎만 든 식은 stages 판과 같은 답을 낸다(두 입구가 안 갈린다)", () => {
+        const e = exprOfStages([timeStage, cellStage]);
+        expect(universeOfExpr(e, () => null)).toBe(universeOfStages([timeStage, cellStage]));
     });
 });
 

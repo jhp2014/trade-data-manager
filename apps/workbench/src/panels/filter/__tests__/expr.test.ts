@@ -174,7 +174,7 @@ describe("승계 — 평평한 리스트는 루트 AND 가 되고 **id 는 그�
 
 // ── 8단계: 참조 잎 ────────────────────────────────────────────────────────
 describe("참조 잎 — 이름이 곧 중첩의 수단", () => {
-    const ref = (setId: string): SetExpr => ({ ...refNode(setId), id: `n-${setId}` });
+    const ref = (setId: string): SetExpr => ({ kind: "ref", id: `n-${setId}`, setId });
 
     // ⚠ 참조를 잎으로 세면 "이 집합의 조건 N개"가 남의 조건까지 세고, 편집면이 남의 것을 만진다.
     it("참조는 조건 목록에 안 든다 — 내용이 남의 것이다", () => {

@@ -20,13 +20,13 @@ import { useCallback, useMemo } from "react";
 import type { FunnelItem } from "@trade-data-manager/market/domain";
 import { chartKey } from "../../lib/pointKey.js";
 import type { SetRef } from "../../lib/setRef.js";
-import { useWorkbench } from "../../store/workbench.js";
+import { selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { useFunnel } from "./FunnelContext.js";
 import { DAY_SET_OPTS, useCellSet } from "./useCellSet.js";
 import { canPin, dayExprOf, dayUnsupportedReason, parsePanelBinding, targetUniverseOf } from "./panelSetBinding.js";
 import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
-import type { Universe } from "./universe.js";
+import { effectiveUniverse, type Universe } from "./universe.js";
 import type { ViewedSet } from "./useSetViews.js";
 
 
@@ -80,7 +80,7 @@ export function useBoundSet(panelId: string): BoundSet {
     const funnel = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
-    const workingUniverse = useWorkbench((s) => s.filterUniverse);
+    const workingUniverse = effectiveUniverse(useWorkbench(selectFilterUniverse));
     const workingExpr = useWorkbench((s) => s.filterExpr);
     const focusDate = useWorkbench((s) => s.focus.date);
 

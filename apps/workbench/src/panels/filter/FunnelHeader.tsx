@@ -16,9 +16,9 @@
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { selectFilterStages, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
 import { FAIL, POINT_DEF } from "../../styles/palette.js";
-import { UNIVERSE_LABEL } from "./universe.js";
+import { effectiveUniverse, UNIVERSE_LABEL } from "./universe.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 
 export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
@@ -26,7 +26,9 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
     const clearStages = useWorkbench((s) => s.clearFilterStages);
     // 편집 대상의 **타입**(우주) — 전역 모드 스위치가 아니라 "지금 만지는 집합이 무엇인가"의 표시다.
     // 바꾸는 손은 집합 줄의 `＋ 새 집합 ▾` 하나뿐(decisions 「집합」).
-    const setUniverse = useWorkbench((s) => s.filterUniverse);
+    // 우주는 **파생**이다(2026-09-19 9단계) — null = 아직 안 정해짐(중립 조건뿐이거나 조건 0개).
+    const derived = useWorkbench(selectFilterUniverse);
+    const setUniverse = effectiveUniverse(derived);
     const date = useWorkbench((s) => s.focus.date);
 
     const controls = useMemo<ControlSpec[]>(() => [
@@ -45,10 +47,12 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
                 fontSize: 10, flexShrink: 0, borderRadius: 8, padding: "0 6px",
                 color: setUniverse === "daily" ? "var(--accent-primary)" : "var(--text-secondary)",
                 border: `1px solid ${setUniverse === "daily" ? POINT_DEF : "var(--border-default)"}`,
-            }} title={setUniverse === "daily"
-                ? "하루·셀 우주 — 그날 전 (종목,분) 셀이 모수다. 날짜는 정의가 아니라 전역 시선이 주는 변수."
-                : "종단 · 좌표 우주 — 라벨 좌표 전부가 모수다(전 기간)."}>
-                {UNIVERSE_LABEL[setUniverse]}
+            }} title={derived === null
+                ? "아직 우주가 안 정해졌습니다 — 한쪽에만 사는 조건(등락률·격자 Point 등 하루 재료, 축값·결과 등 종단 재료)을 처음 걸면 그때 정해집니다. 그 전엔 종단으로 평가합니다."
+                : setUniverse === "daily"
+                    ? "하루·셀 우주 — 그날 전 (종목,분) 셀이 모수다. 날짜는 정의가 아니라 전역 시선이 주는 변수. **조건이 정한 것이지 고른 것이 아니다.**"
+                    : "종단 · 좌표 우주 — 라벨 좌표 전부가 모수다(전 기간). **조건이 정한 것이지 고른 것이 아니다.**"}>
+                {derived === null ? "우주 · 미정" : UNIVERSE_LABEL[setUniverse]}
             </span>
             {setUniverse === "daily" && (
                 <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-secondary)", flexShrink: 0 }}

@@ -21,15 +21,15 @@ import { useState } from "react";
 import { InlineRename } from "../../ui/InlineRename.js";
 import { GazeChip } from "../../components/ControlChrome.js";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
-import { useWorkbench } from "../../store/workbench.js";
+import { selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
 import { usePersistedState } from "../../store/persist.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { FAIL, PIN } from "../../styles/palette.js";
 import { WorksetRowShell, visibleChips, type ChipItem } from "../WorksetChipRow.js";
 import { useFunnel } from "./FunnelContext.js";
 import type { ResolvedSet } from "./resolveSet.js";
-import { cloneDeficiencies, UNIVERSE_LABEL, UNIVERSES } from "./universe.js";
-import { leafCount, leavesOf } from "./expr.js";
+import { effectiveUniverse, UNIVERSE_LABEL } from "./universe.js";
+import { leafCount } from "./expr.js";
 import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
 import { textInput } from "./ui.js";
 
@@ -131,11 +131,8 @@ function SetManager({ pins, onTogglePin, onPick }: {
     const renameSet = useWorkbench((s) => s.renameSet);
     const deleteSet = useWorkbench((s) => s.deleteSet);
     const openedSetId = useWorkbench((s) => s.openedSetId);
-    const setUniverse = useWorkbench((s) => s.filterUniverse);
-    const setFilterUniverse = useWorkbench((s) => s.setFilterUniverse);
-    const cloneSet = useWorkbench((s) => s.cloneSetToUniverse);
-    /** 복제는 **두 번 눌러 확정**한다(삭제와 같은 규칙) — 첫 클릭이 결손 경고를 띄운다. */
-    const [armedClone, setArmedClone] = useState<string | null>(null);
+    // 우주는 **파생**이다 — 고르는 토글도, 우주를 넘기는 ⧉ 복제도 없다(2026-09-19 9단계).
+    const setUniverse = effectiveUniverse(useWorkbench(selectFilterUniverse));
 
     const [name, setName] = useState("");
     const [renaming, setRenaming] = useState<string | null>(null); // 이름 편집 중인 집합 id — draft 는 InlineRename 이 든다
@@ -169,19 +166,6 @@ function SetManager({ pins, onTogglePin, onPick }: {
                 </button>
             </div>
 
-            {/* ＋ 새 집합 — **우주 토글이 서는 유일한 자리**다(decisions 「집합」: 모드 스위치 기각).
-                고르면 조건이 비워진다 — 우주를 넘기며 조건을 들고 가는 정식 경로는 ⧉ 복제뿐이다. */}
-            <div style={sectionHead}>＋ 새 집합 — 우주를 고르면 조건이 비워집니다</div>
-            <div style={{ display: "flex", gap: 5, padding: "3px 10px 5px" }}>
-                {UNIVERSES.map((u) => (
-                    <button key={u} onClick={() => setFilterUniverse(u)}
-                        style={{ ...smallBtn(u === setUniverse ? "accent" : "normal", u === setUniverse), fontSize: 10.5 }}
-                        title={u === setUniverse ? "지금 이 우주를 편집 중입니다" : `${UNIVERSE_LABEL[u]} 우주의 새 집합 — 지금 조건은 비워집니다(저장해 두려면 먼저 저장하세요)`}>
-                        {UNIVERSE_LABEL[u]}
-                    </button>
-                ))}
-            </div>
-
             <div style={sectionHead}>저장 집합 {savedSets.length > 0 ? `${savedSets.length}개 · 고정 = 줄에 늘 선다` : "— 아직 없음"}</div>
             {savedSets.map((f) => {
                 const ref: SetRef = { kind: "saved", setId: f.id };
@@ -190,8 +174,7 @@ function SetManager({ pins, onTogglePin, onPick }: {
                 const opened = openedSetId === f.id;
                 const editing = renaming === f.id;
                 const r = v.resolveSet(ref);
-                const other = f.universe !== setUniverse; // 다른 우주 — 숨기지 않고 회색 + 복제 손잡이
-                const willLose = other ? cloneDeficiencies(leavesOf(f.expr), setUniverse) : [];
+                const other = f.universe !== setUniverse; // 다른 우주 — 숨기지 않고 회색 + 뱃지
                 return (
                     <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 6px 2px 4px", background: active ? "var(--accent-soft)" : "transparent" }}>
                         {editing ? (
@@ -213,22 +196,13 @@ function SetManager({ pins, onTogglePin, onPick }: {
                         )}
                         <button onClick={() => onTogglePin(f.id)} aria-pressed={pinned} style={smallBtn("normal", pinned)}
                             title={pinned ? `${f.name} — 고정 해제(줄에서 내린다)` : `${f.name} — 줄에 고정(늘 선다)`}>고정</button>
-                        {other ? (
-                            armedClone === f.id ? (
-                                <button onClick={() => { cloneSet(f.id, setUniverse); setArmedClone(null); }} style={smallBtn("accent", true)}
-                                    title={willLose.length > 0
-                                        ? `정말 복제 — 조건 ${willLose.length}개가 이 우주에서 **결손**이 됩니다(지우지는 않습니다): ${willLose.map((w) => w.reasons[0]).join(" / ")}`
-                                        : "정말 복제 — 결손이 되는 조건은 없습니다"}>
-                                    {willLose.length > 0 ? `정말 복제 (결손 ${willLose.length})` : "정말 복제"}
-                                </button>
-                            ) : (
-                                <button onClick={() => setArmedClone(f.id)} style={smallBtn("accent")}
-                                    title={`이 우주(${UNIVERSE_LABEL[setUniverse]})로 복제 — 조건은 **그대로** 옮겨집니다. 이 우주에서 결손이 되는 조건도 지우지 않습니다(재료가 생기면 켜집니다). 한 번 더 눌러 확정.`}>⧉ 복제</button>
-                            )
-                        ) : (
-                            <button onClick={() => openSet(f.id)} style={smallBtn()}
-                                title="보드에 열기 — 조건 사본이 보드에 펼쳐집니다(저장물은 덮어쓰기 전까지 안 변함)">열기</button>
-                        )}
+                        {/* ⧉ 복제는 폐지됐다(2026-09-19 사용자 확정) — 우주를 조건이 정하니
+                            "조건은 그대로 두고 우주만 바꾸기"가 원리적으로 불가능하다. 다른 우주 집합은
+                            숨기지 않고 **회색 + 뱃지**로 서고, 열면 그 집합의 우주로 자연히 갈아탄다. */}
+                        <button onClick={() => openSet(f.id)} style={smallBtn()}
+                            title={other
+                                ? `다른 우주(${UNIVERSE_LABEL[f.universe]})의 집합입니다 — 열면 그 조건이 보드에 펼쳐지고 우주도 그 조건을 따라갑니다`
+                                : "보드에 열기 — 조건 사본이 보드에 펼쳐집니다(저장물은 덮어쓰기 전까지 안 변함)"}>열기</button>
                         {opened && (
                             <button onClick={() => overwriteSet(f.id)} disabled={nothingToSave} style={{ ...smallBtn(nothingToSave ? "normal" : "accent"), cursor: nothingToSave ? "default" : "pointer" }}
                                 title={nothingToSave ? "걸린 필터가 없습니다 — 덮어쓰면 이 집합이 전체와 같아집니다"

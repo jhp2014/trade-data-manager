@@ -15,6 +15,7 @@
 //   결손 지도를 그냥 지나치면, 그 종류는 모든 우주에서 조용히 "가용"이 되어 엉뚱한 우주에서
 //   영영 거짓으로 평가된다. 컴파일 에러로 여기를 만나게 하는 것이 자물쇠의 존재 이유 전부다.
 import { unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
+import { isGroup, type SetExpr } from "./expr.js";
 
 /**
  * 우주 — **2치**다. 설계의 2×2 중 낟알(day/point)은 조건에서 파생하고(stage.ts 머리 주석의 규칙),
@@ -33,6 +34,71 @@ export const UNIVERSE_LABEL: Record<Universe, string> = {
 
 /** 저장물 승계 — 부재·오염은 **종단**이다(우주 선언이 없던 시절 저장물의 행동 그대로). */
 export const parseUniverse = (v: unknown): Universe => (v === "daily" ? "daily" : "longitudinal");
+
+/**
+ * 이 술어 종류가 **한 우주에만** 살 수 있나 — 그 우주를 돌려준다(둘 다 되면 null).
+ * 우주 **파생**(2026-09-19 9단계)의 유일한 자다: 조건이 우주를 정하지, 사람이 토글로 정하지 않는다.
+ */
+export function committingUniverse(k: PredicateKind): Universe | null {
+    const inLong = kindDeficiency(k, "longitudinal") === null;
+    const inDay = kindDeficiency(k, "daily") === null;
+    if (inLong === inDay) return null; // 둘 다 되거나(중립) 둘 다 안 되면(어디서도 결손) 우주를 못 정한다
+    return inLong ? "longitudinal" : "daily";
+}
+
+/**
+ * 이 조건들이 정하는 우주 — **null = 아직 안 정해짐**(중립 조건만 있거나 조건이 없다).
+ *
+ * ⚠ 선언이 아니라 파생인 이유: 우주가 정하던 셋(셀 수·결손 지도·날짜 변수)이 전부 조건에서 계산되기
+ * 때문이다. 그래서 토글이 없고, **첫 한쪽-전용 조건이 우주를 정한 뒤로는 반대편이 팔레트에서
+ * 회색(결손+이유)으로 선다** — 잠그는 것이 아니라 "여기선 평가할 수 없다"는 사실을 말하는 것이다.
+ * 중립뿐이면 null 이고, 그때는 아무것도 회색이 아니다(아직 아무 쪽도 아니므로).
+ */
+export function universeOfStages(stages: readonly { predicates: readonly { kind: PredicateKind }[] }[]): Universe | null {
+    for (const s of stages) {
+        for (const p of s.predicates) {
+            const u = committingUniverse(p.kind);
+            if (u !== null) return u;
+        }
+    }
+    return null;
+}
+
+/**
+ * 식 하나가 정하는 우주 — 조건 잎뿐 아니라 **참조도 본다**.
+ *
+ * ⚠ 참조를 빼면 `A ∨ B`(둘 다 하루 집합)처럼 **조건 잎이 하나도 없는 조립**이 종단으로 파생돼,
+ * 하루 패널이 제 집합을 못 찾는다. `universeOfRef` 는 저장물이 들고 있는 값을 그대로 돌려주면
+ * 된다 — 저장 시점에 같은 규칙으로 파생해 굳혔으므로 재귀가 필요 없다(순환은 저장 때 거절된다).
+ *
+ * 먼저 만나는 **한쪽-전용**이 정한다(좌→우). 둘이 엇갈리는 식(하루 조건 ∧ 종단 참조)은 여기서
+ * 막지 않는다 — 결손 지도가 그 자리를 회색으로 말하는 것이 이 설계의 규칙이다(대수는 한 벌).
+ */
+export function universeOfExpr(e: SetExpr, universeOfRef: (setId: string) => Universe | null): Universe | null {
+    let found: Universe | null = null;
+    const walk = (n: SetExpr): boolean => {
+        if (n.kind === "cond") {
+            for (const p of n.stage.predicates) {
+                const u = committingUniverse(p.kind);
+                if (u !== null) { found = u; return true; }
+            }
+            return false;
+        }
+        if (n.kind === "ref") {
+            const u = universeOfRef(n.setId);
+            if (u !== null) { found = u; return true; }
+            return false;
+        }
+        if (!isGroup(n)) return false;
+        for (const c of n.of) if (walk(c)) return true;
+        return false;
+    };
+    walk(e);
+    return found;
+}
+
+/** 평가·표시가 쓰는 확정값 — 중립(null)은 **종단**으로 떨어진다(우주가 없던 시절의 행동 그대로). */
+export const effectiveUniverse = (u: Universe | null): Universe => u ?? "longitudinal";
 
 /**
  * 종류만 보고 답하는 결손(payload 무관) — 팔레트 회색의 재료.
@@ -114,17 +180,4 @@ export function stageDeficiency(s: FilterStage, u: Universe): string[] {
     const out = new Set<string>();
     for (const p of s.predicates) for (const r of predicateDeficiency(p, u)) out.add(r);
     return [...out];
-}
-
-/** 복제 경고 — 이 조건들을 저 우주로 옮기면 무엇이 결손이 되나(칸 단위로 묶어 사람이 읽게). */
-export function cloneDeficiencies(
-    stages: readonly FilterStage[],
-    to: Universe,
-): { stageId: string; reasons: string[] }[] {
-    const out: { stageId: string; reasons: string[] }[] = [];
-    for (const s of stages) {
-        const reasons = stageDeficiency(s, to);
-        if (reasons.length > 0) out.push({ stageId: s.id, reasons });
-    }
-    return out;
 }

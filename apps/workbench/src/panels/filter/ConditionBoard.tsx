@@ -19,7 +19,7 @@ import { createPanelSlot, openAndFocus, openPanelExact } from "../../lib/openPan
 import { DEFAULT_THEME_STRENGTH } from "../../lib/themeStrength.js";
 import { useRankSections } from "../../lib/useRankSections.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { selectFilterStages, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
 import { useDock } from "../../store/dock.js";
 import { slotTitleOf } from "../../shell/panelCatalog.js";
 import { parseSlotId } from "../../shell/panelSlots.js";
@@ -29,7 +29,7 @@ import { useFunnel } from "./FunnelContext.js";
 import { Note } from "./grain.js";
 import type { CellValueRange } from "@trade-data-manager/market/domain";
 import { CellStageFields } from "./CellPredicateFields.js";
-import { kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
+import { effectiveUniverse, kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
 import { GroupEditors, RailEditors, type GroupEditorAnchor, type RailEditor } from "./ConditionEditors.js";
 import { ExprTree, type ExprTreeHandlers } from "./ExprTree.js";
 import { findNode, negOf, negateNode, refsOf, removeNode, toggleOperator } from "./expr.js";
@@ -62,7 +62,10 @@ export function ConditionBoard({ panelId }: {
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
     const setStage = useWorkbench((s) => s.setFilterStage);
     // 편집 대상의 **타입** — 팔레트 회색·결손 배지·칸 층위가 전부 이 하나로 갈린다(모드 스위치가 아니다).
-    const setUniverse = useWorkbench((s) => s.filterUniverse);
+    // 우주는 **파생**이다(2026-09-19 9단계). null = 아직 안 정해짐 — 그때는 팔레트에서 **아무것도
+    // 회색이 아니다**(어느 쪽도 아니므로). 한쪽-전용 조건이 처음 들어오면 그때부터 반대편이 결손으로 선다.
+    const universe = useWorkbench(selectFilterUniverse);
+    const setUniverse = effectiveUniverse(universe);
 
     // ── 편집면으로 데려가기 ──
     const sendOutcomeReveal = useRevealSender(OUTCOME_REVEAL);
@@ -230,7 +233,7 @@ export function ConditionBoard({ panelId }: {
 
                 {!v.isLoading && (
                     <AddCondition
-                        setUniverse={setUniverse}
+                        setUniverse={universe}
                         onCell={(p) => addStageAt([p], picked, addMode)}
                         mode={addMode}
                         onMode={setAddMode}
@@ -320,8 +323,12 @@ export function ConditionBoard({ panelId }: {
  * 한 겹 들어간다(팝오버를 겹쳐 띄우면 바깥 클릭 해제가 서로를 먹는다).
  */
 function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot, mode, onMode, atLabel }: {
-    /** 편집 대상의 우주 — 팔레트는 **숨기지 않고 회색**으로 세운다(대수는 한 벌, 결손은 사실). */
-    setUniverse: Universe;
+    /**
+     * 편집 대상의 우주 — **파생값**이라 `null`(아직 안 정해짐)이 있다. 팔레트는 숨기지 않고
+     * **회색**으로 세우고(대수는 한 벌, 결손은 사실), `null` 이면 아무것도 회색이 아니다 —
+     * 그때는 어느 쪽 조건이든 처음 하나가 우주를 정한다.
+     */
+    setUniverse: Universe | null;
     /** 셀 조건 만들기 — 전용 편집 판이 없는 종류라 기본 payload 로 줄을 만들고 그 자리에서 만진다. */
     onCell: (p: FilterPredicate) => void;
     /** 계산 축 목록 — "계산 축" 을 고르면 이 목록으로 한 겹 들어간다(팝오버 안에서 화면을 바꾼다). */
@@ -350,7 +357,8 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
     const item = (close: () => void, label: string, hint: string, run: (e: React.MouseEvent) => void, kind?: PredicateKind, keepOpen = false): JSX.Element => {
         // 결손은 **숨기지 않는다** — 회색 + 이유. 숨기면 "그 우주엔 그런 문법이 없다"가 되어, 나중에
         // 재료가 생겨도 합치는 공사가 다시 필요해진다(decisions 「집합」: 대수는 한 벌).
-        const why = kind ? kindDeficiency(kind, setUniverse) : null;
+        // 우주가 미정이면 회색이 없다 — 첫 한쪽-전용 조건이 우주를 정할 자유를 남긴다.
+        const why = kind && setUniverse !== null ? kindDeficiency(kind, setUniverse) : null;
         return (
             <button onClick={(e) => { if (why) return; if (!keepOpen) close(); run(e); }} title={why ?? hint} disabled={why !== null}
                 style={{
@@ -397,7 +405,7 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
                         <span style={{ marginLeft: "auto", fontSize: 9.5, color: "var(--text-tertiary)" }}>{atLabel}</span>
                     </div>
                     {/* 하루·셀 우주의 종류들 — 전용 판이 없어 **여기서 만들고 줄에서 만진다**. */}
-                    {setUniverse === "daily" && (
+                    {setUniverse !== "longitudinal" && (
                         <>
                             {item(close, "등락률", "그 분의 등락률(UN %) — 값은 줄에서 만집니다", () => onCell({ kind: "cellValue", field: "ratePct", ranges: [atLeast(5)] }), "cellValue")}
                             {item(close, "누적대금", "그 분까지의 세션 누적 거래대금(억)", () => onCell({ kind: "cellValue", field: "cumAmountEok", ranges: [atLeast(100)] }), "cellValue")}
