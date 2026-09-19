@@ -28,7 +28,7 @@ export * from "./classification/dailyComment.js";
 export * from "./review/chartAnchor.js";
 export * from "./review/reviewPoint.js";
 export * from "./review/group.js";
-// 후보 하루를 모수로 삼는 필터 깔때기의 정산(단계 독립 평가 · 3치 AND · 5칸 · 한계 기여도).
+// 후보 하루를 모수로 삼는 필터 깔때기의 정산(3치 AND 하나 — 5칸 진단은 2026-09-19 은퇴).
 export * from "./review/funnel.js";
 
 // probe/probe.ts 는 **배럴에서 뺐다** — cellset 으로 이주를 마쳤고, 남은 유일한 소비자가

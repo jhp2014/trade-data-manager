@@ -1,22 +1,21 @@
 // core/market/domain/review — 필터 깔때기의 **정산**. 조건이 무엇인지는 모르고, 판정 결과만 집계한다.
 //
-// 깔때기는 **실행이 아니라 설명**이다. 각 단계를 "앞 단계 생존자"가 아니라 **전체 유니버스에 독립 평가**한다.
-// 생존자만 평가하면 "뒷 단계는 통과했는데 앞에서 죽은 것"이 원리적으로 계산되지 않는데, 그 집합이야말로
-// 앞 단계가 과했는지 알려주는 유일한 재료다(= 근접 탈락). 순차 깔때기가 못 주는 게 정확히 이것.
-//
 // **술어를 평가하지 않는다.** 단계마다 재료가 다르고(그룹 멤버십·축 배치줄·날짜…) 그걸 다 알면 이 모듈이
-// 앱 전체에 묶인다. 그래서 입력은 이미 3치로 판정된 `verdictOf` 뿐이고, 여기서 하는 일은 상류 AND ·
-// 5칸 분류 · 한계 기여도다. 판정 규칙은 각 술어의 지식, 정산 규칙은 여기 지식.
+// 앱 전체에 묶인다. 그래서 입력은 이미 3치로 판정된 `verdictOf` 뿐이고, 여기서 하는 일은 전 단계 3치
+// AND 하나다. 판정 규칙은 각 술어의 지식, 정산 규칙은 여기 지식.
 //
-// ⚠ **상류 = 이 단계보다 앞선 단계들**(전부가 아니라). 최종 생존 집합은 전 단계 AND 라 순서와 무관하지만,
-// "어느 단계가 무엇을 죽였나"라는 **이야기**는 순서가 만든다. 그래서 재계산 없이 단계를 재배열해 다르게
-// 읽을 수 있다 — 순서가 바꾸는 건 서술이지 결과가 아니다.
+// ⚠ **2026-09-19 로 5칸 진단이 은퇴했다**(decisions.md 「집합 편성 재설계」). 단계별 칸 분류(생존/근접
+// 탈락/상류 보류/탈락/미배치)·한계 기여도(`newlyKilled`)·`blockedBy` 가 전부 사라졌고, 남은 산출물은
+// **생존자 · 미배치 수 · 유니버스 크기** 셋뿐이다. 그래서 **단계 순서가 결과에 아무 영향이 없다**(3치
+// AND 는 교환법칙이 성립한다) — 순서로 이야기를 만들던 층이 통째로 없어졌기 때문이다.
+//
+// 대수 자체(`and3`/`or3`/`not3`)는 남는다 — 다음 판의 식 트리(AND/OR/NOT)가 그대로 딛는 바닥이다.
 import type { ChartRef } from "./group.js";
 
 /**
  * 3치 판정 — `undefined` 는 "재료가 없어 판단 불가"(미배치). 알람·보드 필터의 `evalPredicate` 와 같은 규칙이다.
- * ⚠ **"안 맞았다"(false)와 "아직 안 했다"(undefined)를 절대 섞지 않는다.** 섞으면 근접 탈락 집합이
- * "배치가 밀린 것"으로 오염돼 "앞 단계가 과했나"를 물을 수 없게 된다.
+ * ⚠ **"안 맞았다"(false)와 "아직 안 했다"(undefined)를 절대 섞지 않는다.** 섞으면 결손이 탈락으로
+ * 새어 "조건에 안 맞은 것"과 "아직 재료가 없는 것"을 화면이 구분할 수 없게 된다.
  */
 export type Verdict = boolean | undefined;
 
@@ -87,7 +86,7 @@ export function finestGrain(grains: Iterable<Grain>): Grain {
 /**
  * 유니버스를 표시 알갱이로 펼친다. 후보는 언제나 (종목·날짜)이고 — 후보 판정은 축·맵과 무관하게 하나여야
  * 단계별 숫자를 서로 비교할 수 있다 — 타점 알갱이에서만 그 하루의 타점들로 갈라진다.
- * **타점이 하나도 없는 후보 하루는 시각 없는 항목 하나로 남는다**(사라지지 않고 미배치 칸에 뜬다).
+ * **타점이 하나도 없는 후보 하루는 시각 없는 항목 하나로 남는다**(사라지지 않고 미배치로 뜬다).
  */
 export function expandUniverse(
     candidates: readonly ChartRef[],
@@ -110,92 +109,34 @@ export interface FunnelStage {
     verdictOf: (item: FunnelItem) => Verdict;
 }
 
-/**
- * 한 단계에서 항목이 앉는 칸. 앞 셋은 전부 "이번 통과"이고 **상류 상태로만** 갈린다 —
- * 그래서 근접 탈락(상류 탈락)과 상류 보류(상류 미배치)가 반드시 나뉜다.
- */
-export type FunnelCell = "survive" | "nearMiss" | "upstreamPending" | "fail" | "pending";
-
-/** 이 항목이 이 단계의 어느 칸인가. upstream = 앞선 단계들의 3치 AND. */
-export function cellOf(own: Verdict, upstream: Verdict): FunnelCell {
-    if (own === false) return "fail";
-    if (own === undefined) return "pending";
-    if (upstream === true) return "survive";
-    if (upstream === false) return "nearMiss";
-    return "upstreamPending";
-}
-
-export interface StageTally {
-    stageId: string;
-    /** 칸별 항목(클릭하면 목록에 뿌릴 것). 유니버스가 수천 규모라 참조 배열로 들고 있어도 싸다. */
-    cells: Record<FunnelCell, FunnelItem[]>;
-    counts: Record<FunnelCell, number>;
-    /**
-     * 한계 기여도 — **이번에 새로 죽인 수**(상류 전부 통과였는데 이번에 탈락). `fail` 의 부분집합이다.
-     * 0 에 가까우면 그 단계는 장식이다. 겉보기 선택도(탈락 총수)와 전혀 다를 수 있고, 바로 그 차이가
-     * "이 조건이 실제로 일을 하고 있나"를 답한다.
-     */
-    newlyKilled: number;
-}
-
 export interface FunnelResult {
     universe: number;
-    stages: StageTally[];
     /** 전 단계 3치 AND 통과 — **순서와 무관**. 미배치는 여기 못 든다. */
     survivors: FunnelItem[];
     /** 전 단계 AND 가 미배치(undefined)로 남은 항목 수 — 생존도 탈락도 아닌 결손의 총량(조용히 사라지면 안 된다). */
     pendingCount: number;
 }
 
-const emptyCells = (): Record<FunnelCell, FunnelItem[]> =>
-    ({ survive: [], nearMiss: [], upstreamPending: [], fail: [], pending: [] });
-
 /**
- * 정산 본체. 단계마다 유니버스 전체를 돌며 칸을 매기고, 마지막에 전 단계 AND 로 생존자를 낸다.
+ * 정산 본체 — 항목마다 전 단계 3치 AND 를 접어 생존/미배치를 가른다.
  * 판정은 항목×단계로 한 번씩만 부른다(verdictOf 가 비쌀 수 있다).
  *
- * 상류는 **접어 나간다.** 예전엔 단계마다 앞선 판정을 다시 잘라 AND 했는데(`and3(row.slice(0, s))`)
- * 그게 항목×단계²에 더해 그 잘라낸 배열까지 매번 새로 만드는 일이었다 — 유니버스가 수천이면
- * 그 자체가 이 함수의 비용이다. 접기는 상류의 정의(앞선 단계들만)를 그대로 유지한다:
- * 쓰기 전엔 아직 이번 단계를 안 접었으므로 언제나 "앞선 것들"만 들어 있다.
+ * ⚠ **탈락(false)에서 즉시 접지 않는다.** `andStep` 이 false 를 흡수하므로 결과는 같지만, 남은 단계의
+ * `verdictOf` 를 계속 부르는 건 낭비다 — 그런데 여기서 단락을 넣으면 "판정은 항목×단계 한 번씩"이라는
+ * 호출 계약이 깨져 판정기 쪽 메모(같은 항목을 여러 단계가 공유하는 캐시)의 적중 패턴이 바뀐다.
+ * 단락은 하루 엔진(cellset)의 일이고 여기는 종단 유니버스(수천 규모)라 그대로 둔다.
  */
 export function tallyFunnel(items: readonly FunnelItem[], stages: readonly FunnelStage[]): FunnelResult {
-    const tallies: StageTally[] = stages.map((s) => ({
-        stageId: s.id,
-        cells: emptyCells(),
-        counts: { survive: 0, nearMiss: 0, upstreamPending: 0, fail: 0, pending: 0 },
-        newlyKilled: 0,
-    }));
-
     const survivors: FunnelItem[] = [];
     let pendingCount = 0;
     for (const item of items) {
         let upstream: Verdict = true; // 앞이 없으면 막힌 적도 없다(공허참 — and3([]) 와 같은 값)
         for (let s = 0; s < stages.length; s++) {
-            const own = stages[s]!.verdictOf(item);
-            const cell = cellOf(own, upstream);
-            const t = tallies[s]!;
-            t.cells[cell].push(item);
-            t.counts[cell]++;
-            if (own === false && upstream === true) t.newlyKilled++;
-            upstream = andStep(upstream, own); // 이번 단계는 **쓰고 나서** 접는다
+            upstream = andStep(upstream, stages[s]!.verdictOf(item));
         }
-        // 다 접은 upstream = 전 단계 AND — 생존 판정에 한 바퀴 더 돌 필요가 없다(순서와 무관한 값).
+        // 다 접은 upstream = 전 단계 AND(순서와 무관한 값).
         if (upstream === true) survivors.push(item);
         else if (upstream === undefined) pendingCount++;
     }
-    return { universe: items.length, stages: tallies, survivors, pendingCount };
-}
-
-/**
- * 이 항목을 앞선 단계 중 **어디가 막았나**(탈락시킨 단계 id들). 근접 탈락 목록의 "막힌 단계" 열이 이걸 쓴다 —
- * "2차는 통과인데 1차 그룹에서 죽었다"를 행마다 말해줘야 앞 단계가 과했는지 판단할 재료가 된다.
- * 미배치(보류)는 여기 안 든다 — 막은 게 아니라 아직 안 본 것이다.
- */
-export function blockedBy(stages: readonly FunnelStage[], upToIndex: number, item: FunnelItem): string[] {
-    const out: string[] = [];
-    for (let s = 0; s < upToIndex && s < stages.length; s++) {
-        if (stages[s]!.verdictOf(item) === false) out.push(stages[s]!.id);
-    }
-    return out;
+    return { universe: items.length, survivors, pendingCount };
 }

@@ -144,7 +144,7 @@ describe("작업 깔때기", () => {
             activeFilter: {
                 grain: "point",
                 active: [],
-                tally: { universe: 1, stages: [], survivors: [{ stockCode: "000003", date: "2026-07-03", time: "11:00:00" }], pendingCount: 0 },
+                tally: { universe: 1, survivors: [{ stockCode: "000003", date: "2026-07-03", time: "11:00:00" }], pendingCount: 0 },
             },
         };
         const r = resolveSetRef({ kind: "survivors" }, injected);

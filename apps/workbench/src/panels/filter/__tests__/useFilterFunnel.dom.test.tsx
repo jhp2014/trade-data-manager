@@ -147,12 +147,6 @@ describe("정산 — 표시와 정산이 같은 순서를 본다", () => {
         setStages([{ id: "s1", enabled: true, predicates: [{ kind: "date", ranges: [] }] }]);
         expect(read().active).toEqual([]);
     });
-
-    it("정산 칸이 활성 단계와 1:1", () => {
-        setStages([dateStage("s1", D1, D1)]);
-        const v = read();
-        expect(v.result?.stages).toHaveLength(v.active.length);
-    });
 });
 
 describe("그룹 계층 상속 — '테마'를 걸면 '테마 ▸ 2차전지' 소속도 잡힌다", () => {
@@ -358,11 +352,13 @@ describe("테마 강도 배선 — 실제 시드(번들·멤버십)로 판정까
         const v = read({ ...SEED, rankSections, themeMembers });
         expect(v.grain).toBe("point");
         expect(v.universe).toBe(4); // 타점 3 + 타점 0인 하루(C@D2) 1
-        // A@09:30·B@10:00 은 단면 有 → 동료 2(자신 포함) 통과. A@09:35 는 단면 無 → 미배치(pending 칸).
-        const t = v.result!.stages[0].counts;
-        expect(t.survive).toBe(2);
-        expect(t.pending).toBe(2); // 단면 없는 A@09:35 + 시각 없는 C@D2 하루 항목
-        expect(t.fail).toBe(0); // 결손이 탈락으로 새지 않는다 — 이 검사가 이 테스트의 존재 이유
+        // A@09:30·B@10:00 은 단면 有 → 동료 2(자신 포함) 통과. A@09:35 는 단면 無 → 미배치.
+        const t = v.result!;
+        expect(t.survivors).toHaveLength(2);
+        expect(t.pendingCount).toBe(2); // 단면 없는 A@09:35 + 시각 없는 C@D2 하루 항목
+        // 탈락 = 유니버스 − 생존 − 미배치. 0 이어야 한다 — 결손이 탈락으로 새지 않는다는 것이
+        // 이 테스트의 존재 이유다(5칸 은퇴 뒤에도 같은 것을 세 수의 차로 잰다).
+        expect(v.universe - t.survivors.length - t.pendingCount).toBe(0)
     });
 
     it("멤버십 재료가 아직 없으면(미도착) 전부 미배치 — 빈 인덱스가 '전부 탈락'으로 위장하지 않는다", () => {
@@ -373,9 +369,9 @@ describe("테마 강도 배선 — 실제 시드(번들·멤버십)로 판정까
         const { result } = renderHook(() => useFilterFunnel(), {
             wrapper: ({ children }: { children: ReactNode }): JSX.Element => <Providers client={client}>{children}</Providers>,
         });
-        const t = result.current.result!.stages[0].counts;
-        expect(t.fail).toBe(0);
-        expect(t.survive).toBe(0);
-        expect(t.pending).toBe(result.current.universe);
+        const t = result.current.result!;
+        expect(t.survivors).toHaveLength(0);
+        // 전부 미배치 = 탈락 0 — 빈 인덱스가 "전부 탈락"으로 위장하지 않는다.
+        expect(t.pendingCount).toBe(result.current.universe);
     });
 });
