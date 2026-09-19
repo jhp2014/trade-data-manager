@@ -5,7 +5,7 @@
 // 저장·덮어쓰기에만 변한다). 접점은 putStages 하나 — 열기(openSet)도 "깔때기에 조건을 쓰는 손"이라
 // 같은 규칙(영속·시선·포인터 정리)을 지난다.
 import type { StateCreator } from "zustand";
-import type { FunnelCell, PointDefinition } from "@trade-data-manager/market/domain";
+import type { PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import { parseStages, type FilterStage } from "../panels/filter/stage.js";
 import { parseUniverse, type Universe } from "../panels/filter/universe.js";
@@ -21,15 +21,7 @@ const LEGACY_SETS_KEY = "wb.filterFunnelSets"; // 옛 "저장한 깔때기" — 
 const SAVED_SETS_KEY = "wb.savedSets.v3";
 
 /**
- * 저장 집합의 부위 — 조건 한 벌에서 **무엇을 꺼내 오나**. 생존자(전 단계 통과) 또는 특정 단계의 칸들.
- * 칸 부위의 stageId 가 (덮어쓰기로) 사라지면 그 집합은 깨진 참조가 된다 — 조용히 생존자로 넓히지 않는다.
- */
-export type SavedSetPart =
-    | { kind: "survivors" }
-    | { kind: "cell"; stageId: string; cells: FunnelCell[] };
-
-/**
- * 저장 집합 — **자립 저장물**(이름 + 조건 사본 + 부위). 집합끼리 아무것도 공유하지 않는다: 같은 깔때기에서
+ * 저장 집합 — **자립 저장물**(이름 + 조건 사본). 집합끼리 아무것도 공유하지 않는다: 같은 깔때기에서
  * 두 집합을 뽑아도 조건이 각자에게 복사되고, 하나를 덮어써도 다른 하나는 절대 안 바뀐다(사용자 확정).
  * 정의 저장이라 라이브다 — 멤버는 읽는 순간 재계산되고, 죽은 참조(지워진 그룹·축)는 3치가 받아낸다.
  */
@@ -37,7 +29,6 @@ export interface SavedSet {
     id: string;
     name: string;
     stages: FilterStage[];
-    part: SavedSetPart;
     /** 자동 타점 정의 사본(집합 자립 — 게이트가 다르면 같은 조건도 다른 모수를 센다). 옛 저장물엔 없음 →
      *  열 때 현재 정의 유지(관대한 병합 — additive, 키 상향 금지 규칙). */
     pointDef?: PointDefinition;
@@ -52,18 +43,6 @@ export interface SavedSet {
     universe: Universe;
 }
 
-const CELLS: readonly FunnelCell[] = ["survive", "nearMiss", "upstreamPending", "fail", "pending"];
-const parsePart = (o: unknown): SavedSetPart | null => {
-    if (typeof o !== "object" || o === null) return null;
-    const p = o as { kind?: unknown; stageId?: unknown; cells?: unknown };
-    if (p.kind === "survivors") return { kind: "survivors" };
-    if (p.kind === "cell" && typeof p.stageId === "string" && Array.isArray(p.cells)
-        && p.cells.length > 0 && p.cells.every((c) => (CELLS as readonly unknown[]).includes(c))) {
-        return { kind: "cell", stageId: p.stageId, cells: p.cells as FunnelCell[] };
-    }
-    return null;
-};
-
 /** 저장 집합 영속 — 슬라이스 밖(그룹 개명 승계)에서도 같은 키로 쓰기 위한 유일한 출구. */
 export const persistSavedSets = (sets: SavedSet[]): SavedSet[] => {
     saveJson(SAVED_SETS_KEY, sets);
@@ -75,21 +54,20 @@ export const persistSavedSets = (sets: SavedSet[]): SavedSet[] => {
  * all-or-nothing 은 `parseStages` 의 규칙이고 여기선 그 결과가 null 이면 그 집합만 버린다.
  * 하위호환 골든(`filter/__tests__/legacyCompat.test.ts`)이 이 함수의 결과를 글자까지 고정한다.
  */
-export function parseSavedSets(o: unknown, withPart = true): SavedSet[] | null {
+export function parseSavedSets(o: unknown): SavedSet[] | null {
     if (!Array.isArray(o)) return null;
     const out: SavedSet[] = [];
     for (const raw of o) {
-        const f = raw as { id?: unknown; name?: unknown; stages?: unknown; part?: unknown; pointDef?: unknown; universe?: unknown };
+        const f = raw as { id?: unknown; name?: unknown; stages?: unknown; pointDef?: unknown; universe?: unknown };
         if (typeof f?.id !== "string" || typeof f?.name !== "string") continue;
         const stages = parseStages(f.stages);
         if (!stages) continue;
         const universe = parseUniverse(f.universe); // 부재·오염 = 종단(집합 폐기 사유가 아니다)
-        // 하루 우주엔 5칸 정산이 없다 — 부위는 생존자 하나뿐이다(결손 표의 마지막 줄).
-        const part = universe === "daily" ? { kind: "survivors" as const } : withPart ? parsePart(f.part) : { kind: "survivors" as const };
         // 정의는 additive — 없거나 오염이면 필드 생략(열 때 현재 정의 유지). 집합 통째 폐기 사유가 아니다.
         const pointDef = f.pointDef !== undefined ? (parsePointDef(f.pointDef) ?? undefined) : undefined;
-        // 옛 저장물의 pointSource(출처 토글)는 조용히 버린다 — 출처가 하나가 됐다(2026-09-01).
-        if (part) out.push({ id: f.id, name: f.name, stages, part, universe, ...(pointDef ? { pointDef } : {}) });
+        // 옛 저장물의 pointSource(출처 토글)·part(부위)는 조용히 버린다 — 출처가 하나가 됐고(2026-09-01),
+        // 부위는 5칸 진단과 함께 은퇴했다(2026-09-19). 둘 다 집합 폐기 사유가 아니다.
+        out.push({ id: f.id, name: f.name, stages, universe, ...(pointDef ? { pointDef } : {}) });
     }
     return out;
 }
@@ -99,9 +77,8 @@ export function parseSavedSets(o: unknown, withPart = true): SavedSet[] | null {
 const loadSavedSets = (): SavedSet[] => {
     // 우주 선언·셀 술어가 저장물에 실리기 **전에** 원문을 한 번 뜬다(2026-09-18 단계 ②의 되돌림 경로).
     backupRawOnce(SAVED_SETS_KEY, "pre-universe");
-    const parse = (arr: unknown[], withPart: boolean): SavedSet[] => parseSavedSets(arr, withPart) ?? [];
     const fresh = loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null));
-    if (fresh) return parse(fresh, true);
+    if (fresh) return parseSavedSets(fresh) ?? [];
     // v3 리셋 이전 키들(v2·wb.savedSets·LEGACY)은 읽지 않는다 — 옛 leaf·t 없는 결과 술어의 뒷문이 된다.
     void LEGACY_SETS_KEY;
     return [];
@@ -110,12 +87,9 @@ const loadSavedSets = (): SavedSet[] => {
 export interface SavedSetsSlice {
     /** 저장 집합들(영속) — 집합 편성 패널이 만든 산출물. 집합 칩·연동 피커의 유일한 저장물 목록. */
     savedSets: SavedSet[];
-    /**
-     * 지금 조건으로 집합 저장 — 부위는 **저장하는 순간의 시선**에서 온다(칸을 짚었으면 그 칸, 아니면
-     * 생존자). 같은 이름 = 같은 물건 — 엎어쓰기(id 유지 — 그 집합을 고정 구독 중인 바인딩이 따라온다).
-     */
+    /** 지금 조건으로 집합 저장 — 같은 이름 = 같은 물건, 엎어쓰기(id 유지 — 그 집합을 고정 구독 중인 바인딩이 따라온다). */
     saveSet: (name: string) => void;
-    /** 열어 둔 집합에 지금 조건을 덮어쓴다 — **그 집합 하나만** 바뀐다(부위·이름 유지). */
+    /** 열어 둔 집합에 지금 조건을 덮어쓴다 — **그 집합 하나만** 바뀐다(이름 유지). */
     overwriteSet: (id: string) => void;
     /**
      * 집합을 깔때기로 연다 — 조건 **사본**이 작업 깔때기에 펼쳐진다. 이후 편집은 저장물을 안 흔들고,
@@ -129,7 +103,7 @@ export interface SavedSetsSlice {
      * 문법 변경 없이 켜진다는 약속이 여기서 지켜진다(경고는 화면이 먼저 보여준다).
      */
     cloneSetToUniverse: (id: string, universe: Universe) => void;
-    /** 이름만 바꾼다(id·조건·부위 유지 — 바인딩이 id 로 따라오므로 이름은 표시물일 뿐). 빈 이름·다른 집합과 같은 이름은 무시. */
+    /** 이름만 바꾼다(id·조건 유지 — 바인딩이 id 로 따라오므로 이름은 표시물일 뿐). 빈 이름·다른 집합과 같은 이름은 무시. */
     renameSet: (id: string, name: string) => void;
     deleteSet: (id: string) => void;
     /** 마지막으로 연 집합 — 덮어쓰기 버튼의 대상. 그 집합이 지워지면 풀린다(세션 한정). */
@@ -145,18 +119,13 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     saveSet: (name) => set((s) => {
         const n = name.trim();
         const stages = selectFilterStages(s);
-        // 부위 = 저장하는 순간의 시선. 칸을 짚고 저장하면 "그 칸"이 이 집합의 정체가 된다.
         const universe = s.filterUniverse;
-        // 하루 우주엔 5칸 정산이 없다 — 칸 부위를 저장할 자리가 없으므로 생존자로 굳힌다.
-        const part: SavedSetPart = s.funnelSelection && universe === "longitudinal"
-            ? { kind: "cell", stageId: s.funnelSelection.stageId, cells: [...s.funnelSelection.cells] }
-            : { kind: "survivors" };
         const at = s.savedSets.findIndex((x) => x.name === n);
         // 정의도 사본으로 — stages 와 같은 이유(자립). 저장 순간의 정의가 이 집합의 모수 정의다.
         const saved = at >= 0
-            ? { ...s.savedSets[at]!, stages, part, universe, pointDef: s.pointDef }
+            ? { ...s.savedSets[at]!, stages, universe, pointDef: s.pointDef }
             // id 에 난수 꼬리 — 시각만으로는 같은 ms 의 연속 저장이 같은 id 가 된다(newStageId 와 같은 규칙).
-            : { id: `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: n, stages, part, universe, pointDef: s.pointDef };
+            : { id: `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: n, stages, universe, pointDef: s.pointDef };
         const next = at >= 0 ? s.savedSets.map((x, i) => (i === at ? saved : x)) : [...s.savedSets, saved];
         saveJson(SAVED_SETS_KEY, next);
         // 방금 저장한 집합이 곧 "열어 둔 집합" — 이어서 만지면 덮어쓰기가 그 집합을 가리킨다.
@@ -164,7 +133,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     }),
     overwriteSet: (id) => set((s) => {
         if (!s.savedSets.some((x) => x.id === id)) return {};
-        // 조건·정의만 바뀐다(부위·이름 유지). 같은 조건에서 나온 형제 집합이 있어도 **이 하나만** — 느리지만 암묵이 없다.
+        // 조건·정의만 바뀐다(이름 유지). 같은 조건에서 나온 형제 집합이 있어도 **이 하나만** — 느리지만 암묵이 없다.
         // 우주도 함께 굳힌다 — 덮어쓰기는 "지금 만지는 것"을 그 집합으로 밀어 넣는 손짓이라, 우주만
         // 옛것으로 남으면 조건과 우주가 갈린 집합이 생긴다(그 순간 결손 지도가 거짓말한다).
         const next = s.savedSets.map((x) => (x.id === id ? { ...x, stages: selectFilterStages(s), universe: s.filterUniverse, pointDef: s.pointDef } : x));
@@ -174,11 +143,10 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     openSet: (id) => set((s) => {
         const f = s.savedSets.find((x) => x.id === id);
         if (!f) return {};
-        // 사본이 작업 깔때기로(배열 공유는 안전 — 편집 함수들이 늘 새 배열을 만든다). 시선은 푼다(다른 깔때기의 칸).
+        // 사본이 작업 깔때기로(배열 공유는 안전 — 편집 함수들이 늘 새 배열을 만든다).
         // 정의도 그 집합의 것으로 되돌린다(같은 영속 경로 persistPointDef) — 없는 옛 저장물은 현재 정의 유지.
         return {
-            ...putStages(s, f.stages, f.universe),
-            funnelSelection: null,
+            ...putStages(f.stages, f.universe),
             openedSetId: id,
             ...(f.pointDef ? { pointDef: persistPointDef(f.pointDef) } : {}),
         };
@@ -194,8 +162,6 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
             id: `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
             name,
             stages: src.stages,
-            // 하루 우주엔 5칸 정산이 없다 — 부위는 생존자 하나뿐.
-            part: universe === "daily" ? { kind: "survivors" } : src.part,
             universe,
             ...(src.pointDef ? { pointDef: src.pointDef } : {}),
         };

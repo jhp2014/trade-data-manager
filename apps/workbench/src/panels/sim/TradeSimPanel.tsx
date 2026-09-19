@@ -73,10 +73,8 @@ export function TradeSimPanel({ panelId = "trade-sim" }: { panelId?: string }): 
         kind: "toggle", id: "setPin", name: "집합 고정", label: "고정",
         help: bound.pinned !== null
             ? "고정 해제 — 다시 전역 선택을 따라갑니다"
-            : bound.canPinNow
-                ? "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다"
-                : "짚은 칸은 고정할 수 없습니다(시선이라 클릭 한 번에 사라집니다) — 집합으로 저장한 뒤 고정하세요",
-        on: bound.pinned !== null, set: bound.togglePin, disabled: !bound.canPinNow,
+            : "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다",
+        on: bound.pinned !== null, set: bound.togglePin,
     }];
 
     const agg = useMemo(() => {

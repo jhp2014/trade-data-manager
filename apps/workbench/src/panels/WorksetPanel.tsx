@@ -80,7 +80,6 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     const savedSets = useWorkbench((s) => s.savedSets);
     const assemblies = useWorkbench((s) => s.assemblies);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
-    const funnelSelection = useWorkbench((s) => s.funnelSelection);
     const gazeMonths = useWorkbench((s) => s.gazeMonths);
     const setGazeMonths = useWorkbench((s) => s.setGazeMonths);
 
@@ -181,7 +180,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     // 보는 집합의 이름 — 어휘는 집합 줄과 같은 한 벌(setRefLabel/linkedTargetLabel). 클릭 = 집합 편성 패널로
     // (닫혀 있으면 연다) — 고르는 손은 거기 하나뿐이라 여기는 길만 낸다.
     const setLabel = selectedSetRef === null
-        ? linkedTargetLabel(funnelSelection !== null, funnel.active.length)
+        ? linkedTargetLabel(funnel.active.length)
         : setRefLabel(selectedSetRef, savedSets, assemblies);
     const goToFunnelPanel = (): void => openAndFocus("filter-funnel-1");
     const linkedView = funnel.viewOf(null);

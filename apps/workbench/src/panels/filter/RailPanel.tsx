@@ -103,7 +103,7 @@ export function RailPanel({ panelId }: { panelId: string }): JSX.Element {
     // 오버레이는 **조건/집합/짚음이 걸렸을 때만** — 월 시선만으로도 isFiltering 이 켜지는데, 그때의
     // 멤버는 "그 달의 전부"라 레일에 칠하면 정보가 아니라 바탕색이다.
     const filtersOn = stages.some((st) => st.enabled !== false && st.predicates.length > 0);
-    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null || s.funnelSelection !== null) || filtersOn;
+    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null) || filtersOn;
     const memberKeys = useMemo<ReadonlySet<string> | null>(
         () => (pointerOn && selectedView.isFiltering && !selectedView.broken
             ? new Set(selectedView.viewedPointRefs.map((p) => pointKeyOf(p.stockCode, p.date, p.time)))

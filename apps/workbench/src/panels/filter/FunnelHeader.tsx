@@ -10,6 +10,8 @@
 //   · **걸린 것만** — 목록이 곧 걸린 것들이라(레일이 제 패널로 나간 뒤) 늘 켠 것과 같아졌다.
 //     조건 없는 레일을 접는 그 토글은 이제 필터 레일 패널의 머리글에 산다.
 //
+//   · **막대** — 5칸 진단이 은퇴하면서(2026-09-19) 펼 것이 없어졌다.
+//
 // 반대로 **전체 → 생존**은 여기로 왔다(옛 막대 서랍의 요약 줄이 없어졌다) — 두 수는 붙어 있을 때만
 // 관계가 읽힌다.
 import { useMemo } from "react";
@@ -20,12 +22,7 @@ import { FAIL, POINT_DEF } from "../../styles/palette.js";
 import { UNIVERSE_LABEL } from "./universe.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 
-export function FunnelHeader({ v, barsOpen, onToggleBars }: {
-    v: FunnelView;
-    /** 줄마다 막대(5칸)와 수치를 편다 — 목록 전체를 지배하는 토글 하나(줄마다 접는 손잡이는 없다). */
-    barsOpen: boolean;
-    onToggleBars: () => void;
-}): JSX.Element {
+export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
     const stages = useWorkbench(selectFilterStages);
     const clearStages = useWorkbench((s) => s.clearFilterStages);
     // 편집 대상의 **타입**(우주) — 전역 모드 스위치가 아니라 "지금 만지는 집합이 무엇인가"의 표시다.
@@ -35,14 +32,10 @@ export function FunnelHeader({ v, barsOpen, onToggleBars }: {
 
     const controls = useMemo<ControlSpec[]>(() => [
         {
-            kind: "toggle", id: "bars", name: "막대", help: "줄마다 5칸 막대와 '새로 죽임'을 편다 — 접으면 요약 한 줄만 남는다",
-            on: barsOpen, set: onToggleBars,
-        },
-        {
             kind: "action", id: "clearStages", name: "비우기", disabled: stages.length === 0,
             help: "걸린 필터 전부 지우기 — 저장한 집합은 안 변한다(자립 사본이라)", run: clearStages,
         },
-    ], [barsOpen, onToggleBars, stages.length, clearStages]);
+    ], [stages.length, clearStages]);
 
     return (
         <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>

@@ -42,24 +42,10 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
         expect(store.getState().savedSets).toHaveLength(1);
     });
 
-    it("부위는 저장하는 순간의 시선에서 온다 — 칸을 짚고 저장하면 그 칸이 집합의 정체가 된다", async () => {
-        stubStorage();
-        const store = await loadStore();
-        store.getState().addFilterStage([datePred]);
-        const id = selectFilterStages(store.getState())[0].id;
-        store.getState().saveSet("생존");
-        expect(store.getState().savedSets[0].part).toEqual({ kind: "survivors" });
-
-        store.getState().setFunnelSelection({ stageId: id, cells: ["nearMiss"] });
-        store.getState().saveSet("아깝게");
-        const cellSet = store.getState().savedSets.find((s) => s.name === "아깝게")!;
-        expect(cellSet.part).toEqual({ kind: "cell", stageId: id, cells: ["nearMiss"] });
-    });
-
     it("옛 키(wb.savedSets·wb.filterFunnelSets)는 읽지 않는다 — v2 리셋(골격 leaf 부활 금지)", async () => {
         stubStorage({
             "wb.filterFunnelSets": [{ id: "fs1", name: "깔때기 시절", stages: [] }],
-            "wb.savedSets": [{ id: "fs2", name: "v1 시절", stages: [], part: { kind: "survivors" }, universe: "longitudinal" as const }],
+            "wb.savedSets": [{ id: "fs2", name: "v1 시절", stages: [], universe: "longitudinal" as const }],
         });
         const store = await loadStore();
         expect(store.getState().savedSets).toEqual([]);
@@ -67,7 +53,7 @@ describe("저장 집합 — 같은 이름은 엎어쓴다(같은 이름 = 같은
 
     it("지금 키(v3)는 그대로 읽는다", async () => {
         stubStorage({
-            "wb.savedSets.v3": [{ id: "fs2", name: "새것", stages: [], part: { kind: "survivors" }, universe: "longitudinal" as const }],
+            "wb.savedSets.v3": [{ id: "fs2", name: "새것", stages: [], universe: "longitudinal" as const }],
         });
         const store = await loadStore();
         expect(store.getState().savedSets.map((s) => s.name)).toEqual(["새것"]);
@@ -92,21 +78,6 @@ describe("자립 저장물 — 열기·덮어쓰기·삭제", () => {
 
         store.getState().overwriteSet(id); // 명시적 덮어쓰기 — 이제 2개
         expect(store.getState().savedSets[0].stages).toHaveLength(2);
-    });
-
-    it("덮어쓰기는 부위를 유지한다 — 칸 집합을 열어 조건만 고쳐도 칸 집합으로 남는다", async () => {
-        stubStorage();
-        const store = await loadStore();
-        store.getState().addFilterStage([datePred]);
-        const stageId = selectFilterStages(store.getState())[0].id;
-        store.getState().setFunnelSelection({ stageId, cells: ["fail"] });
-        store.getState().saveSet("탈락");
-        const id = store.getState().savedSets[0].id;
-
-        store.getState().openSet(id);
-        store.getState().addFilterStage([datePred]);
-        store.getState().overwriteSet(id);
-        expect(store.getState().savedSets[0].part).toEqual({ kind: "cell", stageId, cells: ["fail"] });
     });
 
     it("그 집합을 지우면 '열어 둔 집합'이 풀린다 — 덮어쓰기 버튼이 없는 것을 가리키면 안 된다", async () => {

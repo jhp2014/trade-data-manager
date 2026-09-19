@@ -35,14 +35,13 @@ const dateStage = (id: string, from: string, to: string): FilterStage =>
 const groupStage = (id: string, groupId: string): FilterStage =>
     stage(id, [{ kind: "group", expr: { groups: [{ literals: [{ groupId, neg: false }] }] }, scope: "day" }]);
 
-// 작업 깔때기 = 날짜 ≤ 07-02. 저장 집합 둘 — 같은 조건에서 나온 형제(생존/칸)도 각자 사본이다.
+// 작업 깔때기 = 날짜 ≤ 07-02. 저장 집합은 전부 자기 조건 사본으로 판정한다.
 const activeStages: FilterStage[] = [dateStage("d1", "2026-07-01", "2026-07-02")];
 const savedSets = new Map<string, SavedSet>([
-    ["fs1", { id: "fs1", name: "테마 생존", stages: [groupStage("g1", "테마")], part: { kind: "survivors" }, universe: "longitudinal" }],
-    ["fs2", { id: "fs2", name: "테마 탈락", stages: [groupStage("g1", "테마")], part: { kind: "cell", stageId: "g1", cells: ["fail"] }, universe: "longitudinal" }],
-    ["fs3", { id: "fs3", name: "부위 깨짐", stages: [dateStage("d9", "2026-07-01", "2026-07-03")], part: { kind: "cell", stageId: "없는단계", cells: ["survive"] }, universe: "longitudinal" }],
+    ["fs1", { id: "fs1", name: "테마 생존", stages: [groupStage("g1", "테마")], universe: "longitudinal" }],
+    ["fs2", { id: "fs2", name: "날짜 넓힘", stages: [dateStage("d9", "2026-07-01", "2026-07-03")], universe: "longitudinal" }],
     // 하루 집합 — 이 기계가 **안 푸는** 종류(조건은 종단 술어라 여기서도 풀리긴 하지만 우주가 다르다).
-    ["fs-day", { id: "fs-day", name: "오늘 후보", stages: [dateStage("d1", "2026-07-01", "2026-07-03")], part: { kind: "survivors" }, universe: "daily" }],
+    ["fs-day", { id: "fs-day", name: "오늘 후보", stages: [dateStage("d1", "2026-07-01", "2026-07-03")], universe: "daily" }],
 ]);
 
 const grainLook = { hasGroup: (n: string) => knownGroups.has(n), axisScope: () => undefined };
@@ -123,35 +122,16 @@ describe("저장 집합 — 자립 저장물의 풀이(판정 엔진은 깔때�
         expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs1" }, ctx))).toEqual(["1", "2"]);
     });
 
-    it("부위=칸: 같은 조건에서 나온 형제 — fail 칸이면 그 단계가 떨군 것들", () => {
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs2" }, ctx))).toEqual(["3"]);
+    it("조건이 다른 집합은 다른 모수 — 작업 깔때기(≤07-02)와도 서로와도 독립", () => {
+        expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs2" }, ctx)).sort()).toEqual(["1", "2", "3"]);
     });
 
     it("지워진 집합 = 깨진 참조", () => {
         expect(resolveSetRef({ kind: "saved", setId: "없는집합" }, ctx).broken).toBe(true);
     });
-
-    it("부위(칸)의 단계가 조건에서 사라지면 깨진 참조 — 조용히 생존자로 넓히지 않는다", () => {
-        expect(resolveSetRef({ kind: "saved", setId: "fs3" }, ctx).broken).toBe(true);
-    });
 });
 
-describe("작업 깔때기의 칸 — 짚은 칸의 유일한 합집합 구현", () => {
-    it("칸 참조: 그 단계의 칸 내용 — fail 칸이면 그 단계가 떨군 것들", () => {
-        const r = resolveSetRef({ kind: "cell", stageId: "d1", cells: ["fail"] }, ctx);
-        expect(r.broken).toBe(false);
-        expect(codesOf(r)).toEqual(["3"]); // C 는 07-03 이라 탈락
-    });
-
-    it("칸 여러 개는 합집합(서로소라 겹침 없음)", () => {
-        const r = resolveSetRef({ kind: "cell", stageId: "d1", cells: ["survive", "fail"] }, ctx);
-        expect(codesOf(r).sort()).toEqual(["1", "2", "3"]);
-    });
-
-    it("지워지거나 꺼진 단계의 칸 = 깨진 참조 — 그 칸은 존재하지 않는다", () => {
-        expect(resolveSetRef({ kind: "cell", stageId: "없는단계", cells: ["survive"] }, ctx).broken).toBe(true);
-    });
-
+describe("작업 깔때기", () => {
     it("단계가 하나도 안 걸린 작업 깔때기의 생존 = 전부(공허참)", () => {
         const empty: SetResolveCtx = { ...ctx, activeStages: [] };
         expect(codesOf(resolveSetRef({ kind: "survivors" }, empty))).toEqual(["1", "2", "3"]);
@@ -210,7 +190,7 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
         const overwritten: SetResolveCtx = {
             ...base,
             savedSetOf: (id) => (id === "fs1"
-                ? { id: "fs1", name: "테마 생존", stages: [dateStage("d2", "2026-07-01", "2026-07-01")], part: { kind: "survivors" }, universe: "longitudinal" as const }
+                ? { id: "fs1", name: "테마 생존", stages: [dateStage("d2", "2026-07-01", "2026-07-01")], universe: "longitudinal" as const }
                 : savedSets.get(id)),
         };
         const r = resolveSetRef({ kind: "saved", setId: "fs1" }, overwritten);
@@ -233,8 +213,8 @@ describe("저장 집합의 자기-정의 평가 — 재료가 정의를 따라�
     // 같은 조건 사본·다른 정의 — 게이트 50 정의는 A 에 타점 하나, 30 정의는 둘(더 낮은 게이트 = 더 많은 시그널 설정).
     const stagesSame: FilterStage[] = [timeStage("tt", "09:00", "10:30")]; // C(11:00)는 조건 밖 — 현재 정의 평가에서도 빠진다
     const sets = new Map<string, SavedSet>([
-        ["g50", { id: "g50", name: "게이트50", stages: stagesSame, part: { kind: "survivors" }, universe: "longitudinal", pointDef: defGate(50) }],
-        ["g30", { id: "g30", name: "게이트30", stages: stagesSame, part: { kind: "survivors" }, universe: "longitudinal", pointDef: defGate(30) }],
+        ["g50", { id: "g50", name: "게이트50", stages: stagesSame, universe: "longitudinal", pointDef: defGate(50) }],
+        ["g30", { id: "g30", name: "게이트30", stages: stagesSame, universe: "longitudinal", pointDef: defGate(30) }],
     ]);
     const timesOf50 = (c: { stockCode: string; date: string }): string[] => (chartKey(c) === chartKey(A) ? ["09:30:00"] : []);
     const timesOf30 = (c: { stockCode: string; date: string }): string[] => (chartKey(c) === chartKey(A) ? ["09:30:00", "10:00:00"] : []);
@@ -259,8 +239,8 @@ describe("저장 집합의 자기-정의 평가 — 재료가 정의를 따라�
 
     it("day 층위 저장 집합·조립의 타점 전개(expandRefToPoints)도 **자기 정의의 시각**으로", () => {
         const dsets = new Map(sets);
-        dsets.set("d50", { id: "d50", name: "day50", stages: [dateStage("dd", "2026-07-01", "2026-07-03")], part: { kind: "survivors" }, universe: "longitudinal" as const, pointDef: defGate(50) });
-        dsets.set("d30", { id: "d30", name: "day30", stages: [dateStage("dd", "2026-07-01", "2026-07-03")], part: { kind: "survivors" }, universe: "longitudinal" as const, pointDef: defGate(30) });
+        dsets.set("d50", { id: "d50", name: "day50", stages: [dateStage("dd", "2026-07-01", "2026-07-03")], universe: "longitudinal" as const, pointDef: defGate(50) });
+        dsets.set("d30", { id: "d30", name: "day30", stages: [dateStage("dd", "2026-07-01", "2026-07-03")], universe: "longitudinal" as const, pointDef: defGate(30) });
         const asm = new Map([["asD", { id: "asD", name: "day합", members: [{ setId: "d50", enabled: true }, { setId: "d30", enabled: true }] }]]);
         const c2: SetResolveCtx = { ...dctx, savedSetOf: (id) => dsets.get(id), assemblyOf: (id) => asm.get(id) };
 
@@ -279,7 +259,7 @@ describe("저장 집합의 자기-정의 평가 — 재료가 정의를 따라�
 
     it("정의 사본 없는 옛 저장물은 현재 정의로 평가된다", () => {
         const old = new Map(sets);
-        old.set("noDef", { id: "noDef", name: "옛것", stages: stagesSame, part: { kind: "survivors" }, universe: "longitudinal" as const });
+        old.set("noDef", { id: "noDef", name: "옛것", stages: stagesSame, universe: "longitudinal" as const });
         const octx: SetResolveCtx = { ...dctx, savedSetOf: (id) => old.get(id) };
         // 현재 재료(timesOf)의 시각: A 둘 + C 하나 — 그중 조건(≤10:30)에 드는 A 둘.
         expect(codesOf(resolveSetRef({ kind: "saved", setId: "noDef" }, octx))).toEqual(["1@09:30", "1@10:00"]);
@@ -290,7 +270,7 @@ describe("조립 — 켠 부품들의 합집합", () => {
     const timeStage = (id: string, from: string, to: string): FilterStage =>
         stage(id, [{ kind: "time", ranges: [{ from, to }] }]);
     const sets2 = new Map(savedSets);
-    sets2.set("fs4", { id: "fs4", name: "오전 타점", stages: [timeStage("t1", "09:00", "09:59")], part: { kind: "survivors" }, universe: "longitudinal" as const });
+    sets2.set("fs4", { id: "fs4", name: "오전 타점", stages: [timeStage("t1", "09:00", "09:59")], universe: "longitudinal" as const });
     const assemblies = new Map([
         ["as1", { id: "as1", name: "합", members: [{ setId: "fs1", enabled: true }, { setId: "fs2", enabled: true }] }],
         ["as2", { id: "as2", name: "한쪽 꺼짐", members: [{ setId: "fs1", enabled: true }, { setId: "fs2", enabled: false }] }],
@@ -300,7 +280,7 @@ describe("조립 — 켠 부품들의 합집합", () => {
     ]);
     const actx: SetResolveCtx = { ...ctx, savedSetOf: (id) => sets2.get(id), assemblyOf: (id) => assemblies.get(id) };
 
-    it("합집합 — 부품 둘의 생존/칸이 겹침 없이 합쳐진다", () => {
+    it("합집합 — 부품 둘의 생존이 겹침 없이 합쳐진다", () => {
         const r = resolveSetRef({ kind: "assembly", id: "as1" }, actx);
         expect(r).toMatchObject({ broken: false, grain: "day" });
         expect(codesOf(r).sort()).toEqual(["1", "2", "3"]);
@@ -313,7 +293,7 @@ describe("조립 — 켠 부품들의 합집합", () => {
     it("죽은 부품은 그 부품만 빠진다 — 조립은 나머지로 성립(broken 아님)", () => {
         const r = resolveSetRef({ kind: "assembly", id: "as3" }, actx);
         expect(r.broken).toBe(false);
-        expect(codesOf(r)).toEqual(["3"]);
+        expect(codesOf(r).sort()).toEqual(["1", "2", "3"]); // fs2 하나로 성립(없는집합은 빠진다)
     });
 
     it("층위 혼합 — 하나라도 point 면 point 로 내리고, day 부품은 전개(∀)된다", () => {

@@ -61,14 +61,8 @@ export interface BoundSet {
      * 전역 포인터를 직접 읽으면 고정한 패널만 딴 것을 그린다(리뷰가 잡은 자리).
      */
     target: SetRef | null;
-    /** 지금 보는 것을 이 패널에 고정 / 해제. `canPinNow` 가 거짓이면 아무 일도 안 한다. */
+    /** 지금 보는 것을 이 패널에 고정 / 해제. */
     togglePin: () => void;
-    /**
-     * 지금 고정할 수 있나 — **짚은 칸을 보는 중이면 거짓**이다(그 참조는 저장할 수 없고, 대신 최종
-     * 생존을 묶으면 화면이 거의 여집합으로 점프한다 — "지금 보는 것을 묶는다"가 거짓말이 된다).
-     * 손잡이는 사라지지 않고 흐려지며, 이유는 help 가 말한다.
-     */
-    canPinNow: boolean;
     day: DaySetState;
 }
 
@@ -89,7 +83,6 @@ export function useBoundSet(panelId: string): BoundSet {
     const savedSets = useWorkbench((s) => s.savedSets);
     const assemblies = useWorkbench((s) => s.assemblies);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
-    const selection = useWorkbench((s) => s.funnelSelection);
     const workingUniverse = useWorkbench((s) => s.filterUniverse);
     const workingStages = useWorkbench(selectFilterStages);
     const focusDate = useWorkbench((s) => s.focus.date);
@@ -136,25 +129,21 @@ export function useBoundSet(panelId: string): BoundSet {
     // 집합이 두 우주에 있을 수 있다 — ⧉ 복제).
     const label = useMemo(
         () => (target === null
-            ? linkedTargetLabel(selection !== null, funnel.active.length)
+            ? linkedTargetLabel(funnel.active.length)
             : setRefLabel(target, savedSets, assemblies)),
-        [target, selection, funnel.active.length, savedSets, assemblies],
+        [target, funnel.active.length, savedSets, assemblies],
     );
-
-    // 짚은 칸(세션 참조)을 보는 중이면 묶을 수 있는 것이 없다 — 포인터가 아예 없을 때만 최종 생존으로 떨어진다.
-    const canPinNow = pinned !== null || canPin(selectedSetRef) || selection === null;
 
     const togglePin = useCallback(() => {
         if (pinned !== null) {
             setPinRaw(null);
             return;
         }
-        if (selection !== null && !canPin(selectedSetRef)) return; // 짚은 칸 — 화면이 이유를 말한다
         // 지금 따라가는 것을 그대로 묶는다 — **고르는 손을 늘리지 않는다**(팝오버 없음).
         // 포인터가 없으면(순수 연동) **최종 생존**을 묶는다: 그게 연동이 실제로 풀리는 대상이라
         // 화면이 안 바뀌고, 손잡이가 "눌렀는데 아무 일도 안 나는" 물건이 되지 않는다.
         setPinRaw(canPin(selectedSetRef) ? selectedSetRef : { kind: "survivors" });
-    }, [pinned, selection, selectedSetRef, setPinRaw]);
+    }, [pinned, selectedSetRef, setPinRaw]);
 
     return {
         view: daily ? (unsupported === null ? dayView : UNRESOLVED_VIEW) : longView,
@@ -163,7 +152,6 @@ export function useBoundSet(panelId: string): BoundSet {
         pinned,
         target,
         togglePin,
-        canPinNow,
         day: {
             on: daily,
             isLoading: daily && cellSet.isLoading,

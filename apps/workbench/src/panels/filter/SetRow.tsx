@@ -25,9 +25,7 @@ import { useWorkbench } from "../../store/workbench.js";
 import { usePersistedState } from "../../store/persist.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { FAIL, PIN, seriesColor } from "../../styles/palette.js";
-import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { WorksetRowShell, visibleChips, type ChipItem } from "../WorksetChipRow.js";
-import { cellMeta } from "./cells.js";
 import { useFunnel } from "./FunnelContext.js";
 import { cloneDeficiencies, UNIVERSE_LABEL, UNIVERSES } from "./universe.js";
 import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
@@ -35,10 +33,6 @@ import { textInput } from "./ui.js";
 
 const PINS_KEY = "wb.funnel.setPins";
 const parsePins = (o: unknown): string[] | null => (Array.isArray(o) ? o.filter((x): x is string => typeof x === "string") : null);
-
-/** 부위의 압축 표기 — 같은 조건에서 나온 형제(생존/칸)를 구분하는 유일한 표식이라 툴팁에 싣는다. */
-const partHint = (set: SavedSet): string =>
-    set.part.kind === "survivors" ? "생존자" : `짚은 칸(${set.part.cells.map((c) => cellMeta(c).label).join("+")})`;
 
 const sectionHead: React.CSSProperties = { padding: "4px 10px 3px", fontSize: 9.5, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)" };
 
@@ -56,7 +50,6 @@ export function SetRow(): JSX.Element {
     const assemblies = useWorkbench((s) => s.assemblies);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const selectSet = useWorkbench((s) => s.selectSet);
-    const selection = useWorkbench((s) => s.funnelSelection);
     const [pins, setPins] = usePersistedState<string[]>(PINS_KEY, parsePins, []);
     const togglePin = (id: string): void => setPins((p) => (p.includes(id) ? p.filter((k) => k !== id) : [...p, id]));
 
@@ -73,9 +66,7 @@ export function SetRow(): JSX.Element {
     };
 
     const universeRef: SetRef = { kind: "universe" };
-    const linkedRef: SetRef = selection
-        ? { kind: "cell", stageId: selection.stageId, cells: selection.cells }
-        : { kind: "survivors" };
+    const linkedRef: SetRef = { kind: "survivors" };
 
     const savedItems: ChipItem[] = savedSets.map((f) => {
         const ref: SetRef = { kind: "saved", setId: f.id };
@@ -83,8 +74,8 @@ export function SetRow(): JSX.Element {
         return {
             key: f.id, label: broken ? `⚠ ${f.name}` : f.name, active: isOn(ref), color: PIN,
             title: broken
-                ? `${f.name} — 부위(짚은 칸)의 단계가 조건에서 사라져 깨졌습니다. 집합 관리에서 열어 다시 저장하세요.`
-                : `${f.name} — ${partHint(f)} · 필터 ${f.stages.length}개 · ${countOf(ref)}\n클릭 = 이 집합 보기(다시 누르면 연동)`,
+                ? `${f.name} — 참조가 깨졌습니다. 집합 관리에서 열어 다시 저장하세요.`
+                : `${f.name} — 필터 ${f.stages.length}개 · ${countOf(ref)}\n클릭 = 이 집합 보기(다시 누르면 연동)`,
             onClick: () => toggle(ref),
         };
     });
@@ -107,8 +98,8 @@ export function SetRow(): JSX.Element {
                 title={`유니버스 — 손이 닿은 흔적(앵커·그룹·타점)이 하나라도 있는 (종목·날짜). 조건과 무관 · ${countOf(universeRef)}`} />
             <GazeChip label="연동" active={selectedSetRef === null} color={PIN}
                 onClick={() => selectSet(null)}
-                title={`이 보드를 따라간다 — 짚은 칸이 있으면 그 칸, 없으면 최종 생존, 조건이 없으면 전체
-지금: ${linkedTargetLabel(selection !== null, v.active.length)} · ${countOf(linkedRef)}`} />
+                title={`이 보드를 따라간다 — 조건이 있으면 최종 생존, 없으면 전체
+지금: ${linkedTargetLabel(v.active.length)} · ${countOf(linkedRef)}`} />
             {shown.length > 0 && <Divider />}
             {shown.map((it) => (
                 <GazeChip key={it.key} label={it.label} active={it.active} color={PIN}
@@ -141,7 +132,6 @@ function SetManager({ pins, onTogglePin, onPick }: {
     const v = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
-    const selection = useWorkbench((s) => s.funnelSelection);
     const saveSet = useWorkbench((s) => s.saveSet);
     const overwriteSet = useWorkbench((s) => s.overwriteSet);
     const openSet = useWorkbench((s) => s.openSet);
@@ -171,9 +161,7 @@ function SetManager({ pins, onTogglePin, onPick }: {
 
     return (
         <div style={{ maxHeight: 360, overflowY: "auto", padding: "2px 0" }}>
-            <div style={sectionHead}>
-                집합 저장 — 지금 조건의 사본 · 부위 = {selection ? `짚은 칸(${selection.cells.map((c) => cellMeta(c).label).join("+")})` : "생존자"}
-            </div>
+            <div style={sectionHead}>집합 저장 — 지금 조건의 사본</div>
             <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 10px" }}>
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder={nothingToSave ? "걸린 필터가 없습니다" : "집합 이름"}
                     disabled={nothingToSave} autoFocus
@@ -220,7 +208,7 @@ function SetManager({ pins, onTogglePin, onPick }: {
                                 style={{ ...textInput, flex: 1, minWidth: 0, fontSize: 11.5, padding: "2px 6px" }} />
                         ) : (
                             <button onClick={() => onPick(ref)}
-                                title={`${f.name} — ${partHint(f)} · 필터 ${f.stages.length}개 · ${r.broken ? "깨진 참조" : `${r.items.length.toLocaleString("ko-KR")}건`}${opened ? " · 보드에 열려 있음" : ""}\n클릭 = 이 집합 보기`}
+                                title={`${f.name} — 필터 ${f.stages.length}개 · ${r.broken ? "깨진 참조" : `${r.items.length.toLocaleString("ko-KR")}건`}${opened ? " · 보드에 열려 있음" : ""}\n클릭 = 이 집합 보기`}
                                 style={{
                                     flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent",
                                     color: r.broken ? FAIL : "var(--text-primary)", padding: "3px 4px", cursor: "pointer",

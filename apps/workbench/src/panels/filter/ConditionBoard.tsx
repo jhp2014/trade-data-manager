@@ -12,7 +12,6 @@
 // 하루가 늘 앞이라 "새로 죽임"이 넓은 조건부터 세어진다(순서는 결과가 아니라 서술을 정한다).
 // 칸 클릭 = 시선(다중 가능) — 결과 목록은 없다: 멤버 열람은 구독 패널들의 몫이다.
 import { useMemo, useRef, useState } from "react";
-import type { FunnelCell } from "@trade-data-manager/market/domain";
 import { useDismiss } from "../../ui/useDismiss.js";
 import { createPanelSlot, openAndFocus, openPanelExact } from "../../lib/openPanel.js";
 import { DEFAULT_THEME_STRENGTH } from "../../lib/themeStrength.js";
@@ -23,7 +22,6 @@ import { useDock } from "../../store/dock.js";
 import { slotTitleOf } from "../../shell/panelCatalog.js";
 import { parseSlotId } from "../../shell/panelSlots.js";
 import { FILTER } from "../../styles/palette.js";
-import { Legend, PASS_CELLS } from "./cells.js";
 import { FilterRow } from "./FilterRow.js";
 import { useFunnel } from "./FunnelContext.js";
 import { GrainSection, Note } from "./grain.js";
@@ -48,26 +46,16 @@ const RAIL_PANEL = "filter-rails-1";
 const THEME_RANK_BASE = "theme-rank";
 const OUTCOME_PANEL = OUTCOME_PANEL_ID;
 
-export function ConditionBoard({ barsOpen }: {
-    /** 막대(5칸)와 수치 줄을 편다 — 머리글 토글 하나가 목록 전체를 지배한다. */
-    barsOpen: boolean;
-}): JSX.Element {
+export function ConditionBoard(): JSX.Element {
     const v = useFunnel();
     const stages = useWorkbench(selectFilterStages);
-    const selection = useWorkbench((s) => s.funnelSelection);
-    const setSelection = useWorkbench((s) => s.setFunnelSelection);
     const toggleStage = useWorkbench((s) => s.toggleFilterStage);
     const removeStage = useWorkbench((s) => s.removeFilterStage);
-    const moveStage = useWorkbench((s) => s.moveFilterStage);
     const addStage = useWorkbench((s) => s.addFilterStage);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
     const setStage = useWorkbench((s) => s.setFilterStage);
     // 편집 대상의 **타입** — 팔레트 회색·결손 배지·칸 층위가 전부 이 하나로 갈린다(모드 스위치가 아니다).
     const setUniverse = useWorkbench((s) => s.filterUniverse);
-
-    const [dragId, setDragId] = useState<string | null>(null);
-    // 놓일 자리 표시 — 드래그가 되는 줄도 모르던 게 이 목록의 첫 문제였다(손잡이와 이 선이 한 쌍).
-    const [overId, setOverId] = useState<string | null>(null);
 
     // ── 편집면으로 데려가기 ──
     const sendReveal = useRevealSender(RAIL_REVEAL);
@@ -91,9 +79,6 @@ export function ConditionBoard({ barsOpen }: {
     const [groupEditor, setGroupEditor] = useState<GroupEditorAnchor | null>(null);
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
     const groupCreate = useGroupCreateFlow(addStage, setGroupEditor);
-
-    const activeIndexOf = (id: string): number => v.active.findIndex((s) => s.id === id);
-    const grainOf = (id: string): Grain => v.stagesOrdered.find((e) => e.stage.id === id)?.grain ?? "day";
 
     /**
      * 줄 이름 클릭 — 그 **종류의 편집면**으로. 레일은 패널 경계를 넘으므로 신호를 남기고 열고(닫혀
@@ -137,28 +122,6 @@ export function ConditionBoard({ barsOpen }: {
         }
     };
 
-    // 칸 클릭 — 같은 필터면 칸 토글(누적), 다른 필터면 그 칸 하나로 갈아탄다.
-    // 결과는 목록이 아니라 **연동 패널들**이 보여준다(짚는 순간 선택 포인터가 작업 깔때기로 복귀).
-    const clickCell = (stageId: string, cell: FunnelCell): void => {
-        if (selection?.stageId === stageId) {
-            const cells = selection.cells.includes(cell) ? selection.cells.filter((c) => c !== cell) : [...selection.cells, cell];
-            setSelection(cells.length > 0 ? { stageId, cells } : null);
-        } else setSelection({ stageId, cells: [cell] });
-    };
-
-    // 드래그 재정렬 — 같은 칸(층위) 안에서만. store 배열 인덱스로 옮긴다(칸 표시는 파생이라 따라온다).
-    const canDropOn = (targetId: string): boolean =>
-        dragId !== null && dragId !== targetId && grainOf(dragId) === grainOf(targetId);
-    const dropOn = (targetId: string): void => {
-        if (!canDropOn(targetId)) return;
-        const from = stages.findIndex((s) => s.id === dragId);
-        const to = stages.findIndex((s) => s.id === targetId);
-        if (from >= 0 && to >= 0) moveStage(from, to);
-        setDragId(null);
-        setOverId(null);
-    };
-    const endDrag = (): void => { setDragId(null); setOverId(null); };
-
     const hasTheme = useMemo(() => stages.some((s) => stageKind(s) === "themeStrength"), [stages]);
 
     let rowNo = 0;
@@ -178,14 +141,11 @@ export function ConditionBoard({ barsOpen }: {
                             )}
                             {entries.map(({ stage }) => {
                                 rowNo++;
-                                const ai = activeIndexOf(stage.id);
                                 return (
                                     <FilterRow
                                         key={stage.id}
                                         no={rowNo}
                                         stage={stage}
-                                        tally={ai >= 0 ? (v.result?.stages[ai] ?? null) : null}
-                                        universe={v.universe}
                                         label={stageLabel(stage, v.labelLook)}
                                         dead={v.deadStageIds.includes(stage.id)}
                                         deficiency={stageDeficiency(stage, setUniverse)}
@@ -193,19 +153,9 @@ export function ConditionBoard({ barsOpen }: {
                                         linked={false}
                                         linkedLabel={stageKind(stage) === "themeStrength" ? (livePanelOf(stage.id) !== undefined ? slotTitleOf(livePanelOf(stage.id)!) : "미연동") : undefined}
                                         onLinkedClick={(e) => setThemeLink({ stageId: stage.id, x: e.clientX, y: e.clientY })}
-                                        showBar={barsOpen}
-                                        pickedCells={selection?.stageId === stage.id ? selection.cells : []}
-                                        dragging={dragId === stage.id}
-                                        dropTarget={overId === stage.id && canDropOn(stage.id)}
-                                        onPick={(cell) => clickCell(stage.id, cell)}
-                                        onPickPass={() => setSelection({ stageId: stage.id, cells: [...PASS_CELLS] })}
                                         onOpen={(e) => openEditor(stage, e)}
                                         onToggle={() => toggleStage(stage.id)}
                                         onRemove={() => removeStage(stage.id)}
-                                        onDragStart={() => setDragId(stage.id)}
-                                        onDragEnd={endDrag}
-                                        onDragOver={() => setOverId(stage.id)}
-                                        onDropOn={() => dropOn(stage.id)}
                                     />
                                 );
                             })}
@@ -243,7 +193,6 @@ export function ConditionBoard({ barsOpen }: {
                         }}
                     />
                 )}
-                {barsOpen && <Legend />}
                 <div style={{ height: 8 }} />
             </div>
 

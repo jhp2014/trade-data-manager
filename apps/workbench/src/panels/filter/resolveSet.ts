@@ -13,7 +13,7 @@
 // "결손은 결손"(축 규칙 3)이 참조에도 적용되는 것.
 import {
     expandUniverse, funnelKey, tallyFunnel,
-    type ChartRef, type FunnelCell, type FunnelItem, type FunnelResult, type Grain, type PointDefinition,
+    type ChartRef, type FunnelItem, type FunnelResult, type Grain, type PointDefinition,
 } from "@trade-data-manager/market/domain";
 import { expandToPointItems } from "../../lib/grainView.js";
 import { judgeKeyOf } from "../../lib/pointDef.js";
@@ -104,12 +104,6 @@ export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
             return { broken: false, grain: r.grain, items: r.tally.survivors };
         }
 
-        case "cell": {
-            // 작업 깔때기의 짚은 칸 — 단계가 지워졌거나 꺼졌으면 그 칸은 존재하지 않는다(깨진 참조).
-            const r = resolveDef(null, ctx);
-            return cellItems(r, ref.stageId, ref.cells);
-        }
-
         case "saved":
             return resolveSaved(ref.setId, ctx);
 
@@ -182,9 +176,7 @@ function resolveSaved(setId: string, ctx: SetResolveCtx): ResolvedSet {
     //      이 기계로 풀어** 그 침묵을 그대로 냈다. 기준은 맥락이 아니라 **집합 자신의 우주**다.
     if (s.universe !== "longitudinal") return { broken: false, otherUniverse: true, grain: "day", items: [] };
     const r = resolveDef(setId, ctx);
-    if (s.part.kind === "survivors") return { broken: false, grain: r.grain, items: r.tally.survivors, pending: r.tally.pendingCount };
-    const c = cellItems(r, s.part.stageId, s.part.cells);
-    return c.broken ? c : { ...c, pending: r.tally.pendingCount };
+    return { broken: false, grain: r.grain, items: r.tally.survivors, pending: r.tally.pendingCount };
 }
 
 /** 조립 진단 — 부품별 (건수 · 고유 기여 · 미배치 · 깨짐) + 합집합 크기. SetManager 펼침이 소비한다.
@@ -233,14 +225,6 @@ export function assemblyDiagOf(id: string, ctx: SetResolveCtx): AssemblyDiag | n
         };
     });
     return { grain, total: union.size, parts };
-}
-
-/** 부위 추출 — 정산에서 한 단계의 칸들을 꺼낸다. 한 단계의 칸들은 서로소라 합집합에 dedupe 가 필요 없다. */
-function cellItems(r: ResolvedFilter, stageId: string, cells: readonly FunnelCell[]): ResolvedSet {
-    const i = r.active.findIndex((s) => s.id === stageId);
-    if (i < 0) return BROKEN;
-    const t = r.tally.stages[i]!;
-    return { broken: false, grain: r.grain, items: cells.flatMap((c) => t.cells[c]) };
 }
 
 /** 리졸버 호출 한 번(= ctx 한 벌) 안에서 조건 정산을 정의(작업 깔때기 | 저장 집합)당 한 번만 —

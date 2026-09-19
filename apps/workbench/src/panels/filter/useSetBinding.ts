@@ -22,16 +22,15 @@ export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[], assembl
             return a ? `∪ ${a.name}` : "(지워진 조립)";
         }
         case "orphan": return `${ref.label} (폐지된 바인딩)`;
-        case "cell": return "짚은 칸";
         case "items": return ref.label;
     }
 }
 
 /**
- * 연동(포인터 없음)이 **지금 실제로 풀리는 대상** — 짚은 칸 > 최종 생존 > 전체(조건 0개). 칩 이름은 "연동"
+ * 연동(포인터 없음)이 **지금 실제로 풀리는 대상** — 최종 생존 > 전체(조건 0개). 칩 이름은 "연동"
  * 하나지만 라벨은 풀린 대상을 같이 말해야 "뭘 보고 있나"에 답이 된다.
  */
-export function linkedTargetLabel(hasSelection: boolean, activeCount: number): string {
-    return `연동 · ${hasSelection ? "짚은 칸" : activeCount > 0 ? "최종 생존" : "전체"}`;
+export function linkedTargetLabel(activeCount: number): string {
+    return `연동 · ${activeCount > 0 ? "최종 생존" : "전체"}`;
 }
 

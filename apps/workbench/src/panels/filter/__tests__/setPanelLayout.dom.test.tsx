@@ -1,4 +1,4 @@
-// 집합 편성 패널 — **가운데가 본론, 집합은 상시 한 줄, 막대는 아래 서랍**이라는 배치 규약.
+// 집합 편성 패널 — **가운데가 본론, 집합은 상시 한 줄**이라는 배치 규약.
 //
 // 여기서 재는 건 조건 판정이 아니라 **자리**다: 처음 열었을 때 보이는 게 보드인가, 집합 줄이 늘 서서
 // "지금 보는 집합"을 말하는가, 관리(저장·고정·열기·이름·삭제)가 줄 끝 판 **하나**에 사는가(우클릭 없음).
@@ -33,16 +33,15 @@ const btnByTitle = (c: HTMLElement, prefix: string): HTMLElement => {
 const chipByText = (c: HTMLElement, text: string): HTMLElement | undefined =>
     [...c.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(text));
 
-const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [], panelUi: {} };
+const RESET = { filterStages: [], selectedSetRef: null, savedSets: [], panelUi: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
-describe("집합 줄은 상시 한 줄, 막대는 접힌 채로 시작한다 — 처음 보이는 것이 곧 본론(조건 목록)이다", () => {
-    it("붙박이 둘(전체·연동)은 늘 서 있고, 막대는 안 펼쳐져 있다", () => {
+describe("집합 줄은 상시 한 줄 — 처음 보이는 것이 곧 본론(조건 목록)이다", () => {
+    it("붙박이 둘(전체·연동)은 늘 서 있다", () => {
         const { container } = renderPanel();
         expect(chipByText(container, "전체")).toBeDefined();
         expect(chipByText(container, "연동")).toBeDefined();
-        expect(container.textContent).not.toContain("근접 탈락"); // 칸 범례 = 막대가 펼쳐졌다는 표식
         expect(container.textContent).toContain("→"); // 전체 → 생존은 머리글이 상시로 말한다
     });
 
@@ -55,22 +54,10 @@ describe("집합 줄은 상시 한 줄, 막대는 접힌 채로 시작한다 —
         expect(container.querySelector("[title*='칩으로 섭니다']")).toBeTruthy(); // 안내는 줄 이름 툴팁에만 산다
         expect(container.textContent).not.toContain("칩으로 섭니다");
     });
-
-    // 손잡이는 머리글 컨트롤 하나뿐이다(옛 아래 서랍의 요약 줄은 없어졌다) — 목록 전체가 같이 펴진다.
-    it("머리글 '막대' 를 누르면 줄마다 막대가 펴지고, 다시 누르면 접힌다", () => {
-        useWorkbench.setState({
-            filterStages: [{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[1] }] }] }],
-        });
-        const { container } = renderPanel();
-        fireEvent.click(btnByTitle(container, "줄마다 5칸 막대"));
-        expect(container.textContent).toContain("근접 탈락"); // 칸 범례 = 막대가 펼쳐졌다는 표식
-        fireEvent.click(btnByTitle(container, "줄마다 5칸 막대"));
-        expect(container.textContent).not.toContain("근접 탈락");
-    });
 });
 
 describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는 그 값", () => {
-    const ONE = [{ id: "fs1", name: "돌파", stages: [], part: { kind: "survivors" as const }, universe: "longitudinal" as const }];
+    const ONE = [{ id: "fs1", name: "돌파", stages: [], universe: "longitudinal" as const }];
 
     it("저장 집합은 고정 없이는 줄에 안 서고(⋯ 판에만), 고르면 줄에 서며 다시 누르면 연동으로 돌아온다", () => {
         useWorkbench.setState({ savedSets: ONE });
@@ -132,7 +119,7 @@ describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는
     });
 
     it("이름 바꾸기 — 행의 이름 버튼 → 입력 → Enter. 다른 집합과 같은 이름은 무시된다", () => {
-        useWorkbench.setState({ savedSets: [...ONE, { id: "fs2", name: "눌림", stages: [], part: { kind: "survivors" }, universe: "longitudinal" as const }] });
+        useWorkbench.setState({ savedSets: [...ONE, { id: "fs2", name: "눌림", stages: [], universe: "longitudinal" as const }] });
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 관리"));
         const mgr = baseElement as HTMLElement;

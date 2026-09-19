@@ -66,7 +66,7 @@ const renderProbes = (ids: string[], withSnapshot = true): ReturnType<typeof ren
 
 const savedDaily: SavedSet = {
     id: "fs-day", name: "오늘 후보", stages: [wideStage],
-    part: { kind: "survivors" } as SavedSet["part"], universe: "daily",
+    universe: "daily",
 };
 
 beforeEach(() => {
@@ -74,7 +74,7 @@ beforeEach(() => {
     evalSpy.mockClear();
     useWorkbench.setState({
         focus: { ...useWorkbench.getState().focus, date: DATE, code: "", time: null },
-        panelUi: {}, savedSets: [], assemblies: [], selectedSetRef: null, funnelSelection: null,
+        panelUi: {}, savedSets: [], assemblies: [], selectedSetRef: null,
         filterUniverse: "daily", filterStages: [wideStage],
     });
 });
@@ -122,7 +122,7 @@ describe("useBoundSet — 종단 집합에 고정한 패널", () => {
     it("작업 우주를 하루로 갈아타도 **제 집합을 계속 푼다**(④ 의 목표 시나리오)", () => {
         const savedLong: SavedSet = {
             id: "fs-long", name: "9월 돌파", stages: [],
-            part: { kind: "survivors" } as SavedSet["part"], universe: "longitudinal",
+            universe: "longitudinal",
         };
         useWorkbench.setState({
             filterUniverse: "longitudinal", filterStages: [], savedSets: [savedLong],

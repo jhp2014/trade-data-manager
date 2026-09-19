@@ -36,7 +36,7 @@ export type { HistoryEntry, HistorySlice } from "./historySlice.js";
 export type { RankViewSlice } from "./rankViewSlice.js";
 export type { FilterFunnelSlice } from "./filterFunnelSlice.js";
 export { selectFilterStages } from "./filterFunnelSlice.js";
-export type { SavedSet, SavedSetPart, SavedSetsSlice } from "./savedSetsSlice.js";
+export type { SavedSet, SavedSetsSlice } from "./savedSetsSlice.js";
 export type { Assembly, AssemblyMember, AssembliesSlice } from "./assembliesSlice.js";
 export type { PointDefSlice } from "./pointDefSlice.js";
 export type { ThemeBindingSlice } from "./themeBindingSlice.js";

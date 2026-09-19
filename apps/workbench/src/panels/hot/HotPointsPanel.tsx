@@ -56,7 +56,7 @@ export function HotPointsPanel(): JSX.Element {
 
     const selectedView = v.viewOf(null);
     const filtersOn = stages.some((st) => st.enabled !== false && st.predicates.length > 0);
-    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null || s.funnelSelection !== null) || filtersOn;
+    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null) || filtersOn;
     const memberKeys = useMemo<ReadonlySet<string> | null>(
         () => (pointerOn && selectedView.isFiltering && !selectedView.broken
             ? new Set(selectedView.viewedPointRefs.map((p) => pointKeyOf(p.stockCode, p.date, p.time)))

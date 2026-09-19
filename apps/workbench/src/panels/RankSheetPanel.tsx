@@ -476,10 +476,8 @@ function SheetBody({ panelId, rowMode, setRowMode, navRef }: {
             kind: "toggle", id: "setPin", name: "집합 고정", label: "고정",
             help: linked.pinned !== null
                 ? "고정 해제 — 다시 전역 선택을 따라갑니다"
-                : linked.canPinNow
-                    ? "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다"
-                    : "짚은 칸은 고정할 수 없습니다(시선이라 클릭 한 번에 사라집니다) — 집합으로 저장한 뒤 고정하세요",
-            on: linked.pinned !== null, set: linked.togglePin, disabled: !linked.canPinNow,
+                : "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다",
+            on: linked.pinned !== null, set: linked.togglePin,
         },
         {
             kind: "choice", id: "rowMode", name: "행",

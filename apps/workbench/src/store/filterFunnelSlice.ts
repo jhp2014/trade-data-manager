@@ -14,11 +14,10 @@
 // 저장 집합이 이미 한다 — 집합 = 이름 붙은 슬롯이고, 열기(openSet)가 곧 갈아타기다. 익명 칸이 사라져
 // "지금 어느 칸이더라"를 물을 일도 없어졌다.
 import type { StateCreator } from "zustand";
-import type { FunnelCell } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import type { SetRef } from "../lib/setRef.js";
 import {
-    activeStages, addStage, moveStage, parseStages, removeStage, renameGroupInStages, renameStage, replaceStage, setStagePredicates, toggleStage,
+    addStage, parseStages, removeStage, renameGroupInStages, renameStage, replaceStage, setStagePredicates, toggleStage,
     type FilterPredicate, type FilterStage,
 } from "../panels/filter/stage.js";
 import { persistSavedSets } from "./savedSetsSlice.js";
@@ -59,16 +58,6 @@ const loadStages = (): FilterStage[] => {
     return loadJson(STAGES_KEY, parseStages) ?? [];
 };
 
-/**
- * 깔때기에서 지금 짚은 칸들 — 한 단계 안에서 여러 칸(생존+근접 탈락…)을 겹쳐 볼 수 있다.
- * null = 아무것도 안 짚음 → 소비자들은 **최종 생존**을 본다(깔때기가 곧 네비게이션).
- * 조건이 아니라 **시선**이라 영속하지 않는다 — 새로고침 후 "왜 이것만 보이지"의 원인이 되면 안 된다.
- */
-export interface FunnelSelection {
-    stageId: string;
-    cells: FunnelCell[];
-}
-
 export interface FilterFunnelSlice {
     /** 조건 한 벌(영속). 읽기는 selectFilterStages 로 — 소비자가 필드 이름에 매이지 않게. */
     filterStages: FilterStage[];
@@ -84,11 +73,9 @@ export interface FilterFunnelSlice {
      * 정식 경로는 **⧉ 다른 우주로 복제**(결손 경고를 지나는 명시적 행위)다.
      */
     setFilterUniverse: (u: Universe) => void;
-    /** 짚은 칸(시선) — 세션 한정. 골격·시트 등 구독자가 보는 집합을 정한다. */
-    funnelSelection: FunnelSelection | null;
     /**
-     * 선택 포인터 — 집합 편성 패널 안의 **단 하나의 선택**. null = 작업 깔때기(짚은 칸 반영, 없으면 최종
-     * 생존), 참조 = 집합 칩에서 고른 것. 연동 패널과 레일 오버레이가 전부 이 하나를 본다.
+     * 선택 포인터 — 집합 편성 패널 안의 **단 하나의 선택**. null = 작업 깔때기(최종 생존),
+     * 참조 = 집합 칩에서 고른 것. 연동 패널과 레일 오버레이가 전부 이 하나를 본다.
      * 시선이지 조건이 아니라 영속하지 않고, **깔때기를 만지는 순간 작업 깔때기로 복귀**한다(사용자 확정).
      */
     selectedSetRef: SetRef | null;
@@ -114,7 +101,6 @@ export interface FilterFunnelSlice {
     applyFilterRail: (key: RailKey, predicate: FilterPredicate | null) => void;
     removeFilterStage: (id: string) => void;
     toggleFilterStage: (id: string) => void;
-    moveFilterStage: (from: number, to: number) => void;
     setFilterStagePredicates: (id: string, predicates: FilterPredicate[]) => void;
     /** 칸 통째 교체 — 칸 수준 필드(전이)까지 한 번에 가는 편집면이 쓴다(셀 술어 인라인 편집). */
     setFilterStage: (next: FilterStage) => void;
@@ -123,11 +109,10 @@ export interface FilterFunnelSlice {
      * 그룹 **개명 승계** — 그룹 필터 리터럴이 그룹을 이름으로 들고 있어, 서버 개명 후 여기서 작업 깔때기 +
      * 저장 집합(조건 사본)의 옛 이름을 따라 바꾼다. 안 하면 개명 즉시 그 이름을 쓰던 저장물이 죽은 참조가
      * 된다(@none:day 승계 규칙과 같은 성질). putStages 를 안 타는 이유: 이건 손 편집이 아니라 기계 승계라
-     * 시선·선택 포인터를 건드리면 안 된다(단계 id 불변 — 시선은 그대로 유효하다).
+     * 선택 포인터를 건드리면 안 된다(단계 id 불변).
      */
     renameGroupInFilters: (from: string, to: string) => void;
     clearFilterStages: () => void;
-    setFunnelSelection: (sel: FunnelSelection | null) => void;
 }
 
 /**
@@ -138,26 +123,18 @@ export const selectFilterStages = (s: Pick<FilterFunnelSlice, "filterStages">): 
 
 /** 단계는 손으로 쌓는 것이라 매 편집이 곧 영속 — 새로고침에 조건이 날아가면 깔때기를 다시 짜야 한다.
  *
- *  시선(funnelSelection)은 **활성 단계에만 성립**하므로 여기서 함께 정리한다 — 편집으로 그 단계가
- *  삭제되거나 비워지거나 꺼지면 시선을 푼다. 경로마다 따로 풀던 옛 방식은 "술어를 전부 비우는" 경로를
- *  빠뜨려, 칸은 사라졌는데 isFiltering 만 참으로 남는 스테일이 있었다.
- *
  *  export 인 이유: 저장 집합 열기(savedSetsSlice.openSet)도 "깔때기에 조건 한 벌을 쓰는 손"이라
- *  같은 규칙(영속·시선·포인터 정리)을 지나야 한다 — 두 슬라이스의 유일한 접점이다. */
+ *  같은 규칙(영속·포인터 정리)을 지나야 한다 — 두 슬라이스의 유일한 접점이다. */
 export const putStages = (
-    s: Pick<FilterFunnelSlice, "filterStages" | "funnelSelection">,
     stages: FilterStage[],
     /** 집합을 열 때만 준다 — 그 집합의 우주로 깔때기가 갈아탄다(편집 경로는 우주를 안 건드린다). */
     universe?: Universe,
-): Pick<FilterFunnelSlice, "filterStages" | "funnelSelection" | "selectedSetRef"> & Partial<Pick<FilterFunnelSlice, "filterUniverse">> => {
+): Pick<FilterFunnelSlice, "filterStages" | "selectedSetRef"> & Partial<Pick<FilterFunnelSlice, "filterUniverse">> => {
     saveJson(STAGES_KEY, stages);
-    const sel = s.funnelSelection;
-    const keep = sel !== null && activeStages(stages).some((st) => st.id === sel.stageId);
     // 깔때기를 만졌다 = 선택 포인터는 작업 깔때기로 복귀 — 칩에서 고른 집합을 보던 중이라도, 조건을
     // 고치는 손은 "지금 이걸 보겠다"는 뜻이다(연동 패널이 편집을 따라와야 편집의 대가가 보인다).
     return {
         filterStages: stages,
-        funnelSelection: keep ? sel : null,
         selectedSetRef: null,
         ...(universe !== undefined ? { filterUniverse: UNIVERSE_FIELD.save(universe) } : {}),
     };
@@ -187,7 +164,6 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     return {
     filterStages: initialStages(universe),
     filterUniverse: universe,
-    funnelSelection: null,
     selectedSetRef: null,
     gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
     gazePresence: loadJson(GAZE_PRESENCE_KEY, parsePresenceDnf) ?? [],
@@ -204,23 +180,21 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     setGazeMonths: (months) => set(() => ({ gazeMonths: months })),
     setGazePresence: (dnf) => set(() => { saveJson(GAZE_PRESENCE_KEY, dnf); return { gazePresence: dnf }; }),
 
-    // 우주 전환 = 조건 비우기 동반(위 필드 주석). 시선·포인터 정리는 putStages 의 규칙을 그대로 탄다.
+    // 우주 전환 = 조건 비우기 동반(위 필드 주석). 포인터 정리는 putStages 의 규칙을 그대로 탄다.
     // 예외 하나 — 하루로 **처음** 갈아탈 때만 옛 "탐색 후보" 패널의 조건을 이주해 심는다(1회, legacyProbe).
     setFilterUniverse: (u) => set((s) => {
         if (s.filterUniverse === u) return {};
         const seeded = u === "daily" ? migrateProbeStages(s.panelUi) : null;
-        return putStages(s, seeded ?? [], u);
+        return putStages(seeded ?? [], u);
     }),
 
-    // 시선 정리는 전부 putStages 가 한다 — 삭제·비우기·끄기·레일 해제 어느 경로든 같은 규칙으로 풀린다.
-    addFilterStage: (predicates) => set((s) => putStages(s, addStage(selectFilterStages(s), predicates ?? []))),
-    applyFilterRail: (key, predicate) => set((s) => putStages(s, applyRailPredicate(selectFilterStages(s), key, predicate))),
-    removeFilterStage: (id) => set((s) => putStages(s, removeStage(selectFilterStages(s), id))),
-    toggleFilterStage: (id) => set((s) => putStages(s, toggleStage(selectFilterStages(s), id))),
-    moveFilterStage: (from, to) => set((s) => putStages(s, moveStage(selectFilterStages(s), from, to))),
-    setFilterStagePredicates: (id, predicates) => set((s) => putStages(s, setStagePredicates(selectFilterStages(s), id, predicates))),
-    setFilterStage: (next) => set((s) => putStages(s, replaceStage(selectFilterStages(s), next))),
-    renameFilterStage: (id, name) => set((s) => putStages(s, renameStage(selectFilterStages(s), id, name))),
+    addFilterStage: (predicates) => set((s) => putStages(addStage(selectFilterStages(s), predicates ?? []))),
+    applyFilterRail: (key, predicate) => set((s) => putStages(applyRailPredicate(selectFilterStages(s), key, predicate))),
+    removeFilterStage: (id) => set((s) => putStages(removeStage(selectFilterStages(s), id))),
+    toggleFilterStage: (id) => set((s) => putStages(toggleStage(selectFilterStages(s), id))),
+    setFilterStagePredicates: (id, predicates) => set((s) => putStages(setStagePredicates(selectFilterStages(s), id, predicates))),
+    setFilterStage: (next) => set((s) => putStages(replaceStage(selectFilterStages(s), next))),
+    renameFilterStage: (id, name) => set((s) => putStages(renameStage(selectFilterStages(s), id, name))),
     renameGroupInFilters: (from, to) => set((s) => {
         const stages = renameGroupInStages(selectFilterStages(s), from, to);
         const sets = s.savedSets.map((f) => {
@@ -234,8 +208,6 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
             ...(setsTouched ? { savedSets: persistSavedSets(sets) } : {}),
         };
     }),
-    clearFilterStages: () => set((s) => putStages(s, [])),
-    // 칸 짚기도 깔때기를 만지는 손이다 — 선택 포인터는 작업 깔때기로 복귀한다.
-    setFunnelSelection: (sel) => set(() => ({ funnelSelection: sel, selectedSetRef: null })),
+    clearFilterStages: () => set(() => putStages([])),
     };
 };

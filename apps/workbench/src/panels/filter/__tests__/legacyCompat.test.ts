@@ -77,10 +77,11 @@ describe("옛 작업 깔때기 저장물", () => {
 });
 
 describe("옛 저장 집합", () => {
-    it("③ 전멸 감지 + 개수 보존", () => {
+    it("③ 전멸 감지 + 개수 보존 — 옛 부위(part)는 통째로 무시된다(2026-09-19 5칸 은퇴)", () => {
         const sets = parseSavedSets(LEGACY_SAVED_SETS);
         expect(sets).not.toBeNull();
-        expect(sets).toHaveLength(2); // set3(부위 깨짐)만 건너뛴다 — 목록 통째 폐기가 아니다
+        expect(sets).toHaveLength(3); // 옛 부위가 무엇이었든(깨진 것 포함) 집합은 전부 산다
+        for (const s of sets!) expect(s).not.toHaveProperty("part");
     });
 
     it("우주 선언이 없던 저장물은 **종단**으로 승계된다(부재 = longitudinal)", () => {

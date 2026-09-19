@@ -4,16 +4,17 @@
 //   · 영속 4종 : 유니버스(전체) / 최종 생존(작업 깔때기) / 저장 집합 / 조립(부품 합집합 — 2026-09-08)
 //     — 패널 바인딩으로 저장할 수 있다. 저장 집합·조립만이 이름 있는 저장물이고, 그룹·필터를 직접
 //     가리키는 영속 참조는 폐지됐다(그룹은 깔때기의 재료지 바인딩 대상이 아니다 — 잠깐 탐색은 연동 모드가 담당한다).
-//   · 세션 2종 : 짚은 칸(작업 깔때기) / 항목 목록(시트 밴드 등) — 짚음 채널·내부 리졸빙에만 쓰이고
-//     저장되지 않는다. (집합 난립 방지: 이름을 붙일 때만 저장물이 된다.)
+//   · 세션 1종 : 항목 목록(시트 밴드 등) — 내부 리졸빙에만 쓰이고 저장되지 않는다.
+//     (집합 난립 방지: 이름을 붙일 때만 저장물이 된다. 옛 "짚은 칸"은 2026-09-19 깔때기 진단
+//      은퇴와 함께 삭제 — 칸이라는 개념 자체가 없어졌다.)
 //     (옛 그룹 체인(교집합)은 2026-09-10 그룹 목록 패널 은퇴와 함께 삭제 — 생산자가 이미 0이었다.)
 //   · 잔해 1종 : orphan — **파서만 만든다.** 폐지된 옛 바인딩(그룹 직접·칸 직접)이 저장소에 남아 있으면
 //     여기로 변환되고, 리졸버가 항상 깨진 참조로 푼다. 조용히 연동으로 폴백하지 않는 이유: 실패가
 //     소리 없이 다른 집합을 보여주는 방향이라서다("깨진 참조 = 빈 집합 + 라벨" 규칙).
 //
-// 전부 **라이브 참조**다 — 저장하는 건 정의(어느 집합·어느 칸)지 결과가 아니다. 결과를 얼리면 배치
-// 하나만 바뀌어도 이름은 "근접 탈락"인데 내용은 낡은 스냅샷인 물건이 생긴다.
-import { funnelKey, type FunnelCell, type FunnelItem } from "@trade-data-manager/market/domain";
+// 전부 **라이브 참조**다 — 저장하는 건 정의(어느 집합)지 결과가 아니다. 결과를 얼리면 조건 하나만
+// 바뀌어도 이름과 내용이 어긋난 낡은 스냅샷이 생긴다.
+import { funnelKey, type FunnelItem } from "@trade-data-manager/market/domain";
 
 export type SetRef =
     | { kind: "universe" }
@@ -21,15 +22,11 @@ export type SetRef =
     | { kind: "saved"; setId: string }
     | { kind: "assembly"; id: string }
     | { kind: "orphan"; label: string }
-    | { kind: "cell"; stageId: string; cells: FunnelCell[] }
     | { kind: "items"; label: string; items: FunnelItem[] };
 
-/** 패널 바인딩으로 저장해도 되는 참조인가 — 세션 3종은 정의가 세션 밖에 없어 저장하면 즉시 깨진 참조다. */
+/** 패널 바인딩으로 저장해도 되는 참조인가 — 항목 목록은 정의가 세션 밖에 없어 저장하면 즉시 깨진 참조다. */
 export const isPersistableSetRef = (r: SetRef): boolean =>
     r.kind === "universe" || r.kind === "survivors" || r.kind === "saved" || r.kind === "assembly";
-
-const CELLS: readonly FunnelCell[] = ["survive", "nearMiss", "upstreamPending", "fail", "pending"];
-const isCell = (v: unknown): v is FunnelCell => typeof v === "string" && (CELLS as readonly string[]).includes(v);
 
 /**
  * 정규화 키 — 같은 집합을 가리키는 참조는 같은 키(리졸버 캐시·React 메모의 기준).
@@ -38,8 +35,6 @@ const isCell = (v: unknown): v is FunnelCell => typeof v === "string" && (CELLS 
  * 자유 텍스트라(도메인이 일부러 허용) 구분자 이어붙이기로는 안전할 수 없다 — 실제로 `names.join("&")` 는
  * 그룹 "A&B" 하나짜리 체인과 [A,B] 체인을 같은 키로 만들었다. JSON 배열 인코딩은 모든 문자를
  * 이스케이프하므로 이 구조들에 대해 단사(injective)다.
- *
- * 순서가 집합을 바꾸지 않는 자리(칸 목록·체인 교집합)는 정렬해 싣는다 — 같은 집합은 한 번만 푼다.
  */
 export function setRefKey(r: SetRef): string {
     switch (r.kind) {
@@ -48,7 +43,6 @@ export function setRefKey(r: SetRef): string {
         case "saved": return `s${JSON.stringify([r.setId])}`;
         case "assembly": return `a${JSON.stringify([r.id])}`;
         case "orphan": return `o${JSON.stringify([r.label])}`;
-        case "cell": return `c${JSON.stringify([r.stageId, [...r.cells].sort()])}`;
         case "items": return `it${JSON.stringify([r.label, r.items.map(funnelKey)])}`;
     }
 }
@@ -82,12 +76,9 @@ export function parseSetRef(o: unknown): SetRef | null {
             return typeof r.filterId === "string" ? { kind: "saved", setId: r.filterId } : null;
         case "group":
             return typeof r.name === "string" && r.name !== "" ? { kind: "orphan", label: `그룹 ${r.name}` } : null;
-        case "cell": {
-            if (typeof r.stageId === "string" && Array.isArray(r.cells) && r.cells.length > 0 && r.cells.every(isCell)) {
-                return { kind: "orphan", label: "옛 칸 바인딩" };
-            }
-            return null;
-        }
+        case "cell":
+            // 옛 칸 바인딩 — 칸(FunnelCell) 개념이 은퇴했으므로 모양은 더 안 본다(어차피 orphan 하나로 간다).
+            return typeof r.stageId === "string" ? { kind: "orphan", label: "옛 칸 바인딩" } : null;
         default:
             return null;
     }

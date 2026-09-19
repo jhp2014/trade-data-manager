@@ -61,7 +61,7 @@ export function OutcomePanel({ panelId = "outcome-rails" }: { panelId?: string }
     const selectedView = bound.view;
     const filtersOn = stages.some((st) => st.enabled !== false && st.predicates.length > 0);
     // 고정된 패널은 **전역 포인터와 무관하게** 자기 집합을 오버레이한다(고정의 뜻이 그것이다).
-    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null || s.funnelSelection !== null) || filtersOn || bound.pinned !== null;
+    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null) || filtersOn || bound.pinned !== null;
     // n/N 의 재료 — 이 패널은 타점 층위다(값은 라벨 좌표에만 굽혀 있다. 하루 후보는 "표현 안 됨"으로 선다).
     const boundMembers = useMemo(
         () => setMembersOf(bound.view, "point", (it) => it.time !== undefined && outcomes.byKey.has(pointKeyOf(it.stockCode, it.date, it.time))),
@@ -71,10 +71,8 @@ export function OutcomePanel({ panelId = "outcome-rails" }: { panelId?: string }
         kind: "toggle", id: "setPin", name: "집합 고정", label: "고정",
         help: bound.pinned !== null
             ? "고정 해제 — 다시 전역 선택을 따라갑니다"
-            : bound.canPinNow
-                ? "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다"
-                : "짚은 칸은 고정할 수 없습니다(시선이라 클릭 한 번에 사라집니다) — 집합으로 저장한 뒤 고정하세요",
-        on: bound.pinned !== null, set: bound.togglePin, disabled: !bound.canPinNow,
+            : "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다",
+        on: bound.pinned !== null, set: bound.togglePin,
     }];
     const memberKeys = useMemo<ReadonlySet<string> | null>(
         () => (pointerOn && selectedView.isFiltering && !selectedView.broken

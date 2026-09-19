@@ -9,7 +9,7 @@ import type { FilterStage } from "../stage.js";
 
 const stage = (id: string): FilterStage => ({ id, enabled: true, predicates: [] });
 const set = (id: string, universe: SavedSet["universe"], stages: FilterStage[] = []): SavedSet =>
-    ({ id, name: id, stages, part: { kind: "survivors" } as SavedSet["part"], universe });
+    ({ id, name: id, stages, universe });
 
 describe("parsePanelBinding — 저장물 문지기", () => {
     it("영속 4종만 통과한다", () => {
@@ -18,10 +18,8 @@ describe("parsePanelBinding — 저장물 문지기", () => {
         expect(parsePanelBinding({ kind: "assembly", id: "as1" })).toEqual({ kind: "assembly", id: "as1" });
     });
 
-    it("세션 참조(짚은 칸·항목 목록)는 핀이 될 수 없다 — 정의가 세션 밖에 없다", () => {
-        expect(parsePanelBinding({ kind: "cell", stageId: "s1", cells: ["survive"] })).toBeNull();
+    it("세션 참조(항목 목록)는 핀이 될 수 없다 — 정의가 세션 밖에 없다", () => {
         expect(parsePanelBinding({ kind: "items", label: "밴드", items: [] })).toBeNull();
-        expect(canPin({ kind: "cell", stageId: "s1", cells: [] })).toBe(false);
         expect(canPin(null)).toBe(false);
         expect(canPin({ kind: "saved", setId: "fs1" })).toBe(true);
     });

@@ -44,51 +44,8 @@ describe("편집은 곧 영속", () => {
     });
 });
 
-describe("시선(funnelSelection)은 활성 단계에만 성립한다", () => {
-    /** 단계 하나 세우고 그 칸을 짚은 상태를 만든다. */
-    async function withSelection(): Promise<{ store: Awaited<ReturnType<typeof loadStore>>; id: string }> {
-        stubStorage();
-        const store = await loadStore();
-        store.getState().addFilterStage([datePred]);
-        const id = selectFilterStages(store.getState())[0].id;
-        store.getState().setFunnelSelection({ stageId: id, cells: ["survive"] });
-        return { store, id };
-    }
-
-    it("이름 변경·순서 이동은 시선을 유지한다(단계는 여전히 활성이다)", async () => {
-        const { store, id } = await withSelection();
-        store.getState().renameFilterStage(id, "새 이름");
-        store.getState().moveFilterStage(0, 0);
-        expect(store.getState().funnelSelection?.stageId).toBe(id);
-    });
-
-    it("술어를 전부 비우면 시선이 풀린다 — 경로별 수동 해제가 빠뜨리던 스테일", async () => {
-        const { store, id } = await withSelection();
-        store.getState().setFilterStagePredicates(id, []);
-        expect(store.getState().funnelSelection).toBeNull();
-    });
-
-    it("단계를 끄면(toggle off) 시선이 풀린다 — 평가에서 빠진 단계의 칸은 존재하지 않는다", async () => {
-        const { store, id } = await withSelection();
-        store.getState().toggleFilterStage(id);
-        expect(store.getState().funnelSelection).toBeNull();
-    });
-
-    it("단계 삭제·전체 비우기도 같은 규칙으로 풀린다", async () => {
-        const { store, id } = await withSelection();
-        store.getState().removeFilterStage(id);
-        expect(store.getState().funnelSelection).toBeNull();
-
-        store.getState().addFilterStage([datePred]);
-        const id2 = selectFilterStages(store.getState())[0].id;
-        store.getState().setFunnelSelection({ stageId: id2, cells: ["nearMiss"] });
-        store.getState().clearFilterStages();
-        expect(store.getState().funnelSelection).toBeNull();
-    });
-});
-
 describe("선택 포인터 — 깔때기를 만지는 순간 작업 깔때기로 복귀한다", () => {
-    it("집합 선택 후 단계 편집·칸 짚기가 전부 포인터를 푼다", async () => {
+    it("집합 선택 후 단계 편집이 포인터를 푼다", async () => {
         stubStorage();
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
@@ -100,7 +57,7 @@ describe("선택 포인터 — 깔때기를 만지는 순간 작업 깔때기로
         expect(store.getState().selectedSetRef).toBeNull();
 
         store.getState().selectSet({ kind: "survivors" });
-        store.getState().setFunnelSelection({ stageId: id, cells: ["survive"] }); // 칸 짚기
+        store.getState().toggleFilterStage(id); // 조건 끄기도 편집이다
         expect(store.getState().selectedSetRef).toBeNull();
     });
 });

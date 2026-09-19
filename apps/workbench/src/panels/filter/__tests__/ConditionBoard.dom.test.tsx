@@ -21,8 +21,8 @@ const candidateDays: Seed["candidateDays"] = [
 const points: SeedPoint[] = [{ stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" }];
 const SEED: Seed = { candidateDays, points };
 
-const renderBoard = (barsOpen = false): ReturnType<typeof render> =>
-    render(<ConditionBoard barsOpen={barsOpen} />, {
+const renderBoard = (): ReturnType<typeof render> =>
+    render(<ConditionBoard />, {
         wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers>,
     });
 
@@ -64,12 +64,10 @@ describe("줄에는 값 편집 손잡이가 없다 — 편집면은 종류마다
         expect(buttons(container).filter((b) => b.title === "1 늘리기")).toHaveLength(0); // 스텝퍼
     });
 
-    it("막대는 머리글 토글이 지배한다 — 접히면 요약 한 줄, 펴면 5칸과 수치", () => {
+    it("줄은 요약 한 줄이 전부다 — 5칸 진단(새로 죽임)은 은퇴했다", () => {
         useWorkbench.setState({ filterStages: [DATE_STAGE] });
-        const { container, rerender } = renderBoard(false);
+        const { container } = renderBoard();
         expect(container.textContent).not.toContain("새로 죽임");
-        rerender(<ConditionBoard barsOpen />);
-        expect(container.textContent).toContain("새로 죽임");
     });
 });
 
@@ -166,7 +164,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
             memberships: [{ stockCode: A, date: DATES[0], groupNames: ["돌파형"] }],
             pointMemberships: [{ stockCode: A, date: DATES[0], time: "09:30:00", groupNames: ["눌림"] }],
         };
-        const { container, baseElement } = render(<ConditionBoard barsOpen={false} />, {
+        const { container, baseElement } = render(<ConditionBoard />, {
             wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
         });
         openMenu(container);
@@ -185,7 +183,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
             memberships: [{ stockCode: A, date: DATES[0], groupNames: ["돌파형"] }], // 돌파형 = day 그룹
             pointMemberships: [{ stockCode: A, date: DATES[0], time: "09:30:00", groupNames: ["눌림"] }], // 눌림 = 타점 그룹
         };
-        const { container, baseElement } = render(<ConditionBoard barsOpen={false} />, {
+        const { container, baseElement } = render(<ConditionBoard />, {
             wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
         });
         openMenu(container);
@@ -215,7 +213,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
                 predicates: [{ kind: "group" as const, expr: { groups: [{ literals: [{ groupId: "눌림", neg: false }] }] }, scope: "point" as const }],
             }],
         });
-        const { container, baseElement } = render(<ConditionBoard barsOpen={false} />, {
+        const { container, baseElement } = render(<ConditionBoard />, {
             wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
         });
         act(() => { fireEvent.click(byText(container, "눌림")!); }); // 줄 이름 → 그 자리 팔레트(편집)
@@ -230,69 +228,13 @@ describe("＋ 조건 — 생성 입구 하나", () => {
 
 // ⚠ 순서는 결과가 아니라 **서술**을 정한다(어느 필터가 무엇을 죽였나) — 그래서 표시 순서와 store
 //   배열 인덱스의 사상이 어긋나면 숫자가 조용히 틀린다. 층위를 넘는 드롭 차단도 여기서 잰다.
-describe("순서 — 표시 순서를 store 배열 인덱스로 옮긴다", () => {
-    const DATE_2 = { id: "d2", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
-    const TIME_POINT = { id: "p1", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: "09:00", to: "10:00" }] }] };
-    /** dataTransfer 는 jsdom 에 없다 — 우리가 실제로 쓰는 셋(setData·types·effectAllowed)만 흉내낸다. */
-    const fakeDt = (): DataTransfer => {
-        const bag = new Map<string, string>();
-        return {
-            setData: (t: string, v: string) => { bag.set(t, v); },
-            getData: (t: string) => bag.get(t) ?? "",
-            get types() { return [...bag.keys()]; },
-            effectAllowed: "none",
-        } as unknown as DataTransfer;
-    };
-    /** 줄 전체(draggable div) — 이름 버튼의 조상 중 draggable 인 것. */
-    const rowOf = (c: HTMLElement, text: string): HTMLElement => {
-        let el: HTMLElement | null = byText(c, text) ?? null;
-        while (el && !el.draggable) el = el.parentElement;
-        if (!el) throw new Error(`'${text}' 줄이 없다`);
-        return el;
-    };
-    /**
-     * ⚠ 세 이벤트를 한 `act` 로 묶으면 안 된다 — dragStart 가 심은 `dragId` 가 커밋되기 전에 drop
-     * 핸들러가 옛 클로저를 읽어 아무 일도 안 난다(검사가 조용히 통과하는 게 아니라 조용히 실패한다).
-     * fireEvent 는 각자 act 로 감싸므로 나눠 부르면 사이에 리렌더가 낀다.
-     */
-    const dragRow = (c: HTMLElement, from: string, to: string): void => {
-        const dataTransfer = fakeDt();
-        fireEvent.dragStart(rowOf(c, from), { dataTransfer });
-        fireEvent.dragOver(rowOf(c, to), { dataTransfer });
-        fireEvent.drop(rowOf(c, to), { dataTransfer });
-    };
-
-    const ids = (): string[] => stages().map((s) => s.id);
-
-    // ⚠ **표시 순서 ≠ store 순서**로 심는다(타점 조건이 배열 맨 앞인데 화면에선 하루 칸이 먼저 선다).
-    //   둘이 같은 배열로 재면 인덱스 사상이 어긋나도 항등이라 통과한다 — 재려던 걸 안 재는 검사가 된다.
-    it("표시로는 이웃이어도 store 인덱스로 옮긴다", () => {
-        useWorkbench.setState({ filterStages: [TIME_POINT, DATE_STAGE, DATE_2] });
-        const { container } = renderBoard();
-        expect(ids()).toEqual(["p1", "d1", "d2"]);
-
-        dragRow(container, "26.07.07~26.07.07", "26.07.06~26.07.07"); // d2 를 d1 자리로
-
-        expect(ids()).toEqual(["p1", "d2", "d1"]);
-    });
-
-    it("층위는 못 넘는다 — 하루 조건을 타점 조건에 떨어뜨려도 그대로", () => {
-        useWorkbench.setState({ filterStages: [DATE_STAGE, TIME_POINT] });
-        const { container } = renderBoard();
-
-        dragRow(container, "26.07.06~26.07.07", "09:00~10:00");
-
-        expect(ids()).toEqual(["d1", "p1"]);
-    });
-});
-
 describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
     it("◉ 토글로 깔때기에서 빼고, ✕ 로 지운다", () => {
         useWorkbench.setState({ filterStages: [DATE_STAGE] });
         const { container } = renderBoard();
-        act(() => { fireEvent.click(buttons(container).find((b) => b.title.startsWith("이 필터 끄기"))!); });
+        act(() => { fireEvent.click(buttons(container).find((b) => b.title.startsWith("이 조건 끄기"))!); });
         expect(stages()[0]!.enabled).toBe(false);
-        act(() => { fireEvent.click(buttons(container).find((b) => b.title === "이 필터 지우기")!); });
+        act(() => { fireEvent.click(buttons(container).find((b) => b.title === "이 조건 지우기")!); });
         expect(stages()).toHaveLength(0);
     });
 });

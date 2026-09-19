@@ -72,7 +72,7 @@ export const LEGACY_SAVED_SETS: unknown = [
         pointDef: { baselineGateEok: 30, mergeRisePct: 1.5 },
     },
     {
-        // 부위가 깨진 집합 — **이 항목만** 건너뛴다(집합 목록 통째 폐기가 아니다).
+        // 부위가 깨져 있던 집합 — 이제는 부위 자체가 없어 그냥 산다(2026-09-19 5칸 진단 은퇴).
         id: "set3",
         name: "부위 깨짐",
         stages: [],

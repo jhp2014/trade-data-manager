@@ -51,10 +51,10 @@ const dateStage = (id: string, from: string, to: string, enabled = true): Filter
 const setStages = (stages: FilterStage[]): void => { act(() => { useWorkbench.setState({ filterStages: stages }); }); };
 
 beforeEach(() => {
-    useWorkbench.setState({ filterStages: [], funnelSelection: null });
+    useWorkbench.setState({ filterStages: [] });
 });
 afterEach(() => {
-    useWorkbench.setState({ filterStages: [], funnelSelection: null });
+    useWorkbench.setState({ filterStages: [] });
     localStorage.clear();
     vi.unstubAllGlobals();
 });
@@ -277,36 +277,15 @@ describe("그룹 술어 scope — 같은 좌표 라벨을 두 층위로 묻는�
         // C 의 라벨 좌표가 행이 되어 생존한다(후보 정렬 = 날짜 내림 → D2 의 C 가 앞).
         expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`))
             .toEqual([`${C}@10:00:00`, `${A}@09:30:00`]);
-        // 라벨 0인 날은 **탈락이 아니라 결손** — 미배치 칸에 서야 한다(이 파일 머리 주석의 핵심 규칙).
-        act(() => { useWorkbench.setState({ funnelSelection: { stageId: "sg", cells: ["pending"] } }); });
-        expect(read(withOrphanDay).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([NOLABEL]);
     });
 });
 
-describe("칸 짚기 — 보는 집합이 그 칸으로 바뀐다", () => {
-    it("안 짚으면 최종 생존", () => {
+describe("보는 집합 — 최종 생존", () => {
+    it("조건이 걸리면 생존만 남는다", () => {
         setStages([dateStage("s1", D1, D1)]);
-        expect(read().viewOf(null).viewedItems).toHaveLength(2);
-    });
-
-    it("짚으면 그 칸의 항목들 — **탈락한 것도** 볼 수 있다(그게 깔때기의 쓸모다)", () => {
-        setStages([dateStage("s1", D1, D1)]);
-        act(() => { useWorkbench.setState({ funnelSelection: { stageId: "s1", cells: ["fail"] } }); });
         const v = read();
         expect(v.viewOf(null).isFiltering).toBe(true);
-        expect(v.viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([C]); // D2 라 걸러진 것
-    });
-
-    it("여러 칸을 짚으면 합집합 — 한 단계 안 칸들은 서로소라 중복이 없다", () => {
-        setStages([dateStage("s1", D1, D1)]);
-        act(() => { useWorkbench.setState({ funnelSelection: { stageId: "s1", cells: ["survive", "fail"] } }); });
-        expect(read().viewOf(null).viewedItems).toHaveLength(3);
-    });
-
-    it("짚은 단계가 없어졌으면 최종 생존으로 돌아간다 — 유령 선택이 화면을 비우지 않게", () => {
-        setStages([dateStage("s1", D1, D1)]);
-        act(() => { useWorkbench.setState({ funnelSelection: { stageId: "없는단계", cells: ["fail"] } }); });
-        expect(read().viewOf(null).viewedItems).toHaveLength(2);
+        expect(v.viewOf(null).viewedItems).toHaveLength(2);
     });
 });
 

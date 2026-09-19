@@ -16,25 +16,22 @@
 //
 // ⚠ 어휘 — **필터는 과정, 집합은 산출물.** 줄·막대에는 "필터"가, 칩·바인딩·피커에는 "집합"만 보인다.
 // 코드의 `stage`(단계)는 core 깔때기 정산의 모델 낱말이라 그대로 둔다(상류·새로 죽임이 그 순서에 매여 있다).
-import { usePanelUi } from "../store/usePanelUi.js";
 import { useFunnel } from "./filter/FunnelContext.js";
 import { ConditionBoard } from "./filter/ConditionBoard.js";
 import { FunnelHeader } from "./filter/FunnelHeader.js";
 import { SetRow } from "./filter/SetRow.js";
 
-export function FilterFunnelPanel({ panelId }: { panelId: string }): JSX.Element {
+export function FilterFunnelPanel({ panelId: _panelId }: { panelId: string }): JSX.Element {
     const v = useFunnel();
-    // 막대는 **기본 접힘** — 처음 보이는 것은 "무엇이 걸렸나"이고, "얼마나 걸렀나"는 따져 볼 때 편다.
-    const [barsOpen, setBarsOpen] = usePanelUi(panelId, "barsOpen", false);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
-            <FunnelHeader v={v} barsOpen={barsOpen} onToggleBars={() => setBarsOpen(!barsOpen)} />
+            <FunnelHeader v={v} />
 
             <SetRow />
 
             <div style={{ flex: 1, minHeight: 0 }}>
-                <ConditionBoard barsOpen={barsOpen} />
+                <ConditionBoard />
             </div>
         </div>
     );
