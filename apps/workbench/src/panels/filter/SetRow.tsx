@@ -30,6 +30,7 @@ import { useFunnel } from "./FunnelContext.js";
 import type { ResolvedSet } from "./resolveSet.js";
 import { effectiveUniverse, UNIVERSE_LABEL } from "./universe.js";
 import { leafCount } from "./expr.js";
+import { setDisplayName } from "./label.js";
 import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
 import { textInput } from "./ui.js";
 
@@ -73,11 +74,12 @@ export function SetRow(): JSX.Element {
 
     const savedItems: ChipItem[] = savedSets.map((f) => {
         const ref: SetRef = { kind: "saved", setId: f.id };
+        const nm = setDisplayName(f, v.labelLook);
         // ⚠ 표식이 없는 이유: 저장 집합의 깨짐은 **집합이 없을 때**뿐인데(resolveSaved) 이 목록은
         // savedSets 를 도므로 늘 존재한다. 깨진 참조를 말하는 자리는 패널 바인딩과 조립 부품 줄이다.
         return {
-            key: f.id, label: f.name, active: isOn(ref), color: PIN,
-            title: `${f.name} — 조건 ${leafCount(f.expr)}개 · ${countOf(ref)}\n클릭 = 이 집합 보기(다시 누르면 연동)`,
+            key: f.id, label: nm, active: isOn(ref), color: PIN,
+            title: `${nm} — 조건 ${leafCount(f.expr)}개 · ${countOf(ref)}\n클릭 = 이 집합 보기(다시 누르면 연동)`,
             onClick: () => toggle(ref),
         };
     });
@@ -86,7 +88,7 @@ export function SetRow(): JSX.Element {
     return (
         <WorksetRowShell label="집합"
             title={savedSets.length === 0 ? "조건을 걸고 집합 관리에서 저장하면 여기 칩으로 섭니다" : "칩 클릭 = 이 집합 보기 · 줄 끝 ⋯ = 집합 관리(저장·고정·열기·삭제)"}>
-            <GazeChip label={setRefLabel(universeRef, savedSets)} active={isOn(universeRef)} color={PIN}
+            <GazeChip label={setRefLabel(universeRef, savedSets, v.labelLook)} active={isOn(universeRef)} color={PIN}
                 onClick={() => toggle(universeRef)}
                 title={`유니버스 — 손이 닿은 흔적(앵커·그룹·타점)이 하나라도 있는 (종목·날짜). 조건과 무관 · ${countOf(universeRef)}`} />
             <GazeChip label="연동" active={selectedSetRef === null} color={PIN}
@@ -174,28 +176,29 @@ function SetManager({ pins, onTogglePin, onPick }: {
                 const opened = openedSetId === f.id;
                 const editing = renaming === f.id;
                 const r = v.resolveSet(ref);
+                const nm = setDisplayName(f, v.labelLook);
                 const other = f.universe !== setUniverse; // 다른 우주 — 숨기지 않고 회색 + 뱃지
                 return (
                     <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 6px 2px 4px", background: active ? "var(--accent-soft)" : "transparent" }}>
                         {editing ? (
-                            <InlineRename initial={f.name}
+                            <InlineRename initial={f.name ?? ""}
                                 onCommit={(nm) => { renameSet(f.id, nm); setRenaming(null); }}
                                 onCancel={() => setRenaming(null)}
                                 style={{ ...textInput, flex: 1, minWidth: 0, fontSize: 11.5, padding: "2px 6px" }} />
                         ) : (
                             <button onClick={() => onPick(ref)}
-                                title={`${f.name} — 조건 ${leafCount(f.expr)}개 · ${countLabel(r)}${opened ? " · 보드에 열려 있음" : ""}\n클릭 = 이 집합 보기`}
+                                title={`${nm} — 조건 ${leafCount(f.expr)}개 · ${countLabel(r)}${opened ? " · 보드에 열려 있음" : ""}\n클릭 = 이 집합 보기`}
                                 style={{
                                     flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent",
                                     color: "var(--text-primary)", padding: "3px 4px", cursor: "pointer",
                                     font: "inherit", fontSize: 11.5, fontWeight: active ? 700 : 400,
                                     whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                                 }}>
-                                {f.name}{opened ? <span style={{ marginLeft: 5, fontSize: 9.5, color: "var(--accent-primary)" }}>열림</span> : null}
+                                {nm}{opened ? <span style={{ marginLeft: 5, fontSize: 9.5, color: "var(--accent-primary)" }}>열림</span> : null}
                             </button>
                         )}
                         <button onClick={() => onTogglePin(f.id)} aria-pressed={pinned} style={smallBtn("normal", pinned)}
-                            title={pinned ? `${f.name} — 고정 해제(줄에서 내린다)` : `${f.name} — 줄에 고정(늘 선다)`}>고정</button>
+                            title={pinned ? `${nm} — 고정 해제(줄에서 내린다)` : `${nm} — 줄에 고정(늘 선다)`}>고정</button>
                         {/* ⧉ 복제는 폐지됐다(2026-09-19 사용자 확정) — 우주를 조건이 정하니
                             "조건은 그대로 두고 우주만 바꾸기"가 원리적으로 불가능하다. 다른 우주 집합은
                             숨기지 않고 **회색 + 뱃지**로 서고, 열면 그 집합의 우주로 자연히 갈아탄다. */}
@@ -206,7 +209,7 @@ function SetManager({ pins, onTogglePin, onPick }: {
                         {opened && (
                             <button onClick={() => overwriteSet(f.id)} disabled={nothingToSave} style={{ ...smallBtn(nothingToSave ? "normal" : "accent"), cursor: nothingToSave ? "default" : "pointer" }}
                                 title={nothingToSave ? "걸린 필터가 없습니다 — 덮어쓰면 이 집합이 전체와 같아집니다"
-                                    : `"${f.name}" 에 지금 조건을 덮어씁니다 — 이 집합 하나만 바뀝니다(부위·이름 유지)`}>덮어쓰기</button>
+                                    : `"${nm}" 에 지금 조건을 덮어씁니다 — 이 집합 하나만 바뀝니다(부위·이름 유지)`}>덮어쓰기</button>
                         )}
                         <button onClick={() => setRenaming(f.id)} style={smallBtn()} title="이름 바꾸기">이름</button>
                         {armedDelete === f.id ? (

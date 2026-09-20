@@ -9,13 +9,20 @@
 // 대상이 없고, 새 핀은 `panelUi[panelId].setPin` 이라는 다른 자리에 산다.
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import type { SetRef } from "../../lib/setRef.js";
+import { setDisplayName, type LabelLookup } from "./label.js";
 
-/** 집합 참조의 이름 — 저장 집합은 저장 사전에서 찾는다(지워졌으면 그렇게 말한다). */
-export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[]): string {
+/**
+ * 집합 참조의 이름 — 저장 집합은 저장 사전에서 찾는다(지워졌으면 그렇게 말한다).
+ * 이름은 `setDisplayName` 한 곳을 지난다 — 손 이름이 없으면 자동 이름이 나온다(2026-09-20).
+ */
+export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[], look: LabelLookup): string {
     switch (ref.kind) {
         case "universe": return "전체";
         case "survivors": return "최종 생존";
-        case "saved": return savedSets.find((f) => f.id === ref.setId)?.name ?? "(지워진 집합)";
+        case "saved": {
+            const f = savedSets.find((x) => x.id === ref.setId);
+            return f ? setDisplayName(f, look) : "(지워진 집합)";
+        }
         case "orphan": return `${ref.label} (폐지된 바인딩)`;
         case "items": return ref.label;
     }

@@ -41,7 +41,7 @@ import { OUTCOME_PANEL_ID } from "../outcome/outcomePanelIds.js";
 import { HOT_PANEL_ID } from "../hot/hotPanelIds.js";
 import { useLinkedHot } from "../hot/hotLink.js";
 import { useLinkedOutcome } from "../outcome/outcomeLink.js";
-import { stageLabel } from "./label.js";
+import { setDisplayName, stageLabel } from "./label.js";
 import { stageKind, type FilterPredicate, type FilterStage, type Grain, type PredicateKind } from "./stage.js";
 
 /** 종류별 편집면 — 줄 이름을 누르면 여기로 데려간다. 결과 패널 id 는 공용 상수(주소가 세 곳이라 잎 모듈). */
@@ -227,7 +227,7 @@ export function ConditionBoard({ panelId }: {
             // "쓰는 곳" = 이 집합을 참조하는 **저장 집합 수** + 지금 작업 중인 식(그것도 한 곳이다).
             const usedBy = savedSets.filter((x) => refsOf(x.expr).includes(setId)).length
                 + (refsOf(expr).includes(setId) ? 1 : 0);
-            return { name: set?.name ?? "(지워진 집합)", broken: set === undefined, usedBy };
+            return { name: set ? setDisplayName(set, v.labelLook) : "(지워진 집합)", broken: set === undefined, usedBy };
         },
         // 열기 = **편집 대상 전환**(그 집합의 식이 작업 깔때기로 온다). 그 자리에서 고치게 두지
         // 않는 이유: 참조는 남의 것이라, 여기서 고치면 그 집합을 쓰는 다른 식이 전부 따라 바뀐다.

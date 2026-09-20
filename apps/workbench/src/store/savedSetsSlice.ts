@@ -36,7 +36,13 @@ const SAVED_SETS_KEY = "wb.savedSets.v5";
  */
 export interface SavedSet {
     id: string;
-    name: string;
+    /**
+     * **손으로 지은 이름**(2026-09-20 부터 옵셔널). 부재 = 자동 이름(`label.autoSetName`)으로 화면이
+     * 채우고 칩이 **점선**으로 선다 — "아직 생각이 안 굳음 / 개념이 됨"을 화면이 계속 말한다.
+     * 저장 시점에 자동 이름을 굽지 않는 이유는 `autoSetName` 머리 주석(재료가 그때 없다).
+     * 이름 충돌 거절도 **손으로 지은 이름끼리만** 본다.
+     */
+    name?: string;
     /** 이 집합의 **식**(2026-09-19 부터 트리). 잎 목록이 필요하면 `leavesOf`. */
     expr: SetExpr;
     /** 자동 타점 정의 사본(집합 자립 — 게이트가 다르면 같은 조건도 다른 모수를 센다). 옛 저장물엔 없음 →
@@ -100,14 +106,15 @@ export function parseSavedSets(o: unknown): SavedSet[] | null {
     const out: SavedSet[] = [];
     for (const raw of o) {
         const f = raw as { id?: unknown; name?: unknown; expr?: unknown; pointDef?: unknown; universe?: unknown };
-        if (typeof f?.id !== "string" || typeof f?.name !== "string") continue;
+        if (typeof f?.id !== "string") continue; // 이름은 옵셔널 — 부재 = 자동 이름(점선 칩)
         const expr = parseExpr(f.expr, parseStages);
         if (!expr) continue;
         const universe = parseUniverse(f.universe); // 부재·오염 = 종단(집합 폐기 사유가 아니다)
         // 정의는 additive — 없거나 오염이면 필드 생략(열 때 현재 정의 유지). 집합 통째 폐기 사유가 아니다.
         const pointDef = f.pointDef !== undefined ? (parsePointDef(f.pointDef) ?? undefined) : undefined;
         // 옛 저장물의 pointSource(출처 토글)는 조용히 버린다 — 출처가 하나가 됐다(2026-09-01).
-        out.push({ id: f.id, name: f.name, expr, universe, ...(pointDef ? { pointDef } : {}) });
+        const name = typeof f.name === "string" && f.name.trim() !== "" ? f.name : undefined;
+        out.push({ id: f.id, expr, universe, ...(name !== undefined ? { name } : {}), ...(pointDef ? { pointDef } : {}) });
     }
     return out;
 }
@@ -217,8 +224,16 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     }),
     renameSet: (id, name) => set((s) => {
         const n = name.trim();
-        if (!n || s.savedSets.some((x) => x.id !== id && x.name === n) || !s.savedSets.some((x) => x.id === id)) return {};
-        const next = s.savedSets.map((x) => (x.id === id ? { ...x, name: n } : x));
+        // **빈 이름 = 자동 이름으로 되돌리기**(2026-09-20) — 손 이름을 떼면 점선 칩으로 돌아간다.
+        //   막지 않는 이유: 쓰는 곳이 있어도 참조하는 쪽이 그 자동 이름을 보는 게 정직하다.
+        // 충돌 거절은 **손으로 지은 이름끼리만** 본다(자동 이름은 `name` 부재라 비교에 안 걸린다).
+        if (!s.savedSets.some((x) => x.id === id)) return {};
+        if (n !== "" && s.savedSets.some((x) => x.id !== id && x.name === n)) return {};
+        const next = s.savedSets.map((x) => {
+            if (x.id !== id) return x;
+            if (n === "") { const { name: _drop, ...rest } = x; return rest; }
+            return { ...x, name: n };
+        });
         saveJson(SAVED_SETS_KEY, next);
         return { savedSets: next };
     }),

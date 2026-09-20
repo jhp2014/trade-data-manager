@@ -179,7 +179,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     // (닫혀 있으면 연다) — 고르는 손은 거기 하나뿐이라 여기는 길만 낸다.
     const setLabel = selectedSetRef === null
         ? linkedTargetLabel(funnel.viewOf(null).isFiltering)
-        : setRefLabel(selectedSetRef, savedSets);
+        : setRefLabel(selectedSetRef, savedSets, funnel.labelLook);
     const goToFunnelPanel = (): void => openAndFocus("filter-funnel-1");
     const linkedView = funnel.viewOf(null);
     const view = isUniverse ? null : linkedView;

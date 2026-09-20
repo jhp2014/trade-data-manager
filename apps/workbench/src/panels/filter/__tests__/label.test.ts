@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { groupExprLabel, kindLabel, predicateLabel, stageLabel, type LabelLookup } from "../label.js";
+import { groupExprLabel, kindLabel, predicateLabel, setDisplayName, stageLabel, type LabelLookup } from "../label.js";
 import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
+import { exprOfStages } from "../expr.js";
 
 const look: LabelLookup = {
     groupName: (id) => (({ g1: "돌파", g2: "눌림" }) as Record<string, string>)[id],
@@ -74,5 +75,29 @@ describe("stageLabel", () => {
 
     it("조건이 하나도 없으면 그렇다고 말한다", () => {
         expect(stageLabel(stage([]), look)).toBe("조건 없음");
+    });
+});
+
+// ── 집합 표시 이름 (2026-09-20) ────────────────────────────────────────────
+//
+// `SavedSet.name` 은 옵셔널이고 **부재 = 자동 이름**이다(점선 칩). 저장 시점에 굽지 않는 이유는
+// 재료(LabelLookup)가 스토어 동기 초기화 시점엔 없기 때문 — 거기서 구우면 축 **키**가 이름으로 굳는다.
+describe("setDisplayName — 손 이름이 없으면 내용에서 만든다", () => {
+    const nameLook: LabelLookup = { groupName: (id) => id, axisName: (id) => `축 ${id}` };
+    const st = (id: string, from: number): FilterStage =>
+        ({ id, enabled: true, predicates: [{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: from } }] }] });
+
+    it("손 이름이 있으면 그대로", () => {
+        expect(setDisplayName({ name: "아침 돌파", expr: exprOfStages([st("a", 5)]) }, nameLook)).toBe("아침 돌파");
+    });
+
+    it("없으면 첫 조건 + 외 N", () => {
+        expect(setDisplayName({ expr: exprOfStages([st("a", 5)]) }, nameLook)).toBe(stageLabel(st("a", 5), nameLook));
+        expect(setDisplayName({ expr: exprOfStages([st("a", 5), st("b", 8)]) }, nameLook))
+            .toBe(`${stageLabel(st("a", 5), nameLook)} 외 1`);
+    });
+
+    it("조건이 하나도 없으면 '빈 집합'", () => {
+        expect(setDisplayName({ expr: exprOfStages([]) }, nameLook)).toBe("빈 집합");
     });
 });

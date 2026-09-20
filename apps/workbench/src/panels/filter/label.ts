@@ -15,6 +15,8 @@ export interface LabelLookup {
     axisName: (id: string) => string | undefined;
 }
 
+import { leavesOf, type SetExpr } from "./expr.js";
+
 const GONE = "(지워짐)";
 
 /** DNF 를 한 줄로: 절끼리 `|`, 절 안은 `&`, 부정은 `!`. */
@@ -110,6 +112,26 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         }
     }
 }
+
+/**
+ * 집합의 **자동 이름** — 손으로 지은 이름이 없을 때 화면이 쓰는 것(2026-09-20).
+ *
+ * ⚠ **저장 시점에 굽지 않는다.** 재료인 `LabelLookup`(축 이름·그룹 이름)은 훅 재료라 스토어가
+ * 동기로 초기화되는 시점엔 아직 없다 — 거기서 구우면 `c:supply-gap` 같은 축 **키**가 그대로
+ * 이름으로 굳는다. 그래서 `SavedSet.name` 은 옵셔널이고 부재가 곧 "자동 이름"이다(점선 칩).
+ */
+export function autoSetName(leaves: readonly FilterStage[], look: LabelLookup): string {
+    if (leaves.length === 0) return "빈 집합";
+    const head = stageLabel(leaves[0]!, look);
+    return leaves.length === 1 ? head : `${head} 외 ${leaves.length - 1}`;
+}
+
+/**
+ * 집합이 화면에 쓰는 이름 — **여기가 유일한 출처**다. 손 이름이 있으면 그것, 없으면 자동 이름.
+ * 두 곳에서 지으면 같은 집합이 칩과 목록에서 다른 이름으로 선다.
+ */
+export const setDisplayName = (set: { name?: string; expr: SetExpr }, look: LabelLookup): string =>
+    set.name ?? autoSetName(leavesOf(set.expr), look);
 
 /** 손으로 준 이름이 있으면 그것, 없으면 조건에서 만든다. 빈 술어는 이름에 안 낀다. */
 export function stageLabel(s: FilterStage, look: LabelLookup): string {

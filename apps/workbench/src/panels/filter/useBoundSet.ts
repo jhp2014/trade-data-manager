@@ -129,7 +129,7 @@ export function useBoundSet(panelId: string): BoundSet {
             // ⚠ 잎 수가 아니라 **거르고 있나**다 — `OR(참조…)` 작업 식은 잎이 0 이라 "전체"라고
             //   말하는데 실제로는 참조로 좁혀져 있다(useSetViews.isFiltering 과 한 규칙).
             ? linkedTargetLabel(funnel.viewOf(null).isFiltering)
-            : setRefLabel(target, savedSets)),
+            : setRefLabel(target, savedSets, funnel.labelLook)),
         [target, funnel, savedSets],
     );
 
