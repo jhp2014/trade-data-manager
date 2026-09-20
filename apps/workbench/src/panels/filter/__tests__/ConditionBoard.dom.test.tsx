@@ -4,7 +4,7 @@
 //   ③ 이름 클릭 = 그 종류의 편집면으로(레일 = 신호, 테마 = 연동, 그룹 = 그 자리 팝오버)
 //   ④ ＋ 조건 = 생성 입구 하나. **레일만 행을 안 만든다**(빈 술어 필터 금지 · 긋는 순간 조건)
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { exprOfStages } from "../expr.js";
+import { exprOfStages, refsOf } from "../expr.js";
 import { act, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
@@ -27,13 +27,19 @@ const renderBoard = (): ReturnType<typeof render> =>
     });
 
 const buttons = (c: HTMLElement): HTMLButtonElement[] => [...c.querySelectorAll("button")];
+/**
+ * 손잡이 찾기 — **위 칩 줄(지도)은 건너뛴다**(`data-chip`). 같은 이름이 지도와 작업대에 둘 다 서는데,
+ * 여기서 재는 건 늘 작업대 쪽(편집면을 여는 손)이다. 지도 쪽은 `chipByText` 로 따로 집는다.
+ */
 const byText = (c: HTMLElement, text: string): HTMLButtonElement | undefined =>
-    buttons(c).find((b) => (b.textContent ?? "").includes(text));
+    buttons(c).filter((b) => b.dataset.chip === undefined).find((b) => (b.textContent ?? "").includes(text));
+const chipByText = (c: HTMLElement, text: string): HTMLButtonElement | undefined =>
+    buttons(c).filter((b) => b.dataset.chip !== undefined).find((b) => (b.textContent ?? "").includes(text));
 const stages = (): ReturnType<typeof selectFilterStages> => selectFilterStages(useWorkbench.getState());
 
 const DATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[0], to: DATES[1] }] }] };
 const THEME_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "themeStrength" as const, params: { ...DEFAULT_THEME_STRENGTH } }] };
-const RESET = { funnelSelection: null, selectedSetRef: null, savedSets: [], editingSetId: "edit", sessionUi: {}, themeBindings: {} };
+const RESET = { funnelSelection: null, selectedSetRef: null, savedSets: [], editingSetId: "edit", editPath: ["edit"], sessionUi: {}, themeBindings: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
@@ -286,5 +292,48 @@ describe("식 한 벌 — 연산자 하나·항 부정", () => {
         act(() => { fireEvent.click(negBtn!); });
         const e = selectFilterExpr(useWorkbench.getState());
         expect(e.kind === "and" && e.of[0]!.neg).toBe(true);
+    });
+});
+
+// ── 화면 2층 — 위는 지도, 아래는 작업대 (2026-09-20) ───────────────────────
+//
+// ⚠ 편집면이 두 곳이면 옛 "필터 UI 가 두 곳" 함정이다. 그래서 **위 칩 줄의 클릭은 짚기/내려가기뿐**
+//   이고, 값 편집·부정·끄기·삭제는 전부 아래에서 한다. 이 검사가 그 경계의 회귀 게이트다.
+describe("2층 — 칩 줄(지도) · 편집면(작업대) · 빵부스러기", () => {
+    it("＋ 묶음 = 빈 집합을 만들어 참조로 붙이고 **그 안으로 내려간다**", () => {
+        seedEditing(exprOfStages([DATE_STAGE]));
+        const outer = useWorkbench.getState().editingSetId;
+        const { container } = renderBoard();
+
+        act(() => { fireEvent.click(byText(container, "＋ 묶음")!); });
+        const st = useWorkbench.getState();
+        expect(st.editingSetId, "편집 대상이 새 집합으로 내려간다").not.toBe(outer);
+        expect(st.editPath, "빵부스러기가 자란다").toEqual([outer, st.editingSetId]);
+        expect(refsOf(st.savedSets.find((x) => x.id === outer)!.expr), "바깥에는 참조가 남는다")
+            .toEqual([st.editingSetId]);
+        expect(selectFilterExpr(st).of, "새 집합은 비어서 시작한다").toEqual([]);
+    });
+
+    it("위 칩 줄은 **뿌리 집합**을 그린다 — 내려가도 지도는 안 바뀐다", () => {
+        seedEditing(exprOfStages([DATE_STAGE]));
+        const { container } = renderBoard();
+        const rootLabel = chipByText(container, "26.07")?.textContent;
+        expect(rootLabel, "뿌리의 조건이 칩으로 선다").toBeDefined();
+
+        act(() => { fireEvent.click(byText(container, "＋ 묶음")!); });
+        expect(chipByText(container, "26.07"), "내려가도 지도는 뿌리 그대로").toBeDefined();
+    });
+
+    it("빵부스러기의 윗칸을 누르면 그 층으로 되돌아간다", () => {
+        seedEditing(exprOfStages([DATE_STAGE]));
+        const outer = useWorkbench.getState().editingSetId;
+        const { container } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 묶음")!); });
+
+        const crumbs = buttons(container).filter((b) => b.dataset.chip === "crumb");
+        expect(crumbs.length, "루트 › 지금 두 칸").toBe(2);
+        act(() => { fireEvent.click(crumbs[0]!); });
+        expect(useWorkbench.getState().editingSetId).toBe(outer);
+        expect(useWorkbench.getState().editPath).toEqual([outer]);
     });
 });

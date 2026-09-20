@@ -26,13 +26,14 @@ import { FILTER } from "../../styles/palette.js";
 import { FilterRow } from "./FilterRow.js";
 import { useFunnel } from "./FunnelContext.js";
 import { Note } from "./grain.js";
+import { EditBreadcrumb, ExprChipRow } from "./ExprChipRow.js";
 import { FAIL, PIN } from "../../styles/palette.js";
 import { iconBtn } from "./ui.js";
 import type { CellValueRange } from "@trade-data-manager/market/domain";
 import { CellStageFields } from "./CellPredicateFields.js";
 import { effectiveUniverse, kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
 import { GroupEditors, RailEditors, type GroupEditorAnchor, type RailEditor } from "./ConditionEditors.js";
-import { negateTerm, refsOf, removeTerm, toggleOperator, type SetTerm } from "./expr.js";
+import { leavesOf, negateTerm, refsOf, removeTerm, toggleOperator, type SetTerm } from "./expr.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
@@ -95,7 +96,12 @@ export function ConditionBoard({ panelId: _panelId }: {
     const setExpr = useWorkbench((s) => s.setFilterExpr);
     const addStage = useWorkbench((s) => s.addFilterStage);
     const savedSets = useWorkbench((s) => s.savedSets);
-    const editSet = useWorkbench((s) => s.editSet);
+    const drillInto = useWorkbench((s) => s.drillInto);
+    const popTo = useWorkbench((s) => s.popTo);
+    const addGroupTerm = useWorkbench((s) => s.addGroupTerm);
+    const editPath = useWorkbench((s) => s.editPath);
+    /** 짚은 항 — 위 칩 줄과 아래 목록이 같은 주소를 본다(세션). */
+    const [picked, setPicked] = useState<string | null>(null);
     /** 식이 비었나 — 조건도 참조도 없을 때만 참. 참조는 조건 수에 안 들어 둘 다 봐야 한다. */
     const exprIsEmpty = expr.of.length === 0;
     /**
@@ -167,30 +173,61 @@ export function ConditionBoard({ panelId: _panelId }: {
 
     const hasTheme = useMemo(() => stages.some((s) => stageKind(s) === "themeStrength"), [stages]);
     /**
+     * 위 칩 줄이 그리는 식 — **경로의 뿌리**다(지금 편집 중인 것이 아니라). 내려가도 지도는 안 바뀌고
+     * 빵부스러기만 자란다 — 어디에 있는지 잃지 않게.
+     */
+    const rootExpr = useWorkbench((st) => {
+        const rootId = st.editPath[0] ?? st.editingSetId;
+        return st.savedSets.find((x) => x.id === rootId)?.expr ?? expr;
+    });
+    /** 칩·줄의 조건 이름 — 한 곳에서 짓는다(두 곳이면 같은 조건이 두 이름으로 선다). */
+    const chipLabelOf = useCallback((id: string) => {
+        const st = leavesOf(rootExpr).find((x) => x.id === id) ?? stages.find((x) => x.id === id);
+        return st ? stageLabel(st, v.labelLook) : "(지워진 조건)";
+    }, [rootExpr, stages, v.labelLook]);
+
+    /** 참조의 표시 재료 — 위 칩 줄과 아래 줄이 **같은 자**를 쓴다(두 곳에서 세면 수가 갈린다). */
+    const refInfo = useCallback((setId: string) => {
+        const set = savedSets.find((x) => x.id === setId);
+        // "쓰는 곳" = 이 집합을 참조하는 **저장 집합 수**(편집 중인 것도 그 목록에 있다).
+        const usedBy = savedSets.filter((x) => refsOf(x.expr).includes(setId)).length;
+        return {
+            name: set ? setDisplayName(set, v.labelLook) : "(지워진 집합)",
+            named: set?.name !== undefined,
+            broken: set === undefined,
+            usedBy,
+        };
+    }, [savedSets, v.labelLook]);
+
+    /** 경로 한 칸의 이름 — 빵부스러기가 쓴다. */
+    const pathName = useCallback((setId: string) => refInfo(setId).name, [refInfo]);
+
+    /**
      * 항 한 줄 — **조건**은 FilterRow 그대로, **참조**는 그 집합을 가리키는 칩 줄이다.
      *
      * ⚠ 참조는 **그 자리에서 못 고친다** — 고치면 그 집합을 쓰는 다른 식이 전부 따라 바뀐다.
      * 그래서 이 줄의 손잡이는 "열기(편집 대상 전환)·부정·이 자리에서 빼기" 셋뿐이다.
      */
     const refRow = (t: Extract<SetTerm, { kind: "ref" }>, no: number): JSX.Element => {
-        const set = savedSets.find((x) => x.id === t.setId);
-        // "쓰는 곳" = 이 집합을 참조하는 **저장 집합 수** + 지금 편집 중인 식(그것도 한 곳이다).
-        const usedBy = savedSets.filter((x) => refsOf(x.expr).includes(t.setId)).length
-            + (refsOf(expr).includes(t.setId) ? 1 : 0);
-        const name = set ? setDisplayName(set, v.labelLook) : "(지워진 집합)";
+        const { name, broken, usedBy } = refInfo(t.setId);
         return (
-            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderTop: "0.5px solid var(--border-subtle)" }}>
+            <div key={t.id} onClick={() => setPicked(t.id)}
+                style={{
+                    display: "flex", alignItems: "center", gap: 6, padding: "3px 4px",
+                    borderTop: "0.5px solid var(--border-subtle)",
+                    background: picked === t.id ? "var(--accent-soft)" : "transparent",
+                }}>
                 <span className="tabular" style={{ fontSize: 10, color: "var(--text-tertiary)", width: 12, flexShrink: 0 }}>{no}</span>
                 {t.neg === true && <span style={{ fontSize: 10, fontWeight: 600, color: FAIL, flexShrink: 0 }}>NOT</span>}
-                <button onClick={() => editSet(t.setId)} disabled={set === undefined}
-                    title={set === undefined
+                <button onClick={() => drillInto(t.setId)} disabled={broken}
+                    title={broken
                         ? "가리키는 집합이 지워졌습니다 — 이 자리에서 빼거나 다른 집합으로 바꾸세요"
-                        : `${name} — 열면 이 집합을 편집합니다.${usedBy >= 2 ? ` 쓰는 곳 ${usedBy} — 고치면 ${usedBy}곳이 같이 바뀝니다.` : ""}`}
+                        : `${name} — 눌러서 이 집합으로 내려갑니다.${usedBy >= 2 ? ` 쓰는 곳 ${usedBy} — 고치면 ${usedBy}곳이 같이 바뀝니다.` : ""}`}
                     style={{
-                        font: "inherit", fontSize: 11, padding: "1px 8px", borderRadius: 9, cursor: set ? "pointer" : "default",
-                        border: `1px solid ${set === undefined ? FAIL : PIN}`, background: "transparent",
-                        color: set === undefined ? FAIL : PIN, whiteSpace: "nowrap",
-                    }}>∈ {name}</button>
+                        font: "inherit", fontSize: 11, padding: "1px 8px", borderRadius: 9, cursor: broken ? "default" : "pointer",
+                        border: `1px solid ${broken ? FAIL : PIN}`, background: "transparent",
+                        color: broken ? FAIL : PIN, whiteSpace: "nowrap",
+                    }}>{name}</button>
                 {usedBy >= 2 && <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>쓰는 곳 {usedBy}</span>}
                 <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
                     <button onClick={() => setExpr(negateTerm(expr, t.id))} style={iconBtn} title="이 참조 부정(NOT)">NOT</button>
@@ -232,6 +269,19 @@ export function ConditionBoard({ panelId: _panelId }: {
                 {!v.isLoading && exprIsEmpty && (
                     <Note>없음 — 아래 <b>＋ 조건</b> 으로 만듭니다</Note>
                 )}
+                {/* ── 위층: 지도 ── 경로의 **뿌리 집합**을 한 줄 칩으로. 클릭은 짚기/내려가기뿐이다. */}
+                {!v.isLoading && (
+                    <div style={{ borderBottom: "0.5px solid var(--border-default)", marginBottom: 3 }}>
+                        <ExprChipRow expr={rootExpr} labelOf={chipLabelOf} h={{
+                            onPickLeaf: (id) => setPicked(id),
+                            onDrill: (setId) => drillInto(setId),
+                            refInfo,
+                            pickedId: picked,
+                        }} />
+                        <EditBreadcrumb path={editPath} nameOf={pathName} onPop={popTo} />
+                    </div>
+                )}
+
                 {!v.isLoading && !exprIsEmpty && (
                     <>
                         {/* 연산자는 **식 하나에 하나**다(한 묶음 = 한 연산자) — 그래서 머리에 한 번만 선다. */}
@@ -252,6 +302,7 @@ export function ConditionBoard({ panelId: _panelId }: {
                 )}
 
                 {!v.isLoading && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0" }}>
                     <AddCondition
                         setUniverse={universe}
                         onCell={(p) => { addStageHere([p]); }}
@@ -278,6 +329,13 @@ export function ConditionBoard({ panelId: _panelId }: {
                             if (made) setThemeLink({ stageId: made, x: e.clientX, y: e.clientY });
                         }}
                     />
+                    {/* 새 묶음 — 중첩이 사는 자리. 빈 집합을 만들어 이 식에 붙이고 그 안으로 내려간다. */}
+                    <button onClick={() => addGroupTerm()}
+                        title="새 묶음 — 빈 집합을 만들어 이 식에 붙이고 그 안으로 내려갑니다(이름은 나중에 붙여도 됩니다)"
+                        style={{ fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent", color: "var(--text-secondary)", cursor: "pointer" }}>
+                        ＋ 묶음
+                    </button>
+                </div>
                 )}
                 <div style={{ height: 8 }} />
             </div>

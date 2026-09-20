@@ -226,6 +226,6 @@ export function renderWithProviders(ui: ReactElement, seed: Seed = {}): RenderRe
 export function seedEditing(expr: SetExpr, others: readonly SavedSet[] = []): string {
     const id = "edit";
     const editing: SavedSet = { id, expr, universe: effectiveUniverse(universeOfExpr(expr, refUniverse(others))) };
-    useWorkbench.setState({ savedSets: [editing, ...others], editingSetId: id });
+    useWorkbench.setState({ savedSets: [editing, ...others], editingSetId: id, editPath: [id] });
     return id;
 }

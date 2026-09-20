@@ -152,8 +152,18 @@ export interface SavedSetsSlice {
      * 조건을 만지는 손은 전부 이 집합의 식을 갈아 끼운다(`filterFunnelSlice.putExpr`).
      */
     editingSetId: string;
-    /** 편집 대상 갈아타기 — 사본을 뜨지 않는다(사본이 있으면 "저장 안 한 변경"이 되살아난다). */
+    /**
+     * 루트부터 지금까지의 **드릴다운 경로**(세션) — 마지막 칸이 곧 `editingSetId` 다.
+     * 빵부스러기와 위쪽 칩 줄(= 경로의 **루트** 집합)이 이걸 읽는다. 영속이 아닌 이유: 화면 사정이지
+     * 저장물이 아니고, 새로고침 뒤엔 편집 대상 하나만 복원되면 충분하다.
+     */
+    editPath: string[];
+    /** 편집 대상 갈아타기 — 사본을 뜨지 않는다(사본이 있으면 "저장 안 한 변경"이 되살아난다). 경로는 새로 시작한다. */
     editSet: (id: string) => void;
+    /** 참조를 따라 **한 층 내려간다** — 경로가 자란다(빵부스러기가 그걸 그린다). */
+    drillInto: (setId: string) => void;
+    /** 빵부스러기의 한 칸으로 **되돌아간다**(그 칸까지 경로를 자른다). */
+    popTo: (index: number) => void;
     /** 빈 집합 하나를 만들고 **그걸 편집 대상으로** 둔다. */
     createSet: () => void;
     /**
@@ -179,6 +189,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     return {
     savedSets: sets,
     editingSetId: persistEditing(loadEditingId(sets)),
+    editPath: [loadEditingId(sets)],
 
     // 갈아타기만 한다 — **사본을 안 뜬다**(편집 = 저장이라 사본이 곧 "저장 안 한 변경"이다).
     // 정의(pointDef)는 그 집합의 것으로 되돌린다 — 없는 집합은 현재 정의 유지(관대 병합 규칙).
@@ -187,14 +198,30 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         if (!f) return {};
         return {
             editingSetId: persistEditing(id),
+            editPath: [id], // 목록에서 고른 건 **새 뿌리**다 — 경로를 물려받지 않는다
             selectedSetRef: null, // 편집 대상이 곧 "지금 보는 것" — 포인터는 최종 생존으로 돌아온다
             ...(f.pointDef ? { pointDef: persistPointDef(f.pointDef) } : {}),
         };
     }),
 
+    drillInto: (setId) => set((s) => {
+        if (!s.savedSets.some((x) => x.id === setId)) return {}; // 깨진 참조로는 안 내려간다
+        // 같은 집합이 경로에 또 나오면(다이아몬드) 거기서 잘라 붙인다 — 빵부스러기가 길어지지 않게.
+        const at = s.editPath.indexOf(setId);
+        const path = at >= 0 ? s.editPath.slice(0, at + 1) : [...s.editPath, setId];
+        return { editingSetId: persistEditing(setId), editPath: path, selectedSetRef: null };
+    }),
+
+    popTo: (index) => set((s) => {
+        const path = s.editPath.slice(0, index + 1);
+        const id = path[path.length - 1];
+        if (id === undefined || id === s.editingSetId) return {};
+        return { editingSetId: persistEditing(id), editPath: path, selectedSetRef: null };
+    }),
+
     createSet: () => set((s) => {
         const made = blankSet();
-        return { savedSets: persistSavedSets([...s.savedSets, made]), editingSetId: persistEditing(made.id), selectedSetRef: null };
+        return { savedSets: persistSavedSets([...s.savedSets, made]), editingSetId: persistEditing(made.id), editPath: [made.id], selectedSetRef: null };
     }),
 
     // 새 묶음 = 빈 집합 + 지금 식에 참조 한 항 + 그 집합으로 내려가기.
@@ -203,7 +230,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         const made = blankSet();
         const withSet = [...s.savedSets, made];
         const next = withSet.map((x) => (x.id === s.editingSetId ? { ...x, expr: appendTerm(x.expr, refNode(made.id)) } : x));
-        return { savedSets: persistSavedSets(next), editingSetId: persistEditing(made.id), selectedSetRef: null };
+        return { savedSets: persistSavedSets(next), editingSetId: persistEditing(made.id), editPath: [...s.editPath, made.id], selectedSetRef: null };
     }),
 
     renameSet: (id, name) => set((s) => {
@@ -229,7 +256,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         return {
             savedSets: next,
             // 편집 중이던 집합이 지워지면 **첫 집합으로** 내려앉는다(빈 화면보다 낫다).
-            ...(s.editingSetId === id ? { editingSetId: persistEditing(next[0]!.id) } : {}),
+            ...(s.editingSetId === id ? { editingSetId: persistEditing(next[0]!.id), editPath: [next[0]!.id] } : { editPath: s.editPath.filter((x) => x !== id) }),
             // 선택 포인터도 그 집합이면 푼다 — 연동 패널 전부가 죽은 참조를 보게 두지 않는다.
             // 고정 바인딩은 일부러 안 푼다(깨진 참조 표시가 그쪽의 계약이다 — 패널마다 라벨과 전환 손잡이가 받는다).
             // ⚠ **이 집합을 참조하던 식은 안 고친다** — 깨진 참조가 표식을 달고 서는 게 규칙이다
