@@ -21,7 +21,7 @@ export function setRefLabel(ref: SetRef, savedSets: readonly SavedSet[], look: L
         case "survivors": return "최종 생존";
         case "saved": {
             const f = savedSets.find((x) => x.id === ref.setId);
-            return f ? setDisplayName(f, look) : "(지워진 집합)";
+            return f ? setDisplayName(f, look, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)";
         }
         case "orphan": return `${ref.label} (폐지된 바인딩)`;
         case "items": return ref.label;

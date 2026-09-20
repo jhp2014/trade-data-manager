@@ -19,7 +19,7 @@ import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import { hotAxisId, hotInstancesOf } from "../../lib/hotAxis.js";
 import { retainHidden } from "../../lib/axisPrefs.js";
 import { loadJson, usePersistedState } from "../../store/persist.js";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { useWorkbench } from "../../store/workbench.js";
 import { leavesOf } from "../filter/expr.js";
 import { OUTCOME_BASE_COL_IDS, OUTCOME_COL_IDS } from "./outcomeColumns.js";
 import { layoutColumns, colKey, dropSide, orderCols, placeCol, pruneAxisKeys, pruneDifKeys, pruneOutKeys, type Col, type OutScope } from "./sheetColumns.js";
@@ -169,15 +169,13 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
     // 유령 청소의 생사 기준 — **저장물 자체**를 본다(지금 화면에 서 있는 목록이 아니라).
     // ⚠ outScopes 를 기준으로 쓰면 뷰를 잠깐 옮기는 것만으로 인스턴스 열의 고정·숨김·폭·프리셋이
     //   영구 삭제된다. 기준은 언제나 "그 조건이 저장물에 남아 있나"다.
-    // ⚠ 생사 기준은 **작업 식 ∪ 저장 집합 전부**의 잎이다. 작업 식만 보면 "이름 붙이기(승격)"가
-    //   조건을 저장 집합으로 옮기는 순간 그 조건이 여기서 사라져, 유령 청소가 `out:i:<id>`·`c:hot:<id>`
-    //   의 폭·고정·숨김·프리셋을 **영구 삭제한다**(그 집합을 다시 열어도 안 돌아온다). 승격은 조건을
-    //   지우는 손짓이 아니다 — 저장물에 남아 있으면 살아 있는 것이다(이 파일의 "저장물 기준" 규칙 그대로).
-    const workingStages = useWorkbench(selectFilterStages);
+    // ⚠ 생사 기준은 **저장 집합 전부**의 조건이다(편집 중인 집합도 그 목록 안에 있다 — 2026-09-20).
+    //   "지금 화면에 선 열"이나 "편집 중인 집합만"으로 좁히면, 다른 집합으로 갈아타는 것만으로
+    //   `out:i:<id>`·`c:hot:<id>` 의 폭·고정·숨김·프리셋이 **영구 삭제된다**(돌아와도 안 돌아온다).
     const savedSetsForLife = useWorkbench((s) => s.savedSets);
     const allStages = useMemo(
-        () => [...workingStages, ...savedSetsForLife.flatMap((f) => leavesOf(f.expr))],
-        [workingStages, savedSetsForLife],
+        () => savedSetsForLife.flatMap((f) => leavesOf(f.expr)),
+        [savedSetsForLife],
     );
     /**
      * 생사 판정의 **내용 지문** — 아래 두 목록과 청소 effect 의 실제 트리거다.

@@ -27,6 +27,7 @@ import {
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useWorkbench } from "../../store/workbench.js";
+import { useDebounced } from "../../lib/useDebounced.js";
 import { useAutoPoints } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { useThemeKnobParams } from "./themeLink.js";
@@ -106,6 +107,19 @@ export function toCellExpr(
         }
     };
 
+    /**
+     * 번역 결과 세 값 —
+     *  · `CellExpr` : 이 항이 내는 셀 술어
+     *  · `null`     : **결손**(이 우주에서 평가할 수 없다) — AND 를 오염시킨다
+     *  · `ABSENT`   : **부재**(제한이 없다) — 빈 집합 참조가 여기다. 오염시키지 않는다.
+     *
+     * ⚠ 셋을 둘로 합치면 안 된다. 종단에서 **빈 집합 참조는 공허참(= 제한 없음)** 이라(`and3([])`),
+     * 여기서 결손으로 접으면 같은 식이 두 우주에서 다른 답을 낸다 — `＋ 묶음` 으로 갓 만든 빈 집합이
+     * 부모 하루 집합을 **이유 없이 0건**으로 만들던 자리다(2026-09-20 리뷰).
+     */
+    const ABSENT = Symbol("absent");
+    type Out = CellExpr | null | typeof ABSENT;
+
     /** 조건 항 하나 → 셀 술어(들). 결손이면 null 이고 이유가 status 에 실린다. */
     const condOf = (t: Extract<SetTerm, { kind: "cond" }>, mine: string[]): CellExpr | null => {
         const s = t.stage;
@@ -138,15 +152,19 @@ export function toCellExpr(
      * 비용이 없고, 안 펼치면 「결손은 AND 를 오염시킨다」 규칙이 묶음 하나를 **집합 전체의 0건**으로
      * 키운다 — 중첩이 전부 참조가 된 모델에서는 그게 상시 경로다.
      */
-    const refOf = (t: Extract<SetTerm, { kind: "ref" }>, mine: string[]): CellExpr | null => {
+    const refOf = (t: Extract<SetTerm, { kind: "ref" }>, mine: string[]): Out => {
         const target = setOf(t.setId);
-        // 못 푸는 셋은 전부 결손이다 — 지워진 집합 · 종단 집합(키가 다르다) · 순환.
-        if (target === undefined || target.universe !== "daily" || visiting.has(t.setId)) return null;
+        if (target === undefined || visiting.has(t.setId)) return null; // 지워진 집합 · 순환 = 결손
+        // ⚠ **빈 집합은 우주를 안 묻고 부재로 통과시킨다.** 조건이 없으면 우주가 미정이라 저장값이
+        //   `longitudinal` 인데(갓 만든 묶음이 그렇다), 우주로 먼저 거르면 그 묶음이 결손이 되어
+        //   부모를 통째로 0건으로 만든다. 빈 집합은 어느 우주에서도 "제한 없음"이다.
+        if (activeExpr(target.expr).of.length === 0) return ABSENT;
+        if (target.universe !== "daily") return null; // 종단 집합 — 멤버십을 물을 키가 아예 다르다
         visiting.add(t.setId);
         const inner: string[] = [];
         try {
             const node = walk(target.expr, inner);
-            if (node === null) return null;
+            if (node === null || node === ABSENT) return node;
             // 부정은 **감싸서** 싣는다 — 안쪽 노드의 neg 를 뒤집으면 이중 부정이 뜻을 잃는다.
             return t.neg === true ? { kind: "and", id: t.id, of: [node], neg: true } : node;
         } finally {
@@ -163,17 +181,21 @@ export function toCellExpr(
      *   둘을 한 null 로 합류시키면 AND 오염 규칙이 부재까지 먹어 조건 하나를 끄면 집합이 통째로
      *   사라진다(종단 경로는 늘 걷어내므로 멀쩡해, 같은 식이 두 우주에서 다른 답을 내던 자리다).
      */
-    const walk = (raw: SetExpr, mine: string[]): CellExpr | null => {
+    const walk = (raw: SetExpr, mine: string[]): Out => {
         const e = activeExpr(raw);
         const of: CellExpr[] = [];
         const here: string[] = [];
         let poisoned = false;
+        let absent = false;
         for (const t of e.of) {
             const r = t.kind === "cond" ? condOf(t, here) : refOf(t, here);
             // ⚠ AND 가 오염돼도 **항을 끝까지 걷는다** — 여기서 바로 빠져나오면 뒤쪽 항이 walk 를
             //   안 지나 `status` 에 아예 안 실리고, 화면의 결손 수가 그만큼 덜 세어진다("결손은 조용히
             //   사라지지 않는다"가 제 구현에서 새던 자리). 걷는 값은 싸다 — 평가가 아니라 번역이다.
             if (r === null) { if (e.kind === "and") poisoned = true; continue; } // OR 은 그 항만 빠진다
+            // 부재(제한 없음) — AND 에선 그냥 빠지고, **OR 에선 묶음 전체가 제한 없음**이 된다
+            //   (참인 항이 하나라도 있으면 OR 은 늘 참이다).
+            if (r === ABSENT) { absent = true; continue; }
             of.push(r);
         }
         mine.push(...here);
@@ -181,11 +203,14 @@ export function toCellExpr(
             poison(here, "같은 묶음에 이 우주에서 평가할 수 없는 조건이 있어 묶음째 빠졌습니다");
             return null;
         }
-        if (of.length === 0) return null;
+        if (absent && e.kind === "or") return ABSENT;
+        if (of.length === 0) return absent ? ABSENT : null;
         return { kind: e.kind, id: e.id, of };
     };
 
-    return { expr: walk(input, []), stages: status };
+    const out = walk(input, []);
+    // 루트가 부재(= 제한 없음)면 "조건 없음"과 같다 — 재료를 안 당기는 그 상태(null).
+    return { expr: out === ABSENT ? null : out, stages: status };
 }
 
 /**
@@ -251,7 +276,17 @@ export const cellHitToItem = (h: CellHit, date: string): FunnelItem => ({
     time: minuteToHms(h.min),
 });
 
-export function useCellSet(expr: SetExpr | null, date: string, opts?: CellEvalOptions): CellSetView {
+/**
+ * 평가가 손을 따라오는 간격 — **여기가 5.7초가 사는 자리**다(존 순위 = 분 단면 굽기).
+ * 편집이 곧 저장이라 조건을 한 글자 만질 때마다 식이 바뀌는데, 그때마다 이 평가가 돌면 화면이 멎는다.
+ * 저장은 즉시고 **평가만** 손을 멈춘 뒤 따라온다(decisions: 편집 버퍼를 되살리는 대신 평가를 늦춘다).
+ */
+const EVAL_DEBOUNCE_MS = 250;
+
+export function useCellSet(fresh: SetExpr | null, date: string, opts?: CellEvalOptions): CellSetView {
+    // ⚠ 늦추는 자리가 **여기**여야 한다 — 소비자(작업 대상·차트·바인딩)는 스토어를 직접 읽으므로
+    //   깔때기 훅에만 디바운스를 걸면 이 경로가 그대로 맨몸으로 돈다(2026-09-20 리뷰가 잡은 자리).
+    const expr = useDebounced(fresh, EVAL_DEBOUNCE_MS);
     // 참조를 펼치려면 저장 집합이 필요하다 — 훅이 읽어 순수부에 넘긴다(호출부는 그대로).
     // ⚠ deps 에 **반드시** 든다: 안 물면 참조가 가리키는 집합을 고쳐도 여기가 옛 조건으로 계속 번역한다.
     const savedSets = useWorkbench((st) => st.savedSets);

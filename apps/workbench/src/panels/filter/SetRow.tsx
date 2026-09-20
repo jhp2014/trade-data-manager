@@ -9,6 +9,7 @@
 //
 // ⚠ 칩은 **고르는 일만** 한다(GazeChip 규약 — 우클릭 없음). 저장·열기·이름변경·덮어쓰기·삭제·고정은
 // 전부 집합 관리 판 **하나**에 산다: 판이 둘이면 "핀은 저기, 삭제는 여기"를 외워야 한다.
+// 「저장」·「덮어쓰기」는 없다 — **편집이 곧 저장**이라 그 손이 「편집」 하나로 합쳐졌다(2026-09-20).
 // 브라우저 prompt/confirm 은 안 쓴다 — 같은 이름이면 저장 버튼이 그 자리에서 "덮어쓰기"로 바뀌고,
 // 삭제는 2단계 버튼(삭제 → 정말 삭제)으로 받는다.
 //
@@ -75,7 +76,7 @@ export function SetRow(): JSX.Element {
 
     const savedItems: ChipItem[] = savedSets.map((f) => {
         const ref: SetRef = { kind: "saved", setId: f.id };
-        const nm = setDisplayName(f, v.labelLook);
+        const nm = setDisplayName(f, v.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)");
         // ⚠ 표식이 없는 이유: 저장 집합의 깨짐은 **집합이 없을 때**뿐인데(resolveSaved) 이 목록은
         // savedSets 를 도므로 늘 존재한다. 깨진 참조를 말하는 자리는 패널 바인딩과 조립 부품 줄이다.
         return {
@@ -88,7 +89,7 @@ export function SetRow(): JSX.Element {
 
     return (
         <WorksetRowShell label="집합"
-            title={savedSets.length === 0 ? "조건을 걸고 집합 관리에서 저장하면 여기 칩으로 섭니다" : "칩 클릭 = 이 집합 보기 · 줄 끝 ⋯ = 집합 관리(저장·고정·열기·삭제)"}>
+            title="칩 클릭 = 이 집합 보기 · 줄 끝 ⋯ = 집합 관리(새 집합·고정·편집·이름·삭제)">
             <GazeChip label={setRefLabel(universeRef, savedSets, v.labelLook)} active={isOn(universeRef)} color={PIN}
                 onClick={() => toggle(universeRef)}
                 title={`유니버스 — 손이 닿은 흔적(앵커·그룹·타점)이 하나라도 있는 (종목·날짜). 조건과 무관 · ${countOf(universeRef)}`} />
@@ -182,7 +183,7 @@ function SetManager({ pins, onTogglePin, onPick }: {
                 const opened = editingSetId === f.id;
                 const editing = renaming === f.id;
                 const r = v.resolveSet(ref);
-                const nm = setDisplayName(f, v.labelLook);
+                const nm = setDisplayName(f, v.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)");
                 const other = f.universe !== setUniverse; // 다른 우주 — 숨기지 않고 회색 + 뱃지
                 return (
                     <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 6px 2px 4px", background: active ? "var(--accent-soft)" : "transparent" }}>

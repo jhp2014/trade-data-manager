@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { groupExprLabel, kindLabel, predicateLabel, setDisplayName, stageLabel, type LabelLookup } from "../label.js";
 import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
-import { exprOfStages } from "../expr.js";
+import { exprOfStages, type SetExpr, type SetTerm } from "../expr.js";
 
 const look: LabelLookup = {
     groupName: (id) => (({ g1: "돌파", g2: "눌림" }) as Record<string, string>)[id],
@@ -99,5 +99,26 @@ describe("setDisplayName — 손 이름이 없으면 내용에서 만든다", ()
 
     it("조건이 하나도 없으면 '빈 집합'", () => {
         expect(setDisplayName({ expr: exprOfStages([]) }, nameLook)).toBe("빈 집합");
+    });
+});
+
+// ⚠ 새 모델에서 제일 흔한 모양은 `AND(참조, 참조)`(조건 0개)다 — 조건만 세면 그게 "빈 집합"으로
+//   불리고 칩·빵부스러기·목록이 한꺼번에 거짓말한다(2026-09-20 리뷰가 잡은 자리).
+describe("setDisplayName — 참조도 항이다", () => {
+    const look: LabelLookup = { groupName: (id) => id, axisName: (id) => `축 ${id}` };
+    const ref = (setId: string): SetTerm => ({ kind: "ref", id: `r-${setId}`, setId });
+
+    it("참조만 든 집합은 '빈 집합'이 아니다 — 첫 항의 이름 + 외 N", () => {
+        const expr: SetExpr = { kind: "and", id: "root", of: [ref("a"), ref("b")] };
+        expect(setDisplayName({ expr }, look, (id) => (id === "a" ? "아침 돌파" : "거래대금"))).toBe("아침 돌파 외 1");
+    });
+
+    it("참조 이름을 안 주면 (묶음) — 이름 짓다가 그래프를 걷지 않는다", () => {
+        const expr: SetExpr = { kind: "and", id: "root", of: [ref("a")] };
+        expect(setDisplayName({ expr }, look)).toBe("(묶음)");
+    });
+
+    it("진짜 빈 식만 '빈 집합'이다", () => {
+        expect(setDisplayName({ expr: { kind: "and", id: "root", of: [] } }, look)).toBe("빈 집합");
     });
 });

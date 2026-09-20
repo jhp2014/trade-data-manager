@@ -16,14 +16,13 @@
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
-import { selectFilterExpr, selectFilterStages, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
+import { selectFilterExpr, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
 import { FAIL, POINT_DEF } from "../../styles/palette.js";
 import { effectiveUniverse, UNIVERSE_LABEL } from "./universe.js";
 import { leafCount, refsOf } from "./expr.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 
 export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
-    const stages = useWorkbench(selectFilterStages);
     const clearStages = useWorkbench((s) => s.clearFilterStages);
     // 편집 대상의 **타입**(우주) — 전역 모드 스위치가 아니라 "지금 만지는 집합이 무엇인가"의 표시다.
     // 바꾸는 손은 집합 줄의 `＋ 새 집합 ▾` 하나뿐(decisions 「집합」).
@@ -71,7 +70,7 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
                 {v.isLoading ? "…" : `${v.universe.toLocaleString("ko-KR")} → ${(v.result?.survivors.length ?? v.universe).toLocaleString("ko-KR")}`}
             </span>
             <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}>
-                필터 {v.active.length}{stages.length > v.active.length ? ` / ${stages.length}` : ""}
+                필터 {v.active.length}{v.stagesOrdered.length > v.active.length ? ` / ${v.stagesOrdered.length}` : ""}
             </span>
             {/* 죽은 참조는 손잡이가 아니라 **상태**다 — 그래서 컨트롤 줄이 아니라 보는 집합 옆에 선다. */}
             {v.deadStageIds.length > 0 && (

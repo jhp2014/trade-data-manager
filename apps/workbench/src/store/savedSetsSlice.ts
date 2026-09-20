@@ -1,14 +1,19 @@
-// 저장 집합 슬라이스 — 집합 편성 패널이 게시한 **이름 붙인 산출물**의 목록(영속).
+// 저장 집합 — **묶음·집합·조건 모음이 한 물건**인 모델의 저장물(2026-09-20).
 //
-// 작업 깔때기(filterFunnelSlice — 조건 한 벌·시선·선택 포인터)와 일부러 갈라져 있다: 저쪽은 "지금 만지는
-// 조건", 여기는 "이름을 붙여 게시한 저장물"이라 수명이 다르다(깔때기는 편집마다 변하고, 저장물은
-// 저장·덮어쓰기에만 변한다). 접점은 putStages 하나 — 열기(openSet)도 "깔때기에 조건을 쓰는 손"이라
-// 같은 규칙(영속·포인터 정리)을 지난다.
+// 편집 대상은 여기 목록의 집합 하나(`editingSetId`, 영속)이고 조건 편집은 곧 그 집합의 갱신이다
+// (`filterFunnelSlice.putExpr` 이 유일한 쓰기 손). 그래서 「저장」·「덮어쓰기」가 없다.
+//
+// 중첩은 식 안이 아니라 **참조**로 산다 — `addGroupTerm`(새로 만들어 붙이기)과 `addSetRef`(기존 것
+// 붙이기) 둘이 그 손이고, 순환 거절은 후자 하나면 된다(전자는 갓 만든 집합이라 원리적으로 안 난다).
+//
+// ⚠ 집합은 **자립 저장물**이다 — 참조로 엮여도 내용은 각자의 것이고, 지워진 참조는 조용히 안 넓어지고
+// "깨짐"으로 선다.
+
 import type { StateCreator } from "zustand";
 import type { PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import { parseStages } from "../panels/filter/stage.js";
-import { appendTerm, emptyExpr, parseExpr, refNode, type SetExpr } from "../panels/filter/expr.js";
+import { appendTerm, emptyExpr, hasCycle, parseExpr, refNode, refsOf, type SetExpr } from "../panels/filter/expr.js";
 import { universeOfExpr, parseUniverse, type Universe } from "../panels/filter/universe.js";
 import { parsePointDef } from "../lib/pointDef.js";
 import { persistPointDef } from "./pointDefSlice.js";
@@ -76,7 +81,7 @@ export const persistSavedSets = (sets: SavedSet[]): SavedSet[] => {
  * "시각 조건 하나만 든 하루 집합"처럼 조건이 우주를 안 정하는 것이 있다 — 그걸 종단으로 밀면 승계가
  * 사용자의 집합을 조용히 다른 우주로 옮긴다. 모르면 마지막으로 알던 값이 최선이다.
  *
- * 되풀이는 집합 수만큼이면 충분하다(참조 그래프는 비순환 — 저장 때 거절한다).
+ * 되풀이는 집합 수만큼이면 충분하다(참조 그래프는 비순환 — `addSetRef` 가 거절한다).
  */
 function reconcileUniverses(sets: SavedSet[]): SavedSet[] {
     let cur = sets;
@@ -171,6 +176,12 @@ export interface SavedSetsSlice {
      * 옛 「승격」이 하던 일의 자리 — 중첩이 참조로 간 뒤로는 "먼저 만들고 채운다"가 자연스럽다.
      */
     addGroupTerm: () => void;
+    /**
+     * **기존 집합 붙이기** — 이미 있는 집합을 지금 식에 참조 한 항으로 넣는다(내려가지는 않는다).
+     * 재사용의 유일한 손이다: 이게 없으면 「쓰는 곳」이 영원히 0~1 이고 `hasCycle` 도 죽은 코드가 된다.
+     * ⚠ **순환은 여기서 거절한다** — 참조를 붙이는 손이 이것뿐이라 방어도 여기 하나면 된다.
+     */
+    addSetRef: (setId: string) => void;
     /** 이름만 바꾼다(id·조건 유지 — 바인딩이 id 로 따라오므로 이름은 표시물일 뿐). 빈 이름 = 자동 이름으로. */
     renameSet: (id: string, name: string) => void;
     deleteSet: (id: string) => void;
@@ -179,7 +190,7 @@ export interface SavedSetsSlice {
 /**
  * 참조가 가리키는 집합의 우주 — 저장물이 **들고 있는 값을 그대로** 믿는다.
  * 그 값은 저장 시점에 같은 규칙(universeOfExpr)으로 파생해 굳힌 것이라 재귀가 필요 없고,
- * 순환은 saveSet/overwriteSet 이 미리 거절한다. 없는 집합(지워진 참조)은 null = 우주를 안 정한다.
+ * 순환은 `addSetRef` 가 미리 거절한다. 없는 집합(지워진 참조)은 null = 우주를 안 정한다.
  */
 export const refUniverse = (sets: readonly SavedSet[]) => (id: string): Universe | null =>
     sets.find((x) => x.id === id)?.universe ?? null;
@@ -233,6 +244,19 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         return { savedSets: persistSavedSets(next), editingSetId: persistEditing(made.id), editPath: [...s.editPath, made.id], selectedSetRef: null };
     }),
 
+    addSetRef: (setId) => set((s) => {
+        if (setId === s.editingSetId) return {}; // 자기 자신 — 순환
+        const target = s.savedSets.find((x) => x.id === setId);
+        const me = s.savedSets.find((x) => x.id === s.editingSetId);
+        if (!target || !me) return {};
+        if (refsOf(me.expr).includes(setId)) return {}; // 이미 붙어 있다(같은 항 둘은 뜻이 없다)
+        // ⚠ 순환 거절 — 저 집합이 (건너서라도) 나를 가리키면 평가가 무한히 내려가고 빵부스러기도 끝이 없다.
+        const exprOfSet = (id: string): SetExpr | undefined => s.savedSets.find((x) => x.id === id)?.expr;
+        if (hasCycle(s.editingSetId, target.expr, exprOfSet)) return {};
+        const next = s.savedSets.map((x) => (x.id === s.editingSetId ? { ...x, expr: appendTerm(x.expr, refNode(setId)) } : x));
+        return { savedSets: persistSavedSets(next), selectedSetRef: null };
+    }),
+
     renameSet: (id, name) => set((s) => {
         const n = name.trim();
         // **빈 이름 = 자동 이름으로 되돌리기**(2026-09-20) — 손 이름을 떼면 점선 칩으로 돌아간다.
@@ -245,8 +269,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
             if (n === "") { const { name: _drop, ...rest } = x; return rest; }
             return { ...x, name: n };
         });
-        saveJson(SAVED_SETS_KEY, next);
-        return { savedSets: next };
+        return { savedSets: persistSavedSets(next) };
     }),
     deleteSet: (id) => set((s) => {
         // 하나도 안 남으면 빈 집합을 다시 세운다 — 편집할 집합이 반드시 하나는 있어야 한다.

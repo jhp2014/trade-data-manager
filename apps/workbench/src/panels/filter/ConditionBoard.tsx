@@ -33,7 +33,7 @@ import type { CellValueRange } from "@trade-data-manager/market/domain";
 import { CellStageFields } from "./CellPredicateFields.js";
 import { effectiveUniverse, kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
 import { GroupEditors, RailEditors, type GroupEditorAnchor, type RailEditor } from "./ConditionEditors.js";
-import { leavesOf, negateTerm, refsOf, removeTerm, toggleOperator, type SetTerm } from "./expr.js";
+import { hasCycle, leavesOf, negateTerm, refsOf, removeTerm, toggleOperator, type SetExpr, type SetTerm } from "./expr.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
@@ -99,7 +99,9 @@ export function ConditionBoard({ panelId: _panelId }: {
     const drillInto = useWorkbench((s) => s.drillInto);
     const popTo = useWorkbench((s) => s.popTo);
     const addGroupTerm = useWorkbench((s) => s.addGroupTerm);
+    const addSetRef = useWorkbench((s) => s.addSetRef);
     const editPath = useWorkbench((s) => s.editPath);
+    const editingSetId = useWorkbench((s) => s.editingSetId);
     /** 짚은 항 — 위 칩 줄과 아래 목록이 같은 주소를 본다(세션). */
     const [picked, setPicked] = useState<string | null>(null);
     /** 식이 비었나 — 조건도 참조도 없을 때만 참. 참조는 조건 수에 안 들어 둘 다 봐야 한다. */
@@ -192,12 +194,24 @@ export function ConditionBoard({ panelId: _panelId }: {
         // "쓰는 곳" = 이 집합을 참조하는 **저장 집합 수**(편집 중인 것도 그 목록에 있다).
         const usedBy = savedSets.filter((x) => refsOf(x.expr).includes(setId)).length;
         return {
-            name: set ? setDisplayName(set, v.labelLook) : "(지워진 집합)",
+            // 참조 항의 이름은 **한 겹만** 편다 — 이름 짓다가 그래프를 걷지 않는다.
+            name: set ? setDisplayName(set, v.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)",
             named: set?.name !== undefined,
             broken: set === undefined,
             usedBy,
         };
     }, [savedSets, v.labelLook]);
+
+    /**
+     * 붙일 수 있는 집합들 — 자기 자신·이미 붙은 것·**순환이 되는 것**은 뺀다.
+     * 거절은 스토어(`addSetRef`)가 한 번 더 하지만, 고를 수 없는 것을 목록에 세우지 않는 게 낫다.
+     */
+    const attachable = useMemo(() => {
+        const exprOfSet = (id: string): SetExpr | undefined => savedSets.find((x) => x.id === id)?.expr;
+        const mine = refsOf(expr);
+        return savedSets.filter((f) => f.id !== editingSetId && !mine.includes(f.id)
+            && !hasCycle(editingSetId, f.expr, exprOfSet));
+    }, [savedSets, expr, editingSetId]);
 
     /** 경로 한 칸의 이름 — 빵부스러기가 쓴다. */
     const pathName = useCallback((setId: string) => refInfo(setId).name, [refInfo]);
@@ -329,6 +343,30 @@ export function ConditionBoard({ panelId: _panelId }: {
                             if (made) setThemeLink({ stageId: made, x: e.clientX, y: e.clientY });
                         }}
                     />
+                    {/* 기존 집합 붙이기 — **재사용의 유일한 손**. 순환은 스토어가 거절한다. */}
+                    <HeaderPopover width={240} align="start" closeOnOutside
+                        trigger={(open, toggle) => (
+                            <button onClick={toggle} disabled={attachable.length === 0}
+                                title={attachable.length === 0
+                                    ? "붙일 다른 집합이 없습니다"
+                                    : "이미 있는 집합을 이 식에 한 항으로 붙입니다 — 고치면 그 집합을 쓰는 곳이 전부 같이 바뀝니다"}
+                                style={{ fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent", color: "var(--text-secondary)", cursor: attachable.length === 0 ? "default" : "pointer" }}>
+                                ＋ 집합 {open ? "▴" : "▾"}
+                            </button>
+                        )}>
+                        {(close) => (
+                            <div style={{ maxHeight: 240, overflowY: "auto", padding: "3px 0" }}>
+                                {attachable.map((f) => (
+                                    <button key={f.id} onClick={() => { addSetRef(f.id); close(); }}
+                                        title={`${refInfo(f.id).name} — 이 식에 한 항으로 붙입니다`}
+                                        style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 11.5, padding: "4px 10px" }}>
+                                        {refInfo(f.id).name}
+                                        {refInfo(f.id).usedBy >= 1 && <span style={{ marginLeft: 5, fontSize: 9.5, color: "var(--text-tertiary)" }}>쓰는 곳 {refInfo(f.id).usedBy}</span>}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </HeaderPopover>
                     {/* 새 묶음 — 중첩이 사는 자리. 빈 집합을 만들어 이 식에 붙이고 그 안으로 내려간다. */}
                     <button onClick={() => addGroupTerm()}
                         title="새 묶음 — 빈 집합을 만들어 이 식에 붙이고 그 안으로 내려갑니다(이름은 나중에 붙여도 됩니다)"

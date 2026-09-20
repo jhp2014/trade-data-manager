@@ -159,7 +159,8 @@ describe("toCellExpr — 참조는 하루 집합만 펼친다", () => {
 
     it("종단 집합 참조는 **여전히 결손**이다 — 키가 아예 다르다", () => {
         const e: SetExpr = { kind: "and", id: "root", of: [{ kind: "cond", stage: cell }, ref("s1")] };
-        const { expr, stages } = toCellExpr(e, () => ({ expr: exprOfStages([]), universe: "longitudinal" }));
+        // ⚠ **비어 있지 않은** 종단 집합이어야 한다 — 빈 집합은 우주와 무관하게 "제한 없음"이다(아래 절).
+        const { expr, stages } = toCellExpr(e, () => ({ expr: exprOfStages([axis]), universe: "longitudinal" }));
         expect(expr, "AND 가 오염돼 묶음째 빠진다").toBeNull();
         expect(stages.find((x) => x.stageId === "c1")?.counted, "멀쩡한 형제도 이유를 받는다").toBe(false);
     });
@@ -196,5 +197,40 @@ describe("toCellExpr — 참조는 하루 집합만 펼친다", () => {
         const e: SetExpr = { kind: "and", id: "root", of: [ref("s1")] };
         const { expr } = toCellExpr(e, () => daily(exprOfStages([gridStage])));
         expect(usesCellPred(expr, (p) => p.kind === "gridPoint")).toBe(true);
+    });
+});
+
+describe("toCellExpr — 빈 집합 참조는 **부재**지 결손이 아니다", () => {
+    const daily = (expr: SetExpr): { expr: SetExpr; universe: "daily" } => ({ expr, universe: "daily" });
+    const ref = (setId: string): SetTerm => ({ kind: "ref", id: `r-${setId}`, setId });
+
+    // ⚠ 종단에서 빈 집합 참조는 **공허참(= 제한 없음)** 이다(`and3([])`). 여기서 결손으로 접으면
+    //   같은 식이 두 우주에서 다른 답을 낸다 — `＋ 묶음` 으로 갓 만든 빈 집합이 부모 하루 집합을
+    //   **이유 없이 0건**으로 만들던 자리(2026-09-20 리뷰).
+    it("AND 안의 빈 집합 참조는 그냥 빠진다 — 형제 조건이 산다", () => {
+        const e: SetExpr = { kind: "and", id: "root", of: [{ kind: "cond", stage: cell }, ref("empty")] };
+        const { expr, stages } = toCellExpr(e, () => daily(exprOfStages([])));
+        expect(expr, "묶음이 통째로 빠지지 않는다").not.toBeNull();
+        expect(stages.find((x) => x.stageId === "c1")?.counted, "형제가 오염되지 않는다").toBe(true);
+    });
+
+    it("**우주를 안 묻는다** — 갓 만든 빈 집합은 저장값이 종단이라도 통과한다", () => {
+        const e: SetExpr = { kind: "and", id: "root", of: [{ kind: "cond", stage: cell }, ref("new")] };
+        const { expr } = toCellExpr(e, () => ({ expr: exprOfStages([]), universe: "longitudinal" as const }));
+        expect(expr).not.toBeNull();
+    });
+
+    it("OR 안의 빈 집합 참조는 **묶음 전체를 제한 없음**으로 만든다(참인 항이 하나면 OR 은 참)", () => {
+        const e: SetExpr = { kind: "and", id: "root", of: [
+            { kind: "cond", stage: cell },
+            { kind: "ref", id: "r", setId: "orset" },
+        ] };
+        const orSet = daily({ kind: "or", id: "g", of: [{ kind: "cond", stage: stage("in", cell.predicates) }, ref("empty")] });
+        const look = (id: string): { expr: SetExpr; universe: "daily" } | undefined =>
+            (id === "orset" ? orSet : id === "empty" ? daily(exprOfStages([])) : undefined);
+        const { expr } = toCellExpr(e, look);
+        // OR 이 제한 없음 → AND 에서 빠지고 cell 만 남는다(묶음째 결손이 아니다).
+        expect(leafIds(e)).toEqual([]); // setOf 없이 부르면 참조가 결손 — 대조군
+        expect(expr).toMatchObject({ kind: "and", of: [{ kind: "pred", id: "c1" }] });
     });
 });

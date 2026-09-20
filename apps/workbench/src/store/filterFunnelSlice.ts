@@ -1,18 +1,11 @@
-// 필터 깔때기 슬라이스 — **순서 있는 단계 리스트**. 조건이 사는 단 하나의 자리.
+// 편집 중인 집합의 **조건 한 벌**과 시선(월·존재 필터)을 든 슬라이스.
 //
-// 옛 rankFilterSlice 는 차원별로 자리가 정해진 평평한 가방이었다(밴드는 여기, 날짜는 저기…).
-// 그 모양으로는 "단계 3개, 2번은 끄고, 하나 더 추가"를 표현할 수 없다 — 차원이 곧 자리라서 개수가
-// 고정된다. 조건은 손으로 쌓고 지우는 것이라 리스트여야 한다.
+// ⚠ 조건이 사는 자리는 **저장 집합**이다(2026-09-20) — 여긴 독립 저장물을 안 든다.
+// `selectFilterExpr` 이 "편집 중인 집합의 식"을 파생하고, 모든 편집이 `putExpr` 하나를 지나 그 집합에
+// 곧바로 쓴다(편집 = 저장). 저장 집합 슬라이스와의 접점은 그 함수 하나다.
 //
-// 옛 저장 필터(wb.rankSavedFilters)는 변환하지 않는다 — 한 번 쓰고 버릴 변환 코드에 옛 형식 지식이
-// 박히면 나중에 "이건 왜 있지"가 된다. 새 키로 시작하고 옛 키는 안 읽어서 자연히 죽게 둔다.
-//
-// 저장 집합(이름 붙인 산출물)은 savedSetsSlice 로 갈라져 있다 — 여기는 **작업 깔때기**(조건 한 벌·
-// 선택 포인터)만 산다. 두 슬라이스의 접점은 putStages 하나다(깔때기를 만지면 포인터가 복귀하는 규칙).
-//
-// ⚠ 조건 한 벌은 **하나**다. 한때 이름 없는 슬롯 3칸이 있었지만(A/B 비교용) 쓰이지 않았고, 그 역할은
-// 저장 집합이 이미 한다 — 집합 = 이름 붙은 슬롯이고, 열기(openSet)가 곧 갈아타기다. 익명 칸이 사라져
-// "지금 어느 칸이더라"를 물을 일도 없어졌다.
+// 시선(월·존재 필터)은 조건이 아니라 **보는 범위**라 집합에 안 들어간다 — 여기 남는 이유가 그것이다.
+
 import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
 import type { SetRef } from "../lib/setRef.js";
@@ -101,16 +94,13 @@ export interface FilterFunnelSlice {
      * 보드에서 레일을 그은 결과 — 그 레일의 필터를 만들거나 갈아끼우거나(술어) 지운다(null).
      * 규칙은 stageBinding(순수)에 있고 여기서는 영속과 시선 정리만 한다.
      */
-    applyFilterRail: (key: RailKey, predicate: FilterPredicate | null, at?: string | null, mode?: "and" | "or", stageId?: string | null) => void;
+    applyFilterRail: (key: RailKey, predicate: FilterPredicate | null, stageId?: string | null) => void;
     /**
      * 식 통째 교체 — 노드 편집(부정·연산자 토글·묶음 삭제)이 이 하나를 지난다.
      * 순수 규칙은 `expr.ts` 가 들고, 여기는 영속과 포인터 복귀만 한다(putExpr 와 같은 계약).
      */
     setFilterExpr: (expr: SetExpr) => void;
-    /**
-     * 조건 붙이기 — **삽입 지점과 연산자**를 받는다(7단계). `at` 은 짚은 노드 id(없으면 루트),
-     * `mode` 는 "AND 로 추가 / OR 로 추가" 두 버튼이 주는 값이다. 괄호는 이 규칙의 결과로 생긴다.
-     */
+    /** 조건 하나 삭제 — 주소는 조건 id. */
     removeFilterStage: (id: string) => void;
     toggleFilterStage: (id: string) => void;
     setFilterStagePredicates: (id: string, predicates: FilterPredicate[]) => void;

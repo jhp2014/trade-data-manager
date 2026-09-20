@@ -53,8 +53,8 @@ describe("집합 줄은 상시 한 줄 — 처음 보이는 것이 곧 본론(�
         const row = chipByText(container, "전체")!.parentElement!;
         expect(row.style.flexWrap).toBe("nowrap");
         expect(row.style.overflowX).toBe("auto");
-        expect(container.querySelector("[title*='칩으로 섭니다']")).toBeTruthy(); // 안내는 줄 이름 툴팁에만 산다
-        expect(container.textContent).not.toContain("칩으로 섭니다");
+        expect(container.querySelector("[title*='집합 관리']")).toBeTruthy(); // 안내는 줄 이름 툴팁에만 산다
+        expect(container.textContent).not.toContain("줄 끝 ⋯");
     });
 });
 

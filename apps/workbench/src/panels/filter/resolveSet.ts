@@ -233,10 +233,19 @@ const filterMemo = new WeakMap<SetResolveCtx, Map<string | null, ResolvedFilter>
  * (작업 깔때기의 조건이 ctx 의 일부라서), 그때마다 목록의 저장 집합 전부를 재정산하면 무관한 레일 편집 한 번이
  * O(집합 수 × 유니버스)가 된다. 저장 집합의 정산은 제 정의와 재료에만 의존한다 — 세대가 같고 정의가
  * 같으면(JSON 직렬화 일치) 재사용하고, 세대가 바뀌면 통째로 버린다(유니버스·사전·축 값 변경은 반드시 무효).
- * 크기는 저장 집합 수에 유계다 — 작업 깔때기(정의가 편집마다 변함)는 일부러 안 태운다.
+ * 크기는 상한(SESSION_CACHE_CAP)으로 막는다 — 편집=저장 이후로 키가 편집마다 늘기 때문이다.
  */
 let sessionEpoch: string | undefined;
 const sessionDefCache = new Map<string, ResolvedFilter>();
+
+/**
+ * 세션 캐시 상한 — **편집이 곧 저장이 된 뒤로(2026-09-20) 엔트리가 단조 증가한다.**
+ * 키에 식과 참조 폐포가 실리므로 조건을 한 번 만질 때마다 그 집합과 그걸 참조하는 집합들의 키가
+ * 전부 새로 생기는데, 세대(epoch)는 조건 편집으로 안 바뀐다. 값이 `FunnelResult`(생존자 배열 전체)라
+ * 한 세션을 오래 편집하면 그대로 쌓인다. 넘치면 **통째로 버린다**(LRU 를 들일 만큼 비싼 자리가 아니다 —
+ * 재정산은 세대가 살아 있으면 어차피 한 번이다).
+ */
+const SESSION_CACHE_CAP = 240;
 
 /**
  * 조건 한 벌을 정산까지. null = 작업 깔때기, 문자열 = 저장 집합의 id(**호출 전에 존재 확인**).
@@ -275,6 +284,7 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
         //   A 의 키가 안 바뀌어 **낡은 정산이 그대로 재사용된다**(오류 없이 조용히 옛 집합).
         //   중첩이 전부 참조가 된 뒤로(2026-09-20) 이 자리는 예외가 아니라 상시 경로다.
         sessionKey = `${set?.pointDef ? judgeKeyOf(set.pointDef) : "cur"}|${JSON.stringify(expr)}|${closureKeyOf(expr, ctx)}`;
+        if (sessionDefCache.size > SESSION_CACHE_CAP) sessionDefCache.clear();
         const sHit = sessionDefCache.get(sessionKey);
         if (sHit !== undefined) {
             memo.set(setId, sHit);

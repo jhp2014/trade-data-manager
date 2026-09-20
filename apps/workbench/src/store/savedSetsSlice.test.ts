@@ -170,3 +170,47 @@ describe("이름 — 손으로 지은 것만 충돌을 본다", () => {
         expect(store.getState().savedSets.map((x) => x.name)).toEqual(["돌파", undefined]);
     });
 });
+
+// ⚠ 재사용의 유일한 손이다 — 이게 없으면 「쓰는 곳」이 영원히 0~1 이고 `hasCycle` 도 죽은 코드가 된다
+//   (2026-09-20 리뷰가 "기능 미완인지 확인"으로 잡은 자리).
+describe("기존 집합 붙이기 — 재사용과 순환 거절", () => {
+    it("다른 집합을 참조 한 항으로 붙인다 — 쓰는 곳이 는다", async () => {
+        stubStorage();
+        const store = await loadStore();
+        const a = store.getState().editingSetId;
+        store.getState().createSet();
+        const b = store.getState().editingSetId;
+
+        store.getState().editSet(a);
+        store.getState().addSetRef(b);
+        expect(refsOf(selectFilterExpr(store.getState()))).toEqual([b]);
+    });
+
+    it("자기 자신·이미 붙은 것은 무시한다", async () => {
+        stubStorage();
+        const store = await loadStore();
+        const a = store.getState().editingSetId;
+        store.getState().createSet();
+        const b = store.getState().editingSetId;
+        store.getState().editSet(a);
+
+        store.getState().addSetRef(a); // 자기 자신
+        expect(refsOf(selectFilterExpr(store.getState()))).toEqual([]);
+        store.getState().addSetRef(b);
+        store.getState().addSetRef(b); // 두 번째는 무시
+        expect(selectFilterExpr(store.getState()).of).toHaveLength(1);
+    });
+
+    it("**순환은 거절한다** — 저 집합이 건너서라도 나를 가리키면 안 붙는다", async () => {
+        stubStorage();
+        const store = await loadStore();
+        const a = store.getState().editingSetId;
+        store.getState().createSet();
+        const b = store.getState().editingSetId;
+        store.getState().addSetRef(a); // b → a
+
+        store.getState().editSet(a);
+        store.getState().addSetRef(b); // a → b 면 순환
+        expect(refsOf(selectFilterExpr(store.getState())), "거절 — 식이 안 바뀐다").toEqual([]);
+    });
+});

@@ -15,7 +15,7 @@ export interface LabelLookup {
     axisName: (id: string) => string | undefined;
 }
 
-import { leavesOf, type SetExpr } from "./expr.js";
+import type { SetExpr } from "./expr.js";
 
 const GONE = "(지워짐)";
 
@@ -120,18 +120,27 @@ export function kindLabel(kind: PredicateKind | undefined): string {
  * 동기로 초기화되는 시점엔 아직 없다 — 거기서 구우면 `c:supply-gap` 같은 축 **키**가 그대로
  * 이름으로 굳는다. 그래서 `SavedSet.name` 은 옵셔널이고 부재가 곧 "자동 이름"이다(점선 칩).
  */
-export function autoSetName(leaves: readonly FilterStage[], look: LabelLookup): string {
-    if (leaves.length === 0) return "빈 집합";
-    const head = stageLabel(leaves[0]!, look);
-    return leaves.length === 1 ? head : `${head} 외 ${leaves.length - 1}`;
+export function autoSetName(expr: SetExpr, look: LabelLookup, nameOfSet: (setId: string) => string): string {
+    // ⚠ **항 전부를 센다 — 조건만 세면 안 된다.** 새 모델에서 제일 흔한 모양이 `AND(참조, 참조)`(조건
+    //   0개)인데, `leavesOf` 로만 재면 그게 "빈 집합"으로 불린다(칩·빵부스러기·목록이 한꺼번에 거짓말).
+    //   decisions 의 "`leavesOf` 로 재는 판정엔 `refsOf` 를 따로 물어야 한다"를 여기서 또 밟았었다.
+    const terms = expr.of;
+    if (terms.length === 0) return "빈 집합";
+    const head = terms[0]!;
+    const headLabel = head.kind === "cond" ? stageLabel(head.stage, look) : nameOfSet(head.setId);
+    return terms.length === 1 ? headLabel : `${headLabel} 외 ${terms.length - 1}`;
 }
 
 /**
  * 집합이 화면에 쓰는 이름 — **여기가 유일한 출처**다. 손 이름이 있으면 그것, 없으면 자동 이름.
  * 두 곳에서 지으면 같은 집합이 칩과 목록에서 다른 이름으로 선다.
  */
-export const setDisplayName = (set: { name?: string; expr: SetExpr }, look: LabelLookup): string =>
-    set.name ?? autoSetName(leavesOf(set.expr), look);
+export const setDisplayName = (
+    set: { name?: string; expr: SetExpr },
+    look: LabelLookup,
+    /** 참조 항의 이름 — 안 주면 "(묶음)". 재귀를 안 타는 이유: 이름 짓다가 그래프를 걷지 않는다. */
+    nameOfSet: (setId: string) => string = () => "(묶음)",
+): string => set.name ?? autoSetName(set.expr, look, nameOfSet);
 
 /** 손으로 준 이름이 있으면 그것, 없으면 조건에서 만든다. 빈 술어는 이름에 안 낀다. */
 export function stageLabel(s: FilterStage, look: LabelLookup): string {
