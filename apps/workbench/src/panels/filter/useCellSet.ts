@@ -26,13 +26,14 @@ import {
 } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
+import { useWorkbench } from "../../store/workbench.js";
 import { useAutoPoints } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { useThemeKnobParams } from "./themeLink.js";
 import { cellMaterialsOf } from "./cellMaterials.js";
 import type { FilterStage } from "./stage.js";
-import { activeExpr, leavesOf, type SetExpr } from "./expr.js";
-import { stageDeficiency } from "./universe.js";
+import { activeExpr, type SetExpr } from "./expr.js";
+import { stageDeficiency, type Universe } from "./universe.js";
 
 /**
  * 하루 집합의 평가 옵션 — **소비자가 전부 이 상수를 쓴다**(목록·차트).
@@ -80,29 +81,52 @@ export interface CellSetView {
  * "결손 술어가 든 **칸**을 통째로 뺀다"와 정확히 같은 규칙이고, OR 가지 하나가 빠지는 건
  * 나머지 가지가 그대로 서므로 안전하다.
  */
-export function toCellExpr(input: SetExpr): { expr: CellExpr | null; stages: CellStageStatus[] } {
+/**
+ * 참조가 가리키는 집합 — 하루 우주 전개의 재료. `SavedSet` 을 구조적으로 만족하는 좁은 모양이라
+ * 이 파일이 스토어 타입을 안 물어도 된다(순수부는 순수부끼리).
+ */
+export type DaySetLookup = (setId: string) => { expr: SetExpr; universe: Universe } | undefined;
+
+export function toCellExpr(
+    input: SetExpr,
+    /**
+     * 참조 해결 — **하루 집합만** 그 자리에 펼친다(종단 집합은 키가 아예 달라 여전히 결손).
+     * 안 주면 참조는 전부 결손이다(순수 함수의 기본값 — 테스트가 옛 동작을 그대로 잰다).
+     */
+    setOf: DaySetLookup = () => undefined,
+): { expr: CellExpr | null; stages: CellStageStatus[] } {
     // ⚠ **부재를 먼저 걷는다** — 꺼진 잎·빈 술어는 결손이 아니라 **없는 것**이다. 아래 walk 의 null 은
     //   "이 우주에서 평가할 수 없다"(결손)만 뜻해야 하고, 둘을 한 null 로 합류시키면 AND 오염 규칙이
     //   부재까지 먹어 **잎 하나를 끄면 그 묶음이 통째로 사라진다**(종단 경로는 activeExpr 로 먼저
     //   걷어내므로 멀쩡해, 같은 식이 두 우주에서 다른 답을 내던 자리다).
     const expr = activeExpr(input);
     const status: CellStageStatus[] = [];
-    /** 이 가지가 빠질 때, 그 안의 멀쩡한 잎들에게 이유를 달아 준다(조용히 사라지지 않게). */
-    const poison = (e: SetExpr, why: string): void => {
-        for (const s of leavesOf(e)) {
-            const at = status.find((x) => x.stageId === s.id);
+    /** 전개 중인 참조들 — 순환(A→B→A)을 결손으로 끊는다(resolveSet.resolving 과 같은 수법). */
+    const visiting = new Set<string>();
+    /** 이 가지가 빠질 때, 그 안의 멀쩡한 조건들에게 이유를 달아 준다(조용히 사라지지 않게). */
+    const poison = (ids: readonly string[], why: string): void => {
+        for (const id of ids) {
+            const at = status.find((x) => x.stageId === id);
             if (at && at.counted) { at.counted = false; at.reasons = [why]; }
         }
     };
-    const walk = (e: SetExpr): CellExpr | null => {
+    /**
+     * `mine` 은 **이 가지가 기여한 조건 id 들**이다 — 오염 대상을 여기서 모은다.
+     * ⚠ `leavesOf(e)` 로 모으면 안 된다: 참조 안쪽은 잎이 아니라서(leavesOf 주석) 전개된 조건들이
+     *   오염을 안 받고, 그러면 묶음이 통째로 빠졌는데 화면은 그 조건들을 "멀쩡하다"고 말한다.
+     */
+    const walk = (e: SetExpr, mine: string[]): CellExpr | null => {
         if (e.kind === "cond") {
             const s = e.stage;
+            mine.push(s.id);
             const reasons = stageDeficiency(s, "daily");
-            if (reasons.length > 0) {
-                status.push({ stageId: s.id, counted: false, reasons });
-                return null;
+            // 같은 집합을 두 번 참조하면 같은 조건이 두 번 지난다 — 줄은 하나이므로 status 도 하나다.
+            if (!status.some((x) => x.stageId === s.id)) {
+                status.push(reasons.length > 0
+                    ? { stageId: s.id, counted: false, reasons }
+                    : { stageId: s.id, counted: true, reasons: [] });
             }
-            status.push({ stageId: s.id, counted: true, reasons: [] });
+            if (reasons.length > 0) return null;
             // 결손 0 = 전부 셀 술어(위 게이트가 보장). 조건 하나가 술어 **여럿**을 들 수 있으므로
             // 그때는 AND 묶음으로 세운다 — 첫 술어만 싣던 옛 실수가 여기서 재발하지 않게.
             const preds = s.predicates as CellPredicate[];
@@ -121,23 +145,37 @@ export function toCellExpr(input: SetExpr): { expr: CellExpr | null; stages: Cel
             return node;
         }
         if (e.kind === "ref") {
-            // ⚠ 하루 우주는 **셀**이 항목이고 참조가 가리키는 집합은 종단 좌표다 — 멤버십을 물을 키가
-            //   아예 다르다. 그래서 결손이고, AND 에 있으면 그 묶음이 통째로 빠진다(아래 규칙).
-            //   재료가 생기면(하루 집합을 참조로 쓸 수 있게 되면) 여기 한 줄이 켜진다.
-            return null;
+            // 참조를 **그 자리에 펼친다**(2026-09-20). 평가가 아니라 번역이라 비용이 없고, 안 펼치면
+            // 「결손은 AND 를 오염시킨다」 규칙이 묶음 하나를 **집합 전체의 0건**으로 키운다.
+            const target = setOf(e.setId);
+            // 못 푸는 셋은 전부 결손이다 — 지워진 집합 · 종단 집합(키가 다르다) · 순환.
+            if (target === undefined || target.universe !== "daily" || visiting.has(e.setId)) return null;
+            visiting.add(e.setId);
+            const inner: string[] = [];
+            try {
+                const node = walk(activeExpr(target.expr), inner);
+                if (node === null) return null;
+                // 부정은 **감싸서** 싣는다 — 안쪽 노드의 neg 를 뒤집으면 이중 부정이 뜻을 잃는다.
+                return e.neg === true ? { kind: "and", id: e.id, of: [node], neg: true } : node;
+            } finally {
+                visiting.delete(e.setId);
+                mine.push(...inner);
+            }
         }
         const of: CellExpr[] = [];
+        const here: string[] = [];
         let poisoned = false;
         for (const c of e.of) {
-            const r = walk(c);
+            const r = walk(c, here);
             // ⚠ AND 가 오염돼도 **형제를 끝까지 걷는다** — 여기서 바로 빠져나오면 뒤쪽 형제가 walk 를
             //   안 지나 `status` 에 아예 안 실리고, 화면의 결손 수가 그만큼 덜 세어진다("결손은 조용히
             //   사라지지 않는다"가 제 구현에서 새던 자리). 걷는 값은 싸다 — 평가가 아니라 번역이다.
             if (r === null) { if (e.kind === "and") poisoned = true; continue; } // OR 은 그 가지만 빠진다
             of.push(r);
         }
+        mine.push(...here);
         if (poisoned) {
-            poison(e, "같은 묶음에 이 우주에서 평가할 수 없는 조건이 있어 묶음째 빠졌습니다");
+            poison(here, "같은 묶음에 이 우주에서 평가할 수 없는 조건이 있어 묶음째 빠졌습니다");
             return null;
         }
         if (of.length === 0) return null;
@@ -145,7 +183,7 @@ export function toCellExpr(input: SetExpr): { expr: CellExpr | null; stages: Cel
             ? { kind: "and", id: e.id, of, ...(e.neg === true ? { neg: true as const } : {}) }
             : { kind: "or", id: e.id, of, ...(e.neg === true ? { neg: true as const } : {}) };
     };
-    const out = walk(expr);
+    const out = walk(expr, []);
     return { expr: out, stages: status };
 }
 
@@ -213,9 +251,14 @@ export const cellHitToItem = (h: CellHit, date: string): FunnelItem => ({
 });
 
 export function useCellSet(expr: SetExpr | null, date: string, opts?: CellEvalOptions): CellSetView {
+    // 참조를 펼치려면 저장 집합이 필요하다 — 훅이 읽어 순수부에 넘긴다(호출부는 그대로).
+    // ⚠ deps 에 **반드시** 든다: 안 물면 참조가 가리키는 집합을 고쳐도 여기가 옛 조건으로 계속 번역한다.
+    const savedSets = useWorkbench((st) => st.savedSets);
     const narrowedEarly = useMemo(
-        () => (expr === null ? { expr: null, stages: [] as CellStageStatus[] } : toCellExpr(expr)),
-        [expr],
+        () => (expr === null
+            ? { expr: null, stages: [] as CellStageStatus[] }
+            : toCellExpr(expr, (id) => savedSets.find((f) => f.id === id))),
+        [expr, savedSets],
     );
     // 평가할 조건이 없으면 **하루 재료를 안 당긴다** — /day-replay 는 한 날 ~15MB 다.
     // (라벨 층은 이 재료가 없어도 선다 — 멤버십에서 오므로. 조건 없음 = 안 보여줌 규칙과 같은 결.)
@@ -286,7 +329,7 @@ export function useCellSet(expr: SetExpr | null, date: string, opts?: CellEvalOp
 }
 
 /** 이 셀 식이 그 술어를 쓰나 — 재료 게이트(격자·분 단면)의 자. 트리를 끝까지 건다. */
-function usesCellPred(e: CellExpr | null, hit: (p: CellPredicate) => boolean): boolean {
+export function usesCellPred(e: CellExpr | null, hit: (p: CellPredicate) => boolean): boolean {
     if (e === null) return false;
     if (e.kind === "pred") return hit(e.pred);
     return e.of.some((c) => usesCellPred(c, hit));

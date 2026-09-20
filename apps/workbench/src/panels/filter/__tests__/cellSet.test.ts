@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toCellExpr } from "../useCellSet.js";
+import { toCellExpr, usesCellPred } from "../useCellSet.js";
 import { exprOfStages, type SetExpr } from "../expr.js";
 import type { FilterStage } from "../stage.js";
 
@@ -138,5 +138,66 @@ describe("toCellExpr — 부정", () => {
             of: [{ kind: "cond", stage: cell, neg: true }],
         };
         expect(toCellExpr(e).expr).toMatchObject({ of: [{ kind: "pred", id: "c1", neg: true }] });
+    });
+});
+
+// ── 참조 인라인 전개 (2026-09-20) ──────────────────────────────────────────
+//
+// 하루 우주는 참조를 **그 자리에 펼친다**. 안 펼치면 참조가 결손이고, 「결손은 AND 를 오염시킨다」
+// 규칙이 묶음 하나를 **집합 전체의 0건**으로 키운다 — 오류도 경고도 없이. 「묶음은 곧 이름 붙은
+// 집합」(식 1층화) 이후로는 중첩이 전부 참조라 이 자리가 상시 경로가 된다.
+describe("toCellExpr — 참조는 하루 집합만 펼친다", () => {
+    const daily = (expr: SetExpr): { expr: SetExpr; universe: "daily" } => ({ expr, universe: "daily" });
+    const ref = (setId: string, neg = false): SetExpr =>
+        ({ kind: "ref", id: `r-${setId}`, setId, ...(neg ? { neg: true as const } : {}) });
+
+    it("하루 집합 참조는 펼쳐져 조건이 그대로 걸린다", () => {
+        const inner = exprOfStages([stage("in1", cell.predicates)]);
+        const e: SetExpr = { kind: "and", id: "root", of: [{ kind: "cond", stage: cell }, ref("s1")] };
+        const { expr, stages } = toCellExpr(e, (id) => (id === "s1" ? daily(inner) : undefined));
+        expect(expr).not.toBeNull();
+        expect(stages.map((x) => x.stageId).sort(), "안쪽 조건도 줄로 선다").toEqual(["c1", "in1"]);
+        expect(stages.every((x) => x.counted)).toBe(true);
+    });
+
+    it("종단 집합 참조는 **여전히 결손**이다 — 키가 아예 다르다", () => {
+        const e: SetExpr = { kind: "and", id: "root", of: [{ kind: "cond", stage: cell }, ref("s1")] };
+        const { expr, stages } = toCellExpr(e, () => ({ expr: exprOfStages([]), universe: "longitudinal" }));
+        expect(expr, "AND 가 오염돼 묶음째 빠진다").toBeNull();
+        expect(stages.find((x) => x.stageId === "c1")?.counted, "멀쩡한 형제도 이유를 받는다").toBe(false);
+    });
+
+    it("지워진 집합을 가리키는 참조도 결손이다(조용히 통과시키지 않는다)", () => {
+        const e: SetExpr = { kind: "and", id: "root", of: [ref("없는것")] };
+        expect(toCellExpr(e, () => undefined).expr).toBeNull();
+    });
+
+    it("순환(A→B→A)은 무한재귀가 아니라 결손으로 끊긴다", () => {
+        const a = daily({ kind: "and", id: "ga", of: [{ kind: "cond", stage: cell }, ref("B")] });
+        const b = daily({ kind: "and", id: "gb", of: [ref("A")] });
+        const look = (id: string): { expr: SetExpr; universe: "daily" } | undefined =>
+            (id === "A" ? a : id === "B" ? b : undefined);
+        expect(toCellExpr({ kind: "and", id: "root", of: [ref("A")] }, look).expr).toBeNull();
+    });
+
+    it("같은 집합을 두 번 참조해도 **줄은 하나**다 — status 가 중복되지 않는다", () => {
+        const inner = exprOfStages([stage("in1", cell.predicates)]);
+        const e: SetExpr = { kind: "or", id: "root", of: [ref("s1"), ref("s1")] };
+        const { stages } = toCellExpr(e, () => daily(inner));
+        expect(stages.map((x) => x.stageId)).toEqual(["in1"]);
+    });
+
+    it("부정된 참조는 **감싸서** 싣는다 — 안쪽 neg 를 뒤집으면 이중 부정이 뜻을 잃는다", () => {
+        const inner = exprOfStages([stage("in1", cell.predicates, {})]);
+        const e: SetExpr = { kind: "and", id: "root", of: [ref("s1", true)] };
+        const { expr } = toCellExpr(e, () => daily(inner));
+        expect(expr).toMatchObject({ kind: "and", of: [{ kind: "and", id: "r-s1", neg: true }] });
+    });
+
+    it("펼친 안쪽의 비싼 재료도 **재료 탐지에 잡힌다** — 안 잡히면 조용히 아무것도 안 건다", () => {
+        const gridStage = stage("g1", [{ kind: "gridPoint" }]);
+        const e: SetExpr = { kind: "and", id: "root", of: [ref("s1")] };
+        const { expr } = toCellExpr(e, () => daily(exprOfStages([gridStage])));
+        expect(usesCellPred(expr, (p) => p.kind === "gridPoint")).toBe(true);
     });
 });
