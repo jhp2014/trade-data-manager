@@ -24,12 +24,13 @@ import { HeaderPopover } from "../../components/HeaderPopover.js";
 import { selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
 import { usePersistedState } from "../../store/persist.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
+import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { FAIL, PIN } from "../../styles/palette.js";
 import { WorksetRowShell, visibleChips, type ChipItem } from "../WorksetChipRow.js";
 import { useFunnel } from "./FunnelContext.js";
 import type { ResolvedSet } from "./resolveSet.js";
 import { effectiveUniverse, UNIVERSE_LABEL } from "./universe.js";
-import { leafCount } from "./expr.js";
+import { leafCount, refsOf } from "./expr.js";
 import { setDisplayName } from "./label.js";
 import { linkedTargetLabel, setRefLabel } from "./useSetBinding.js";
 import { textInput } from "./ui.js";
@@ -118,7 +119,17 @@ export function SetRow(): JSX.Element {
     );
 }
 
-/** 집합 관리 판 — 위는 저장(이름 입력), 아래는 저장 집합 목록(행마다 고정·열기·이름·덮어쓰기·삭제). */
+/**
+ * 목록의 구획 — **쓰는 곳**으로 가른다(2026-09-20). 숨기는 게 아니라 나누기만 한다.
+ * 0 칸이 청소 창구고, 2+ 칸이 "고치면 여럿이 같이 바뀐다"를 미리 말한다.
+ */
+const SECTIONS: readonly { key: string; title: string; has: (n: number) => boolean }[] = [
+    { key: "shared", title: "여럿이 쓰는 집합 — 고치면 같이 바뀝니다 ·", has: (n) => n >= 2 },
+    { key: "one", title: "한 곳에서 쓰는 집합 ·", has: (n) => n === 1 },
+    { key: "free", title: "아무도 안 쓰는 집합 — 지워도 안전합니다 ·", has: (n) => n === 0 },
+];
+
+/** 집합 관리 판 — 위는 ＋ 새 집합, 아래는 집합 목록(쓰는 곳으로 구획, 행마다 고정·편집·이름·삭제). */
 function SetManager({ pins, onTogglePin, onPick }: {
     pins: readonly string[];
     onTogglePin: (id: string) => void;
@@ -135,6 +146,8 @@ function SetManager({ pins, onTogglePin, onPick }: {
     // 우주는 **파생**이다 — 고르는 토글도, 우주를 넘기는 ⧉ 복제도 없다(2026-09-19 9단계).
     const setUniverse = effectiveUniverse(useWorkbench(selectFilterUniverse));
 
+    /** 쓰는 곳 — 이 집합을 참조하는 저장 집합 수. 구획과 배지가 같은 자를 쓴다. */
+    const usedByOf = (id: string): number => savedSets.filter((x) => refsOf(x.expr).includes(id)).length;
     const [renaming, setRenaming] = useState<string | null>(null); // 이름 편집 중인 집합 id — draft 는 InlineRename 이 든다
     const [armedDelete, setArmedDelete] = useState<string | null>(null);
     const selectedKey = selectedSetRef === null ? null : setRefKey(selectedSetRef);
@@ -147,8 +160,22 @@ function SetManager({ pins, onTogglePin, onPick }: {
                     title="빈 집합을 만들고 그걸 편집합니다 — 이름은 나중에 붙여도 됩니다(그때까지 자동 이름)">＋ 새 집합</button>
             </div>
 
-            <div style={sectionHead}>집합 {savedSets.length}개 · 굵게 = 편집 중 · 고정 = 줄에 늘 선다</div>
-            {savedSets.map((f) => {
+            {/* ⚠ **구획만 나눈다 — 숨기지 않는다.** 안 보이는 내부 집합을 두면 익명 묶음이 이름만 바꿔
+                돌아온다(2026-09-19 기각분이 예고한 함정). 쓰는 곳 0 칸이 자연스러운 청소 창구다. */}
+            {SECTIONS.map(({ key, title, has }) => {
+                const rows = savedSets.filter((f) => has(usedByOf(f.id)));
+                if (rows.length === 0) return null;
+                return (
+                    <div key={key}>
+                        <div style={sectionHead}>{title} {rows.length}개</div>
+                        {rows.map(renderRow)}
+                    </div>
+                );
+            })}
+        </div>
+    );
+
+    function renderRow(f: SavedSet): JSX.Element {
                 const ref: SetRef = { kind: "saved", setId: f.id };
                 const active = selectedKey === setRefKey(ref);
                 const pinned = pins.includes(f.id);
@@ -193,10 +220,8 @@ function SetManager({ pins, onTogglePin, onPick }: {
                             <button onClick={() => setArmedDelete(f.id)} style={smallBtn("danger")} title="삭제(한 번 더 눌러 확정)">삭제</button>
                         )}
                     </div>
-                );
-            })}
-        </div>
-    );
+        );
+    }
 }
 
 /** 칩 무리 사이의 세로 실선 — 붙박이·저장물이 다른 갈래임을 말한다. */

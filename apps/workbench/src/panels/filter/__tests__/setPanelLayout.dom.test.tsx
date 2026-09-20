@@ -3,11 +3,12 @@
 // 여기서 재는 건 조건 판정이 아니라 **자리**다: 처음 열었을 때 보이는 게 보드인가, 집합 줄이 늘 서서
 // "지금 보는 집합"을 말하는가, 관리(저장·고정·열기·이름·삭제)가 줄 끝 판 **하나**에 사는가(우클릭 없음).
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { exprOfStages, leavesOf } from "../expr.js";
+import { exprOfStages, leavesOf, refNode } from "../expr.js";
 import { fireEvent, render, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
+import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import { FilterFunnelPanel } from "../../FilterFunnelPanel.js";
 
 const A = "005930", B = "000660";
@@ -135,5 +136,31 @@ describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는
         fireEvent.change(input2, { target: { value: "돌파2" } });
         fireEvent.keyDown(input2, { key: "Enter" });
         expect(useWorkbench.getState().savedSets.map((x) => x.name)).toEqual(["돌파2", "눌림"]);
+    });
+});
+
+// ── 목록 구획 — 쓰는 곳 0 / 1 / 2+ (2026-09-20) ────────────────────────────
+//
+// ⚠ **숨기는 게 아니라 나누기만 한다.** 안 보이는 내부 집합을 두면 익명 묶음이 이름만 바꿔 돌아온다
+//   (2026-09-19 기각분이 예고한 함정). 0 칸이 청소 창구고, 2+ 칸이 파급을 미리 말한다.
+describe("집합 관리 판 — 쓰는 곳으로 구획한다", () => {
+    it("세 칸이 서고 아무도 안 쓰는 집합도 **보인다**", () => {
+        const shared: SavedSet = { id: "sh", name: "양념장", expr: exprOfStages([]), universe: "longitudinal" };
+        const a: SavedSet = { id: "a", name: "불고기", expr: { kind: "and", id: "root", of: [refNode("sh")] }, universe: "longitudinal" };
+        const b: SavedSet = { id: "b", name: "제육", expr: { kind: "and", id: "root", of: [refNode("sh")] }, universe: "longitudinal" };
+        const lone: SavedSet = { id: "lone", name: "혼자", expr: exprOfStages([]), universe: "longitudinal" };
+        useWorkbench.setState({ savedSets: [shared, a, b, lone], editingSetId: "a", editPath: ["a"] });
+
+        const { container, baseElement } = renderPanel();
+        fireEvent.click(btnByTitle(container, "집합 관리"));
+        const mgr = baseElement as HTMLElement;
+        expect(mgr.textContent).toContain("여럿이 쓰는 집합");
+        expect(mgr.textContent).toContain("아무도 안 쓰는 집합");
+        // 지도(위 칩 줄)에도 같은 이름이 서므로 **목록 쪽 손잡이**로 집는다(data-chip 없는 버튼).
+        const listNames = [...mgr.querySelectorAll("button")]
+            .filter((b) => (b as HTMLElement).dataset.chip === undefined)
+            .map((b) => b.textContent ?? "");
+        expect(listNames.some((t) => t.startsWith("혼자")), "안 쓰는 집합도 목록에 선다").toBe(true);
+        expect(listNames.some((t) => t.startsWith("양념장"))).toBe(true);
     });
 });
