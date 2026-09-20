@@ -8,9 +8,8 @@ import type { StateCreator } from "zustand";
 import type { PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import { parseStages } from "../panels/filter/stage.js";
-import { hasCycle, parseExpr, type SetExpr } from "../panels/filter/expr.js";
-import { effectiveUniverse, universeOfExpr, parseUniverse, type Universe } from "../panels/filter/universe.js";
-import { putExpr } from "./filterFunnelSlice.js";
+import { appendTerm, emptyExpr, parseExpr, refNode, type SetExpr } from "../panels/filter/expr.js";
+import { universeOfExpr, parseUniverse, type Universe } from "../panels/filter/universe.js";
 import { parsePointDef } from "../lib/pointDef.js";
 import { persistPointDef } from "./pointDefSlice.js";
 import { loadJson, saveJson } from "./persist.js";
@@ -119,28 +118,52 @@ export function parseSavedSets(o: unknown): SavedSet[] | null {
     return out;
 }
 
-/** 새 키를 먼저 읽고, 없으면 옛 "저장한 깔때기"를 부위=생존자로 이관한다(id 유지 — 옛 필터 바인딩이
- *  같은 id 의 saved 참조로 무손실 전환되는 근거). 옛 키는 안 지운다 — 새 키가 생기면 자연히 안 읽힌다. */
-const loadSavedSets = (): SavedSet[] =>
-    parseSavedSets(loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null))) ?? [];
+/** 새 집합 id — 시각 + 난수 꼬리(같은 ms 의 연속 생성이 같은 id 가 되지 않게). */
+const newSetId = (): string => `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+
+/** 빈 집합 하나 — 이름은 안 짓는다(자동 이름 = 점선 칩). */
+const blankSet = (): SavedSet => ({ id: newSetId(), expr: emptyExpr(), universe: "longitudinal" });
+
+/**
+ * 저장 집합 로드 — **하나도 없으면 빈 집합 하나를 만든다.**
+ * 잎이 최상위에 못 뜨는 모델이라(2026-09-20) 편집할 집합이 반드시 하나는 있어야 한다.
+ */
+const loadSavedSets = (): SavedSet[] => {
+    const sets = parseSavedSets(loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null))) ?? [];
+    return sets.length > 0 ? sets : persistSavedSets([blankSet()]);
+};
+
+/** 편집 대상은 **영속**이다 — 새로고침 뒤 보던 집합으로 돌아온다. */
+const EDITING_KEY = "wb.editingSetId.v1";
+
+/** 지워진 집합을 가리키던 편집 대상은 **첫 집합으로** 떨어진다(빈 화면보다 낫다 — 목록이 곧 작업면). */
+const loadEditingId = (sets: readonly SavedSet[]): string => {
+    const saved = loadJson(EDITING_KEY, (o) => (typeof o === "string" && o !== "" ? o : null));
+    return saved !== null && sets.some((x) => x.id === saved) ? saved : sets[0]!.id;
+};
+
+const persistEditing = (id: string): string => { saveJson(EDITING_KEY, id); return id; };
 
 export interface SavedSetsSlice {
     /** 저장 집합들(영속) — 집합 편성 패널이 만든 산출물. 집합 칩·연동 피커의 유일한 저장물 목록. */
     savedSets: SavedSet[];
-    /** 지금 조건으로 집합 저장 — 같은 이름 = 같은 물건, 엎어쓰기(id 유지 — 그 집합을 고정 구독 중인 바인딩이 따라온다). */
-    saveSet: (name: string) => void;
-    /** 열어 둔 집합에 지금 조건을 덮어쓴다 — **그 집합 하나만** 바뀐다(이름 유지). */
-    overwriteSet: (id: string) => void;
     /**
-     * 집합을 깔때기로 연다 — 조건 **사본**이 작업 깔때기에 펼쳐진다. 이후 편집은 저장물을 안 흔들고,
-     * 덮어쓰기를 눌러야 실제로 바뀐다(보드에서 만지는 동안 고정 구독 패널이 작업 중간 상태를 받지 않게).
+     * **지금 편집 중인 집합**(영속). 편집이 곧 저장이라 「작업 깔때기」라는 별도 자리가 없다 —
+     * 조건을 만지는 손은 전부 이 집합의 식을 갈아 끼운다(`filterFunnelSlice.putExpr`).
      */
-    openSet: (id: string) => void;
-    /** 이름만 바꾼다(id·조건 유지 — 바인딩이 id 로 따라오므로 이름은 표시물일 뿐). 빈 이름·다른 집합과 같은 이름은 무시. */
+    editingSetId: string;
+    /** 편집 대상 갈아타기 — 사본을 뜨지 않는다(사본이 있으면 "저장 안 한 변경"이 되살아난다). */
+    editSet: (id: string) => void;
+    /** 빈 집합 하나를 만들고 **그걸 편집 대상으로** 둔다. */
+    createSet: () => void;
+    /**
+     * **새 묶음** — 빈 집합을 만들어 지금 식에 참조로 붙이고, 그 집합으로 내려간다(드릴다운).
+     * 옛 「승격」이 하던 일의 자리 — 중첩이 참조로 간 뒤로는 "먼저 만들고 채운다"가 자연스럽다.
+     */
+    addGroupTerm: () => void;
+    /** 이름만 바꾼다(id·조건 유지 — 바인딩이 id 로 따라오므로 이름은 표시물일 뿐). 빈 이름 = 자동 이름으로. */
     renameSet: (id: string, name: string) => void;
     deleteSet: (id: string) => void;
-    /** 마지막으로 연 집합 — 덮어쓰기 버튼의 대상. 그 집합이 지워지면 풀린다(세션 한정). */
-    openedSetId: string | null;
 }
 
 /**
@@ -151,53 +174,38 @@ export interface SavedSetsSlice {
 export const refUniverse = (sets: readonly SavedSet[]) => (id: string): Universe | null =>
     sets.find((x) => x.id === id)?.universe ?? null;
 
-export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSetsSlice> = (set) => ({
-    savedSets: loadSavedSets(),
-    openedSetId: null,
+export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSetsSlice> = (set) => {
+    const sets = loadSavedSets();
+    return {
+    savedSets: sets,
+    editingSetId: persistEditing(loadEditingId(sets)),
 
-    // 같은 이름 = 같은 물건 — **엎어쓰기**(id 유지). 저장이 늘 새 항목이면 참조(패널 바인딩의 saved id)가
-    // 옛 스냅샷에 묶여, "집합을 고쳐 저장했는데 바인딩은 옛것"이라는 조용한 갈림이 생긴다.
-    saveSet: (name) => set((s) => {
-        const n = name.trim();
-        const expr = s.filterExpr;
-        const universe = effectiveUniverse(universeOfExpr(expr, refUniverse(s.savedSets)));
-        const at = s.savedSets.findIndex((x) => x.name === n);
-        // ⚠ **순환 참조 거절** — 자기를 (건너서라도) 참조하는 집합은 평가가 무한히 내려가고 드릴다운
-        //   빵부스러기도 끝이 없다. 엎어쓰기일 때만 생길 수 있다(새 id 는 아직 아무도 안 가리킨다).
-        const exprOfSet = (sid: string): SetExpr | undefined => s.savedSets.find((x) => x.id === sid)?.expr;
-        if (at >= 0 && hasCycle(s.savedSets[at]!.id, expr, exprOfSet)) return {};
-        // 정의도 사본으로 — 식과 같은 이유(자립). 저장 순간의 정의가 이 집합의 모수 정의다.
-        const saved = at >= 0
-            ? { ...s.savedSets[at]!, expr, universe, pointDef: s.pointDef }
-            // id 에 난수 꼬리 — 시각만으로는 같은 ms 의 연속 저장이 같은 id 가 된다(newStageId 와 같은 규칙).
-            : { id: `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name: n, expr, universe, pointDef: s.pointDef };
-        const next = at >= 0 ? s.savedSets.map((x, i) => (i === at ? saved : x)) : [...s.savedSets, saved];
-        saveJson(SAVED_SETS_KEY, next);
-        // 방금 저장한 집합이 곧 "열어 둔 집합" — 이어서 만지면 덮어쓰기가 그 집합을 가리킨다.
-        return { savedSets: next, openedSetId: saved.id };
-    }),
-    overwriteSet: (id) => set((s) => {
-        if (!s.savedSets.some((x) => x.id === id)) return {};
-        const exprOfSet = (sid: string): SetExpr | undefined => s.savedSets.find((x) => x.id === sid)?.expr;
-        if (hasCycle(id, s.filterExpr, exprOfSet)) return {}; // 순환 거절(saveSet 과 같은 규칙)
-        // 조건·정의만 바뀐다(이름 유지). 같은 조건에서 나온 형제 집합이 있어도 **이 하나만** — 느리지만 암묵이 없다.
-        // 우주도 함께 굳힌다 — 덮어쓰기는 "지금 만지는 것"을 그 집합으로 밀어 넣는 손짓이라, 우주만
-        // 옛것으로 남으면 조건과 우주가 갈린 집합이 생긴다(그 순간 결손 지도가 거짓말한다).
-        const next = s.savedSets.map((x) => (x.id === id ? { ...x, expr: s.filterExpr, universe: effectiveUniverse(universeOfExpr(s.filterExpr, refUniverse(s.savedSets))), pointDef: s.pointDef } : x));
-        saveJson(SAVED_SETS_KEY, next);
-        return { savedSets: next };
-    }),
-    openSet: (id) => set((s) => {
+    // 갈아타기만 한다 — **사본을 안 뜬다**(편집 = 저장이라 사본이 곧 "저장 안 한 변경"이다).
+    // 정의(pointDef)는 그 집합의 것으로 되돌린다 — 없는 집합은 현재 정의 유지(관대 병합 규칙).
+    editSet: (id) => set((s) => {
         const f = s.savedSets.find((x) => x.id === id);
         if (!f) return {};
-        // 사본이 작업 깔때기로(식 공유는 안전 — 편집 함수들이 늘 새 노드를 만든다).
-        // 정의도 그 집합의 것으로 되돌린다(같은 영속 경로 persistPointDef) — 없는 옛 저장물은 현재 정의 유지.
         return {
-            ...putExpr(f.expr),
-            openedSetId: id,
+            editingSetId: persistEditing(id),
+            selectedSetRef: null, // 편집 대상이 곧 "지금 보는 것" — 포인터는 최종 생존으로 돌아온다
             ...(f.pointDef ? { pointDef: persistPointDef(f.pointDef) } : {}),
         };
     }),
+
+    createSet: () => set((s) => {
+        const made = blankSet();
+        return { savedSets: persistSavedSets([...s.savedSets, made]), editingSetId: persistEditing(made.id), selectedSetRef: null };
+    }),
+
+    // 새 묶음 = 빈 집합 + 지금 식에 참조 한 항 + 그 집합으로 내려가기.
+    // ⚠ 순환은 원리적으로 안 난다 — 갓 만든 집합은 아직 아무것도 안 가리킨다.
+    addGroupTerm: () => set((s) => {
+        const made = blankSet();
+        const withSet = [...s.savedSets, made];
+        const next = withSet.map((x) => (x.id === s.editingSetId ? { ...x, expr: appendTerm(x.expr, refNode(made.id)) } : x));
+        return { savedSets: persistSavedSets(next), editingSetId: persistEditing(made.id), selectedSetRef: null };
+    }),
+
     renameSet: (id, name) => set((s) => {
         const n = name.trim();
         // **빈 이름 = 자동 이름으로 되돌리기**(2026-09-20) — 손 이름을 떼면 점선 칩으로 돌아간다.
@@ -214,15 +222,20 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         return { savedSets: next };
     }),
     deleteSet: (id) => set((s) => {
-        const next = s.savedSets.filter((x) => x.id !== id);
-        saveJson(SAVED_SETS_KEY, next);
+        // 하나도 안 남으면 빈 집합을 다시 세운다 — 편집할 집합이 반드시 하나는 있어야 한다.
+        const rest = s.savedSets.filter((x) => x.id !== id);
+        const next = persistSavedSets(rest.length > 0 ? rest : [blankSet()]);
         const sel = s.selectedSetRef;
         return {
             savedSets: next,
-            ...(s.openedSetId === id ? { openedSetId: null } : {}),
-            // 선택 포인터도 그 집합이면 푼다(작업 깔때기 복귀) — 연동 패널 전부가 죽은 참조를 보게 두지 않는다.
+            // 편집 중이던 집합이 지워지면 **첫 집합으로** 내려앉는다(빈 화면보다 낫다).
+            ...(s.editingSetId === id ? { editingSetId: persistEditing(next[0]!.id) } : {}),
+            // 선택 포인터도 그 집합이면 푼다 — 연동 패널 전부가 죽은 참조를 보게 두지 않는다.
             // 고정 바인딩은 일부러 안 푼다(깨진 참조 표시가 그쪽의 계약이다 — 패널마다 라벨과 전환 손잡이가 받는다).
+            // ⚠ **이 집합을 참조하던 식은 안 고친다** — 깨진 참조가 표식을 달고 서는 게 규칙이다
+            //   (조용히 넓어지지 않는다). 그 자리를 빼는 손은 편집면에 있다.
             ...(sel?.kind === "saved" && sel.setId === id ? { selectedSetRef: null } : {}),
         };
     }),
-});
+    };
+};

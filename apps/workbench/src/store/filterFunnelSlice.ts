@@ -17,11 +17,11 @@ import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
 import type { SetRef } from "../lib/setRef.js";
 import {
-    newStage, parseStages, renameGroupInStages,
+    newStage, renameGroupInStages,
     type FilterPredicate, type FilterStage,
 } from "../panels/filter/stage.js";
 import {
-    appendLeaf, emptyExpr, filterLeaves, leavesOf, mapLeaves, parseExpr, type SetExpr,
+    appendLeaf, emptyExpr, filterLeaves, leavesOf, mapLeaves, type SetExpr,
 } from "../panels/filter/expr.js";
 
 import { applyRailToExpr, type RailKey } from "../panels/filter/stageBinding.js";
@@ -37,7 +37,7 @@ const GAZE_PRESENCE_KEY = "wb.workset.presenceFilter.v2"; // v2: 골격 존재 �
  * v2: **묶음이 곧 집합**(2026-09-20 — 식 1층화). 옛 키(v1·`wb.filterStages.*`·슬롯)는 **안 읽는다**.
  * 승계를 안 만든 근거와 대가는 `savedSetsSlice` 의 `SAVED_SETS_KEY` 주석에 한 곳으로 적어 뒀다.
  */
-const EXPR_KEY = "wb.filterExpr.v2";
+
 
 // 옛 결과 술어엔 t 가 없고 그 기준(정의의 T1)은 복원할 수 없다 — 사용자 확정 "기존 저장물은 버린다"에 따라
 // 승계 코드 없이 키를 올린다. parseStages 는 술어 하나만 못 읽어도 저장본 통째를 버리므로 부분 승계는 애초에 불가.
@@ -56,14 +56,25 @@ const EXPR_KEY = "wb.filterExpr.v2";
  *
  * 옛 키는 안 지운다 — 새 키가 서면 자연히 안 읽힌다.
  */
-const loadExpr = (): SetExpr => loadJson(EXPR_KEY, (o) => parseExpr(o, parseStages)) ?? emptyExpr();
+
+
+/** 편집 대상을 푸는 데 필요한 것 — 셀렉터들이 공유하는 최소 조각. */
+export type EditingCtx = { editingSetId: string; savedSets: readonly SavedSet[] };
+
+/**
+ * 지금 편집 중인 집합의 **식** — 필드가 아니라 **파생**이다(2026-09-20).
+ *
+ * 옛 `filterExpr`(독립 저장물)는 없어졌다. 편집 대상이 집합 하나이므로 식의 자리도 거기 하나뿐이고,
+ * 두 벌로 들면 "저장 안 한 변경"이 되살아난다. 편집 대상이 사라졌으면 빈 식 — 화면은 "조건 없음"
+ * 으로 받고, 슬라이스 초기화가 집합 하나를 보장하므로 실제로는 잘 안 닿는다.
+ */
+export const selectFilterExpr = (s: EditingCtx): SetExpr =>
+    s.savedSets.find((x) => x.id === s.editingSetId)?.expr ?? EMPTY_EXPR;
+
+/** 파생이 빈 식을 낼 때 **같은 객체**를 준다 — 셀렉터 얕은 비교가 매번 깨지지 않게. */
+const EMPTY_EXPR = emptyExpr();
 
 export interface FilterFunnelSlice {
-    /**
-     * 작업 깔때기의 **식**(영속) — 2026-09-19 부터 리스트가 아니라 트리다.
-     * 평평한 목록을 읽는 소비자는 `selectFilterStages`(= leavesOf 투영)를 그대로 쓴다.
-     */
-    filterExpr: SetExpr;
 
     /**
      * 선택 포인터 — 집합 편성 패널 안의 **단 하나의 선택**. null = 작업 깔때기(최종 생존),
@@ -120,34 +131,40 @@ export interface FilterFunnelSlice {
  * 조건 한 벌 읽기 — 소비자(깔때기·보드)는 이 선택자만 읽는다. 저장 모양이 바뀌어도(슬롯 3칸이었던
  * 시절처럼) 소비자는 안 바뀌라고 두는 자리다.
  */
-export const selectFilterStages = (s: Pick<FilterFunnelSlice, "filterExpr">): FilterStage[] => leavesOf(s.filterExpr);
+export const selectFilterStages = (s: EditingCtx): FilterStage[] => leavesOf(selectFilterExpr(s));
 
 /**
  * 지금 만지는 조건이 사는 **우주** — 2026-09-19 부터 **파생**이다(저장 필드도 토글도 없다).
  * null = 아직 안 정해짐(중립 조건뿐이거나 조건 0개). 평가·표시는 effectiveUniverse 로 확정한다.
  */
-export const selectFilterUniverse = (s: Pick<FilterFunnelSlice, "filterExpr"> & { savedSets: readonly SavedSet[] }): Universe | null =>
-    universeOfExpr(s.filterExpr, refUniverse(s.savedSets));
+export const selectFilterUniverse = (s: EditingCtx): Universe | null =>
+    universeOfExpr(selectFilterExpr(s), refUniverse(s.savedSets));
 
-/** 단계는 손으로 쌓는 것이라 매 편집이 곧 영속 — 새로고침에 조건이 날아가면 깔때기를 다시 짜야 한다.
+/**
+ * **편집이 곧 저장이다**(2026-09-20) — 「저장 안 한 변경」이라는 상태가 없다.
  *
- *  export 인 이유: 저장 집합 열기(savedSetsSlice.openSet)도 "깔때기에 조건 한 벌을 쓰는 손"이라
- *  같은 규칙(영속·포인터 정리)을 지나야 한다 — 두 슬라이스의 유일한 접점이다. */
-export const putExpr = (
-    expr: SetExpr,
-): Pick<FilterFunnelSlice, "filterExpr" | "selectedSetRef"> => {
-    saveJson(EXPR_KEY, expr);
-    // 깔때기를 만졌다 = 선택 포인터는 작업 깔때기로 복귀 — 칩에서 고른 집합을 보던 중이라도, 조건을
-    // 고치는 손은 "지금 이걸 보겠다"는 뜻이다(연동 패널이 편집을 따라와야 편집의 대가가 보인다).
-    return {
-        filterExpr: expr,
-        selectedSetRef: null,
-    };
+ * 편집 대상은 **집합 하나**(`editingSetId`)이고, 모든 편집 손이 이 함수를 지나 그 집합의 식을
+ * 갈아 끼운다. 옛 모델의 "작업 깔때기"(독립 저장물)는 없어졌다 — 집합이 곧 그 자리다.
+ *
+ * ⚠ 구독 패널이 한 글자마다 재평가되는 대가는 **평가 쪽 디바운스**가 받는다(useFilterFunnel),
+ * 저장은 즉시다. 편집 버퍼 + 커밋은 기각 — 없애기로 한 개념이 이름만 바꿔 돌아온다(decisions).
+ */
+export const putExpr = (s: EditingCtx, expr: SetExpr): Pick<FilterFunnelSlice, "selectedSetRef"> & { savedSets: SavedSet[] } => {
+    // 편집 대상이 목록에 없으면 **그 id 로 만든다** — "편집할 집합은 늘 하나 있다"는 불변식을 쓰기
+    // 경로에서도 지킨다(조용히 버리면 손이 먹히고, 사용자는 왜 안 되는지 알 길이 없다).
+    const has = s.savedSets.some((x) => x.id === s.editingSetId);
+    const next = has
+        ? s.savedSets.map((x) => (x.id === s.editingSetId ? { ...x, expr } : x))
+        : [...s.savedSets, { id: s.editingSetId, expr, universe: "longitudinal" as const }];
+    // 우주는 여기서 안 굳힌다 — `persistSavedSets` 의 재조정이 파생 규칙 한 곳에서 맡는다.
+    const savedSets = persistSavedSets(next);
+    // 조건을 만졌다 = 선택 포인터는 **편집 중인 집합**으로 복귀(= survivors). 칩에서 딴 집합을 보던
+    // 중이라도, 조건을 고치는 손은 "지금 이걸 보겠다"는 뜻이다(편집의 대가가 화면에 보여야 한다).
+    return { savedSets, selectedSetRef: null };
 };
 
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => {
     return {
-    filterExpr: loadExpr(),
     selectedSetRef: null,
     gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
     gazePresence: loadJson(GAZE_PRESENCE_KEY, parsePresenceDnf) ?? [],
@@ -158,7 +175,7 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
         if (ref?.kind === "saved") {
             const set = s.savedSets.find((x) => x.id === ref.setId);
             // 포인터는 우주를 안 넘는다(불변식 ①) — 양쪽 다 **파생값**으로 잰다.
-            const here = effectiveUniverse(universeOfExpr(s.filterExpr, refUniverse(s.savedSets)));
+            const here = effectiveUniverse(universeOfExpr(selectFilterExpr(s), refUniverse(s.savedSets)));
             if (set && effectiveUniverse(universeOfExpr(set.expr, refUniverse(s.savedSets))) !== here) return {};
         }
         return { selectedSetRef: ref };
@@ -166,16 +183,16 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     setGazeMonths: (months) => set(() => ({ gazeMonths: months })),
     setGazePresence: (dnf) => set(() => { saveJson(GAZE_PRESENCE_KEY, dnf); return { gazePresence: dnf }; }),
 
-    // ⚠ 쓰기 API 의 **주소는 여전히 노드 id**(= 옛 stage.id)다 — 시그니처가 안 바뀌어 소비자가 그대로다.
-    //   바뀐 건 구현뿐: 리스트 편집 → 트리 편집(mapLeaves/filterLeaves/appendLeaf).
-    addFilterStage: (predicates) => set((s) => putExpr(appendLeaf(s.filterExpr, newStage(predicates ?? [])))),
-    setFilterExpr: (expr) => set(() => putExpr(expr)),
-    applyFilterRail: (key, predicate, stageId) => set((s) => putExpr(applyRailToExpr(s.filterExpr, key, predicate, stageId))),
-    removeFilterStage: (id) => set((s) => putExpr(filterLeaves(s.filterExpr, (x) => x.id !== id))),
-    toggleFilterStage: (id) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => (x.id === id ? { ...x, enabled: !x.enabled } : x)))),
-    setFilterStagePredicates: (id, predicates) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => (x.id === id ? { ...x, predicates } : x)))),
-    setFilterStage: (next) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => (x.id === next.id ? next : x)))),
-    renameFilterStage: (id, name) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => {
+    // ⚠ 쓰기 API 의 **주소는 조건 id**(= `stage.id`)다 — 시그니처가 안 바뀌어 소비자가 그대로다.
+    //   바뀐 건 쓰는 자리뿐: 독립 저장물 → **편집 중인 집합의 식**(putExpr 이 그 한 곳).
+    addFilterStage: (predicates) => set((s) => putExpr(s, appendLeaf(selectFilterExpr(s), newStage(predicates ?? [])))),
+    setFilterExpr: (expr) => set((s) => putExpr(s, expr)),
+    applyFilterRail: (key, predicate, stageId) => set((s) => putExpr(s, applyRailToExpr(selectFilterExpr(s), key, predicate, stageId))),
+    removeFilterStage: (id) => set((s) => putExpr(s, filterLeaves(selectFilterExpr(s), (x) => x.id !== id))),
+    toggleFilterStage: (id) => set((s) => putExpr(s, mapLeaves(selectFilterExpr(s), (x) => (x.id === id ? { ...x, enabled: !x.enabled } : x)))),
+    setFilterStagePredicates: (id, predicates) => set((s) => putExpr(s, mapLeaves(selectFilterExpr(s), (x) => (x.id === id ? { ...x, predicates } : x)))),
+    setFilterStage: (next) => set((s) => putExpr(s, mapLeaves(selectFilterExpr(s), (x) => (x.id === next.id ? next : x)))),
+    renameFilterStage: (id, name) => set((s) => putExpr(s, mapLeaves(selectFilterExpr(s), (x) => {
         if (x.id !== id) return x;
         const n = name.trim();
         // 빈 이름 = 자동 라벨로 되돌리기(옛 renameStage 의 규칙 그대로 — 필드를 지운다).
@@ -183,18 +200,15 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
         return { ...x, name: n };
     }))),
     renameGroupInFilters: (from, to) => set((s) => {
-        const expr = mapLeaves(s.filterExpr, (x) => renameGroupInStages([x], from, to)[0]!);
+        // 기계 승계 — 편집 중인 집합만이 아니라 **저장 집합 전부**를 훑는다(그룹 이름이 리터럴이라).
+        // putExpr 을 안 타는 이유: 손 편집이 아니라 기계 승계라 선택 포인터를 건드리면 안 된다.
         const sets = s.savedSets.map((f) => {
             const ex = mapLeaves(f.expr, (x) => renameGroupInStages([x], from, to)[0]!);
             return ex === f.expr ? f : { ...f, expr: ex };
         });
-        const setsTouched = sets.some((f, i) => f !== s.savedSets[i]);
-        if (expr !== s.filterExpr) saveJson(EXPR_KEY, expr);
-        return {
-            ...(expr !== s.filterExpr ? { filterExpr: expr } : {}),
-            ...(setsTouched ? { savedSets: persistSavedSets(sets) } : {}),
-        };
+        if (!sets.some((f, i2) => f !== s.savedSets[i2])) return {};
+        return { savedSets: persistSavedSets(sets) };
     }),
-    clearFilterStages: () => set(() => putExpr(emptyExpr())),
+    clearFilterStages: () => set((s) => putExpr(s, emptyExpr())),
     };
 };

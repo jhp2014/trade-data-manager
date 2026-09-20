@@ -7,6 +7,10 @@
 // 프로바이더 순서는 **실제 배선과 같아야 한다**(main.tsx): 이름 → 그룹·축 → 깔때기. 깔때기가 뒤를
 // 재료로 쓰므로 뒤집으면 실행되긴 해도 테스트가 실제와 다른 그래프를 검증하게 된다.
 import type { ReactElement, ReactNode } from "react";
+import { useWorkbench } from "../store/workbench.js";
+import { refUniverse, type SavedSet } from "../store/savedSetsSlice.js";
+import { effectiveUniverse, universeOfExpr } from "../panels/filter/universe.js";
+import type { SetExpr } from "../panels/filter/expr.js";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
 import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, LabeledPointFact, RankSectionBundle, StockMeta, ThemeMember } from "@trade-data-manager/wire";
@@ -211,4 +215,17 @@ export function renderWithProviders(ui: ReactElement, seed: Seed = {}): RenderRe
     const client = seededClient(seed);
     const result = render(<Providers client={client}>{ui}</Providers>);
     return { ...result, client };
+}
+
+/**
+ * 편집 대상 심기 — **편집이 곧 저장**이 된 뒤로(2026-09-20) 식은 필드가 아니라 "편집 중인 집합의
+ * 것"이다. 그래서 검사는 `filterExpr` 을 못 꽂고, 집합 하나를 만들어 편집 대상으로 둔다.
+ *
+ * 우주는 **파생**이라 안 받는다 — 조건이 정한다(그래서 하루 집합을 원하면 하루 전용 조건을 심는다).
+ */
+export function seedEditing(expr: SetExpr, others: readonly SavedSet[] = []): string {
+    const id = "edit";
+    const editing: SavedSet = { id, expr, universe: effectiveUniverse(universeOfExpr(expr, refUniverse(others))) };
+    useWorkbench.setState({ savedSets: [editing, ...others], editingSetId: id });
+    return id;
 }

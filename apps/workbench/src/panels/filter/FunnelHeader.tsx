@@ -16,7 +16,7 @@
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
-import { selectFilterStages, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
+import { selectFilterExpr, selectFilterStages, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
 import { FAIL, POINT_DEF } from "../../styles/palette.js";
 import { effectiveUniverse, UNIVERSE_LABEL } from "./universe.js";
 import { leafCount, refsOf } from "./expr.js";
@@ -31,7 +31,7 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
     const derived = useWorkbench(selectFilterUniverse);
     const setUniverse = effectiveUniverse(derived);
     const date = useWorkbench((s) => s.focus.date);
-    const expr = useWorkbench((s) => s.filterExpr);
+    const expr = useWorkbench(selectFilterExpr);
     const exprIsEmpty = leafCount(expr) === 0 && refsOf(expr).length === 0;
 
     const controls = useMemo<ControlSpec[]>(() => [

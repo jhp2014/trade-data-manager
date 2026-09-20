@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hmsToMinute, minuteToHms } from "@trade-data-manager/market/domain";
-import { selectFilterStages, selectFilterUniverse, useWorkbench } from "../store/workbench.js";
+import { selectFilterExpr, selectFilterStages, selectFilterUniverse, useWorkbench } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
 import type { CellHit } from "@trade-data-manager/market/domain";
@@ -93,7 +93,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     //    종단이면 지금까지의 3층 목록 그대로, 하루면 그날의 셀 ∪ 라벨 2층 목록이 된다.
     const setUniverse = useWorkbench(selectFilterUniverse);
     const stages = useWorkbench(selectFilterStages);
-    const expr = useWorkbench((s) => s.filterExpr);
+    const expr = useWorkbench(selectFilterExpr);
     const isDaily = setUniverse === "daily";
     const pid = panelId ?? "workset";
     const [sortMode, setSortMode] = usePanelUi<"stock" | "time">(pid, "daySort", "stock");

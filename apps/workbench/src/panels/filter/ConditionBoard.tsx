@@ -18,7 +18,7 @@ import { createPanelSlot, openAndFocus, openPanelExact } from "../../lib/openPan
 import { DEFAULT_THEME_STRENGTH } from "../../lib/themeStrength.js";
 import { useRankSections } from "../../lib/useRankSections.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
-import { selectFilterStages, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
+import { selectFilterExpr, selectFilterStages, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
 import { useDock } from "../../store/dock.js";
 import { slotTitleOf } from "../../shell/panelCatalog.js";
 import { parseSlotId } from "../../shell/panelSlots.js";
@@ -91,11 +91,11 @@ export function ConditionBoard({ panelId: _panelId }: {
     const [railEditor, setRailEditor] = useState<RailEditor | null>(null);
     const applyRail = useWorkbench((s) => s.applyFilterRail);
     // 식과 그 편집 손 — 노드 편집(부정·연산자·묶음 삭제)은 전부 setExpr 하나를 지난다.
-    const expr = useWorkbench((s) => s.filterExpr);
+    const expr = useWorkbench(selectFilterExpr);
     const setExpr = useWorkbench((s) => s.setFilterExpr);
     const addStage = useWorkbench((s) => s.addFilterStage);
     const savedSets = useWorkbench((s) => s.savedSets);
-    const openSet = useWorkbench((s) => s.openSet);
+    const editSet = useWorkbench((s) => s.editSet);
     /** 식이 비었나 — 조건도 참조도 없을 때만 참. 참조는 조건 수에 안 들어 둘 다 봐야 한다. */
     const exprIsEmpty = expr.of.length === 0;
     /**
@@ -182,7 +182,7 @@ export function ConditionBoard({ panelId: _panelId }: {
             <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderTop: "0.5px solid var(--border-subtle)" }}>
                 <span className="tabular" style={{ fontSize: 10, color: "var(--text-tertiary)", width: 12, flexShrink: 0 }}>{no}</span>
                 {t.neg === true && <span style={{ fontSize: 10, fontWeight: 600, color: FAIL, flexShrink: 0 }}>NOT</span>}
-                <button onClick={() => openSet(t.setId)} disabled={set === undefined}
+                <button onClick={() => editSet(t.setId)} disabled={set === undefined}
                     title={set === undefined
                         ? "가리키는 집합이 지워졌습니다 — 이 자리에서 빼거나 다른 집합으로 바꾸세요"
                         : `${name} — 열면 이 집합을 편집합니다.${usedBy >= 2 ? ` 쓰는 곳 ${usedBy} — 고치면 ${usedBy}곳이 같이 바뀝니다.` : ""}`}

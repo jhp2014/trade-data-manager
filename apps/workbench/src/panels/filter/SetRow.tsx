@@ -127,53 +127,32 @@ function SetManager({ pins, onTogglePin, onPick }: {
     const v = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
-    const saveSet = useWorkbench((s) => s.saveSet);
-    const overwriteSet = useWorkbench((s) => s.overwriteSet);
-    const openSet = useWorkbench((s) => s.openSet);
+    const editSet = useWorkbench((s) => s.editSet);
+    const createSet = useWorkbench((s) => s.createSet);
     const renameSet = useWorkbench((s) => s.renameSet);
     const deleteSet = useWorkbench((s) => s.deleteSet);
-    const openedSetId = useWorkbench((s) => s.openedSetId);
+    const editingSetId = useWorkbench((s) => s.editingSetId);
     // 우주는 **파생**이다 — 고르는 토글도, 우주를 넘기는 ⧉ 복제도 없다(2026-09-19 9단계).
     const setUniverse = effectiveUniverse(useWorkbench(selectFilterUniverse));
 
-    const [name, setName] = useState("");
     const [renaming, setRenaming] = useState<string | null>(null); // 이름 편집 중인 집합 id — draft 는 InlineRename 이 든다
     const [armedDelete, setArmedDelete] = useState<string | null>(null);
-
-    const nothingToSave = v.active.length === 0;
-    const trimmed = name.trim();
-    const dup = trimmed !== "" && savedSets.some((x) => x.name === trimmed);
-    const canSave = trimmed !== "" && !nothingToSave;
-    const commitSave = (): void => {
-        if (!canSave) return;
-        saveSet(trimmed);
-        setName("");
-    };
     const selectedKey = selectedSetRef === null ? null : setRefKey(selectedSetRef);
 
     return (
         <div style={{ maxHeight: 360, overflowY: "auto", padding: "2px 0" }}>
-            <div style={sectionHead}>집합 저장 — 지금 조건의 사본</div>
+            {/* 「저장」 버튼이 없다 — **편집이 곧 저장**이다(2026-09-20). 새 집합을 만드는 손만 남는다. */}
             <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 10px" }}>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder={nothingToSave ? "걸린 필터가 없습니다" : "집합 이름"}
-                    disabled={nothingToSave} autoFocus
-                    onKeyDown={(e) => { if (e.key === "Enter") commitSave(); }}
-                    style={{ ...textInput, flex: 1, fontSize: 11.5 }} />
-                <button onClick={commitSave} disabled={!canSave}
-                    title={nothingToSave ? "걸린 필터가 없습니다 — 저장할 집합이 전체와 같습니다"
-                        : dup ? `"${trimmed}" 이(가) 이미 있습니다 — 저장하면 그 집합의 조건과 부위가 지금 것으로 바뀝니다`
-                            : "지금 조건이 사본으로 저장됩니다 — 이후 보드를 만져도 저장된 집합은 안 변합니다"}
-                    style={{ ...smallBtn(canSave ? (dup ? "danger" : "accent") : "normal"), fontSize: 10.5, padding: "2px 8px", cursor: canSave ? "pointer" : "default" }}>
-                    {dup ? "덮어쓰기" : "저장"}
-                </button>
+                <button onClick={() => createSet()} style={{ ...smallBtn("accent"), fontSize: 10.5, padding: "2px 8px" }}
+                    title="빈 집합을 만들고 그걸 편집합니다 — 이름은 나중에 붙여도 됩니다(그때까지 자동 이름)">＋ 새 집합</button>
             </div>
 
-            <div style={sectionHead}>저장 집합 {savedSets.length > 0 ? `${savedSets.length}개 · 고정 = 줄에 늘 선다` : "— 아직 없음"}</div>
+            <div style={sectionHead}>집합 {savedSets.length}개 · 굵게 = 편집 중 · 고정 = 줄에 늘 선다</div>
             {savedSets.map((f) => {
                 const ref: SetRef = { kind: "saved", setId: f.id };
                 const active = selectedKey === setRefKey(ref);
                 const pinned = pins.includes(f.id);
-                const opened = openedSetId === f.id;
+                const opened = editingSetId === f.id;
                 const editing = renaming === f.id;
                 const r = v.resolveSet(ref);
                 const nm = setDisplayName(f, v.labelLook);
@@ -199,22 +178,17 @@ function SetManager({ pins, onTogglePin, onPick }: {
                         )}
                         <button onClick={() => onTogglePin(f.id)} aria-pressed={pinned} style={smallBtn("normal", pinned)}
                             title={pinned ? `${nm} — 고정 해제(줄에서 내린다)` : `${nm} — 줄에 고정(늘 선다)`}>고정</button>
-                        {/* ⧉ 복제는 폐지됐다(2026-09-19 사용자 확정) — 우주를 조건이 정하니
-                            "조건은 그대로 두고 우주만 바꾸기"가 원리적으로 불가능하다. 다른 우주 집합은
-                            숨기지 않고 **회색 + 뱃지**로 서고, 열면 그 집합의 우주로 자연히 갈아탄다. */}
-                        <button onClick={() => openSet(f.id)} style={smallBtn()}
-                            title={other
-                                ? `다른 우주(${UNIVERSE_LABEL[f.universe]})의 집합입니다 — 열면 그 조건이 보드에 펼쳐지고 우주도 그 조건을 따라갑니다`
-                                : "보드에 열기 — 조건 사본이 보드에 펼쳐집니다(저장물은 덮어쓰기 전까지 안 변함)"}>열기</button>
-                        {opened && (
-                            <button onClick={() => overwriteSet(f.id)} disabled={nothingToSave} style={{ ...smallBtn(nothingToSave ? "normal" : "accent"), cursor: nothingToSave ? "default" : "pointer" }}
-                                title={nothingToSave ? "걸린 필터가 없습니다 — 덮어쓰면 이 집합이 전체와 같아집니다"
-                                    : `"${nm}" 에 지금 조건을 덮어씁니다 — 이 집합 하나만 바뀝니다(부위·이름 유지)`}>덮어쓰기</button>
-                        )}
+                        {/* 편집 = 저장이라 「열기」와 「덮어쓰기」가 한 손으로 합쳐졌다 — 누르면 그 집합을
+                            바로 고치기 시작한다(사본을 안 뜬다). 다른 우주 집합도 숨기지 않는다. */}
+                        <button onClick={() => editSet(f.id)} disabled={opened} style={smallBtn(opened ? "accent" : "normal", opened)}
+                            title={opened ? "지금 편집 중입니다"
+                                : other
+                                    ? `다른 우주(${UNIVERSE_LABEL[f.universe]})의 집합입니다 — 편집하면 우주도 그 조건을 따라갑니다`
+                                    : "이 집합을 편집합니다 — 고치는 즉시 저장됩니다"}>편집</button>
                         <button onClick={() => setRenaming(f.id)} style={smallBtn()} title="이름 바꾸기">이름</button>
                         {armedDelete === f.id ? (
                             <button onClick={() => { deleteSet(f.id); setArmedDelete(null); }} style={smallBtn("danger", true)}
-                                title="정말 삭제 — 이 집합을 보고 있던 패널은 작업 깔때기로 돌아갑니다">정말 삭제</button>
+                                title="정말 삭제 — 이 집합을 참조하던 식에는 깨진 참조가 표식을 달고 남습니다">정말 삭제</button>
                         ) : (
                             <button onClick={() => setArmedDelete(f.id)} style={smallBtn("danger")} title="삭제(한 번 더 눌러 확정)">삭제</button>
                         )}

@@ -9,7 +9,7 @@ import { exprOfStages } from "../filter/expr.js";
 import { act, render, screen } from "@testing-library/react";
 import type { DayReplay, MinuteDerived } from "@trade-data-manager/wire";
 import { kstToUnix } from "@trade-data-manager/market/domain";
-import { Providers, seededClient, type Seed } from "../../test/renderPanel.js";
+import { Providers, seedEditing, seededClient, type Seed } from "../../test/renderPanel.js";
 import { selectRowNavOwner, useRowNavHotkeys } from "../../lib/rowNav.js";
 import { useKeymapDynamic } from "../../keymap/dynamic.js";
 import { useWorkbench } from "../../store/workbench.js";
@@ -57,7 +57,7 @@ const renderDaily = (stages: FilterStage[], data: DayReplay = snapshot, dates: s
     };
     const client = seededClient(seed);
     client.setQueryData(["data-dates"], dates); // 기본값은 하루뿐 = 이웃이 없다 = 프리페치도 없다
-    useWorkbench.setState({ filterExpr: exprOfStages(stages) });
+    seedEditing(exprOfStages(stages));
     render(
         <Providers client={client}>
             <Harness />
@@ -153,7 +153,7 @@ describe("작업 대상 — 하루 우주", () => {
         // 재료를 안 심고 그린다: 당기면 setup 의 네트워크 그물이 이 테스트를 실패시킨다(그게 이 검사의 눈이다).
         const client = seededClient({});
         client.setQueryData(["data-dates"], [DATE]);
-        useWorkbench.setState({ filterExpr: exprOfStages([]) });
+        seedEditing(exprOfStages([]));
         render(
             <Providers client={client}>
                 <Harness />

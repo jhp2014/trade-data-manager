@@ -29,7 +29,8 @@ import { projectionOf } from "../../lib/useThemeProjection.js";
 import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import { unionNames } from "../../lib/groupIndex.js";
 import type { SetRef } from "../../lib/setRef.js";
-import { useWorkbench } from "../../store/workbench.js";
+import { selectFilterExpr, useWorkbench } from "../../store/workbench.js";
+import { useDebounced } from "../../lib/useDebounced.js";
 import { buildAxisOrderIndex, buildAxisOrderIndexes } from "./axisLookup.js";
 import { resolveBound, toFunnelStage, type EvalLookup } from "./evaluate.js";
 import { activeExpr, leavesOf } from "./expr.js";
@@ -98,10 +99,21 @@ const hasHotPredicate = (stages: readonly FilterStage[]): boolean =>
     stages.some((s) => s.predicates.some((p) => p.kind === "hotPoints"));
 
 /** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
+/** 평가가 손을 따라오는 간격 — 타이핑 한 글자마다 5.7초를 물지 않을 만큼 길고, 손을 떼면 바로 따라올 만큼 짧게. */
+const EVAL_DEBOUNCE_MS = 250;
+
 export function useFilterFunnel(): FunnelView {
     // 식(트리)은 평가가 쓰고, 잎 목록(stages)은 화면·재료 게이트가 쓴다 — 둘은 같은 저장물의 두 얼굴이다.
     // ⚠ 셀렉터 안에서 파생 배열을 만들지 않는다(zustand 얕은 비교) — 항등 셀렉터로 받고 여기서 접는다.
-    const expr = useWorkbench((s) => s.filterExpr);
+    /**
+     * 편집 중인 집합의 식 — **평가 경로는 전부 늦은 식(`slowExpr`)을 본다.**
+     *
+     * 저장은 즉시고 평가만 손을 멈춘 뒤 따라온다(아래 `useDebounced`). 화면의 조건 줄은 보드가
+     * 스토어를 직접 읽으므로 즉각 반응하고, 여기서 나오는 수(생존·낟알·목록)만 늦는다.
+     * ⚠ 둘을 섞으면 안 된다 — 낟알을 새 식으로, 정산을 옛 식으로 재면 항목과 판정이 어긋난다.
+     */
+    const freshExpr = useWorkbench(selectFilterExpr);
+    const expr = useDebounced(freshExpr, EVAL_DEBOUNCE_MS);
     const stages = useMemo(() => leavesOf(expr), [expr]);
     const savedSets = useWorkbench((s) => s.savedSets);
 
@@ -274,7 +286,13 @@ export function useFilterFunnel(): FunnelView {
     //    목록과 정산이 같은 목록을 보게 두면 "필터 N"과 화면이 어긋날 일이 없다.
     const stagesOrdered = useMemo(() => funnelOrder(stages, grainLook), [stages, grainLook]);
     const active = useMemo(() => activeStages(stagesOrdered.map((e) => e.stage)), [stagesOrdered]);
-    /** 평가에 들어가는 식 — 꺼졌거나 빈 잎은 걷힌다. 묶음 구조는 그대로 산다(평평하게 접지 않는다). */
+    /**
+     * 평가에 들어가는 식 — 꺼졌거나 빈 조건은 걷힌다.
+     *
+     * ⚠ **손을 멈춘 뒤에 따라온다**(디바운스). 편집이 곧 저장이라 한 글자마다 식이 바뀌는데,
+     * 하루 우주에서 존 순위 조건이 켜져 있으면 평가 한 번이 5.7초다. 저장은 즉시고 평가만 늦춘다
+     * (편집 버퍼를 되살리는 대신 — decisions).
+     */
     const evalExprMemo = useMemo(() => activeExpr(expr), [expr]);
 
     /** 현재 정의의 타점 시각 — 유니버스 전개·setCtx.timesOf·materialsFor(현재)가 같은 실물을 문다. */

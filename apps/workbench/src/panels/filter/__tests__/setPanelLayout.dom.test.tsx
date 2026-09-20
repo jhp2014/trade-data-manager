@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { exprOfStages, leavesOf } from "../expr.js";
 import { fireEvent, render, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
+import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import { FilterFunnelPanel } from "../../FilterFunnelPanel.js";
 
@@ -95,28 +95,29 @@ describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는
         expect(btnByTitle(mgr, "돌파 — 고정 해제").getAttribute("aria-pressed")).toBe("true");
         // 삭제는 2단계 — 한 번으로는 안 지워진다.
         fireEvent.click(btnByTitle(mgr, "삭제(한 번 더"));
-        expect(useWorkbench.getState().savedSets).toHaveLength(1);
+        expect(useWorkbench.getState().savedSets.some((x) => x.id === "fs1")).toBe(true);
         fireEvent.click(btnByTitle(mgr, "정말 삭제"));
-        expect(useWorkbench.getState().savedSets).toHaveLength(0);
-        expect(useWorkbench.getState().selectedSetRef).toBeNull(); // 보던 집합이 지워지면 작업 깔때기로
+        expect(useWorkbench.getState().savedSets.some((x) => x.id === "fs1")).toBe(false);
+        // ⚠ 목록이 비지는 않는다 — **편집할 집합은 늘 하나 있다**(빈 집합이 다시 선다).
+        expect(useWorkbench.getState().savedSets).toHaveLength(1);
+        expect(useWorkbench.getState().selectedSetRef).toBeNull(); // 보던 집합이 지워지면 포인터가 풀린다
     });
 
-    it("저장 — 판의 이름 입력으로, 같은 이름이면 버튼이 덮어쓰기로 바뀐다(브라우저 prompt 없음)", () => {
-        useWorkbench.setState({
-            savedSets: ONE,
-            filterExpr: exprOfStages([{ id: "st1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }]),
-        });
+    // 편집 = 저장이라 「저장」 버튼이 없다(2026-09-20) — 남은 손은 **＋ 새 집합** 하나다.
+    it("＋ 새 집합 — 빈 집합이 생기고 그게 편집 대상이 된다(이름은 나중에)", () => {
+        seedEditing(exprOfStages([{ id: "st1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }]), ONE);
+        const before = useWorkbench.getState().savedSets.length;
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 관리"));
         const mgr = baseElement as HTMLElement;
-        const input = mgr.querySelector("input[placeholder='집합 이름']") as HTMLInputElement;
-        fireEvent.change(input, { target: { value: "돌파" } });
-        expect(within(mgr).getByText("덮어쓰기")).toBeDefined();
-        fireEvent.change(input, { target: { value: "새 집합" } });
-        fireEvent.keyDown(input, { key: "Enter" });
+        expect(mgr.querySelector("input[placeholder='집합 이름']"), "「저장」 입력이 없다").toBeNull();
+
+        fireEvent.click(within(mgr).getByText("＋ 새 집합"));
         const sets = useWorkbench.getState().savedSets;
-        expect(sets.map((x) => x.name)).toEqual(["돌파", "새 집합"]);
-        expect(leavesOf(sets[1]!.expr)).toHaveLength(1);
+        expect(sets).toHaveLength(before + 1);
+        const editing = sets.find((x) => x.id === useWorkbench.getState().editingSetId)!;
+        expect(editing.name, "이름은 안 짓는다 — 자동 이름(점선)").toBeUndefined();
+        expect(leavesOf(editing.expr), "빈 집합으로 시작").toHaveLength(0);
     });
 
     it("이름 바꾸기 — 행의 이름 버튼 → 입력 → Enter. 다른 집합과 같은 이름은 무시된다", () => {

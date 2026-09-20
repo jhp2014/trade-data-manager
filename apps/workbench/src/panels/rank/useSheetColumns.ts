@@ -179,9 +179,21 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
         () => [...workingStages, ...savedSetsForLife.flatMap((f) => leavesOf(f.expr))],
         [workingStages, savedSetsForLife],
     );
+    /**
+     * 생사 판정의 **내용 지문** — 아래 두 목록과 청소 effect 의 실제 트리거다.
+     *
+     * ⚠ 배열 신원으로 재면 안 된다: 편집이 곧 저장이 된 뒤로(2026-09-20) `savedSets` 가 **키 입력마다**
+     * 새 배열이라, 그대로 두면 유령 청소 effect 가 타이핑 내내 돈다(열 설정 전체를 훑는 일이다).
+     * 생사에 실제로 영향을 주는 건 "어떤 조건이 어떤 종류를 들고 있나"뿐이라 그것만 지문으로 만든다.
+     */
+    const lifeKey = useMemo(
+        () => allStages.map((s2) => `${s2.id}:${s2.predicates.map((p) => p.kind).join(",")}`).join("|"),
+        [allStages],
+    );
     const liveStageIds = useMemo(
         () => allStages.filter((st) => st.predicates.some((p) => p.kind === "outcome")).map((st) => st.id),
-        [allStages],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [lifeKey],
     );
     /**
      * 급타점 축의 보호 목록 — **축 목록이 아니라 저장물(stages) 기준**이다. 이 축은 격자 파생이라
@@ -191,7 +203,8 @@ export function useSheetColumns({ axes, axesLoading, containerW, axisMin, rowMod
      */
     const liveHotAxisIds = useMemo(
         () => hotInstancesOf(allStages).map((h) => hotAxisId(h.stageId)),
-        [allStages],
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [lifeKey],
     );
     /**
      * 차이 열 피연산자가 살아 있나 — **저장물 기준**(뷰 갈래 무관). 결과 열 키의 세 갈래를 그대로 읽는다:

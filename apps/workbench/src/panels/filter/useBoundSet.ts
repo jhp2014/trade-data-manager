@@ -20,7 +20,7 @@ import { useCallback, useMemo } from "react";
 import type { FunnelItem } from "@trade-data-manager/market/domain";
 import { chartKey } from "../../lib/pointKey.js";
 import type { SetRef } from "../../lib/setRef.js";
-import { selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
+import { selectFilterExpr, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { useFunnel } from "./FunnelContext.js";
 import { DAY_SET_OPTS, useCellSet } from "./useCellSet.js";
@@ -81,7 +81,7 @@ export function useBoundSet(panelId: string): BoundSet {
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const workingUniverse = effectiveUniverse(useWorkbench(selectFilterUniverse));
-    const workingExpr = useWorkbench((s) => s.filterExpr);
+    const workingExpr = useWorkbench(selectFilterExpr);
     const focusDate = useWorkbench((s) => s.focus.date);
 
     /** 지금 따라가는 대상 — 핀이 있으면 그것, 없으면 전역 포인터(연동). */

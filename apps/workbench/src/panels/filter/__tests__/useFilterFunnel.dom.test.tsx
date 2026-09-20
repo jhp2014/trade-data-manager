@@ -13,8 +13,7 @@ import { exprOfStages } from "../expr.js";
 import { renderHook, act } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
-import { Providers, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
-import { useWorkbench } from "../../../store/workbench.js";
+import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { useFilterFunnel } from "../useFilterFunnel.js";
 import type { FilterStage } from "../stage.js";
 
@@ -49,13 +48,13 @@ const dateStage = (id: string, from: string, to: string, enabled = true): Filter
     ({ id, enabled, predicates: [{ kind: "date", ranges: [{ from, to }] }] });
 
 // 조건 한 벌은 하나다 — 소비자는 selectFilterStages 로만 읽는다(저장 모양은 슬라이스의 사정).
-const setStages = (stages: FilterStage[]): void => { act(() => { useWorkbench.setState({ filterExpr: exprOfStages(stages) }); }); };
+const setStages = (stages: FilterStage[]): void => { act(() => { seedEditing(exprOfStages(stages)); }); };
 
 beforeEach(() => {
-    useWorkbench.setState({ filterExpr: exprOfStages([]) });
+    seedEditing(exprOfStages([]));
 });
 afterEach(() => {
-    useWorkbench.setState({ filterExpr: exprOfStages([]) });
+    seedEditing(exprOfStages([]));
     localStorage.clear();
     vi.unstubAllGlobals();
 });

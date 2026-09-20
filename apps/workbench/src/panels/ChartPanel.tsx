@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { selectFilterStages, selectFilterUniverse, useWorkbench, type ChartView } from "../store/workbench.js";
+import { selectFilterExpr, selectFilterStages, selectFilterUniverse, useWorkbench, type ChartView } from "../store/workbench.js";
 import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
 import type { FilterStage } from "./filter/stage.js";
 import { usePanelUi } from "../store/usePanelUi.js";
@@ -103,7 +103,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     //    한 memo 에서 뽑으면 ◇ 를 집합으로 옮기는 손이 다리 표식을 같이 죽인다.
     const setUniverse = useWorkbench(selectFilterUniverse);
     const funnelStages = useWorkbench(selectFilterStages);
-    const funnelExpr = useWorkbench((s) => s.filterExpr);
+    const funnelExpr = useWorkbench(selectFilterExpr);
     // 집합 평가는 **이 차트가 집합의 날짜를 보고 있을 때만** — 다른 날짜 차트가 두 번째 평가(와 15MB
     // 재료 요청)를 낳지 않게. 조건이 없으면 useCellSet 이 재료조차 안 당긴다.
     // ⚠ 기준은 `anchorDate`(= 전역 focus.date = 집합의 날짜)다 — 한때 `searchDate` 와 비교했는데

@@ -15,34 +15,39 @@ afterEach(() => {
     vi.unstubAllGlobals();
 });
 
-describe("조건 한 벌 로드·이관", () => {
-    it("옛 키(v1·리스트·슬롯·최초)는 읽지 않는다 — 2026-09-20 승계 없는 키 상향", async () => {
+describe("조건 한 벌의 자리 — 식은 **편집 중인 집합의 것**이다", () => {
+    it("옛 독립 저장물 키(wb.filterExpr.*·리스트·슬롯)는 읽지 않는다 — 조건이 사는 자리가 집합으로 옮겼다", async () => {
         stubStorage({
+            "wb.filterExpr.v2": { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "old2", enabled: true, predicates: [datePred] } }] },
             "wb.filterExpr.v1": { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "old1", enabled: true, predicates: [datePred] } }] },
             "wb.filterStages.v4": [{ id: "old4", enabled: true, predicates: [datePred] }],
-            "wb.filterStages": [{ id: "old0", enabled: true, predicates: [datePred] }],
             "wb.filterSlots": { active: 0, slots: [[{ id: "slot", enabled: true, predicates: [datePred] }], [], []] },
         });
         const store = await loadStore();
         expect(selectFilterStages(store.getState())).toEqual([]);
     });
 
-    it("지금 키(v2)는 그대로 읽는다", async () => {
-        stubStorage({ "wb.filterExpr.v2": { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "now", enabled: true, predicates: [datePred] } }] } });
+    it("저장 집합 키(v5)에서 읽는다 — 편집 대상의 식이 곧 조건 한 벌", async () => {
+        stubStorage({
+            "wb.savedSets.v5": [{ id: "fs1", expr: { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "now", enabled: true, predicates: [datePred] } }] }, universe: "longitudinal" }],
+            "wb.editingSetId.v1": "fs1",
+        });
         const store = await loadStore();
         expect(selectFilterStages(store.getState()).map((s) => s.id)).toEqual(["now"]);
     });
 });
 
 describe("편집은 곧 영속", () => {
-    it("조건을 더하면 지금 키에 **식**으로 실린다 — 루트 AND 의 잎", async () => {
+    it("조건을 더하면 **편집 중인 집합**의 저장물에 실린다", async () => {
         const storage = stubStorage();
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
         expect(selectFilterStages(store.getState())).toHaveLength(1);
-        const saved = JSON.parse(storage.get("wb.filterExpr.v2")!) as { kind: string; of: unknown[] };
-        expect(saved.kind).toBe("and");
-        expect(saved.of).toHaveLength(1);
+        const id = store.getState().editingSetId;
+        const raw = JSON.parse(storage.get("wb.savedSets.v5")!) as { id: string; expr: { kind: string; of: unknown[] } }[];
+        const mine = raw.find((x) => x.id === id)!;
+        expect(mine.expr.kind).toBe("and");
+        expect(mine.expr.of).toHaveLength(1);
     });
 });
 

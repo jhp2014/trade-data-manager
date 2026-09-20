@@ -7,7 +7,7 @@ import { exprOfStages } from "../expr.js";
 import { act, render } from "@testing-library/react";
 import type { DayReplay, MinuteDerived } from "@trade-data-manager/wire";
 import { kstToUnix } from "@trade-data-manager/market/domain";
-import { Providers, seededClient } from "../../../test/renderPanel.js";
+import { Providers, seedEditing, seededClient } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import { useBoundSet } from "../useBoundSet.js";
 import type { FilterStage } from "../stage.js";
@@ -77,8 +77,9 @@ beforeEach(() => {
     evalSpy.mockClear();
     useWorkbench.setState({
         focus: { ...useWorkbench.getState().focus, date: DATE, code: "", time: null },
-        panelUi: {}, savedSets: [], selectedSetRef: null, filterExpr: exprOfStages([wideStage]),
+        panelUi: {}, selectedSetRef: null,
     });
+    seedEditing(exprOfStages([wideStage]));
 });
 
 describe("useBoundSet — 하루 우주", () => {
@@ -91,7 +92,7 @@ describe("useBoundSet — 하루 우주", () => {
 
     // 우주 파생(9단계) 이후 조건 0개 = 우주 미정 = 종단이라, 하루 경로가 아예 안 선다.
     it("조건이 없으면 재료를 안 당긴다 — 네트워크도 안 친다", () => {
-        useWorkbench.setState({ filterExpr: exprOfStages([]) });
+        seedEditing(exprOfStages([]));
         renderProbes(["a"], false); // 재료를 안 심었다: 당기면 setup 의 네트워크 그물이 이 테스트를 죽인다
         expect(seen.a!.universe, "조건 0개 = 우주 미정 = 종단").toBe("longitudinal");
         expect(seen.a!.day.on, "하루 경로가 안 선다 — 이게 이 검사의 본론이다").toBe(false);
@@ -99,10 +100,8 @@ describe("useBoundSet — 하루 우주", () => {
     });
 
     it("폐지된 종류를 가리키던 핀(옛 조립)은 **거르는 빈 집합 + 이유**다 — 조용히 연동으로 떨어지면 딴 집합을 그린다", () => {
-        useWorkbench.setState({
-            savedSets: [savedDaily],
-            panelUi: { a: { setPin: { kind: "assembly", id: "as1" } } }, // 저장물에 남은 옛 조립 핀
-        });
+        seedEditing(exprOfStages([wideStage]), [savedDaily]);
+        useWorkbench.setState({ panelUi: { a: { setPin: { kind: "assembly", id: "as1" } } } }); // 저장물에 남은 옛 조립 핀
         renderProbes(["a"]);
         expect(seen.a!.view.viewedItems).toHaveLength(0);
         // 이 둘이 이 검사의 본론이다 — 시트·시뮬은 `isFiltering` 으로 "거르나"를 가른다.
@@ -125,9 +124,8 @@ describe("useBoundSet — 종단 집합에 고정한 패널", () => {
             id: "fs-long", name: "9월 돌파", expr: exprOfStages([]),
             universe: "longitudinal",
         };
-        useWorkbench.setState({ filterExpr: exprOfStages([]), savedSets: [savedLong],
-            panelUi: { a: { setPin: { kind: "saved", setId: "fs-long" } } },
-        });
+        seedEditing(exprOfStages([]), [savedLong]);
+        useWorkbench.setState({ panelUi: { a: { setPin: { kind: "saved", setId: "fs-long" } } } });
         renderProbes(["a"]);
         expect(seen.a!.universe).toBe("longitudinal");
         const before = seen.a!.view.viewedItems.length;
@@ -149,7 +147,7 @@ describe("useBoundSet — 고정(핀)", () => {
     it("고정하면 전역 선택을 안 따라간다 — 연동 패널만 따라간다", () => {
         // 포인터는 **우주를 못 넘는다**(단계 ② 불변식 ①) — 우주는 파생이라 토글이 없으니
         // 작업 식에 **하루 전용 조건**(wideStage)을 둬서 집합과 우주를 맞춘다.
-        useWorkbench.setState({ filterExpr: exprOfStages([wideStage]), savedSets: [savedDaily] });
+        seedEditing(exprOfStages([wideStage]), [savedDaily]);
         renderProbes(["pinned", "linked"]);
 
         // 포인터가 없을 때 눌러도 **뭔가는 묶인다** — 연동이 실제로 풀리는 대상(최종 생존)이다.
@@ -172,7 +170,8 @@ describe("useBoundSet — 고정(핀)", () => {
     });
 
     it("핀은 패널 낟알로 영속한다 — 재마운트를 건너 살아남는다", () => {
-        useWorkbench.setState({ savedSets: [savedDaily], selectedSetRef: { kind: "saved", setId: "fs-day" } });
+        seedEditing(exprOfStages([wideStage]), [savedDaily]);
+        useWorkbench.setState({ selectedSetRef: { kind: "saved", setId: "fs-day" } });
         const first = renderProbes(["a"]);
         act(() => seen.a!.togglePin());
         expect(useWorkbench.getState().panelUi.a?.setPin).toEqual({ kind: "saved", setId: "fs-day" });
@@ -183,7 +182,7 @@ describe("useBoundSet — 고정(핀)", () => {
     });
 
     it("지워진 집합을 가리키는 핀은 **그대로 둔다** — 조용한 연동 폴백 금지", () => {
-        useWorkbench.setState({ savedSets: [], panelUi: { a: { setPin: { kind: "saved", setId: "없는것" } } } });
+        useWorkbench.setState({ panelUi: { a: { setPin: { kind: "saved", setId: "없는것" } } } });
         renderProbes(["a"]);
         expect(seen.a!.pinned).toEqual({ kind: "saved", setId: "없는것" });
         expect(seen.a!.label).toBe("(지워진 집합)");

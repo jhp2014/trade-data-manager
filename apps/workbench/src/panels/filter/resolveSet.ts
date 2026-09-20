@@ -168,6 +168,27 @@ export function refMembersOf(ctx: SetResolveCtx, selfId: string | null): RefMemb
 }
 
 /**
+ * 참조 폐포의 지문 — 이 식이 (건너서라도) 닿는 저장 집합들의 **식**을 모아 직렬화한다.
+ * 세션 캐시 키의 일부다: 이게 없으면 참조 대상이 바뀌어도 참조하는 쪽의 키가 그대로라 낡은
+ * 정산이 산다. 순환은 저장 때 거절되지만 방문표로 한 번 더 끊는다(방어).
+ */
+function closureKeyOf(expr: SetExpr, ctx: SetResolveCtx): string {
+    const seen = new Set<string>();
+    const parts: string[] = [];
+    const stack = [...refsOf(expr)];
+    while (stack.length > 0) {
+        const id = stack.pop()!;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const f = ctx.savedSetOf(id);
+        if (f === undefined) { parts.push(`${id}:∅`); continue; } // 깨진 참조도 사실이라 키에 든다
+        parts.push(`${id}:${JSON.stringify(f.expr)}:${f.universe}`);
+        stack.push(...refsOf(f.expr));
+    }
+    return parts.sort().join("|"); // 순서 무관 — 같은 폐포면 같은 키
+}
+
+/**
  * 참조가 끌어올리는 낟알 — 참조 하나라도 point 집합이면 이 식의 항목도 point 여야 한다.
  *
  * ⚠ 이게 없으면 **잎이 하나도 없는 `OR(참조…)`**(= 승계된 옛 조립)이 day 로 파생되고, 참조가 point
@@ -248,9 +269,12 @@ function resolveDef(setId: string | null, ctx: SetResolveCtx): ResolvedFilter {
         // 이게 없으면 같은 조건·다른 게이트 두 집합이 서로의 정산을 먹는다
         // (조용히 다른 집합). 정의 없는 옛 저장물은 "cur"(현재 정의) — 현재 정의가 바뀌면 평가에 닿는
         // 변경은 전부 재료(타점·축 값·결과)를 지나 세대가 바뀌므로 낡은 정산이 살아남지 못한다.
-        // ⚠ 키에 **식 전체**를 십는다(잎 목록이 아니라) — 참조·부정·묶음 구조가 키에 안 실리면
+        // ⚠ 키에 **식 전체**를 싣는다(잎 목록이 아니라) — 참조·부정·묶음 구조가 키에 안 실리면
         //   같은 잎들을 다르게 묶은 두 집합이 서로의 정산을 먹는다(조용히 다른 집합).
-        sessionKey = `${set?.pointDef ? judgeKeyOf(set.pointDef) : "cur"}\n${JSON.stringify(expr)}`;
+        // ⚠ 그리고 **참조 폐포까지** 싣는다 — 자기 식만 키에 실으면 `A = AND(∈B)` 에서 B 를 고쳐도
+        //   A 의 키가 안 바뀌어 **낡은 정산이 그대로 재사용된다**(오류 없이 조용히 옛 집합).
+        //   중첩이 전부 참조가 된 뒤로(2026-09-20) 이 자리는 예외가 아니라 상시 경로다.
+        sessionKey = `${set?.pointDef ? judgeKeyOf(set.pointDef) : "cur"}|${JSON.stringify(expr)}|${closureKeyOf(expr, ctx)}`;
         const sHit = sessionDefCache.get(sessionKey);
         if (sHit !== undefined) {
             memo.set(setId, sHit);
