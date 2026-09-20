@@ -21,25 +21,27 @@ import {
     type FilterPredicate, type FilterStage,
 } from "../panels/filter/stage.js";
 import {
-    addLeafAt, appendLeaf, emptyExpr, exprOfStages, filterLeaves, leavesOf, mapLeaves, parseExpr, type SetExpr,
+    addLeafAt, appendLeaf, emptyExpr, filterLeaves, leavesOf, mapLeaves, parseExpr, type SetExpr,
 } from "../panels/filter/expr.js";
 
 import { applyRailToExpr, type RailKey } from "../panels/filter/stageBinding.js";
 import { effectiveUniverse, universeOfExpr, type Universe } from "../panels/filter/universe.js";
 import { persistSavedSets, refUniverse, type SavedSet } from "./savedSetsSlice.js";
-import { migrateProbeStages } from "../panels/filter/legacyProbe.js";
-import { backupRawOnce, hasStored, loadJson, saveJson } from "./persist.js";
+import { loadJson, saveJson } from "./persist.js";
 import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
 
 /** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
 const GAZE_PRESENCE_KEY = "wb.workset.presenceFilter.v2"; // v2: 골격 존재 리터럴 리셋
 
-const EXPR_KEY = "wb.filterExpr.v1"; // 지금 쓰는 단일 벌 — 식 트리(2026-09-19).
-const STAGES_KEY = "wb.filterStages.v4"; // 옛 평평한 리스트 — **승계해서 읽는다**(AND(잎…)).
+/**
+ * v2: **묶음이 곧 집합**(2026-09-20 — 식 1층화). 옛 키(v1·`wb.filterStages.*`·슬롯)는 **안 읽는다**.
+ * 승계를 안 만든 근거와 대가는 `savedSetsSlice` 의 `SAVED_SETS_KEY` 주석에 한 곳으로 적어 뒀다.
+ */
+const EXPR_KEY = "wb.filterExpr.v2";
+
 // 옛 결과 술어엔 t 가 없고 그 기준(정의의 T1)은 복원할 수 없다 — 사용자 확정 "기존 저장물은 버린다"에 따라
 // 승계 코드 없이 키를 올린다. parseStages 는 술어 하나만 못 읽어도 저장본 통째를 버리므로 부분 승계는 애초에 불가.
-const SLOTS_KEY = "wb.filterSlots"; // 슬롯 시절 — 활성 칸 하나만 이어받는다(나머지 칸은 버린다)
-const LEGACY_STAGES_KEY = "wb.filterStages"; // 슬롯 이전의 단일 벌
+
 
 // (옛 `wb.filterUniverse` 스칼라 키는 2026-09-19 9단계로 **안 읽는다** — 우주가 조건에서 파생되므로
 //  저장할 것이 없다. 키는 안 지운다: 새 코드가 안 읽으면 자연히 죽는다.)
@@ -54,17 +56,7 @@ const LEGACY_STAGES_KEY = "wb.filterStages"; // 슬롯 이전의 단일 벌
  *
  * 옛 키는 안 지운다 — 새 키가 서면 자연히 안 읽힌다.
  */
-const loadExpr = (): SetExpr => {
-    // 식 트리로 바뀌기 **전에** 원문을 한 번 뜬다(되돌림 경로 — 새 모양이 실린 저장물을 옛 코드가
-    // 읽으면 통째 폐기라 코드 롤백만으로는 복구가 안 된다. 단계 ② 의 pre-universe 와 같은 수).
-    backupRawOnce(STAGES_KEY, "pre-expr");
-    const fresh = loadJson(EXPR_KEY, (o) => parseExpr(o, parseStages));
-    if (fresh) return fresh;
-    // v4 리셋 이전 키들(v3·v2·슬롯·최초)은 읽지 않는다 — 옛 leaf·t 없는 결과 술어가 되살아나는 뒷문이 된다.
-    void SLOTS_KEY;
-    void LEGACY_STAGES_KEY;
-    return exprOfStages(loadJson(STAGES_KEY, parseStages) ?? []);
-};
+const loadExpr = (): SetExpr => loadJson(EXPR_KEY, (o) => parseExpr(o, parseStages)) ?? emptyExpr();
 
 export interface FilterFunnelSlice {
     /**
@@ -154,30 +146,9 @@ export const putExpr = (
     };
 };
 
-/**
- * 첫 상태의 조건 한 벌 — **한 번도 저장한 적이 없으면** 옛 "탐색 후보" 패널의 조건을 1회 이주한다.
- *
- * ⚠ 판정이 "비었나"가 아니라 "**키가 있나**"인 이유: 조건을 **일부러 다 지운** 사용자도 빈 배열을
- * 저장해 둔다. 내용으로 재면 그 사람의 재시작 때 지운 조건이 되살아난다("내가 지운 게 돌아왔다").
- * 두 키를 다 보는 이유도 같다 — 새 키만 보면 옛 사용자(v4 만 있는 사람)에게 이주가 다시 돈다.
- *
- * ⚠ 옛 조건은 **우주를 안 묻는다**(2026-09-19 9단계): 심을 조건 자체가 하루 전용이라 심는 순간
- * 우주가 하루로 파생된다. 옛 스칼라 키(`wb.filterUniverse`)를 읽어 문을 지키던 자리가 여기였다.
- * 재이주 방지는 legacyProbe 자신의 도장(MIGRATED_KEY)이 계속 맡는다.
- */
-const initialExpr = (): SetExpr => {
-    const saved = loadExpr();
-    if (hasStored(EXPR_KEY) || hasStored(STAGES_KEY)) return saved;
-    const seeded = migrateProbeStages();
-    if (seeded === null) return saved;
-    const e = exprOfStages(seeded);
-    saveJson(EXPR_KEY, e);
-    return e;
-};
-
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => {
     return {
-    filterExpr: initialExpr(),
+    filterExpr: loadExpr(),
     selectedSetRef: null,
     gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
     gazePresence: loadJson(GAZE_PRESENCE_KEY, parsePresenceDnf) ?? [],

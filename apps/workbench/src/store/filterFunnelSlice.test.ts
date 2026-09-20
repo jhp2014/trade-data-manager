@@ -16,9 +16,10 @@ afterEach(() => {
 });
 
 describe("조건 한 벌 로드·이관", () => {
-    it("옛 키(슬롯·v2·최초)는 읽지 않는다 — v3 리셋(골격 leaf 부활 금지)", async () => {
+    it("옛 키(v1·리스트·슬롯·최초)는 읽지 않는다 — 2026-09-20 승계 없는 키 상향", async () => {
         stubStorage({
-            "wb.filterStages.v2": [{ id: "old2", enabled: true, predicates: [datePred] }],
+            "wb.filterExpr.v1": { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "old1", enabled: true, predicates: [datePred] } }] },
+            "wb.filterStages.v4": [{ id: "old4", enabled: true, predicates: [datePred] }],
             "wb.filterStages": [{ id: "old0", enabled: true, predicates: [datePred] }],
             "wb.filterSlots": { active: 0, slots: [[{ id: "slot", enabled: true, predicates: [datePred] }], [], []] },
         });
@@ -26,8 +27,8 @@ describe("조건 한 벌 로드·이관", () => {
         expect(selectFilterStages(store.getState())).toEqual([]);
     });
 
-    it("지금 키(v4)는 그대로 읽는다", async () => {
-        stubStorage({ "wb.filterStages.v4": [{ id: "now", enabled: true, predicates: [datePred] }] });
+    it("지금 키(v2)는 그대로 읽는다", async () => {
+        stubStorage({ "wb.filterExpr.v2": { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "now", enabled: true, predicates: [datePred] } }] } });
         const store = await loadStore();
         expect(selectFilterStages(store.getState()).map((s) => s.id)).toEqual(["now"]);
     });
@@ -39,7 +40,7 @@ describe("편집은 곧 영속", () => {
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
         expect(selectFilterStages(store.getState())).toHaveLength(1);
-        const saved = JSON.parse(storage.get("wb.filterExpr.v1")!) as { kind: string; of: unknown[] };
+        const saved = JSON.parse(storage.get("wb.filterExpr.v2")!) as { kind: string; of: unknown[] };
         expect(saved.kind).toBe("and");
         expect(saved.of).toHaveLength(1);
     });

@@ -8,20 +8,26 @@ import type { StateCreator } from "zustand";
 import type { PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import { parseStages } from "../panels/filter/stage.js";
-import { exprOfStages, findNode, hasCycle, idOf, parseExpr, refNode, replaceNode, ROOT_ID, type SetExpr } from "../panels/filter/expr.js";
-import { LEGACY_ASSEMBLIES_KEY, parseLegacyAssemblies } from "../panels/filter/legacyAssemblies.js";
+import { findNode, hasCycle, idOf, parseExpr, refNode, replaceNode, ROOT_ID, type SetExpr } from "../panels/filter/expr.js";
 import { effectiveUniverse, universeOfExpr, parseUniverse, type Universe } from "../panels/filter/universe.js";
 import { putExpr } from "./filterFunnelSlice.js";
 import { parsePointDef } from "../lib/pointDef.js";
 import { persistPointDef } from "./pointDefSlice.js";
-import { backupRawOnce, loadJson, saveJson } from "./persist.js";
+import { loadJson, saveJson } from "./persist.js";
 
-const LEGACY_SETS_KEY = "wb.filterFunnelSets"; // 옛 "저장한 깔때기" — 저장 집합(부위=생존자)으로 읽어 들인다
+
 // v3 로 키를 올린 이유(2026-09-09): 허용 폭 T 가 정의에서 결과 술어로 내려가 옛 결과 술어에 t 가 없다 —
 // 그 기준(옛 정의의 T1)은 복원할 수 없어 승계하지 않는다(사용자 확정 "기존 저장물은 버린다").
 // (v2 는 2026-08-23 골격 은퇴 리셋이었다.)
-const SAVED_SETS_KEY = "wb.savedSets.v4"; // v4: 조건이 리스트 → **식 트리**(2026-09-19)
-const SAVED_SETS_V3_KEY = "wb.savedSets.v3"; // 옛 평평한 리스트 — 승계해서 읽는다(AND(잎…))
+/**
+ * v5: **묶음이 곧 집합**(2026-09-20 — 식 1층화). 옛 키(v4·v3·그 이전)는 **안 읽는다**.
+ *
+ * ⚠ 승계를 안 만든 것은 사용자 확정이다("기존 저장물 제거해도 된다"). 그 대가로 집합·조건 id 가
+ * 새로 생기므로 **그 id 를 주소로 쓰던 것들도 같이 리셋된다** — 패널 핀·테마 순위 판 연동·시트의
+ * 결과 열/급타점 열 설정(폭·고정·숨김·프리셋). 옛 키는 **지우지 않는다**: 안 읽으면 자연히 죽고,
+ * 되돌릴 자리를 남긴다(이 레포의 관례).
+ */
+const SAVED_SETS_KEY = "wb.savedSets.v5";
 
 /**
  * 저장 집합 — **자립 저장물**(이름 + 조건 사본). 집합끼리 아무것도 공유하지 않는다: 같은 깔때기에서
@@ -93,19 +99,9 @@ export function parseSavedSets(o: unknown): SavedSet[] | null {
     if (!Array.isArray(o)) return null;
     const out: SavedSet[] = [];
     for (const raw of o) {
-        const f = raw as { id?: unknown; name?: unknown; stages?: unknown; expr?: unknown; part?: unknown; pointDef?: unknown; universe?: unknown };
+        const f = raw as { id?: unknown; name?: unknown; expr?: unknown; pointDef?: unknown; universe?: unknown };
         if (typeof f?.id !== "string" || typeof f?.name !== "string") continue;
-        // 옛 부위(part) 승계 — **"짚은 칸"이던 집합은 이 항목만 버린다**(2026-09-19 사용자 확정).
-        // 조용히 최종 생존으로 넓히지 않는 이유: 그 집합은 "단계 s1 의 fail 칸"을 뜻했고 생존자는
-        // 보통 훨씬 크고 성격이 다르다 — 이름만 같은 다른 모수를, 고정 구독 중인 패널이 표식 없이
-        // 그리게 된다. 옛 `cell` **바인딩**을 orphan 으로 큰 소리 내는 규칙(setRef.ts)과 같은 편이다.
-        // 생존자 부위·부위 없음은 그대로 산다(부위라는 개념만 없어졌을 뿐 집합은 멀쩡하다).
-        if (typeof f.part === "object" && f.part !== null && (f.part as { kind?: unknown }).kind === "cell") continue;
-        // 새 모양(expr) 우선, 없으면 옛 리스트(stages)를 AND(잎…) 로 승계한다 — **잎 id 는 그대로**다
-        // (시트 인스턴스 열·급타점 축·테마 연동이 그 id 를 주소로 쓴다).
-        const expr = f.expr !== undefined
-            ? parseExpr(f.expr, parseStages)
-            : (() => { const st = parseStages(f.stages); return st === null ? null : exprOfStages(st); })();
+        const expr = parseExpr(f.expr, parseStages);
         if (!expr) continue;
         const universe = parseUniverse(f.universe); // 부재·오염 = 종단(집합 폐기 사유가 아니다)
         // 정의는 additive — 없거나 오염이면 필드 생략(열 때 현재 정의 유지). 집합 통째 폐기 사유가 아니다.
@@ -118,56 +114,8 @@ export function parseSavedSets(o: unknown): SavedSet[] | null {
 
 /** 새 키를 먼저 읽고, 없으면 옛 "저장한 깔때기"를 부위=생존자로 이관한다(id 유지 — 옛 필터 바인딩이
  *  같은 id 의 saved 참조로 무손실 전환되는 근거). 옛 키는 안 지운다 — 새 키가 생기면 자연히 안 읽힌다. */
-/**
- * 옛 조립(∪) 승계 — 재워 둔 저장물(`legacyAssemblies`)을 **`OR(참조…)` 집합**으로 올린다.
- * 2026-09-08 조립의 뜻이 정확히 이것이었다: 부품 참조들의 평평한 합집합. 그래서 무손실이다.
- *
- * 규칙 셋:
- *  · **꺼둔 부품(enabled=false)은 안 싣는다** — 그때 화면이 내던 것이 곧 켠 부품들의 합집합이었다.
- *  · **죽은 부품(지워진 setId)도 싣는다** — 거르면 조용히 다른 집합이 된다. 참조가 깨진 채로 서고
- *    화면이 "(지워진 집합)" 으로 말한다(결손이지 거짓이 아니다).
- *  · **이름 충돌은 꼬리 숫자** — 같은 이름 덮어쓰기(saveSet 규칙)는 승계의 뜻이 아니다.
- *
- * 한 번 올리고 나면 새 키에 실려 다시 안 돈다(옛 키는 안 지운다 — 되돌림 경로).
- */
-function migrateAssemblies(sets: SavedSet[]): SavedSet[] {
-    const legacy = loadJson(LEGACY_ASSEMBLIES_KEY, parseLegacyAssemblies);
-    if (!legacy || legacy.length === 0) return sets;
-    const out = [...sets];
-    for (const a of legacy) {
-        const members = a.members.filter((m) => m.enabled);
-        if (members.length === 0) continue;
-        let name = `∪ ${a.name}`;
-        for (let i = 2; out.some((x) => x.name === name); i++) name = `∪ ${a.name} ${i}`;
-        const expr: SetExpr = { kind: "or", id: ROOT_ID, of: members.map((m) => refNode(m.setId)) };
-        out.push({
-            id: a.id, // 옛 조립 id 를 그대로 — 그 조립을 가리키던 핀이 나중에 이어질 수 있는 유일한 끈이다
-            name,
-            expr,
-            // ⚠ 우주는 **여기서도 파생**한다 — 고정값(종단)으로 박으면 부품이 하루 집합인 조립이
-            //   종단 기계로 풀려 "조건이 있는데 아무것도 안 걸리는 빈 집합"이 조용히 나온다.
-            //   이 식은 잎이 하나도 없으므로 참조를 보는 universeOfExpr 이 유일한 답이다.
-            universe: effectiveUniverse(universeOfExpr(expr, refUniverse(out))),
-        });
-    }
-    return out;
-}
-
-const loadSavedSets = (): SavedSet[] => {
-    // 식 트리로 바뀌기 **전에** v3 원문을 한 번 뜬다(되돌림 경로 — 새 모양을 옛 코드가 읽으면 통째 폐기다).
-    backupRawOnce(SAVED_SETS_V3_KEY, "pre-expr");
-    const fresh = loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null));
-    if (fresh) return parseSavedSets(fresh) ?? [];
-    // v3(평평한 리스트)를 **승계해서 읽는다** — 같은 파서가 stages 갈래로 받아 AND(잎…) 로 올린다.
-    // 옛 조립도 이때 함께 올라온다(OR(참조…)). 새 키에 실리는 순간 둘 다 다시 안 돈다.
-    const v3 = loadJson(SAVED_SETS_V3_KEY, (o) => (Array.isArray(o) ? o : null));
-    if (v3) return persistSavedSets(migrateAssemblies(parseSavedSets(v3) ?? []));
-    const onlyAssemblies = migrateAssemblies([]);
-    if (onlyAssemblies.length > 0) return persistSavedSets(onlyAssemblies);
-    // v3 리셋 이전 키들(v2·wb.savedSets·LEGACY)은 읽지 않는다 — 옛 leaf·t 없는 결과 술어의 뒷문이 된다.
-    void LEGACY_SETS_KEY;
-    return [];
-};
+const loadSavedSets = (): SavedSet[] =>
+    parseSavedSets(loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null))) ?? [];
 
 export interface SavedSetsSlice {
     /** 저장 집합들(영속) — 집합 편성 패널이 만든 산출물. 집합 칩·연동 피커의 유일한 저장물 목록. */
