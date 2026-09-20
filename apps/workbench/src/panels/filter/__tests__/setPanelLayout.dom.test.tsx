@@ -164,3 +164,24 @@ describe("집합 관리 판 — 쓰는 곳으로 구획한다", () => {
         expect(listNames.some((t) => t.startsWith("양념장"))).toBe(true);
     });
 });
+
+// ⚠ 실측이 "하루 우주인데 건수가 늘 0" 으로 헷갈린 자리 — 저 정산은 **종단 기계**의 것이고
+//   셀 술어는 거기서 전부 결손이라 하루 집합이면 언제나 0 이다("조건에 다 걸렸다"로 읽힌다).
+describe("머리글 건수 — 하루 우주에서는 종단 정산을 안 쓴다", () => {
+    const cellStage = {
+        id: "c1", enabled: true,
+        predicates: [{ kind: "cellValue" as const, field: "ratePct" as const, ranges: [{ from: { kind: "value" as const, value: 5 } }] }],
+    };
+
+    it("종단이면 `전체 → 생존` 을 적고, 하루면 어디서 보는지를 적는다", () => {
+        seedEditing(exprOfStages([{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[1] }] }] }]));
+        const long = renderPanel();
+        expect(long.container.textContent).toContain("→");
+        long.unmount();
+
+        seedEditing(exprOfStages([cellStage]));
+        const daily = renderPanel();
+        expect(daily.container.textContent, "하루·셀 뱃지가 선다").toContain("하루");
+        expect(daily.container.textContent).toContain("셀 수는 작업 대상에서");
+    });
+});

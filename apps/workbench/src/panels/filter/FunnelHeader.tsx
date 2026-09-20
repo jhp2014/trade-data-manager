@@ -64,11 +64,21 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
                     {date}
                 </span>
             )}
-            {/* 전체 → 생존 — 옛 막대 서랍의 요약 줄이 여기로 왔다(서랍이 없어졌다). 붙어 있어야 관계가 읽힌다. */}
-            <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}
-                title="후보 전체 → 걸린 필터를 다 통과한 수">
-                {v.isLoading ? "…" : `${v.universe.toLocaleString("ko-KR")} → ${(v.result?.survivors.length ?? v.universe).toLocaleString("ko-KR")}`}
-            </span>
+            {/* 전체 → 생존 — 옛 막대 서랍의 요약 줄이 여기로 왔다(서랍이 없어졌다). 붙어 있어야 관계가 읽힌다.
+                ⚠ **하루 우주에서는 이 수를 안 쓴다.** 저 정산은 종단 기계의 것이고, 셀 술어는 거기서
+                전부 결손이라 하루 집합이면 **언제나 0** 이 나온다("조건에 다 걸렸다"로 읽히는 거짓말).
+                하루의 수는 셀 엔진이 내므로 그 자리(작업 대상 패널)에 있고, 여기서는 그 사실을 말한다. */}
+            {setUniverse === "daily" ? (
+                <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}
+                    title="하루·셀 우주의 건수는 셀 엔진이 냅니다 — 작업 대상 패널이 그 수를 말합니다. 여기 종단 정산은 셀 술어를 전부 결손으로 보므로 뜻이 없습니다.">
+                    셀 수는 작업 대상에서
+                </span>
+            ) : (
+                <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}
+                    title="후보 전체 → 걸린 필터를 다 통과한 수">
+                    {v.isLoading ? "…" : `${v.universe.toLocaleString("ko-KR")} → ${(v.result?.survivors.length ?? v.universe).toLocaleString("ko-KR")}`}
+                </span>
+            )}
             <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}>
                 필터 {v.active.length}{v.stagesOrdered.length > v.active.length ? ` / ${v.stagesOrdered.length}` : ""}
             </span>
