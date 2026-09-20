@@ -8,6 +8,13 @@
 // ⚠ 첫 값은 **안 늦춘다** — 패널을 열자마자 빈 화면을 보여 주면 "조건에 다 걸렸다"로 읽힌다.
 import { useEffect, useRef, useState } from "react";
 
+/**
+ * 평가가 손을 따라오는 간격 — 타이핑 한 글자마다 5.7초를 물지 않을 만큼 길고, 손을 떼면 바로
+ * 따라올 만큼 짧게. ⚠ **평가 맥락(식·저장물)은 전부 이 한 값으로 늦는다** — 박자가 갈리면
+ * 식과 저장물이 어긋난 채 평가된다.
+ */
+export const EVAL_DEBOUNCE_MS = 250;
+
 export function useDebounced<T>(value: T, ms: number): T {
     const [slow, setSlow] = useState(value);
     const first = useRef(true);

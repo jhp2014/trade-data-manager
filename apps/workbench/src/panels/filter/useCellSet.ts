@@ -27,7 +27,7 @@ import {
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useWorkbench } from "../../store/workbench.js";
-import { useDebounced } from "../../lib/useDebounced.js";
+import { useDebounced, EVAL_DEBOUNCE_MS } from "../../lib/useDebounced.js";
 import { useAutoPoints } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { useThemeKnobParams } from "./themeLink.js";
@@ -40,8 +40,17 @@ import { stageDeficiency, type Universe } from "./universe.js";
  * 하루 집합의 평가 옵션 — **소비자가 전부 이 상수를 쓴다**(목록·차트).
  * opts 는 메모 키에 실리므로 한 소비자만 다르게 주면 같은 (날짜, 조건)이 두 벌로 갈려 5.7초가 두 번
  * 돌고, 잘린 날엔 목록(종목째 컷)과 차트(앞에서 컷)가 **다른 셀**을 그린다(리뷰가 잡은 자리).
+ *
+ * ## 상한 300 — 값을 치르는 곳은 **하류**다 (2026-09-20 사용자 확정)
+ * 조건이 느슨하면 한 종목의 거의 모든 분이 걸려 산출물이 수만 개가 된다(실측: 하루 41,890 셀).
+ * 그 목록이 그대로 시트 행·결과 걷기·시뮬로 흘러 **패널마다 그 수만큼** 일한다 — 메인 스레드가
+ * 30초 잡히던 실측의 주범이다. 하루에 진짜로 볼 후보가 300을 넘을 일은 없다는 판단(사용자).
+ *
+ * ⚠ **엔진 스캔은 이 값으로 안 줄어든다** — `limit` 은 정렬 뒤 앞에서 자르는 **산출물** 상한이고,
+ * 스캔을 멈추는 건 그물(`hardCap` 50,000 셀)이다. 그러니 이건 "평가를 싸게" 만드는 게 아니라
+ * "평가 결과가 하류를 덜 때리게" 만드는 것이다. 잘린 사실은 머리글이 `상한 N 초과 — 잘림` 으로 말한다.
  */
-export const DAY_SET_OPTS: CellEvalOptions = { limitBy: "stockGroup" };
+export const DAY_SET_OPTS: CellEvalOptions = { limitBy: "stockGroup", limit: 300 };
 
 /** 칸 하나의 상태 — 평가에 들었나, 아니면 이 우주에서 결손인가(이유와 함께). */
 export interface CellStageStatus {
@@ -276,20 +285,15 @@ export const cellHitToItem = (h: CellHit, date: string): FunnelItem => ({
     time: minuteToHms(h.min),
 });
 
-/**
- * 평가가 손을 따라오는 간격 — **여기가 5.7초가 사는 자리**다(존 순위 = 분 단면 굽기).
- * 편집이 곧 저장이라 조건을 한 글자 만질 때마다 식이 바뀌는데, 그때마다 이 평가가 돌면 화면이 멎는다.
- * 저장은 즉시고 **평가만** 손을 멈춘 뒤 따라온다(decisions: 편집 버퍼를 되살리는 대신 평가를 늦춘다).
- */
-const EVAL_DEBOUNCE_MS = 250;
-
 export function useCellSet(fresh: SetExpr | null, date: string, opts?: CellEvalOptions): CellSetView {
     // ⚠ 늦추는 자리가 **여기**여야 한다 — 소비자(작업 대상·차트·바인딩)는 스토어를 직접 읽으므로
     //   깔때기 훅에만 디바운스를 걸면 이 경로가 그대로 맨몸으로 돈다(2026-09-20 리뷰가 잡은 자리).
     const expr = useDebounced(fresh, EVAL_DEBOUNCE_MS);
     // 참조를 펼치려면 저장 집합이 필요하다 — 훅이 읽어 순수부에 넘긴다(호출부는 그대로).
-    // ⚠ deps 에 **반드시** 든다: 안 물면 참조가 가리키는 집합을 고쳐도 여기가 옛 조건으로 계속 번역한다.
-    const savedSets = useWorkbench((st) => st.savedSets);
+    // ⚠ 저장물도 **같은 박자로** 늦는다: 신선한 것을 쓰면 편집마다 번역이 새 객체를 내고, 그 객체가
+    //   메모 키라 결국 매 편집이 재평가를 부른다(식만 늦춘 것은 소용이 없다).
+    const freshSavedSets = useWorkbench((st) => st.savedSets);
+    const savedSets = useDebounced(freshSavedSets, EVAL_DEBOUNCE_MS);
     const narrowedEarly = useMemo(
         () => (expr === null
             ? { expr: null, stages: [] as CellStageStatus[] }

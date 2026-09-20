@@ -10,6 +10,7 @@ import { neighborDates } from "./workset/dayCrossing.js";
 import { useDayReplayPrefetch } from "../lib/useDaySnapshot.js";
 import { useQuery } from "@tanstack/react-query";
 import { dataDatesQuery } from "../api/queries.js";
+import { useHasDataOn } from "../lib/useSnapFocusDate.js";
 import { usePublishRowNav } from "../lib/rowNav.js";
 import { RowNavBadge } from "../components/RowNavBadge.js";
 
@@ -243,6 +244,8 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     // ── 날짜 경계 넘기(하루 우주 전용) — 종단은 날짜가 목록 안에 있어 경계가 없다.
     // 거래일 목록은 **하루 우주에서만** 필요하다(날짜 경계 넘기의 재료) — 종단 화면이 이 왕복을 물지 않게.
     const datesQ = useQuery({ ...dataDatesQuery(), enabled: isDaily });
+    /** 그 날에 데이터가 있나 — 빈 화면이 "조건 탓"인지 "휴장"인지 가르는 재료(undefined = 아직 모름). */
+    const hasData = useHasDataOn(focusDate);
     const heavyCondition = useMemo(
         () => cellSet.stages.some((st) => st.counted) && stages.some((st) => st.predicates.some((p) => p.kind === "gridPoint" || (p.kind === "cellValue" && p.field === "zoneRank"))),
         [cellSet.stages, stages],
@@ -490,7 +493,12 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
 
             {listRows.length === 0 ? (
                 <div style={{ padding: 10, color: "var(--text-tertiary)", fontSize: 12, textAlign: "center" }}>
-                    {isDaily
+                    {/* ⚠ **빈 이유를 조건 탓으로 돌리지 않는다** — 장이 안 선 날(주말·휴장)은 조건을
+                        아무리 넓혀도 0이다. 그 사실을 먼저 말한다(2026-09-20: 시선 날짜가 오늘로
+                        시작하던 탓에 주말에 켜면 전부 이 화면이었고, 문구가 조건 탓을 했다). */}
+                    {hasData === false
+                        ? `${focusDate} 은 데이터가 없는 날입니다(휴장·미수집) — w/s 로 거래일로 넘기세요`
+                        : isDaily
                         ? (cellSet.tooWide
                             // 머리글이 "너무 넓습니다"를 이미 말한다 — 같은 문장을 두 번 쓰지 않는다.
                             ? "조건 층을 뺐습니다(위 안내) — 이 날엔 라벨 좌표도 없습니다"

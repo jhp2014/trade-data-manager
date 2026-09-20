@@ -30,7 +30,7 @@ import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import { unionNames } from "../../lib/groupIndex.js";
 import type { SetRef } from "../../lib/setRef.js";
 import { selectFilterExpr, useWorkbench } from "../../store/workbench.js";
-import { useDebounced } from "../../lib/useDebounced.js";
+import { useDebounced, EVAL_DEBOUNCE_MS } from "../../lib/useDebounced.js";
 import { buildAxisOrderIndex, buildAxisOrderIndexes } from "./axisLookup.js";
 import { resolveBound, toFunnelStage, type EvalLookup } from "./evaluate.js";
 import { activeExpr, leavesOf } from "./expr.js";
@@ -99,9 +99,6 @@ const hasHotPredicate = (stages: readonly FilterStage[]): boolean =>
     stages.some((s) => s.predicates.some((p) => p.kind === "hotPoints"));
 
 /** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
-/** 평가가 손을 따라오는 간격 — 타이핑 한 글자마다 5.7초를 물지 않을 만큼 길고, 손을 떼면 바로 따라올 만큼 짧게. */
-const EVAL_DEBOUNCE_MS = 250;
-
 export function useFilterFunnel(): FunnelView {
     // 식(트리)은 평가가 쓰고, 잎 목록(stages)은 화면·재료 게이트가 쓴다 — 둘은 같은 저장물의 두 얼굴이다.
     // ⚠ 셀렉터 안에서 파생 배열을 만들지 않는다(zustand 얕은 비교) — 항등 셀렉터로 받고 여기서 접는다.
@@ -115,7 +112,16 @@ export function useFilterFunnel(): FunnelView {
     const freshExpr = useWorkbench(selectFilterExpr);
     const expr = useDebounced(freshExpr, EVAL_DEBOUNCE_MS);
     const stages = useMemo(() => leavesOf(expr), [expr]);
-    const savedSets = useWorkbench((s) => s.savedSets);
+    const freshSavedSets = useWorkbench((s) => s.savedSets);
+    /**
+     * 평가가 보는 **저장물 스냅샷** — 식과 **같은 박자로** 늦는다.
+     *
+     * ⚠ 식만 늦추면 소용이 없다: 편집 = 저장이라 `savedSets` 가 매 편집마다 새 배열이고, 그게
+     * `baseCtx` 의 신원을 바꿔 리졸버 캐시(ctx WeakMap)를 통째로 버리게 한다 — 결국 **구독 패널
+     * 전부가 매 편집마다 다시 계산**된다(실측: 패널 6개에 메인 스레드 30초 차단).
+     * 평가 맥락은 한 벌로 움직여야 한다 — 식과 저장물이 다른 박자로 오면 그 둘이 어긋난 채 평가된다.
+     */
+    const savedSets = useDebounced(freshSavedSets, EVAL_DEBOUNCE_MS);
 
     const gv = useGroups();
     const ax = useRankAxes();
@@ -129,15 +135,15 @@ export function useFilterFunnel(): FunnelView {
     // themeInUse 게이트와 같은 이유: 안 그러면 T 레일을 만질 때마다 결과와 무관한 화면 전체의
     // 정산·저장 집합 캐시가 materialsEpoch 를 타고 통째 재계산된다.
     const outcomeInUse = useMemo(
-        () => hasOutcomePredicate(stages) || savedSets.some((f) => hasOutcomePredicate(leavesOf(f.expr))),
-        [stages, savedSets],
+        () => hasOutcomePredicate(stages) || freshSavedSets.some((f) => hasOutcomePredicate(leavesOf(f.expr))),
+        [stages, freshSavedSets],
     );
     const outcomesEff = outcomeInUse ? sliceAt : null;
     // 급타점 재료 — 결과와 같은 게이트 규칙(안 쓰면 상수로 끊어 무관한 화면의 정산 재계산을 막는다).
     const hotAt = useHotCounts();
     const hotInUse = useMemo(
-        () => hasHotPredicate(stages) || savedSets.some((f) => hasHotPredicate(leavesOf(f.expr))),
-        [stages, savedSets],
+        () => hasHotPredicate(stages) || freshSavedSets.some((f) => hasHotPredicate(leavesOf(f.expr))),
+        [stages, freshSavedSets],
     );
     const hotEff = hotInUse ? hotAt : null;
 
@@ -157,8 +163,8 @@ export function useFilterFunnel(): FunnelView {
     // stale 의 멤버십 refetch 가 evalLook → materialsEpoch 를 올려, 테마와 무관한 화면 전체의
     // 정산·저장 집합 캐시가 주기적으로 통째 재계산된다.
     const themeInUse = useMemo(
-        () => hasThemePredicate(stages) || savedSets.some((f) => hasThemePredicate(leavesOf(f.expr))),
-        [stages, savedSets],
+        () => hasThemePredicate(stages) || freshSavedSets.some((f) => hasThemePredicate(leavesOf(f.expr))),
+        [stages, freshSavedSets],
     );
     const sectionRanksAt = themeInUse ? sections.sectionAt : NO_SECTION;
     const themeProjEff = themeInUse ? themeProj : null;
