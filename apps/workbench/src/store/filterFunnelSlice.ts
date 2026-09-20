@@ -21,7 +21,7 @@ import {
     type FilterPredicate, type FilterStage,
 } from "../panels/filter/stage.js";
 import {
-    addLeafAt, appendLeaf, emptyExpr, filterLeaves, leavesOf, mapLeaves, parseExpr, type SetExpr,
+    appendLeaf, emptyExpr, filterLeaves, leavesOf, mapLeaves, parseExpr, type SetExpr,
 } from "../panels/filter/expr.js";
 
 import { applyRailToExpr, type RailKey } from "../panels/filter/stageBinding.js";
@@ -100,7 +100,6 @@ export interface FilterFunnelSlice {
      * 조건 붙이기 — **삽입 지점과 연산자**를 받는다(7단계). `at` 은 짚은 노드 id(없으면 루트),
      * `mode` 는 "AND 로 추가 / OR 로 추가" 두 버튼이 주는 값이다. 괄호는 이 규칙의 결과로 생긴다.
      */
-    addFilterStageAt: (predicates: FilterPredicate[], at: string | null, mode: "and" | "or") => void;
     removeFilterStage: (id: string) => void;
     toggleFilterStage: (id: string) => void;
     setFilterStagePredicates: (id: string, predicates: FilterPredicate[]) => void;
@@ -170,9 +169,8 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
     // ⚠ 쓰기 API 의 **주소는 여전히 노드 id**(= 옛 stage.id)다 — 시그니처가 안 바뀌어 소비자가 그대로다.
     //   바뀐 건 구현뿐: 리스트 편집 → 트리 편집(mapLeaves/filterLeaves/appendLeaf).
     addFilterStage: (predicates) => set((s) => putExpr(appendLeaf(s.filterExpr, newStage(predicates ?? [])))),
-    addFilterStageAt: (predicates, at, mode) => set((s) => putExpr(addLeafAt(s.filterExpr, at, newStage(predicates), mode))),
     setFilterExpr: (expr) => set(() => putExpr(expr)),
-    applyFilterRail: (key, predicate, at = null, mode = "and", stageId) => set((s) => putExpr(applyRailToExpr(s.filterExpr, key, predicate, at, mode, stageId))),
+    applyFilterRail: (key, predicate, stageId) => set((s) => putExpr(applyRailToExpr(s.filterExpr, key, predicate, stageId))),
     removeFilterStage: (id) => set((s) => putExpr(filterLeaves(s.filterExpr, (x) => x.id !== id))),
     toggleFilterStage: (id) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => (x.id === id ? { ...x, enabled: !x.enabled } : x)))),
     setFilterStagePredicates: (id, predicates) => set((s) => putExpr(mapLeaves(s.filterExpr, (x) => (x.id === id ? { ...x, predicates } : x)))),

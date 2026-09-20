@@ -204,13 +204,14 @@ describe("evalStage / toFunnelStages — 단계는 술어들의 AND", () => {
     });
 
     // ⚠ 잎마다 한 단계로 쪼개면 정산의 AND 가 한 번 더 걸려 OR 이 틀린다 — 그 접기는 evalExpr 이 진다.
-    it("OR 묶음 — 하나라도 참이면 참, 부정은 결손을 되살리지 않는다(not3)", () => {
+    it("OR 식 — 하나라도 참이면 참. 부정은 **항에** 붙는다(식은 부정을 안 든다)", () => {
         const yes = stage([{ kind: "group", expr: lit("g1"), scope: "day" }]);
         const no = stage([{ kind: "group", expr: lit("없는그룹"), scope: "day" }]);
         const or: SetExpr = { kind: "or", id: "n1", of: [{ kind: "cond", stage: yes }, { kind: "cond", stage: no }] };
         expect(evalExpr(or, item, look())).toBe(true);
-        // 부정한 OR = 드모르간으로 AND(¬…) — 여기선 yes 가 참이라 거짓이 된다.
-        expect(evalExpr({ ...or, neg: true }, item, look())).toBe(false);
+        // 항마다 부정하면 드모르간으로 AND(¬…) 과 같은 뜻 — 여기선 yes 가 참이라 거짓이 된다.
+        const negated: SetExpr = { kind: "and", id: "n1", of: or.of.map((t) => ({ ...t, neg: true })) };
+        expect(evalExpr(negated, item, look())).toBe(false);
     });
 });
 

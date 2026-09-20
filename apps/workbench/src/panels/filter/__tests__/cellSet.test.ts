@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { toCellExpr, usesCellPred } from "../useCellSet.js";
-import { exprOfStages, type SetExpr } from "../expr.js";
+import { exprOfStages, type SetExpr, type SetTerm } from "../expr.js";
 import type { FilterStage } from "../stage.js";
 
 // 좁히기(종단 어휘 → 셀 어휘)가 틀리면 화면이 **조용히 다른 모수**를 센다 — 그래서 순수부를 잠근다.
@@ -68,13 +68,10 @@ describe("toCellExpr — 결손", () => {
         expect(stages.find((s) => s.stageId === "c1")!.reasons[0]).toMatch(/묶음/);
     });
 
-    it("OR 은 그 가지만 빠진다 — 나머지 가지가 그대로 선다", () => {
+    it("OR 은 그 항만 빠진다 — 나머지 항이 그대로 선다", () => {
         const e: SetExpr = {
             kind: "or", id: "root",
-            of: [
-                { kind: "and", id: "n1", of: [{ kind: "cond", stage: cell }, { kind: "cond", stage: axis }] },
-                { kind: "cond", stage: stage("c9", cell.predicates) },
-            ],
+            of: [{ kind: "cond", stage: axis }, { kind: "cond", stage: stage("c9", cell.predicates) }],
         };
         expect(leafIds(e)).toEqual(["c9"]);
     });
@@ -148,7 +145,7 @@ describe("toCellExpr — 부정", () => {
 // 집합」(식 1층화) 이후로는 중첩이 전부 참조라 이 자리가 상시 경로가 된다.
 describe("toCellExpr — 참조는 하루 집합만 펼친다", () => {
     const daily = (expr: SetExpr): { expr: SetExpr; universe: "daily" } => ({ expr, universe: "daily" });
-    const ref = (setId: string, neg = false): SetExpr =>
+    const ref = (setId: string, neg = false): SetTerm =>
         ({ kind: "ref", id: `r-${setId}`, setId, ...(neg ? { neg: true as const } : {}) });
 
     it("하루 집합 참조는 펼쳐져 조건이 그대로 걸린다", () => {

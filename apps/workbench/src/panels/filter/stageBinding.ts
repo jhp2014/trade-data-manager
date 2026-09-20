@@ -12,7 +12,7 @@
 // 필터 여러 개가 될 수 있다(테마A / 돌파형을 나눠 걸어야 각각을 따로 끄고 켤 수 있다).
 import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { newStage, unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
-import { addLeafAt, filterLeaves, leavesOf, mapLeaves, type SetExpr } from "./expr.js";
+import { appendLeaf, filterLeaves, leavesOf, mapLeaves, type SetExpr } from "./expr.js";
 
 /** 레일 하나를 가리키는 열쇠. 축은 id 로, 결과는 지표로, 날짜·시간은 종류만으로 유일하다. */
 export type RailKey =
@@ -100,20 +100,17 @@ export function applyRailToExpr(
     e: SetExpr,
     key: RailKey,
     predicate: FilterPredicate | null,
-    /** 새로 만들 때의 삽입 지점·연산자(7단계) — 없으면 루트에 AND 로 붙는다(옛 동작). */
-    at: string | null = null,
-    mode: "and" | "or" = "and",
     /**
      * 고칠 줄의 **주소**. 세 값이 서로 다른 뜻이다:
-     *  · `string`    — 그 잎을 고친다(없으면 새로 만든다).
+     *  · `string`    — 그 조건을 고친다(없으면 새로 만든다).
      *  · `null`      — **무조건 새로 만든다**(팔레트에서 종류를 골라 만드는 길).
-     *  · `undefined` — 주소를 안 준 것 = 옛 규칙("그 레일 키의 첫 잎"). 결과·급타점 **전문 패널의
+     *  · `undefined` — 주소를 안 준 것 = 옛 규칙("그 레일 키의 첫 조건"). 결과·급타점 **전문 패널의
      *    연동 거울**이 이 길로 온다 — 거기선 레일 키가 (지표 × T)/(W × r) 라 1:1 이 아직 참이다
      *    (decisions 「허용 폭 T」 ①).
      *
-     * ⚠ 조건 보드는 **절대 `undefined` 로 안 온다.** 트리에서는 `날짜A ∨ 날짜B` 가 정상이라
-     * "첫 잎" 규칙이 두 방향으로 거짓말을 한다: ① `OR 로 추가` 를 켜고 날짜를 그어도 새 가지가
-     * 안 생기고 기존 날짜가 조용히 갈린다 ② B 의 편집면을 열어 고쳤는데 A 가 바뀐다.
+     * ⚠ 조건 보드는 **절대 `undefined` 로 안 온다.** 한 집합에 같은 레일 키가 여럿 서는 게 정상이라
+     * "첫 조건" 규칙이 두 방향으로 거짓말을 한다: ① 새로 만들려 해도 기존 것이 조용히 갈린다
+     * ② B 의 편집면을 열어 고쳤는데 A 가 바뀐다.
      */
     stageId?: string | null,
 ): SetExpr {
@@ -123,7 +120,7 @@ export function applyRailToExpr(
         : stageId === undefined
             ? stagesFor(leaves, key)[0]
             : leaves.find((s) => s.id === stageId);
-    if (!first) return predicate === null ? e : addLeafAt(e, at, newStage([predicate]), mode);
+    if (!first) return predicate === null ? e : appendLeaf(e, newStage([predicate]));
 
     const others = first.predicates.filter((p) => {
         const k = railKeyOf(p);

@@ -15,7 +15,7 @@
 //   결손 지도를 그냥 지나치면, 그 종류는 모든 우주에서 조용히 "가용"이 되어 엉뚱한 우주에서
 //   영영 거짓으로 평가된다. 컴파일 에러로 여기를 만나게 하는 것이 자물쇠의 존재 이유 전부다.
 import { unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
-import { isGroup, type SetExpr } from "./expr.js";
+import type { SetExpr } from "./expr.js";
 
 /**
  * 우주 — **2치**다. 설계의 2×2 중 낟알(day/point)은 조건에서 파생하고(stage.ts 머리 주석의 규칙),
@@ -75,26 +75,18 @@ export function universeOfStages(stages: readonly { predicates: readonly { kind:
  * 막지 않는다 — 결손 지도가 그 자리를 회색으로 말하는 것이 이 설계의 규칙이다(대수는 한 벌).
  */
 export function universeOfExpr(e: SetExpr, universeOfRef: (setId: string) => Universe | null): Universe | null {
-    let found: Universe | null = null;
-    const walk = (n: SetExpr): boolean => {
-        if (n.kind === "cond") {
-            for (const p of n.stage.predicates) {
+    for (const t of e.of) {
+        if (t.kind === "cond") {
+            for (const p of t.stage.predicates) {
                 const u = committingUniverse(p.kind);
-                if (u !== null) { found = u; return true; }
+                if (u !== null) return u;
             }
-            return false;
+            continue;
         }
-        if (n.kind === "ref") {
-            const u = universeOfRef(n.setId);
-            if (u !== null) { found = u; return true; }
-            return false;
-        }
-        if (!isGroup(n)) return false;
-        for (const c of n.of) if (walk(c)) return true;
-        return false;
-    };
-    walk(e);
-    return found;
+        const u = universeOfRef(t.setId);
+        if (u !== null) return u;
+    }
+    return null;
 }
 
 /** 평가·표시가 쓰는 확정값 — 중립(null)은 **종단**으로 떨어진다(우주가 없던 시절의 행동 그대로). */

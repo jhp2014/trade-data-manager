@@ -13,7 +13,6 @@
 // 순서는 하루 엔진이 비용 오름차순으로 스스로 정한다. 결과 목록은 없다: 멤버 열람은 구독 패널의 몫이다.
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useDismiss } from "../../ui/useDismiss.js";
-import { usePanelUi } from "../../store/usePanelUi.js";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
 import { createPanelSlot, openAndFocus, openPanelExact } from "../../lib/openPanel.js";
 import { DEFAULT_THEME_STRENGTH } from "../../lib/themeStrength.js";
@@ -27,12 +26,13 @@ import { FILTER } from "../../styles/palette.js";
 import { FilterRow } from "./FilterRow.js";
 import { useFunnel } from "./FunnelContext.js";
 import { Note } from "./grain.js";
+import { FAIL, PIN } from "../../styles/palette.js";
+import { iconBtn } from "./ui.js";
 import type { CellValueRange } from "@trade-data-manager/market/domain";
 import { CellStageFields } from "./CellPredicateFields.js";
 import { effectiveUniverse, kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
 import { GroupEditors, RailEditors, type GroupEditorAnchor, type RailEditor } from "./ConditionEditors.js";
-import { ExprTree, type ExprTreeHandlers } from "./ExprTree.js";
-import { findNode, leafCount, negOf, negateNode, refsOf, removeNode, toggleOperator } from "./expr.js";
+import { negateTerm, refsOf, removeTerm, toggleOperator, type SetTerm } from "./expr.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
@@ -49,7 +49,7 @@ import { stageKind, type FilterPredicate, type FilterStage, type Grain, type Pre
 const THEME_RANK_BASE = "theme-rank";
 const OUTCOME_PANEL = OUTCOME_PANEL_ID;
 
-export function ConditionBoard({ panelId }: {
+export function ConditionBoard({ panelId: _panelId }: {
     /** 접힘 상태(보기)가 사는 자리 — 슬롯 낟알이라 같은 집합을 두 패널이 다르게 접을 수 있다. */
     panelId: string;
 }): JSX.Element {
@@ -93,38 +93,21 @@ export function ConditionBoard({ panelId }: {
     // 식과 그 편집 손 — 노드 편집(부정·연산자·묶음 삭제)은 전부 setExpr 하나를 지난다.
     const expr = useWorkbench((s) => s.filterExpr);
     const setExpr = useWorkbench((s) => s.setFilterExpr);
-    const addStageAt = useWorkbench((s) => s.addFilterStageAt);
+    const addStage = useWorkbench((s) => s.addFilterStage);
     const savedSets = useWorkbench((s) => s.savedSets);
     const openSet = useWorkbench((s) => s.openSet);
-    const promoteNode = useWorkbench((s) => s.promoteNodeToSet);
-    /** 이름을 받는 중인 묶음 — 세션 한정(입력 중 새로고침이면 그냥 없던 일). */
-    const [promoting, setPromoting] = useState<string | null>(null);
-    /** 짚은 노드 = **삽입 지점**. 세션 한정 — 새로고침 뒤 "어디에 붙더라"를 기억하게 두지 않는다. */
-    const [pickedRaw, setPicked] = useState<string | null>(null);
-    /** 접힘은 **보기**라 저장물이 아니라 패널 UI 에 산다(식과 함께 저장하면 저장물이 화면 사정으로 더러워진다). */
-    const [flipped, setFlipped] = usePanelUi<string[]>(panelId, "exprFlipped", []);
-    /** 다음 조건을 **어떤 연산자로** 붙일까 — "AND 로 추가 / OR 로 추가" 두 버튼이 정한다(괄호는 그 결과). */
-    const [addMode, setAddMode] = useState<"and" | "or">("and");
-    // 짚은 노드가 지워졌으면 루트로 되돌린다(유령 삽입 지점 금지).
-    const picked = pickedRaw !== null && findNode(expr, pickedRaw) !== null ? pickedRaw : null;
-    /** 식이 비었나 — 조건 잎도 참조도 없을 때만 참(위 게이트 주석). */
-    const exprIsEmpty = leafCount(expr) === 0 && refsOf(expr).length === 0;
-    /** 삽입 지점의 사람 말 — 팝오버가 "여기에 붙는다"를 늘 적는다(모르는 채 누르지 않게). */
-    const atLabel = picked === null ? "루트" : (findNode(expr, picked)?.kind === "or" ? "짚은 OR 묶음" : "짚은 AND 묶음");
-
+    /** 식이 비었나 — 조건도 참조도 없을 때만 참. 참조는 조건 수에 안 들어 둘 다 봐야 한다. */
+    const exprIsEmpty = expr.of.length === 0;
     /**
      * 조건 만들기의 **유일한 입구** — 팔레트의 모든 종류가 이 하나를 지난다.
-     *
-     * ⚠ 한때 셀 종류만 `addStageAt` 을 타고 그룹·테마·급타점은 `addFilterStage`(루트에 AND)로 갔다.
-     * 그러면 `OR 로 추가` 를 켜고 그룹을 고르는 순간 **토글이 조용히 무시되고 기존 AND 에 합류한다**
-     * (실측이 잡은 자리). 붙는 곳을 정하는 손은 여기 하나여야 한다.
+     * 한때 셀 종류만 이 손을 타고 그룹·테마·급타점은 따로 붙어 삽입 규칙이 조용히 무시됐다(실측이
+     * 잡은 자리). 붙는 곳을 정하는 손은 여기 하나여야 한다.
      *
      * 만든 조건의 id 를 돌려주는 이유: 연동을 새 행으로 옮기는 손(테마·급타점)이 그 id 를 쓴다.
-     * **"마지막 잎"으로 찾으면 안 된다** — 짚은 자리에 넣거나 OR 로 감싸면 새 잎이 끝이 아니다.
      */
     const addStageHere = (predicates: FilterPredicate[]): string | undefined => {
         const before = new Set(selectFilterStages(useWorkbench.getState()).map((x) => x.id));
-        addStageAt(predicates, picked, addMode);
+        addStage(predicates);
         return selectFilterStages(useWorkbench.getState()).find((x) => !before.has(x.id))?.id;
     };
     // 그룹 생성 — 편집기가 열린 동안 draft 에 쌓고, 닫을 때 내용이 있으면 그때 필터가 된다(이중 커밋 가드 포함).
@@ -183,83 +166,95 @@ export function ConditionBoard({ panelId }: {
     };
 
     const hasTheme = useMemo(() => stages.some((s) => stageKind(s) === "themeStrength"), [stages]);
-    const labelOf = useCallback(
-        (id: string) => {
-            const st = stages.find((x) => x.id === id);
-            return st ? stageLabel(st, v.labelLook) : "(지워진 조건)";
-        },
-        [stages, v.labelLook],
+    /**
+     * 항 한 줄 — **조건**은 FilterRow 그대로, **참조**는 그 집합을 가리키는 칩 줄이다.
+     *
+     * ⚠ 참조는 **그 자리에서 못 고친다** — 고치면 그 집합을 쓰는 다른 식이 전부 따라 바뀐다.
+     * 그래서 이 줄의 손잡이는 "열기(편집 대상 전환)·부정·이 자리에서 빼기" 셋뿐이다.
+     */
+    const refRow = (t: Extract<SetTerm, { kind: "ref" }>, no: number): JSX.Element => {
+        const set = savedSets.find((x) => x.id === t.setId);
+        // "쓰는 곳" = 이 집합을 참조하는 **저장 집합 수** + 지금 편집 중인 식(그것도 한 곳이다).
+        const usedBy = savedSets.filter((x) => refsOf(x.expr).includes(t.setId)).length
+            + (refsOf(expr).includes(t.setId) ? 1 : 0);
+        const name = set ? setDisplayName(set, v.labelLook) : "(지워진 집합)";
+        return (
+            <div key={t.id} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 4px", borderTop: "0.5px solid var(--border-subtle)" }}>
+                <span className="tabular" style={{ fontSize: 10, color: "var(--text-tertiary)", width: 12, flexShrink: 0 }}>{no}</span>
+                {t.neg === true && <span style={{ fontSize: 10, fontWeight: 600, color: FAIL, flexShrink: 0 }}>NOT</span>}
+                <button onClick={() => openSet(t.setId)} disabled={set === undefined}
+                    title={set === undefined
+                        ? "가리키는 집합이 지워졌습니다 — 이 자리에서 빼거나 다른 집합으로 바꾸세요"
+                        : `${name} — 열면 이 집합을 편집합니다.${usedBy >= 2 ? ` 쓰는 곳 ${usedBy} — 고치면 ${usedBy}곳이 같이 바뀝니다.` : ""}`}
+                    style={{
+                        font: "inherit", fontSize: 11, padding: "1px 8px", borderRadius: 9, cursor: set ? "pointer" : "default",
+                        border: `1px solid ${set === undefined ? FAIL : PIN}`, background: "transparent",
+                        color: set === undefined ? FAIL : PIN, whiteSpace: "nowrap",
+                    }}>∈ {name}</button>
+                {usedBy >= 2 && <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>쓰는 곳 {usedBy}</span>}
+                <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                    <button onClick={() => setExpr(negateTerm(expr, t.id))} style={iconBtn} title="이 참조 부정(NOT)">NOT</button>
+                    <button onClick={() => setExpr(removeTerm(expr, t.id))} style={iconBtn} title="이 자리에서 뺀다 — 집합 자체는 안 지워진다">✕</button>
+                </span>
+            </div>
+        );
+    };
+
+    const condRow = (t: Extract<SetTerm, { kind: "cond" }>, no: number): JSX.Element => (
+        <FilterRow
+            key={t.stage.id}
+            no={no}
+            stage={t.stage}
+            label={stageLabel(t.stage, v.labelLook)}
+            dead={v.deadStageIds.includes(t.stage.id)}
+            deficiency={stageDeficiency(t.stage, setUniverse)}
+            cellFields={<CellStageFields stage={t.stage} onPatch={setStage} />}
+            neg={t.neg === true}
+            linked={false}
+            linkedLabel={stageKind(t.stage) === "themeStrength" ? (livePanelOf(t.stage.id) !== undefined ? slotTitleOf(livePanelOf(t.stage.id)!) : "미연동") : undefined}
+            onLinkedClick={(e) => setThemeLink({ stageId: t.stage.id, x: e.clientX, y: e.clientY })}
+            onOpen={(e) => openEditor(t.stage, e)}
+            onToggle={() => toggleStage(t.stage.id)}
+            onNegate={() => setExpr(negateTerm(expr, t.stage.id))}
+            onRemove={() => removeStage(t.stage.id)}
+        />
     );
-    const treeHandlers = useMemo<ExprTreeHandlers>(() => ({
-        renderLeaf: (stage, no) => (
-            <FilterRow
-                key={stage.id}
-                no={no}
-                stage={stage}
-                label={stageLabel(stage, v.labelLook)}
-                dead={v.deadStageIds.includes(stage.id)}
-                deficiency={stageDeficiency(stage, setUniverse)}
-                cellFields={<CellStageFields stage={stage} onPatch={setStage} />}
-                neg={negOf(expr, stage.id)}
-                linked={false}
-                linkedLabel={stageKind(stage) === "themeStrength" ? (livePanelOf(stage.id) !== undefined ? slotTitleOf(livePanelOf(stage.id)!) : "미연동") : undefined}
-                onLinkedClick={(e) => setThemeLink({ stageId: stage.id, x: e.clientX, y: e.clientY })}
-                onOpen={(e) => openEditor(stage, e)}
-                onToggle={() => toggleStage(stage.id)}
-                onNegate={() => setExpr(negateNode(expr, stage.id))}
-                onRemove={() => removeStage(stage.id)}
-            />
-        ),
-        labelOf,
-        pickedId: picked,
-        onPick: (id) => setPicked((cur) => (cur === id ? null : id)),
-        flippedIds: flipped,
-        onToggleOpen: (id) => setFlipped(flipped.includes(id) ? flipped.filter((x) => x !== id) : [...flipped, id]),
-        onToggleOperator: (id) => setExpr(toggleOperator(expr, id)),
-        onNegate: (id) => setExpr(negateNode(expr, id)),
-        onRemoveNode: (id) => setExpr(removeNode(expr, id)),
-        onOpenLeaf: (id, e) => {
-            const st = stages.find((x) => x.id === id);
-            if (st) openEditor(st, e);
-        },
-        refInfo: (setId) => {
-            const set = savedSets.find((x) => x.id === setId);
-            // "쓰는 곳" = 이 집합을 참조하는 **저장 집합 수** + 지금 작업 중인 식(그것도 한 곳이다).
-            const usedBy = savedSets.filter((x) => refsOf(x.expr).includes(setId)).length
-                + (refsOf(expr).includes(setId) ? 1 : 0);
-            return { name: set ? setDisplayName(set, v.labelLook) : "(지워진 집합)", broken: set === undefined, usedBy };
-        },
-        // 열기 = **편집 대상 전환**(그 집합의 식이 작업 깔때기로 온다). 그 자리에서 고치게 두지
-        // 않는 이유: 참조는 남의 것이라, 여기서 고치면 그 집합을 쓰는 다른 식이 전부 따라 바뀐다.
-        onOpenRef: (setId) => openSet(setId),
-        promotingId: promoting,
-        onPromoteStart: (id) => setPromoting(id),
-        onPromoteCommit: (id, name) => { promoteNode(id, name); setPromoting(null); },
-        onPromoteCancel: () => setPromoting(null),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }), [expr, stages, savedSets, v.labelLook, v.deadStageIds, setUniverse, picked, flipped, promoting, livePanelOf]);
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }} onClick={() => setPicked(null)}>
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }}>
                 <PointDefHead />
                 {v.isLoading && <Note>불러오는 중…</Note>}
                 {!v.isLoading && hasTheme && <ThemeMaterialBadge />}
-                {/* ⚠ 게이트는 **잎 수가 아니라 식이 비었나**다 — 참조는 잎이 아니라서(leavesOf 주석)
-                    잎 수로 재면 `OR(참조…)`(승계된 옛 조립·루트 통째 승격)가 "없음"이라 말하면서
-                    트리도 안 그려 **참조를 지울 손이 사라진다**. */}
+                {/* ⚠ 게이트는 **조건 수가 아니라 식이 비었나**다 — 참조는 조건 수에 안 들어(leavesOf
+                    주석), 조건 수로 재면 참조만 든 식이 "없음"이라 말하면서 목록도 안 그려
+                    **참조를 뺄 손이 사라진다**. */}
                 {!v.isLoading && exprIsEmpty && (
                     <Note>없음 — 아래 <b>＋ 조건</b> 으로 만듭니다</Note>
                 )}
-                {!v.isLoading && !exprIsEmpty && <ExprTree expr={expr} handlers={treeHandlers} />}
+                {!v.isLoading && !exprIsEmpty && (
+                    <>
+                        {/* 연산자는 **식 하나에 하나**다(한 묶음 = 한 연산자) — 그래서 머리에 한 번만 선다. */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 4px 3px" }}>
+                            <button onClick={() => setExpr(toggleOperator(expr))} style={{
+                                font: "inherit", fontSize: 10.5, fontWeight: 600, letterSpacing: "0.04em",
+                                padding: "1px 8px", borderRadius: 3, cursor: "pointer",
+                                border: "1px solid var(--border-default)", background: "var(--bg-secondary)", color: "var(--text-secondary)",
+                            }} title={expr.kind === "and" ? "모두 만족 — 눌러서 OR 로" : "하나라도 만족 — 눌러서 AND 로"}>
+                                {expr.kind === "and" ? "AND" : "OR"}
+                            </button>
+                            <span style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}>
+                                {expr.kind === "and" ? "모두" : "하나라도"} · {expr.of.length}
+                            </span>
+                        </div>
+                        {expr.of.map((t, i) => (t.kind === "cond" ? condRow(t, i + 1) : refRow(t, i + 1)))}
+                    </>
+                )}
 
                 {!v.isLoading && (
                     <AddCondition
                         setUniverse={universe}
                         onCell={(p) => { addStageHere([p]); }}
-                        mode={addMode}
-                        onMode={setAddMode}
-                        atLabel={atLabel}
                         axes={axes.axes}
                         onRail={(ed) => setRailEditor(ed)}
                         onOutcome={() => openAndFocus(OUTCOME_PANEL)}
@@ -320,7 +315,7 @@ export function ConditionBoard({ panelId }: {
                 ⚠ 주소(stageId)를 **반드시** 준다 — `undefined` 로 보내면 "그 레일 키의 첫 잎" 이라는
                 옛 1:1 규칙으로 떨어져 `날짜A ∨ 날짜B` 를 못 만든다(stageBinding 의 주소 주석). */}
             <RailEditors editor={railEditor} stages={stages}
-                write={(key, predicate, stageId) => applyRail(key, predicate, picked, addMode, stageId ?? null)}
+                write={(key, predicate, stageId) => applyRail(key, predicate, stageId ?? null)}
                 onClose={() => setRailEditor(null)} />
 
             {/* 그룹 팔레트(팝오버) — 그룹도 같은 층. 2차원(결과·급타점·테마)만 전용 패널이 진다. */}
@@ -343,7 +338,7 @@ export function ConditionBoard({ panelId }: {
  * 계산 축은 수십 개라 메뉴에 다 못 편다 — "계산 축"을 고르면 **같은 팝오버 안에서** 축 목록으로
  * 한 겹 들어간다(팝오버를 겹쳐 띄우면 바깥 클릭 해제가 서로를 먹는다).
  */
-function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot, mode, onMode, atLabel }: {
+function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, onTheme, onHot, canAddHot, nextHot }: {
     /**
      * 편집 대상의 우주 — **파생값**이라 `null`(아직 안 정해짐)이 있다. 팔레트는 숨기지 않고
      * **회색**으로 세우고(대수는 한 벌, 결손은 사실), `null` 이면 아무것도 회색이 아니다 —
@@ -366,10 +361,8 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
     /** 다음에 만들 자리 — 라벨이 **무엇이 생길지** 미리 말한다(늘 같은 값이 아니라서). */
     nextHot: { w: number; r: number } | null;
     /** 붙이는 연산자 — 이 둘이 **괄호를 손으로 안 치게 하는 장치**다(decisions 「집합 편성 재설계」). */
-    mode: "and" | "or";
-    onMode: (m: "and" | "or") => void;
+
     /** 어디에 붙는지 사람 말로 — 모르는 채 누르지 않게 판이 늘 적는다. */
-    atLabel: string;
 }): JSX.Element {
     /** 팝오버 안의 한 겹 — null = 종류 목록, "axis" = 계산 축 목록. 트리거를 누를 때마다 되돌린다. */
     const [pane, setPane] = useState<null | "axis">(null);
@@ -408,23 +401,6 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
                 )}>
                 {(close) => (
                 <div style={{ overflowY: "auto", padding: "3px 0" }}>
-                    {/* ⚠ 괄호는 손으로 치지 않는다 — 이 두 버튼이 중첩을 만든다. AND 묶음에서 "OR 로 추가"를
-                        누르면 그 자리에 OR 묶음이 생기며 기존 조건과 새 조건이 담긴다(expr.addLeafAt). */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 10px 5px", borderBottom: "1px solid var(--border-subtle)" }}>
-                        {(["and", "or"] as const).map((m) => (
-                            <button key={m} onClick={() => onMode(m)}
-                                title={m === "and" ? "지금 자리에 AND 로 붙인다(모두 만족)" : "지금 자리에 OR 로 붙인다(하나라도) — 자리가 AND 면 OR 묶음이 새로 생긴다"}
-                                style={{
-                                    font: "inherit", fontSize: 10, padding: "1px 7px", borderRadius: 3, cursor: "pointer",
-                                    border: `1px solid ${mode === m ? "var(--accent-primary)" : "var(--border-default)"}`,
-                                    background: mode === m ? "var(--accent-soft)" : "transparent",
-                                    color: mode === m ? "var(--accent-primary)" : "var(--text-secondary)",
-                                }}>
-                                {m === "and" ? "AND 로 추가" : "OR 로 추가"}
-                            </button>
-                        ))}
-                        <span style={{ marginLeft: "auto", fontSize: 9.5, color: "var(--text-tertiary)" }}>{atLabel}</span>
-                    </div>
                     {/* 하루·셀 우주의 종류들 — 전용 판이 없어 **여기서 만들고 줄에서 만진다**.
                         ⚠ **숨기지 않는다**(decisions 「집합」: 대수는 한 벌, 결손은 사실) — 우주가 종단으로
                         파생되면 `item` 이 결손 지도를 물어 **회색 + 이유**로 세운다. 숨기면 "그 우주엔 그런

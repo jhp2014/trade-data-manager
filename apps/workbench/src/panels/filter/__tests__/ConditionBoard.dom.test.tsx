@@ -33,13 +33,6 @@ const stages = (): ReturnType<typeof selectFilterStages> => selectFilterStages(u
 
 const DATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[0], to: DATES[1] }] }] };
 const THEME_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "themeStrength" as const, params: { ...DEFAULT_THEME_STRENGTH } }] };
-/**
- * 하루 우주로 **끌어내리는** 조건 — 우주는 파생이라(9단계) 셀 종류 메뉴는 이런 조건이 있어야 뜬다.
- * ⚠ 일부러 **누적대금**이다: 줄에 선 칩의 라벨이 팔레트 항목 이름과 겹치면(`등락률 ≥ 5` vs 팔레트
- *   `등락률`) `byText` 의 startsWith 가 칩을 먼저 집어, 메뉴 대신 편집면이 열린다.
- */
-const CELL_STAGE = { id: "c1", enabled: true, predicates: [{ kind: "cellValue" as const, field: "cumAmountEok" as const, ranges: [{ from: { kind: "value" as const, value: 100 } }] }] };
-
 const RESET = { filterExpr: exprOfStages([]), funnelSelection: null, selectedSetRef: null, savedSets: [], sessionUi: {}, themeBindings: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
@@ -257,7 +250,7 @@ describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
 });
 
 // 7단계 — 식 트리 편집면. 괄호를 손으로 치지 않고 **두 버튼**이 중첩을 만든다는 것이 핵심 계약이다.
-describe("식 트리 — 묶음·부정·삽입 지점", () => {
+describe("식 한 벌 — 연산자 하나·항 부정", () => {
     const stage2 = { id: "d2", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
 
     it("묶음은 연산자 뱃지와 자식 수를 말한다 — AND 기본", () => {
@@ -275,34 +268,19 @@ describe("식 트리 — 묶음·부정·삽입 지점", () => {
         expect(container.textContent).toContain("하나라도 · 2");
     });
 
-    // ⚠ 이 검사가 7단계의 수용 기준 — 사용자는 괄호를 안 치고 "OR 로 추가"만 고른다.
-    it("AND 자리에서 'OR 로 추가' 하면 **OR 묶음이 새로 생기며** 둘을 담는다", () => {
-        useWorkbench.setState({ filterExpr: exprOfStages([CELL_STAGE]) });
-        const { container, baseElement } = renderBoard();
-        act(() => { fireEvent.click(byText(container, "＋ 조건")!); });
-        act(() => { fireEvent.click(byText(baseElement, "OR 로 추가")!); });
-        act(() => { fireEvent.click(byText(baseElement, "등락률")!); });
-        // 짚은 자리(루트 AND)가 **OR 묶음으로 감싸인다** — 뜻은 `기존 ∨ 새것` 이고, 그게 사용자가
-        // "OR 로 추가"로 기대하는 것이다. 괄호는 이 규칙의 결과로 생긴다(손으로 안 친다).
-        const e = useWorkbench.getState().filterExpr;
-        expect(e.kind).toBe("or");
-        expect(e.kind === "or" && e.of.map((c) => c.kind)).toEqual(["and", "cond"]);
-    });
-
-    // ⚠ 실측이 잡은 자리 — 셀 종류만 삽입 지점을 타고 **그룹·테마·급타점은 루트에 AND 로** 갔다.
-    //   "조건 만들기의 입구는 하나"가 깨지면 토글이 조용히 무시된다. 셀이 아닌 종류로 한 번 더 잠근다.
-    it("셀이 아닌 종류(테마 강도)도 'OR 로 추가'를 **탄다** — 붙는 곳을 정하는 손은 하나다", () => {
+    // 조건 만들기의 입구는 하나다 — 셀 종류든 아니든 같은 손을 지나 **지금 식의 끝**에 붙는다.
+    // (옛 "AND 로 추가 / OR 로 추가" 토글은 죽었다: 한 묶음 = 한 연산자라 붙일 자리가 하나뿐이다.)
+    it("셀이 아닌 종류(테마 강도)도 같은 입구를 탄다 — 식의 끝에 항으로 붙는다", () => {
         useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE]) });
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(byText(container, "＋ 조건")!); });
-        act(() => { fireEvent.click(byText(baseElement, "OR 로 추가")!); });
         act(() => { fireEvent.click(byText(baseElement, "테마 강도")!); });
         const e = useWorkbench.getState().filterExpr;
-        expect(e.kind).toBe("or");
-        expect(e.kind === "or" && e.of.map((c) => c.kind)).toEqual(["and", "cond"]);
+        expect(e.kind, "연산자는 안 바뀐다").toBe("and");
+        expect(e.of.map((t) => t.kind)).toEqual(["cond", "cond"]);
     });
 
-    it("잎 부정 — ¬ 가 식에 실리고 줄에 표식이 선다", () => {
+    it("항 부정 — NOT 이 식에 실리고 줄에 표식이 선다", () => {
         useWorkbench.setState({ filterExpr: exprOfStages([DATE_STAGE]) });
         const { container } = renderBoard();
         const negBtn = buttons(container).find((b) => b.title.startsWith("이 조건 부정"));

@@ -32,7 +32,7 @@ import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { useThemeKnobParams } from "./themeLink.js";
 import { cellMaterialsOf } from "./cellMaterials.js";
 import type { FilterStage } from "./stage.js";
-import { activeExpr, type SetExpr } from "./expr.js";
+import { activeExpr, type SetExpr, type SetTerm } from "./expr.js";
 import { stageDeficiency, type Universe } from "./universe.js";
 
 /**
@@ -95,11 +95,6 @@ export function toCellExpr(
      */
     setOf: DaySetLookup = () => undefined,
 ): { expr: CellExpr | null; stages: CellStageStatus[] } {
-    // ⚠ **부재를 먼저 걷는다** — 꺼진 잎·빈 술어는 결손이 아니라 **없는 것**이다. 아래 walk 의 null 은
-    //   "이 우주에서 평가할 수 없다"(결손)만 뜻해야 하고, 둘을 한 null 로 합류시키면 AND 오염 규칙이
-    //   부재까지 먹어 **잎 하나를 끄면 그 묶음이 통째로 사라진다**(종단 경로는 activeExpr 로 먼저
-    //   걷어내므로 멀쩡해, 같은 식이 두 우주에서 다른 답을 내던 자리다).
-    const expr = activeExpr(input);
     const status: CellStageStatus[] = [];
     /** 전개 중인 참조들 — 순환(A→B→A)을 결손으로 끊는다(resolveSet.resolving 과 같은 수법). */
     const visiting = new Set<string>();
@@ -110,67 +105,75 @@ export function toCellExpr(
             if (at && at.counted) { at.counted = false; at.reasons = [why]; }
         }
     };
+
+    /** 조건 항 하나 → 셀 술어(들). 결손이면 null 이고 이유가 status 에 실린다. */
+    const condOf = (t: Extract<SetTerm, { kind: "cond" }>, mine: string[]): CellExpr | null => {
+        const s = t.stage;
+        mine.push(s.id);
+        const reasons = stageDeficiency(s, "daily");
+        // 같은 집합을 두 번 참조하면 같은 조건이 두 번 지난다 — 줄은 하나이므로 status 도 하나다.
+        if (!status.some((x) => x.stageId === s.id)) {
+            status.push(reasons.length > 0
+                ? { stageId: s.id, counted: false, reasons }
+                : { stageId: s.id, counted: true, reasons: [] });
+        }
+        if (reasons.length > 0) return null;
+        // 결손 0 = 전부 셀 술어(위 게이트가 보장). 조건 하나가 술어 **여럿**을 들 수 있으므로
+        // 그때는 AND 묶음으로 세운다 — 첫 술어만 싣던 옛 실수가 여기서 재발하지 않게.
+        const preds = s.predicates as CellPredicate[];
+        const neg = t.neg === true ? { neg: true as const } : {};
+        if (preds.length === 1) return { kind: "pred", id: s.id, pred: withTransition(preds[0]!, s.transition), ...neg };
+        return {
+            kind: "and",
+            id: s.id,
+            of: preds.map((pred, i): CellExpr => ({ kind: "pred", id: `${s.id}#${i}`, pred })),
+            // ⚠ **칸 전이를 반드시 싣는다** — 술어가 여럿일 때 전이의 자리는 묶음이다.
+            ...(s.transition !== undefined ? { transition: s.transition } : {}),
+            ...neg,
+        };
+    };
+
     /**
-     * `mine` 은 **이 가지가 기여한 조건 id 들**이다 — 오염 대상을 여기서 모은다.
-     * ⚠ `leavesOf(e)` 로 모으면 안 된다: 참조 안쪽은 잎이 아니라서(leavesOf 주석) 전개된 조건들이
-     *   오염을 안 받고, 그러면 묶음이 통째로 빠졌는데 화면은 그 조건들을 "멀쩡하다"고 말한다.
+     * 참조 항 하나 → 그 집합의 식을 **그 자리에 펼친 것**(2026-09-20). 평가가 아니라 번역이라
+     * 비용이 없고, 안 펼치면 「결손은 AND 를 오염시킨다」 규칙이 묶음 하나를 **집합 전체의 0건**으로
+     * 키운다 — 중첩이 전부 참조가 된 모델에서는 그게 상시 경로다.
      */
-    const walk = (e: SetExpr, mine: string[]): CellExpr | null => {
-        if (e.kind === "cond") {
-            const s = e.stage;
-            mine.push(s.id);
-            const reasons = stageDeficiency(s, "daily");
-            // 같은 집합을 두 번 참조하면 같은 조건이 두 번 지난다 — 줄은 하나이므로 status 도 하나다.
-            if (!status.some((x) => x.stageId === s.id)) {
-                status.push(reasons.length > 0
-                    ? { stageId: s.id, counted: false, reasons }
-                    : { stageId: s.id, counted: true, reasons: [] });
-            }
-            if (reasons.length > 0) return null;
-            // 결손 0 = 전부 셀 술어(위 게이트가 보장). 조건 하나가 술어 **여럿**을 들 수 있으므로
-            // 그때는 AND 묶음으로 세운다 — 첫 술어만 싣던 옛 실수가 여기서 재발하지 않게.
-            const preds = s.predicates as CellPredicate[];
-            const neg = e.neg === true ? { neg: true as const } : {};
-            const one = preds.length === 1;
-            const node: CellExpr = one
-                ? { kind: "pred", id: s.id, pred: withTransition(preds[0]!, s.transition), ...neg }
-                : {
-                    kind: "and",
-                    id: s.id,
-                    of: preds.map((pred, i): CellExpr => ({ kind: "pred", id: `${s.id}#${i}`, pred })),
-                    // ⚠ **칸 전이를 반드시 싣는다** — 술어가 여럿일 때 전이의 자리는 묶음이다.
-                    ...(s.transition !== undefined ? { transition: s.transition } : {}),
-                    ...neg,
-                };
-            return node;
+    const refOf = (t: Extract<SetTerm, { kind: "ref" }>, mine: string[]): CellExpr | null => {
+        const target = setOf(t.setId);
+        // 못 푸는 셋은 전부 결손이다 — 지워진 집합 · 종단 집합(키가 다르다) · 순환.
+        if (target === undefined || target.universe !== "daily" || visiting.has(t.setId)) return null;
+        visiting.add(t.setId);
+        const inner: string[] = [];
+        try {
+            const node = walk(target.expr, inner);
+            if (node === null) return null;
+            // 부정은 **감싸서** 싣는다 — 안쪽 노드의 neg 를 뒤집으면 이중 부정이 뜻을 잃는다.
+            return t.neg === true ? { kind: "and", id: t.id, of: [node], neg: true } : node;
+        } finally {
+            visiting.delete(t.setId);
+            mine.push(...inner);
         }
-        if (e.kind === "ref") {
-            // 참조를 **그 자리에 펼친다**(2026-09-20). 평가가 아니라 번역이라 비용이 없고, 안 펼치면
-            // 「결손은 AND 를 오염시킨다」 규칙이 묶음 하나를 **집합 전체의 0건**으로 키운다.
-            const target = setOf(e.setId);
-            // 못 푸는 셋은 전부 결손이다 — 지워진 집합 · 종단 집합(키가 다르다) · 순환.
-            if (target === undefined || target.universe !== "daily" || visiting.has(e.setId)) return null;
-            visiting.add(e.setId);
-            const inner: string[] = [];
-            try {
-                const node = walk(activeExpr(target.expr), inner);
-                if (node === null) return null;
-                // 부정은 **감싸서** 싣는다 — 안쪽 노드의 neg 를 뒤집으면 이중 부정이 뜻을 잃는다.
-                return e.neg === true ? { kind: "and", id: e.id, of: [node], neg: true } : node;
-            } finally {
-                visiting.delete(e.setId);
-                mine.push(...inner);
-            }
-        }
+    };
+
+    /**
+     * 식 한 벌(= 집합 하나) → 셀 식. `mine` 은 **이 식이 기여한 조건 id 들**이다 — 오염 대상을
+     * 여기서 모은다(참조 안쪽까지 포함해야 묶음이 빠졌을 때 그 조건들도 이유를 받는다).
+     *
+     * ⚠ **부재를 먼저 걷는다**(activeExpr) — 꺼진 조건·빈 술어는 결손이 아니라 **없는 것**이다.
+     *   둘을 한 null 로 합류시키면 AND 오염 규칙이 부재까지 먹어 조건 하나를 끄면 집합이 통째로
+     *   사라진다(종단 경로는 늘 걷어내므로 멀쩡해, 같은 식이 두 우주에서 다른 답을 내던 자리다).
+     */
+    const walk = (raw: SetExpr, mine: string[]): CellExpr | null => {
+        const e = activeExpr(raw);
         const of: CellExpr[] = [];
         const here: string[] = [];
         let poisoned = false;
-        for (const c of e.of) {
-            const r = walk(c, here);
-            // ⚠ AND 가 오염돼도 **형제를 끝까지 걷는다** — 여기서 바로 빠져나오면 뒤쪽 형제가 walk 를
+        for (const t of e.of) {
+            const r = t.kind === "cond" ? condOf(t, here) : refOf(t, here);
+            // ⚠ AND 가 오염돼도 **항을 끝까지 걷는다** — 여기서 바로 빠져나오면 뒤쪽 항이 walk 를
             //   안 지나 `status` 에 아예 안 실리고, 화면의 결손 수가 그만큼 덜 세어진다("결손은 조용히
             //   사라지지 않는다"가 제 구현에서 새던 자리). 걷는 값은 싸다 — 평가가 아니라 번역이다.
-            if (r === null) { if (e.kind === "and") poisoned = true; continue; } // OR 은 그 가지만 빠진다
+            if (r === null) { if (e.kind === "and") poisoned = true; continue; } // OR 은 그 항만 빠진다
             of.push(r);
         }
         mine.push(...here);
@@ -179,12 +182,10 @@ export function toCellExpr(
             return null;
         }
         if (of.length === 0) return null;
-        return e.kind === "and"
-            ? { kind: "and", id: e.id, of, ...(e.neg === true ? { neg: true as const } : {}) }
-            : { kind: "or", id: e.id, of, ...(e.neg === true ? { neg: true as const } : {}) };
+        return { kind: e.kind, id: e.id, of };
     };
-    const out = walk(expr, []);
-    return { expr: out, stages: status };
+
+    return { expr: walk(input, []), stages: status };
 }
 
 /**

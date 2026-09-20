@@ -18,7 +18,7 @@ import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { passesPoint, type SectionRanks, type ThemeProjection } from "../../lib/themeStrength.js";
 import { isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { isPredicateEmpty, unknownPredicate, type AxisBound, type FilterPredicate, type FilterStage } from "./stage.js";
-import type { SetExpr } from "./expr.js";
+import type { SetExpr, SetTerm } from "./expr.js";
 
 /** 판정에 필요한 바깥 재료. 없는 것은 전부 `undefined` = 판단 불가(탈락 아님). */
 export interface EvalLookup {
@@ -249,18 +249,21 @@ export function evalStage(s: FilterStage, item: FunnelItem, look: EvalLookup): V
  * 빈 묶음: AND 는 공허참, OR 은 공허거짓(`and3([])`/`or3([])` 의 값 그대로). 평가 전에 `activeExpr`
  * 이 빈 묶음을 접으므로 실제로는 루트가 비었을 때만 닿는다.
  */
-export function evalExpr(e: SetExpr, item: FunnelItem, look: EvalLookup, refs: RefMembers = () => null): Verdict {
+export function evalTerm(t: SetTerm, item: FunnelItem, look: EvalLookup, refs: RefMembers): Verdict {
     let v: Verdict;
-    if (e.kind === "cond") v = evalStage(e.stage, item, look);
-    else if (e.kind === "ref") {
-        const m = refs(e.setId);
+    if (t.kind === "cond") v = evalStage(t.stage, item, look);
+    else {
+        const m = refs(t.setId);
         // ⚠ **깨진 참조는 결손이지 거짓이 아니다** — 지워진 집합을 "안 맞았다"로 세면 그 가지가
         //   조용히 빈 집합이 된다. 모름으로 두면 결손 수가 그 사실을 말한다(값을 지어내지 않는다).
         v = m === null ? undefined : refHas(m, item);
-    } else v = e.kind === "and"
-        ? and3(e.of.map((c) => evalExpr(c, item, look, refs)))
-        : or3(e.of.map((c) => evalExpr(c, item, look, refs)));
-    return e.neg === true ? not3(v) : v;
+    }
+    return t.neg === true ? not3(v) : v;
+}
+
+export function evalExpr(e: SetExpr, item: FunnelItem, look: EvalLookup, refs: RefMembers = () => null): Verdict {
+    const vs = e.of.map((t) => evalTerm(t, item, look, refs));
+    return e.kind === "and" ? and3(vs) : or3(vs);
 }
 
 /**

@@ -8,7 +8,7 @@ import type { StateCreator } from "zustand";
 import type { PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import { parseStages } from "../panels/filter/stage.js";
-import { findNode, hasCycle, idOf, parseExpr, refNode, replaceNode, ROOT_ID, type SetExpr } from "../panels/filter/expr.js";
+import { hasCycle, parseExpr, type SetExpr } from "../panels/filter/expr.js";
 import { effectiveUniverse, universeOfExpr, parseUniverse, type Universe } from "../panels/filter/universe.js";
 import { putExpr } from "./filterFunnelSlice.js";
 import { parsePointDef } from "../lib/pointDef.js";
@@ -139,12 +139,6 @@ export interface SavedSetsSlice {
     /** 이름만 바꾼다(id·조건 유지 — 바인딩이 id 로 따라오므로 이름은 표시물일 뿐). 빈 이름·다른 집합과 같은 이름은 무시. */
     renameSet: (id: string, name: string) => void;
     deleteSet: (id: string) => void;
-    /**
-     * **이름 붙이기(승격)** — 작업 식의 묶음 하나를 집합으로 떼어내고, 그 자리엔 참조가 남는다.
-     * 이게 중첩을 재사용 가능하게 만드는 유일한 손짓이다(익명 묶음 = 아직 이름값을 못 한 구조).
-     * 빈 이름·중복 이름·없는 노드는 무시한다(saveSet 의 규칙과 같은 자).
-     */
-    promoteNodeToSet: (nodeId: string, name: string) => void;
     /** 마지막으로 연 집합 — 덮어쓰기 버튼의 대상. 그 집합이 지워지면 풀린다(세션 한정). */
     openedSetId: string | null;
 }
@@ -181,24 +175,6 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         saveJson(SAVED_SETS_KEY, next);
         // 방금 저장한 집합이 곧 "열어 둔 집합" — 이어서 만지면 덮어쓰기가 그 집합을 가리킨다.
         return { savedSets: next, openedSetId: saved.id };
-    }),
-    promoteNodeToSet: (nodeId, name) => set((s) => {
-        const n = name.trim();
-        const node = findNode(s.filterExpr, nodeId);
-        if (n === "" || node === null || s.savedSets.some((x) => x.name === n)) return {};
-        const id = `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-        const saved: SavedSet = { id, name: n, expr: node, universe: effectiveUniverse(universeOfExpr(node, refUniverse(s.savedSets))), pointDef: s.pointDef };
-        const sets = persistSavedSets([...s.savedSets, saved]);
-        // 그 자리는 참조로 — **부정은 참조에 남긴다**(¬(a∧b) 를 승격했는데 부정이 사라지면 뜻이 갈린다).
-        const neg = node.neg === true;
-        const ref: SetExpr = neg ? { ...refNode(id), neg: true } : refNode(id);
-        // ⚠ **루트는 늘 묶음**이다(parseExpr·appendLeaf 의 불변식) — 루트를 통째 승격하면 그 자리에
-        //   참조가 앉아 루트가 잎이 된다. 메모리에서만 깨지고 새로고침하면 `AND(참조)` 로 감싸여 돌아와
-        //   저장 전후의 모양이 갈린다. 감싸는 것은 여기서 한다(뜻은 같다 — 한 항짜리 AND).
-        const next = nodeId === idOf(s.filterExpr)
-            ? ({ kind: "and", id: ROOT_ID, of: [ref] } as SetExpr)
-            : replaceNode(s.filterExpr, nodeId, () => ref);
-        return { savedSets: sets, openedSetId: id, ...putExpr(next) };
     }),
     overwriteSet: (id) => set((s) => {
         if (!s.savedSets.some((x) => x.id === id)) return {};
