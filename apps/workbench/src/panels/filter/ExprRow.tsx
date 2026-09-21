@@ -2,9 +2,15 @@
 // 규칙 전문은 `.claude/decisions.md` 「집합 편성 — 가로 드릴다운 줄」·「괄호는 손의 것」.
 //
 // ## 줄 하나 = 한 묶음의 내용
-// 조건과 묶음이 **한 줄에 섞여** 가로로 선다. 칩을 누르면 그 내용이 **아랫줄**에 열리고, 열린 칩은
-// 액센트 + 왼쪽 `▼` 를 단다. `▼` 는 "골랐다"가 아니라 **"펼쳐져 있다"** 를 말한다(트리의 펼침 삼각형).
-// 다시 누르면 닫힌다 — 조건 칩도 묶음 칩도 같은 토글이다.
+// 조건과 묶음이 **한 줄에 섞여** 가로로 선다. 칩을 누르면 그 내용이 **아랫줄**에 열리고, 다시 누르면
+// 닫힌다(조건도 묶음도 같은 토글).
+//
+// ## 열림은 **연한 채움**, 종류는 **테두리** (2026-09-22)
+// 선택 색은 조건·묶음이 **같다**(연한 액센트). 채움을 옅게 두는 것이 요점이다 — 짙게 채우면
+// 테두리가 묻혀 묶음의 정체(보라 · 손 이름 실선 / 자동 이름 점선)가 열릴 때만 사라진다.
+// 그래서 채널이 셋으로 갈린다: **채움 = 열림 · 테두리 = 종류와 이름 여부 · `▼` = 묶음**.
+// ⚠ **`▼` 는 묶음 전용**이다 — 뜻이 "층이 하나 늘었다" 하나여야 한다. 조건 열림은 펼쳐진 내용이
+// 있는 게 아니라 **값을 고치는 중**이라 그 기호가 사실과 다르다.
 //
 // ## 줄 쌓임 자체가 경로다 — 빵부스러기가 없다
 // 옛 2층(위 지도 + 아래 편집면)은 항이 하나일 때 **같은 것을 두 번 그렸다**. 여기서는 위 줄의 열린
@@ -17,13 +23,14 @@
 // 아랫줄은 **값만** 맡는다 — 같은 일이 두 자리에 있지 않게 종류로 가른다(옛 "편집면이 두 곳"과 다르다).
 //
 // ## 줄 높이는 모든 칸이 같다
-// 칩마다 화살표 슬롯을 두면 화살표 없는 칩까지 위로 쏠려 줄이 비뚤어진다 — `▼` 는 칩 **안쪽 왼쪽**이다.
+// 칩마다 화살표 슬롯을 두면 화살표 없는 칩까지 위로 쏠려 줄이 비뚤어진다 — `▼` 는 칩 **안쪽 왼쪽**이고
+// 칩 자체의 높이는 열림/닫힘에 상관없이 같다.
 //
 // ## 가로 스크롤은 줄마다 독립이다
 // 한 줄이 길다고 다른 줄이 같이 밀리면 "자리가 곧 경로"라는 뜻이 깨진다.
 import { useRef, useState, type MouseEvent } from "react";
 import { useDismiss } from "../../ui/useDismiss.js";
-import { FAIL, PIN, POINT_DEF } from "../../styles/palette.js";
+import { FAIL, PIN } from "../../styles/palette.js";
 import { renderExpr } from "./exprRender.js";
 import { canSetOpAt, canToggleBoundary, groupAtBoundary, type Op, type SetExpr } from "./expr.js";
 
@@ -60,6 +67,10 @@ export interface RowHandlers {
     onToggleTerm: (setId: string, stageId: string) => void;
     /** 이 자리에서 빼기 — 묶음이면 집합 자체는 안 지워진다. */
     onRemoveTerm: (setId: string, termId: string) => void;
+    /** 묶음 이름 짓기 — 빈 문자열이면 자동 이름으로 되돌린다. */
+    onRenameSet: (setId: string, name: string) => void;
+    /** **집합 자체**를 지운다 — 쓰는 곳이 있으면 그 참조들이 깨진다(빼기와 다른 일이다). */
+    onDeleteSet: (setId: string) => void;
 }
 
 const ROW_H = 30;
@@ -70,12 +81,14 @@ const chipBase = {
     whiteSpace: "nowrap" as const, flexShrink: 0, cursor: "pointer", lineHeight: 1.35,
 };
 
-/** 열린 칩 — 액센트로 채우고 `▼` 를 단다. 이 줄의 **아랫줄이 곧 이 칩의 내용**이다. */
-const openChip = { ...chipBase, background: POINT_DEF, color: "#fff", border: `1px solid ${POINT_DEF}` };
+/** 열림의 **유일한 신호** — 연한 액센트 채움. 조건이든 묶음이든 같다(종류는 테두리가 말한다). */
+const OPEN_BG = "var(--accent-soft)";
 
 /** 우클릭으로 뜬 판 — 무엇을 눌렀나에 따라 항목이 갈린다. */
 type Ctx =
-    | { kind: "term"; termId: string; cond: boolean; enabled: boolean; neg: boolean; x: number; y: number }
+    | { kind: "cond"; termId: string; enabled: boolean; neg: boolean; x: number; y: number }
+    /** 묶음 — 이름·쓰는 곳까지 들고 온다(판 머리가 그 **맥락**을 말한다). */
+    | { kind: "group"; termId: string; setId: string; name: string; usedBy: number; neg: boolean; x: number; y: number }
     | { kind: "op"; at: number; x: number; y: number }
     | { kind: "paren"; from: number; neg: boolean; x: number; y: number };
 
@@ -90,13 +103,15 @@ export function ExprRow({ setId, expr, h, open, tail }: {
 }): JSX.Element {
     const [menu, setMenu] = useState<{ at: number; x: number; y: number } | null>(null);
     const [ctx, setCtx] = useState<Ctx | null>(null);
+    /** 「집합 지우기」 무장 — 쓰는 곳이 있을 때만 두 번 누르게 한다(쉴 때 경고가 자리를 안 먹게). */
+    const [armed, setArmed] = useState(false);
+    const openCtx = (c: Ctx): void => { setMenu(null); setArmed(false); setCtx(c); };
     const pieces = renderExpr(expr, h.labelOf, (id) => h.refInfo(id).name);
     /** 우클릭 공통 — 브라우저 기본 메뉴를 막고 우리 판을 연다. */
     const rc = (make: (e: MouseEvent) => Ctx) => (e: MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        setMenu(null);
-        setCtx(make(e));
+        openCtx(make(e));
     };
 
     return (
@@ -146,14 +161,16 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                     const isOpen = open === p.id;
                     return (
                         <button key={p.id} data-chip="leaf" onClick={() => h.onPickLeaf(setId, p.id)}
-                            onContextMenu={rc((e) => ({ kind: "term", termId: p.id, cond: true, enabled: p.enabled, neg: p.neg, x: e.clientX, y: e.clientY }))}
+                            onContextMenu={rc((e) => ({ kind: "cond", termId: p.id, enabled: p.enabled, neg: p.neg, x: e.clientX, y: e.clientY }))}
                             title={`${p.label}${p.enabled ? "" : " (꺼짐)"} — 눌러서 아랫줄에서 값을 고칩니다. 우클릭 = NOT·끄기·빼기`}
                             style={{
-                                ...(isOpen ? openChip : { ...chipBase, background: "var(--bg-tertiary)", border: "1px solid transparent" }),
+                                ...chipBase, border: "1px solid transparent",
+                                background: isOpen ? OPEN_BG : "var(--bg-tertiary)",
                                 ...(p.enabled ? {} : { textDecoration: "line-through", opacity: 0.65 }),
                             }}>
-                            {isOpen && <span style={{ fontSize: 8, marginRight: 5, verticalAlign: 1 }}>▼</span>}
-                            {p.neg && <span style={{ color: isOpen ? "#fff" : FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
+                            {/* ⚠ 조건에는 `▼` 를 안 단다 — 펼쳐진 내용이 있는 게 아니라 값을 고치는 중이다.
+                                `▼` 의 뜻은 **"층이 하나 늘었다"** 하나로 남는다(묶음 전용). */}
+                            {p.neg && <span style={{ color: FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
                             {p.label}
                         </button>
                     );
@@ -163,19 +180,21 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                 return (
                     <button key={p.id} data-chip="ref" disabled={info.broken}
                         onClick={() => !info.broken && h.onDrill(setId, p.setId)}
-                        onContextMenu={rc((e) => ({ kind: "term", termId: p.id, cond: false, enabled: true, neg: p.neg, x: e.clientX, y: e.clientY }))}
+                        onContextMenu={rc((e) => ({ kind: "group", termId: p.id, setId: p.setId, name: info.name, usedBy: info.usedBy, neg: p.neg, x: e.clientX, y: e.clientY }))}
                         title={info.broken
                             ? "가리키는 집합이 지워졌습니다 — 우클릭으로 이 자리를 뺄 수 있습니다"
                             : `${info.name} — 눌러서 이 묶음의 내용을 아랫줄에 엽니다${info.usedBy >= 2 ? `. 쓰는 곳 ${info.usedBy} — 고치면 ${info.usedBy}곳이 같이 바뀝니다` : ""}`}
-                        style={isOpen ? openChip : {
-                            ...chipBase, background: "transparent",
+                        style={{
+                            ...chipBase,
+                            // 열림은 **채움만** — 테두리는 종류와 이름 여부를 계속 말한다.
+                            background: isOpen ? OPEN_BG : "transparent",
                             // 손 이름 = 실선 · 자동 이름 = 점선(아직 생각이 안 굳었다는 뜻).
                             border: `1px ${info.named ? "solid" : "dashed"} ${info.broken ? FAIL : PIN}`,
                             color: info.broken ? FAIL : PIN,
                             cursor: info.broken ? "context-menu" : "pointer",
                         }}>
                         {isOpen && <span style={{ fontSize: 8, marginRight: 5, verticalAlign: 1 }}>▼</span>}
-                        {p.neg && <span style={{ color: isOpen ? "#fff" : FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
+                        {p.neg && <span style={{ color: FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
                         {info.name}
                         {info.usedBy >= 2 && <span style={{ opacity: 0.7, marginLeft: 4 }}>·{info.usedBy}</span>}
                     </button>
@@ -185,8 +204,9 @@ export function ExprRow({ setId, expr, h, open, tail }: {
             {menu !== null && (
                 <Panel at={menu} onClose={() => setMenu(null)}>
                     {(["and", "or"] as const).map((op) => (
-                        <Item key={op} label={op === "and" ? "AND — 모두 만족" : "OR — 하나라도"}
-                            bold={expr.ops[menu.at] === op}
+                        <Item key={op} label={op === "and" ? "AND" : "OR"}
+                            check={expr.ops[menu.at] === op}
+                            title={op === "and" ? "모두 만족" : "하나라도 만족"}
                             disabled={!canSetOpAt(expr, menu.at, op)}
                             why="괄호 안이나 밖이 섞입니다 — 괄호를 먼저 푸세요(한 겹이라 안쪽에 또 칠 자리가 없습니다)"
                             onPick={() => { h.onSetOp(setId, menu.at, op); setMenu(null); }} />
@@ -195,27 +215,52 @@ export function ExprRow({ setId, expr, h, open, tail }: {
             )}
             {ctx !== null && (
                 <Panel at={ctx} onClose={() => setCtx(null)}>
-                    {ctx.kind === "term" && (
+                    {ctx.kind === "cond" && (
                         <>
-                            <Item label={ctx.neg ? "NOT 떼기" : "NOT — 이 항을 부정"}
+                            <Item label="NOT" check={ctx.neg} title="이 항을 부정합니다"
                                 onPick={() => { h.onNegateTerm(setId, ctx.termId); setCtx(null); }} />
-                            {ctx.cond && (
-                                <Item label={ctx.enabled ? "끄기 — 평가에서 뺀다" : "켜기"}
-                                    onPick={() => { h.onToggleTerm(setId, ctx.termId); setCtx(null); }} />
-                            )}
-                            <Item label={ctx.cond ? "지우기" : "이 자리에서 빼기"}
+                            <Item label="끄기" check={!ctx.enabled} title="평가에서 뺍니다 — 지우지 않고 빼보는 손짓"
+                                onPick={() => { h.onToggleTerm(setId, ctx.termId); setCtx(null); }} />
+                            <Sep />
+                            <Item label="지우기" danger title="이 조건을 없앱니다"
                                 onPick={() => { h.onRemoveTerm(setId, ctx.termId); setCtx(null); }} />
                         </>
                     )}
+                    {ctx.kind === "group" && (
+                        <>
+                            {/* 머리는 **맥락**이다(설명이 아니다) — 지우기 직전에 봐야 할 수가 여기 있다. */}
+                            <div style={{
+                                fontSize: 10, padding: "5px 10px", color: "var(--text-tertiary)",
+                                borderBottom: "0.5px solid var(--border-subtle)", marginBottom: 3,
+                            }}>{ctx.name} · 쓰는 곳 {ctx.usedBy}</div>
+                            <NameInput value={ctx.name} onCommit={(v) => { h.onRenameSet(ctx.setId, v); setCtx(null); }} />
+                            <Item label="NOT" check={ctx.neg} title="이 묶음을 부정합니다"
+                                onPick={() => { h.onNegateTerm(setId, ctx.termId); setCtx(null); }} />
+                            <Item label="빼기" title="이 식에서만 뺍니다 — 집합은 목록에 남습니다"
+                                onPick={() => { h.onRemoveTerm(setId, ctx.termId); setCtx(null); }} />
+                            <Sep />
+                            {/* ⚠ **빼기와 다른 일이다** — 집합 자체가 없어져 쓰는 곳의 참조가 깨진다.
+                                쓰는 곳 0 이면 청소라 한 번에, 1 이상이면 한 번 무장한다(사용자 확정). */}
+                            <Item label={armed ? `정말 지우기 — ${ctx.usedBy}곳이 깨집니다` : "집합 지우기"}
+                                danger armed={armed}
+                                title="집합 자체를 없앱니다 — 이 식에서만 빼려면 「빼기」입니다"
+                                onPick={() => {
+                                    if (ctx.usedBy >= 1 && !armed) { setArmed(true); return; }
+                                    h.onDeleteSet(ctx.setId);
+                                    setCtx(null);
+                                }} />
+                        </>
+                    )}
                     {ctx.kind === "op" && (
-                        <Item label={groupAtBoundary(expr, ctx.at) === null ? "( ) 괄호로 묶기" : "이 자리에서 괄호 자르기"}
+                        <Item label={groupAtBoundary(expr, ctx.at) === null ? "괄호 묶기" : "괄호 자르기"}
                             disabled={!canToggleBoundary(expr, ctx.at)}
+                            title="이 자리를 괄호 안/밖으로 — 만들기·넓히기·자르기·풀기가 이 하나입니다"
                             why="NOT 이 붙은 괄호는 자를 수 없습니다(NOT 이 갈 곳이 없습니다) — NOT 을 먼저 떼세요"
                             onPick={() => { h.onToggleBoundary(setId, ctx.at); setCtx(null); }} />
                     )}
                     {ctx.kind === "paren" && (
                         <>
-                            <Item label={ctx.neg ? "NOT 떼기" : "NOT — 이 괄호를 부정"}
+                            <Item label="NOT" check={ctx.neg} title="이 괄호를 부정합니다"
                                 onPick={() => { h.onNegateGroup(setId, ctx.from); setCtx(null); }} />
                             <Item label="괄호 풀기" disabled={ctx.neg}
                                 why="NOT 이 걸려 있습니다 — 풀면 NOT 이 갈 곳이 없으니 먼저 떼세요"
@@ -249,23 +294,63 @@ function Panel({ at, onClose, children }: {
 }
 
 /**
- * 판의 한 줄. **못 누르는 항목은 숨기지 않고 회색 + 이유**로 세운다 — 결손 지도와 같은 규칙이다
+ * 판의 한 줄 — **이름만 적는다.** 왜 그런지는 `title` 이 말하고, 상태는 낱말이 아니라 **체크**가 말한다
+ * (`NOT` ↔ `NOT 떼기` 로 낱말을 오가면 같은 자리가 매번 달라 보인다).
+ *
+ * ⚠ **못 누르는 항목은 숨기지 않고 회색 + 이유**로 세운다 — 결손 지도와 같은 규칙이다
  * (숨기면 "그런 기능이 없다"가 되어, 왜 안 되는지 알 길이 없다).
  */
-function Item({ label, onPick, disabled = false, why, bold = false }: {
+function Item({ label, onPick, disabled = false, why, title, check = false, danger = false, armed = false }: {
     label: string;
     onPick: () => void;
     disabled?: boolean;
+    /** 못 누를 때의 이유 — 툴팁으로만 뜬다. */
     why?: string;
-    bold?: boolean;
+    /** 평소 툴팁 — 항목 이름이 짧은 대신 설명이 여기 있다. */
+    title?: string;
+    /** 켜져 있나 — 토글 항목의 상태. */
+    check?: boolean;
+    danger?: boolean;
+    /** 한 번 눌러 무장했나 — 되돌릴 수 없는 손이 그때만 경고를 입는다. */
+    armed?: boolean;
 }): JSX.Element {
     return (
-        <button role="menuitem" onClick={disabled ? undefined : onPick} disabled={disabled} title={disabled ? why : undefined}
+        <button role="menuitem" onClick={disabled ? undefined : onPick} disabled={disabled}
+            title={disabled ? why : title}
             style={{
-                display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent",
-                font: "inherit", fontSize: 12, padding: "5px 10px", cursor: disabled ? "default" : "pointer",
-                fontWeight: bold ? 600 : 400,
-                color: disabled ? "var(--text-tertiary)" : "var(--text-primary)",
-            }}>{label}</button>
+                display: "flex", alignItems: "center", gap: 7, width: "100%", textAlign: "left",
+                border: "none", font: "inherit", fontSize: 12, padding: "5px 10px",
+                cursor: disabled ? "default" : "pointer",
+                background: armed ? "var(--warning-soft)" : "transparent",
+                color: disabled ? "var(--text-tertiary)" : armed || danger ? FAIL : "var(--text-primary)",
+            }}>
+            <span style={{ width: 10, flexShrink: 0, color: "var(--accent-primary)", fontSize: 11 }}>{check ? "✓" : ""}</span>
+            {label}
+        </button>
+    );
+}
+
+/** 항목 사이 가름줄 — 되돌릴 수 없는 손을 나머지와 떼어 놓는 자리. */
+const Sep = (): JSX.Element => <div style={{ borderTop: "0.5px solid var(--border-subtle)", margin: "3px 0" }} />;
+
+/**
+ * 묶음 이름 — 판 안에서 바로 고친다. **비우면 자동 이름으로 되돌아간다**(부재 = 점선 칩).
+ * 이름 충돌 거절(손으로 지은 이름끼리만)은 스토어의 `renameSet` 이 이미 한다.
+ */
+function NameInput({ value, onCommit }: { value: string; onCommit: (v: string) => void }): JSX.Element {
+    const [draft, setDraft] = useState(value);
+    return (
+        <input value={draft} placeholder="이름 (비우면 자동 이름)" aria-label="묶음 이름"
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+                if (e.key === "Enter") onCommit(draft.trim());
+                if (e.key === "Escape") setDraft(value);
+            }}
+            style={{
+                display: "block", margin: "2px 8px 5px", padding: "3px 6px", width: "calc(100% - 16px)",
+                boxSizing: "border-box", border: "1px solid var(--border-default)", borderRadius: 4,
+                background: "var(--bg-primary)", color: "var(--text-primary)", font: "inherit", fontSize: 12,
+                outline: "none",
+            }} />
     );
 }

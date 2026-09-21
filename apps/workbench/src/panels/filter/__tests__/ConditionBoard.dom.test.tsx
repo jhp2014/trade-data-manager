@@ -306,7 +306,7 @@ describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
         seedEditing(exprOfStages([DATE_STAGE, stage2]));
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(buttons(container).find((b) => b.dataset.op === "0")!); });
-        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "OR — 하나라도")!); });
+        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "OR")!); });
         expect(topOpOf(selectEditingExpr(useWorkbench.getState()))).toBe("or");
     });
 
@@ -315,7 +315,7 @@ describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
         seedEditing(exprOfStages([DATE_STAGE, stage2, stage3]));
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(buttons(container).find((b) => b.dataset.op === "1")!); });
-        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "OR — 하나라도")!); });
+        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "OR")!); });
         const e = selectEditingExpr(useWorkbench.getState());
         expect(e.groups, "앞의 AND 구간이 괄호로 묶인다").toEqual([{ from: 0, to: 1 }]);
         expect(container.textContent).toContain("(");
@@ -327,7 +327,7 @@ describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
         seedEditing(exprOfStages([DATE_STAGE, stage2, stage3]));
         const { container } = renderBoard();
         rightClick(buttons(container).find((b) => b.dataset.op === "0")!);
-        pickItem(container, "괄호로 묶기");
+        pickItem(container, "괄호 묶기");
         expect(selectEditingExpr(useWorkbench.getState()).groups).toEqual([{ from: 0, to: 1 }]);
     });
 
@@ -335,9 +335,9 @@ describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
         seedEditing(exprOfStages([DATE_STAGE, stage2, stage3, stage4]));
         const { container } = renderBoard();
         rightClick(buttons(container).find((b) => b.dataset.op === "0")!);
-        pickItem(container, "괄호로 묶기");
+        pickItem(container, "괄호 묶기");
         rightClick(buttons(container).find((b) => b.dataset.op === "1")!);
-        pickItem(container, "괄호로 묶기");
+        pickItem(container, "괄호 묶기");
         expect(selectEditingExpr(useWorkbench.getState()).groups, "넓어진다").toEqual([{ from: 0, to: 2 }]);
 
         rightClick(buttons(container).find((b) => b.dataset.op === "0")!);
@@ -350,9 +350,9 @@ describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
         seedEditing(exprOfStages([DATE_STAGE, stage2, stage3]));
         const { container } = renderBoard();
         rightClick(buttons(container).find((b) => b.dataset.op === "0")!);
-        pickItem(container, "괄호로 묶기");
+        pickItem(container, "괄호 묶기");
         rightClick(buttons(container).find((b) => b.dataset.op === "1")!);
-        pickItem(container, "괄호로 묶기");
+        pickItem(container, "괄호 묶기");
         expect(selectEditingExpr(useWorkbench.getState()).groups, "줄 그 자체라 뜻이 없다").toEqual([]);
     });
 
@@ -360,7 +360,7 @@ describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
         seedEditing(exprOfStages([DATE_STAGE, stage2, stage3]));
         const { container } = renderBoard();
         rightClick(buttons(container).find((b) => b.dataset.op === "0")!);
-        pickItem(container, "괄호로 묶기");
+        pickItem(container, "괄호 묶기");
 
         rightClick(container.querySelector("[data-paren]")!);
         pickItem(container, "NOT");
@@ -432,5 +432,53 @@ describe("줄 쌓임 — 내려가면 줄이 하나 는다", () => {
         openChip(container, "26.07"); // 윗줄의 조건 칩
         expect(useWorkbench.getState().editingSetId).toBe(outer);
         expect(useWorkbench.getState().editPath).toEqual([outer]);
+    });
+});
+
+// ── 묶음 우클릭 판 — 이름·빼기·지우기 (2026-09-22) ─────────────────────────
+//
+// ⚠ **빼기와 지우기는 다른 일이다**: 빼기는 이 식에서만 빠지고 집합은 목록에 남는다. 지우기는 집합
+//   자체가 없어져 **쓰는 곳의 참조가 깨진다**. 그래서 쓰는 곳이 있으면 한 번 무장한다.
+describe("묶음 우클릭 — 이름·빼기·지우기", () => {
+    /** 묶음 하나를 만들고 다시 뿌리로 올라온 상태. */
+    const withGroup = (): { container: HTMLElement; outer: string; inner: string } => {
+        seedEditing(exprOfStages([DATE_STAGE]));
+        const outer = useWorkbench.getState().editingSetId;
+        const { container } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 묶음")!); });
+        const inner = useWorkbench.getState().editingSetId;
+        act(() => { fireEvent.click(chipByText(container, "빈 집합")!); }); // 다시 닫아 뿌리로
+        return { container, outer, inner };
+    };
+
+    it("이름을 판 안에서 짓는다 — 비우면 자동 이름으로 되돌아간다", () => {
+        const { container, inner } = withGroup();
+        rightClick(chipByText(container, "빈 집합")!);
+        const input = container.querySelector('input[aria-label="묶음 이름"]') as HTMLInputElement;
+        act(() => { fireEvent.change(input, { target: { value: "아침 돌파" } }); fireEvent.keyDown(input, { key: "Enter" }); });
+        expect(useWorkbench.getState().savedSets.find((x) => x.id === inner)!.name).toBe("아침 돌파");
+
+        rightClick(chipByText(container, "아침 돌파")!);
+        const again = container.querySelector('input[aria-label="묶음 이름"]') as HTMLInputElement;
+        act(() => { fireEvent.change(again, { target: { value: "  " } }); fireEvent.keyDown(again, { key: "Enter" }); });
+        expect(useWorkbench.getState().savedSets.find((x) => x.id === inner)!.name, "부재 = 자동 이름").toBeUndefined();
+    });
+
+    it("빼기는 식에서만 뺀다 — 집합은 목록에 남는다", () => {
+        const { container, outer, inner } = withGroup();
+        rightClick(chipByText(container, "빈 집합")!);
+        pickItem(container, "빼기");
+        const st = useWorkbench.getState();
+        expect(refsOf(st.savedSets.find((x) => x.id === outer)!.expr), "식에서 빠졌다").toEqual([]);
+        expect(st.savedSets.some((x) => x.id === inner), "집합은 남았다").toBe(true);
+    });
+
+    it("쓰는 곳이 있으면 **한 번 무장**한 뒤에야 지워진다", () => {
+        const { container, inner } = withGroup();
+        rightClick(chipByText(container, "빈 집합")!);
+        pickItem(container, "집합 지우기");
+        expect(useWorkbench.getState().savedSets.some((x) => x.id === inner), "첫 누름은 무장만").toBe(true);
+        pickItem(container, "정말 지우기");
+        expect(useWorkbench.getState().savedSets.some((x) => x.id === inner)).toBe(false);
     });
 });

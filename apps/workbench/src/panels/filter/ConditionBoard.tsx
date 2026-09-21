@@ -29,7 +29,6 @@ import { FilterRow } from "./FilterRow.js";
 import { useFunnel } from "./FunnelContext.js";
 import { Note } from "./grain.js";
 import { ExprRow, type RowHandlers } from "./ExprRow.js";
-import { FAIL, PIN } from "../../styles/palette.js";
 import type { CellValueRange } from "@trade-data-manager/market/domain";
 import { CellStageFields } from "./CellPredicateFields.js";
 import { kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
@@ -101,6 +100,8 @@ export function ConditionBoard({ panelId: _panelId }: {
     const popTo = useWorkbench((s) => s.popTo);
     const addGroupTerm = useWorkbench((s) => s.addGroupTerm);
     const addSetRef = useWorkbench((s) => s.addSetRef);
+    const renameSet = useWorkbench((s) => s.renameSet);
+    const deleteSet = useWorkbench((s) => s.deleteSet);
     const editPath = useWorkbench((s) => s.editPath);
     const editingSetId = useWorkbench((s) => s.editingSetId);
     /** 짚은 항 — 위 칩 줄과 아래 목록이 같은 주소를 본다(세션). */
@@ -263,51 +264,22 @@ export function ConditionBoard({ panelId: _panelId }: {
         onNegateTerm: (sid, termId) => actOn(sid, (e) => negateTerm(e, termId)),
         onToggleTerm: (sid, stageId) => actOn(sid, (e) => mapLeaves(e, (x) => (x.id === stageId ? { ...x, enabled: !x.enabled } : x))),
         onRemoveTerm: (sid, termId) => { actOn(sid, (e) => removeTerm(e, termId)); setPicked(null); },
-    }), [chipLabelOf, refInfo, rows, editingSetId, popTo, drillInto, actOn]);
-
-    /** 지금 **열려 있는 항** — 마지막 줄의 짚은 조건이거나, 내려와 있는 묶음(그 부모 줄의 항)이다. */
-    const openTerm = useMemo(() => {
-        if (picked !== null) {
-            const t = expr.of.find((x) => idOf(x) === picked);
-            if (t?.kind === "cond") return { parent: editingSetId, term: t };
-        }
-        if (rows.length >= 2) {
-            const parent = rows[rows.length - 2]!;
-            const t = exprOfSet(parent).of.find((x) => x.kind === "ref" && x.setId === editingSetId);
-            if (t) return { parent, term: t };
-        }
-        return null;
-    }, [picked, expr, editingSetId, rows, exprOfSet]);
+        // 이름·삭제는 **집합 자체**에 거는 손이라 식을 안 지난다(actOn 밖).
+        onRenameSet: (targetId, name) => renameSet(targetId, name),
+        onDeleteSet: (targetId) => deleteSet(targetId),
+    }), [chipLabelOf, refInfo, rows, editingSetId, popTo, drillInto, actOn, renameSet, deleteSet]);
 
     /**
-     * 열린 **참조**의 편집면 — 내용은 아랫줄이 이미 그리고 있으므로 여기 남는 일은
-     * "이 자리에서의 성질"뿐이다: 부정 · 빼기.
+     * 지금 **열려 있는 조건** — 아랫줄 편집면의 주인이다.
      *
-     * ⚠ 참조의 **내용**은 그 자리에서 못 고친다 — 고치면 그 집합을 쓰는 다른 식이 전부 따라 바뀐다.
-     * 그래서 내용 편집은 내려간 줄(아랫줄)에서만 일어난다.
+     * ⚠ 묶음은 여기 안 든다: 열린 묶음의 내용은 **아랫줄(다음 ExprRow)** 이 이미 그리고, 그 정체는
+     *   윗줄의 열린 칩이 말한다. 따로 띠를 세우면 같은 것을 두 번 그리는 자리가 된다(2026-09-22).
      */
-    const refRow = (t: Extract<SetTerm, { kind: "ref" }>): JSX.Element => {
-        const { name, usedBy } = refInfo(t.setId);
-        return (
-            <div key={t.id} style={{
-                display: "flex", alignItems: "center", gap: 6, padding: "4px 6px",
-                borderTop: "0.5px solid var(--border-subtle)", background: "var(--bg-secondary)",
-            }}>
-                <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}>묶음</span>
-                {t.neg === true && <span style={{ fontSize: 10, fontWeight: 600, color: FAIL, flexShrink: 0 }}>NOT</span>}
-                <span style={{ fontSize: 11.5, color: PIN, whiteSpace: "nowrap" }}>{name}</span>
-                {usedBy >= 2 && (
-                    <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}
-                        title={`고치면 ${usedBy}곳이 같이 바뀝니다`}>쓰는 곳 {usedBy}</span>
-                )}
-                {/* ⚠ NOT·빼기는 **여기 없다**(2026-09-22) — 칩 우클릭 전용이다. 이 띠는 "지금 어느
-                    묶음에 내려와 있나"만 말한다(그 내용은 아랫줄이 이미 그리고 있다). */}
-                <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-tertiary)" }}>
-                    우클릭으로 NOT · 빼기
-                </span>
-            </div>
-        );
-    };
+    const openTerm = useMemo(() => {
+        if (picked === null) return null;
+        const t = expr.of.find((x) => idOf(x) === picked);
+        return t?.kind === "cond" ? t : null;
+    }, [picked, expr]);
 
     const condRow = (t: Extract<SetTerm, { kind: "cond" }>, parent: string): JSX.Element => (
         <FilterRow
@@ -347,9 +319,7 @@ export function ConditionBoard({ panelId: _panelId }: {
 
                 {/* ── 열린 항의 편집면 ── 칩을 누르면 그 내용이 **여기**에 열린다(값·부정·끄기·빼기).
                     ⚠ 편집면은 한 곳이다 — 줄에 손잡이를 또 달면 옛 "필터 UI 가 두 곳" 함정이다. */}
-                {!v.isLoading && openTerm !== null && (openTerm.term.kind === "cond"
-                    ? condRow(openTerm.term, openTerm.parent)
-                    : refRow(openTerm.term))}
+                {!v.isLoading && openTerm !== null && condRow(openTerm, editingSetId)}
 
                 {!v.isLoading && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0" }}>
