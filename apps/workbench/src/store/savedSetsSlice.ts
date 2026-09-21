@@ -371,8 +371,12 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         // 하나도 안 남으면 빈 집합을 다시 세운다 — 편집할 집합이 반드시 하나는 있어야 한다.
         const rest = s.savedSets.filter((x) => x.id !== id);
         // 폴백은 **같은 모드 안에서** 찾는다 — 반대 모드 집합으로 내려앉으면 모드와 자리가 어긋난다.
-        const withFallback = setsOfMode(rest, s.filterMode).length > 0 ? rest : [...rest, blankSet(s.filterMode)];
-        const next = persistSavedSets(withFallback);
+        // ⚠ 빈 모드 판정은 **재조정(reconcileUniverses) 뒤**에 한다 — 마지막 남은 집합의 우주가
+        //   파생으로 뒤집히면 재조정 전 배열로는 "있다"고 세어져 자리가 undefined 가 된다.
+        const settled = persistSavedSets(rest);
+        const next = setsOfMode(settled, s.filterMode).length > 0
+            ? settled
+            : persistSavedSets([...settled, blankSet(s.filterMode)]);
         const home = setsOfMode(next, s.filterMode)[0]!;
         return {
             savedSets: next,

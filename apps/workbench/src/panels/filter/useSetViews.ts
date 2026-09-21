@@ -78,9 +78,12 @@ export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx, obs
             const hit = cache.get(setId);
             if (hit) return hit;
             // 관측 집합은 **깔때기 정산을 재사용**한다 — 안 그러면 지금 보는 그 집합을 한 번 더 평가한다.
+            // ⚠ **종단일 때만** 질러간다 — `resolveSaved` 의 우주 문지기(otherUniverse)를 건너뛰면
+            //   하루 집합이 "하루 · 셀" 대신 **0건**으로 적힌다(countLabel 주석이 금지한 거짓말).
+            const reuse = setId === observedId && ctx.savedSetOf(setId)?.universe === "longitudinal";
             const r: ResolvedSet = isLoading
                 ? { broken: false, grain: "day", items: [] }
-                : setId === observedId ? resolveWorkingSet(ctx) : resolveSavedSet(setId, ctx);
+                : reuse ? resolveWorkingSet(ctx) : resolveSavedSet(setId, ctx);
             cache.set(setId, r);
             return r;
         };

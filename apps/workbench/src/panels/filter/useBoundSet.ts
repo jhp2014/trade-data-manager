@@ -25,7 +25,7 @@ import { selectObservedSetId, useWorkbench } from "../../store/workbench.js";
 import { useFunnel } from "./FunnelContext.js";
 import { setDisplayName } from "./label.js";
 import { DAY_SET_OPTS, useCellSet } from "./useCellSet.js";
-import type { Universe } from "./universe.js";
+import { UNIVERSE_LABEL, type Universe } from "./universe.js";
 import type { ViewedSet } from "./useSetViews.js";
 
 
@@ -67,6 +67,8 @@ const EMPTY_VIEW: ViewedSet = { isFiltering: false, broken: false, viewedItems: 
 const UNRESOLVED_VIEW: ViewedSet = { isFiltering: true, broken: true, viewedItems: [], viewedChartKeys: new Set(), viewedPointRefs: [] };
 
 const NO_CONDITION = "하루 우주에는 조건이 있어야 합니다 — 집합 편성에서 조건을 거세요";
+const mismatchWhy = (mode: Universe, set: Universe): string =>
+    `이 집합은 ${UNIVERSE_LABEL[set]} 집합입니다 — 지금 모드(${UNIVERSE_LABEL[mode]})와 어긋나 평가하지 않습니다`;
 
 export function useBoundSet(_panelId: string): BoundSet {
     const funnel = useFunnel();
@@ -76,16 +78,29 @@ export function useBoundSet(_panelId: string): BoundSet {
     const universe = useWorkbench((s) => s.filterMode);
     const focusDate = useWorkbench((s) => s.focus.date);
     const daily = universe === "daily";
+    /**
+     * ⚠ **모드와 집합이 어긋나면 평가하지 않는다.** `persistSavedSets` 의 재조정이 파생 우주로
+     * 저장값을 덮으므로, 열어 둔 집합의 우주가 뒤집히면 모드와 갈린다. 그때 그냥 평가하면
+     * **모드=종단 × 집합=하루** 쪽이 종단 기계로 가서 `isFiltering:true · broken:false · 0건` —
+     * 이 코드베이스가 내내 경계하는 그 침묵이다. 양방향을 **같은 규칙**으로 막는다.
+     */
+    const observedUniverse = savedSets.find((x) => x.id === observedId)?.universe;
+    const mismatch = observedUniverse !== undefined && observedUniverse !== universe
+        ? mismatchWhy(universe, observedUniverse)
+        : null;
 
     // 하루가 아니면 빈 식을 넘긴다 — `useCellSet` 이 **재료조차 안 당긴다**(조건 0건 = /day-replay
     // 미조회). 훅은 조건부로 못 부르므로 이 형태가 유일한 길이다.
-    const cellSet = useCellSet(daily ? funnel.slowExpr : null, funnel.slowSets, focusDate, DAY_SET_OPTS);
+    const cellSet = useCellSet(daily && mismatch === null ? funnel.slowExpr : null, funnel.slowSets, focusDate, DAY_SET_OPTS);
 
     const dayView = useMemo<ViewedSet>(() => {
         if (!daily) return EMPTY_VIEW;
         // 조건이 없거나 재료가 아직 없다 = **값을 모른다**(0건이 아니다). 빈 결과를 그대로 흘리면
         // 이 코드베이스에서 언제나 "조건에 다 걸렸다"로 읽힌다.
-        if (!cellSet.evaluable || cellSet.isLoading || cellSet.error !== null) return UNRESOLVED_VIEW;
+        // 산출물이 실제로 나왔을 때만 믿는다(`ready`) — `isLoading` 만 보면 react-query `paused` 처럼
+        // 둘 다 거짓인데 재료가 없는 틈이 샌다. ⚠ 그렇다고 `isLoading` 을 **빼면 안 된다**: `ready` 는
+        // 하루 스냅샷만 말하고 **격자 재료**(needsGrid && auto.isLoading)는 안 말한다. 둘 다 본다.
+        if (!cellSet.evaluable || !cellSet.ready || cellSet.isLoading || cellSet.error !== null) return UNRESOLVED_VIEW;
         // tooWide 면 산출물을 안 쓴다 — 중단 시점까지 모인 셀은 "코드 오름차순 앞 종목만"이라
         // 목록·시트로 세우면 조용히 편향된 표본을 진짜 집합처럼 보여 준다(단계 ③ 과 같은 판단).
         const items: FunnelItem[] = cellSet.tooWide ? [] : [...cellSet.items];
@@ -97,7 +112,7 @@ export function useBoundSet(_panelId: string): BoundSet {
             // 하루 우주의 항목은 **전부 좌표**다(전개할 하루 항목이 없다).
             viewedPointRefs: items.map((i) => ({ stockCode: i.stockCode, date: i.date, time: i.time ?? "" })),
         };
-    }, [daily, cellSet.evaluable, cellSet.isLoading, cellSet.error, cellSet.tooWide, cellSet.items]);
+    }, [daily, cellSet.evaluable, cellSet.ready, cellSet.isLoading, cellSet.error, cellSet.tooWide, cellSet.items]);
 
     // 이름만 — **우주 뱃지는 라벨 컴포넌트가 따로 그린다**(색·툴팁이 다른 채널이고, 같은 이름의
     // 집합이 두 우주에 있을 수 있다).
@@ -109,7 +124,7 @@ export function useBoundSet(_panelId: string): BoundSet {
     }, [savedSets, observedId, funnel.labelLook]);
 
     return {
-        view: daily ? dayView : funnel.view,
+        view: mismatch !== null ? UNRESOLVED_VIEW : daily ? dayView : funnel.view,
         label,
         universe,
         day: {
@@ -120,7 +135,7 @@ export function useBoundSet(_panelId: string): BoundSet {
             matched: daily ? cellSet.matched : 0,
             error: daily ? cellSet.error : null,
             themesReady: !daily || cellSet.themesReady,
-            unsupported: daily && !cellSet.evaluable ? NO_CONDITION : null,
+            unsupported: mismatch ?? (daily && !cellSet.evaluable ? NO_CONDITION : null),
         },
     };
 }

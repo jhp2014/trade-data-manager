@@ -83,6 +83,12 @@ export interface CellSetView {
      * 「조건 없음 = 안 보여줌」 규칙이 걸리는 자리라, 빈 결과를 "다 걸렀다"로 읽으면 안 된다.
      */
     evaluable: boolean;
+    /**
+     * **산출물이 실제로 나왔나** — `hits`/`matched` 를 믿어도 되는 유일한 비트.
+     * ⚠ `isLoading`·`error` 는 **대리 신호**다: react-query `paused`(오프라인)처럼 둘 다 거짓인데
+     * 재료가 없는 상태가 있어서, 그 틈으로 "제한 있음 + 0건"이 샌다. 여기는 그 틈이 없다.
+     */
+    ready: boolean;
 }
 
 
@@ -385,6 +391,7 @@ export function useCellSet(
         error: (snapQ.error as Error | null) ?? (needsGrid ? auto.error : null),
         themesReady: !needsZone || themes.ready,
         evaluable: narrowed.expr !== null,
+        ready: result !== null,
     };
 }
 

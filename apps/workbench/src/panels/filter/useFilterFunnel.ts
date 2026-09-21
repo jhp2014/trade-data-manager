@@ -116,18 +116,18 @@ export function useFilterFunnel(): FunnelView {
      * ⚠ 둘을 섞으면 안 된다 — 낟알을 새 식으로, 정산을 옛 식으로 재면 항목과 판정이 어긋난다.
      */
     const freshExpr = useWorkbench(selectObservedExpr);
-    const expr = useDebounced(freshExpr, EVAL_DEBOUNCE_MS);
-    const stages = useMemo(() => leavesOf(expr), [expr]);
     const freshSavedSets = useWorkbench((s) => s.savedSets);
     /**
-     * 평가가 보는 **저장물 스냅샷** — 식과 **같은 박자로** 늦는다.
-     *
-     * ⚠ 식만 늦추면 소용이 없다: 편집 = 저장이라 `savedSets` 가 매 편집마다 새 배열이고, 그게
-     * `baseCtx` 의 신원을 바꿔 리졸버 캐시(ctx WeakMap)를 통째로 버리게 한다 — 결국 **구독 패널
-     * 전부가 매 편집마다 다시 계산**된다(실측: 패널 6개에 메인 스레드 30초 차단).
-     * 평가 맥락은 한 벌로 움직여야 한다 — 식과 저장물이 다른 박자로 오면 그 둘이 어긋난 채 평가된다.
+     * ⚠ **한 타이머로 묶는다** — 식과 저장물을 각자 디바운스하면 타이머가 둘이라 한 렌더 어긋나고,
+     * 그 한 프레임 동안 **새 식 × 옛 저장물**로 참조가 풀린다(둘 다 "평가 맥락"이라 한 벌이어야 한다).
      */
-    const savedSets = useDebounced(freshSavedSets, EVAL_DEBOUNCE_MS);
+    const slow = useDebounced(
+        useMemo(() => ({ expr: freshExpr, sets: freshSavedSets }), [freshExpr, freshSavedSets]),
+        EVAL_DEBOUNCE_MS,
+    );
+    const expr = slow.expr;
+    const savedSets = slow.sets;
+    const stages = useMemo(() => leavesOf(expr), [expr]);
 
     const gv = useGroups();
     const ax = useRankAxes();
