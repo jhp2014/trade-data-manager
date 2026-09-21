@@ -104,8 +104,8 @@ describe("사전이 오기 전 — 아무것도 정하지 않는다", () => {
     it("보는 집합이 빈다 — 구독자는 isLoading 을 같이 봐야 한다(빈 집합 ≠ 전부 탈락)", () => {
         setStages([dateStage("s1", D1, D1)]);
         const v = readPending();
-        expect(v.viewOf(null).viewedItems).toEqual([]);
-        expect(v.viewOf(null).viewedChartKeys.size).toBe(0);
+        expect(v.view.viewedItems).toEqual([]);
+        expect(v.view.viewedChartKeys.size).toBe(0);
     });
 });
 
@@ -116,8 +116,8 @@ describe("유니버스 — 분모는 편집에 따라 조용히 변한다", () =
 
     it("걸린 게 없으면 안 거른다 — 구독자에게 '제한 없음'이라고 말한다", () => {
         const v = read();
-        expect(v.viewOf(null).isFiltering).toBe(false);
-        expect(v.viewOf(null).viewedItems).toHaveLength(3);
+        expect(v.view.isFiltering).toBe(false);
+        expect(v.view.viewedItems).toHaveLength(3);
     });
 
     it("해상도가 타점이면 분모도 타점 수 — 타점 0인 하루는 항목 하나로 남는다", () => {
@@ -139,8 +139,8 @@ describe("정산 — 표시와 정산이 같은 순서를 본다", () => {
     it("조건이 생존을 좁힌다", () => {
         setStages([dateStage("s1", D1, D1)]);
         const v = read();
-        expect(v.viewOf(null).isFiltering).toBe(true);
-        expect(v.viewOf(null).viewedItems.map((i) => i.stockCode).sort()).toEqual([B, A].sort());
+        expect(v.view.isFiltering).toBe(true);
+        expect(v.view.viewedItems.map((i) => i.stockCode).sort()).toEqual([B, A].sort());
     });
 
     it("빈 술어는 평가에서 빠진다 — '무제한'이 '전부 탈락'으로 뒤집히지 않게", () => {
@@ -162,17 +162,17 @@ describe("그룹 계층 상속 — '테마'를 걸면 '테마 ▸ 2차전지' �
 
     it("부모 그룹 필터가 자식 소속을 통과시킨다", () => {
         setStages([groupStage("테마")]);
-        expect(read(HIER).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([A]);
+        expect(read(HIER).view.viewedItems.map((i) => i.stockCode)).toEqual([A]);
     });
 
     it("자식 그룹 필터는 여전히 자식 소속만 — 상속은 위로만 흐른다", () => {
         setStages([groupStage("2차전지")]);
-        expect(read(HIER).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([A]);
+        expect(read(HIER).view.viewedItems.map((i) => i.stockCode)).toEqual([A]);
     });
 
     it("부모 부정(!테마)은 자식 소속도 떨군다 — 적용 집합 기준의 대칭", () => {
         setStages([{ id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "테마", neg: true }] }] }, scope: "day" }] }]);
-        expect(read(HIER).viewOf(null).viewedItems.map((i) => i.stockCode).sort()).toEqual([B, C].sort());
+        expect(read(HIER).view.viewedItems.map((i) => i.stockCode).sort()).toEqual([B, C].sort());
     });
 });
 
@@ -195,7 +195,7 @@ describe("그룹의 층위 상속 — 하루 그룹이 그날 타점 전부에 �
         setStages([groupStage("테마"), timeStage]);
         const v = read(DAY_GROUP);
         expect(v.grain).toBe("point");
-        expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`))
+        expect(v.view.viewedItems.map((i) => `${i.stockCode}@${i.time}`))
             .toEqual([`${A}@09:30:00`, `${A}@09:35:00`]); // B 의 타점은 그 그룹이 아니다
     });
 
@@ -204,7 +204,7 @@ describe("그룹의 층위 상속 — 하루 그룹이 그날 타점 전부에 �
             { id: "sg", enabled: true, predicates: [{ kind: "group", expr: { groups: [{ literals: [{ groupId: "테마", neg: true }] }] }, scope: "day" }] },
             timeStage,
         ]);
-        expect(read(DAY_GROUP).viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([B]);
+        expect(read(DAY_GROUP).view.viewedItems.map((i) => i.stockCode)).toEqual([B]);
     });
 });
 
@@ -227,14 +227,14 @@ describe("그룹 술어 scope — 같은 좌표 라벨을 두 층위로 묻는�
         setStages([labelStage("day")]);
         const v = read(LABELED);
         expect(v.grain).toBe("day");
-        expect(v.viewOf(null).viewedItems.map((i) => i.stockCode)).toEqual([A]);
+        expect(v.view.viewedItems.map((i) => i.stockCode)).toEqual([A]);
     });
 
     it("point scope = 라벨 붙은 **타점만** 행이 된다 — 해상도가 그룹 조건 하나로 타점까지 내려간다", () => {
         setStages([labelStage("point")]);
         const v = read(LABELED);
         expect(v.grain).toBe("point");
-        expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`)).toEqual([`${A}@09:30:00`]);
+        expect(v.view.viewedItems.map((i) => `${i.stockCode}@${i.time}`)).toEqual([`${A}@09:30:00`]);
     });
 
     // ⚠ 리뷰 F1 — scope 는 행 낟알만이 아니라 **평가의 층위**다. 다른 point 조건이 해상도를 타점으로
@@ -248,7 +248,7 @@ describe("그룹 술어 scope — 같은 좌표 라벨을 두 층위로 묻는�
         const v = read(LABELED);
         expect(v.grain).toBe("point");
         // 라벨은 09:30 하나지만 ∃ 는 하루 질문 — A 의 09:35 도 산다. B 는 라벨 없는 날이라 탈락.
-        expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`))
+        expect(v.view.viewedItems.map((i) => `${i.stockCode}@${i.time}`))
             .toEqual([`${A}@09:30:00`, `${A}@09:35:00`]);
     });
 
@@ -269,7 +269,7 @@ describe("그룹 술어 scope — 같은 좌표 라벨을 두 층위로 묻는�
         setStages([labelStage("point")]);
         const v = read(withOrphanDay);
         // C 의 라벨 좌표가 행이 되어 생존한다(후보 정렬 = 날짜 내림 → D2 의 C 가 앞).
-        expect(v.viewOf(null).viewedItems.map((i) => `${i.stockCode}@${i.time}`))
+        expect(v.view.viewedItems.map((i) => `${i.stockCode}@${i.time}`))
             .toEqual([`${C}@10:00:00`, `${A}@09:30:00`]);
     });
 });
@@ -278,35 +278,35 @@ describe("보는 집합 — 최종 생존", () => {
     it("조건이 걸리면 생존만 남는다", () => {
         setStages([dateStage("s1", D1, D1)]);
         const v = read();
-        expect(v.viewOf(null).isFiltering).toBe(true);
-        expect(v.viewOf(null).viewedItems).toHaveLength(2);
+        expect(v.view.isFiltering).toBe(true);
+        expect(v.view.viewedItems).toHaveLength(2);
     });
 });
 
 // ⚠ 이 계약을 골격 분봉·시트·분석이 구독한다 — 여기가 틀리면 세 화면이 같이 틀린다.
 describe("구독자용 펼치기 — 같은 집합을 두 알갱이로 낸다", () => {
     it("차트 열쇠 — 타점 항목은 제 차트로 접힌다", () => {
-        expect([...read().viewOf(null).viewedChartKeys].sort()).toEqual([`${A}|${D1}`, `${B}|${D1}`, `${C}|${D2}`].sort());
+        expect([...read().view.viewedChartKeys].sort()).toEqual([`${A}|${D1}`, `${B}|${D1}`, `${C}|${D2}`].sort());
     });
 
     it("**하루 항목은 그날 타점 전부로 펼쳐진다** — 하루 조건은 전 타점에 같은 값(정직한 반복)", () => {
-        const refs = read().viewOf(null).viewedPointRefs;
+        const refs = read().view.viewedPointRefs;
         expect(refs.filter((r) => r.stockCode === A).map((r) => r.time).sort()).toEqual(["09:30:00", "09:35:00"]);
     });
 
     it("**타점 없는 하루는 0개** — 지어내지 않는다", () => {
-        expect(read().viewOf(null).viewedPointRefs.some((r) => r.stockCode === C)).toBe(false);
+        expect(read().view.viewedPointRefs.some((r) => r.stockCode === C)).toBe(false);
     });
 
     it("펼친 결과가 타점 총수와 맞는다", () => {
-        expect(read().viewOf(null).viewedPointRefs).toHaveLength(points.length);
+        expect(read().view.viewedPointRefs).toHaveLength(points.length);
     });
 
     it("걸러진 뒤에도 두 알갱이가 같은 집합을 가리킨다", () => {
         setStages([dateStage("s1", D1, D1)]);
         const v = read();
-        expect([...v.viewOf(null).viewedChartKeys].sort()).toEqual([`${A}|${D1}`, `${B}|${D1}`].sort());
-        expect(v.viewOf(null).viewedPointRefs).toHaveLength(3); // A 2 + B 1
+        expect([...v.view.viewedChartKeys].sort()).toEqual([`${A}|${D1}`, `${B}|${D1}`].sort());
+        expect(v.view.viewedPointRefs).toHaveLength(3); // A 2 + B 1
     });
 });
 

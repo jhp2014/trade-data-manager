@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { selectEvalExpr, selectObservedStages, selectObservedUniverse, useWorkbench, type ChartView } from "../store/workbench.js";
+import { selectObservedStages, useWorkbench, type ChartView } from "../store/workbench.js";
 import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
+import { useFunnel } from "./filter/FunnelContext.js";
 import type { FilterStage } from "./filter/stage.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { usePlaneBus } from "../store/usePlaneBus.js";
@@ -101,18 +102,19 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // ── 표식의 **두 소스는 갈라 둔다**(2026-09-18 단계 ③):
     //    ◇ = **현재 집합의 후보**(하루·셀 우주) · 다리 표식(드롭 캡·띠) = 격자 파생.
     //    한 memo 에서 뽑으면 ◇ 를 집합으로 옮기는 손이 다리 표식을 같이 죽인다.
-    const setUniverse = useWorkbench(selectObservedUniverse);
+    // ⚠ 라우팅의 자는 **모드**다(2026-09-22) — 파생은 조건 0개면 종단으로 떨어져 하루의 빈 집합을 놓친다.
+    const setUniverse = useWorkbench((s) => s.filterMode);
     const funnelStages = useWorkbench(selectObservedStages);
-    // 평가는 **「계산」을 누른 순간의 식**으로만 — 안 눌렀으면 null 이라 15MB 를 안 당긴다.
-    const evalExpr = useWorkbench(selectEvalExpr);
+    const funnel = useFunnel();
     // 집합 평가는 **이 차트가 집합의 날짜를 보고 있을 때만** — 다른 날짜 차트가 두 번째 평가(와 15MB
     // 재료 요청)를 낳지 않게. 조건이 없으면 useCellSet 이 재료조차 안 당긴다.
     // ⚠ 기준은 `anchorDate`(= 전역 focus.date = 집합의 날짜)다 — 한때 `searchDate` 와 비교했는데
     //   `viewDate` 가 그것에서 파생돼 사실상 `!pinMinute` 이었다(드리프트한 차트는 통과하고, 핀을 켜면
     //   집합의 날짜를 보면서도 ◇ 가 사라지는 정반대 동작). `drifted` 가 그 판정의 단일 출처다.
-    // opts 는 목록과 **같은 상수**를 쓴다(안 그러면 메모가 갈려 5.7초가 두 번 돈다).
-    const cellExpr = setUniverse === "daily" && !drifted ? evalExpr : null;
-    const cellSet = useCellSet(cellExpr, viewDate, DAY_SET_OPTS);
+    // opts 는 목록과 **같은 상수**를 쓴다(안 그러면 메모가 갈려 하루 평가가 두 번 돈다).
+    // 식·저장물은 깔때기의 **늦은 한 벌**을 그대로 쓴다 — 박자가 갈리면 목록과 ◇ 가 다른 순간을 그린다.
+    const cellExpr = setUniverse === "daily" && !drifted ? funnel.slowExpr : null;
+    const cellSet = useCellSet(cellExpr, funnel.slowSets, viewDate, DAY_SET_OPTS);
     const autoPoints = useMemo<AutoPointInput[]>(() => {
         // 평가 중에는 안 그린다 — 표식 층의 계산이 캔들(시선의 소비자)을 지연시키면 안 된다.
         if (cellExpr === null || cellSet.isLoading) return [];

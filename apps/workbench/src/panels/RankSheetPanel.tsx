@@ -436,15 +436,6 @@ function SheetBody({ panelId, rowMode, setRowMode, navRef }: {
     //    상주하는 순간 그건 문맥이 아니라 컨트롤이다. 개수는 툴팁으로 내리고 자리는 안 움직인다(규약 ②).
     const controls: ControlSpec[] = [
         {
-            // 고정/해제 — **고르는 손이 아니다**(1비트). 고르는 자리는 여전히 집합 편성/작업 대상 하나고,
-            // 여기서는 "지금 따라가는 것을 이 패널에 묶는다"만 한다(2026-09-18 단계 ④).
-            kind: "toggle", id: "setPin", name: "집합 고정", label: "고정",
-            help: linked.pinned !== null
-                ? "고정 해제 — 다시 전역 선택을 따라갑니다"
-                : "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다",
-            on: linked.pinned !== null, set: linked.togglePin,
-        },
-        {
             kind: "choice", id: "rowMode", name: "행",
             help: "행의 단위 — 타점(분봉 시각까지) / 하루(후보 하루 × day 축, 타점 없이도 값이 선다)",
             values: [{ v: "point", label: "타점" }, { v: "day", label: "하루" }],

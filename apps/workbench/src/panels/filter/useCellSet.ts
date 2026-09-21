@@ -3,8 +3,9 @@
 //
 // ## 왜 컨텍스트가 아니라 훅인가
 // `FunnelProvider` 같은 전역 한 벌로 만들면 둘이 깨진다:
-//  ① **성능** — 존 순위 칸 하나가 5.7초다(실측: 분 단면이 분당 캐시라 지배 비용이 분 수 ~390).
-//     전역이면 그 5.7초가 앱 전체의 편집마다 돈다.
+//  ① **성능** — 한 번이 0.25~0.47초다(2026-09-22 실측, 날짜 3개 · Node/브라우저 양쪽). 지배 비용은
+//     **분 단면 굽기**(720개 ~250ms)이고 셀 수가 아니다. 전역이면 그게 앱 전체의 편집마다 돈다.
+//     ⚠ 옛 주석의 「5.7초」는 **재현되지 않았다** — 귀속(분 단면)은 맞았고 크기만 28배 틀렸다.
 //  ② **날짜가 하나**라는 가정이 굳는다 — 패널마다 다른 날짜를 고정(pin)하는 ③ 과 "종단 시트 ∥ 오늘
 //     후보"를 나란히 보는 ④ 가 원천봉쇄된다.
 // 대신 **모듈 메모**로 같은 (조건, 날짜, 재료)의 중복 평가를 접는다 — 두 패널이 같은 집합을 봐도 한 벌.
@@ -26,7 +27,6 @@ import {
 } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
-import { selectEvalStale, useWorkbench } from "../../store/workbench.js";
 import { useAutoPoints } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { useThemeKnobParams } from "./themeLink.js";
@@ -37,7 +37,7 @@ import { stageDeficiency, type Universe } from "./universe.js";
 
 /**
  * 하루 집합의 평가 옵션 — **소비자가 전부 이 상수를 쓴다**(목록·차트).
- * opts 는 메모 키에 실리므로 한 소비자만 다르게 주면 같은 (날짜, 조건)이 두 벌로 갈려 5.7초가 두 번
+ * opts 는 메모 키에 실리므로 한 소비자만 다르게 주면 같은 (날짜, 조건)이 두 벌로 갈려 평가가 두 번
  * 돌고, 잘린 날엔 목록(종목째 컷)과 차트(앞에서 컷)가 **다른 셀**을 그린다(리뷰가 잡은 자리).
  *
  * ## 상한 300 — 값을 치르는 곳은 **하류**다 (2026-09-20 사용자 확정)
@@ -79,16 +79,12 @@ export interface CellSetView {
     /** 존 순위 재료 준비 여부 — 멤버십 로딩 중엔 그 칸이 조용히 비므로 화면이 모름을 말할 재료. */
     themesReady: boolean;
     /**
-     * 한 번이라도 「계산」을 눌렀나. false 면 이 수들은 **0건이 아니라 "아직 안 셈"** 이다 —
-     * 화면이 그 둘을 갈라 말해야 한다("조건에 다 걸렸다"로 읽히는 그 실패).
+     * 이 우주에서 **평가할 조건이 하나라도 있나**. false = 조건 0개이거나 전부 결손 —
+     * 「조건 없음 = 안 보여줌」 규칙이 걸리는 자리라, 빈 결과를 "다 걸렀다"로 읽으면 안 된다.
      */
-    computed: boolean;
-    /** 계산 뒤 조건·저장물이 바뀌었나 — 화면은 옛 결과를 **계속 그리면서** 이걸 말한다. */
-    stale: boolean;
+    evaluable: boolean;
 }
 
-/** 아직 안 커밋된 상태의 저장물 — 같은 객체라야 아래 메모들이 헛돌지 않는다. */
-const EMPTY_SETS: readonly { id: string; expr: SetExpr; universe: Universe }[] = [];
 
 /**
  * 식(종단 어휘) → 셀 식(core 어휘). **결손 잎은 제 묶음을 통째로 빼낸다** — 그 사실은 status 가 말한다.
@@ -254,16 +250,16 @@ const withTransition = (p: CellPredicate, t: FilterStage["transition"]): CellPre
     (t === undefined || p.transition !== undefined ? p : { ...p, transition: t });
 
 // ── 모듈 메모 — 소비자가 셋이 된다(순회 목록 · 차트 ◇ · 날짜 경계 판정). 같은 (하루 재료, 조건, 노브)
-//    조합을 두 번 평가하면 존 순위 조건에서 5.7초가 그대로 두 번 든다.
+//    조합을 두 번 평가하면 그 비용(0.25~0.47초)이 그대로 두 번 든다.
 //    키의 바깥 축은 **격자 파생 배열 참조**(WeakMap) — 그게 갈리면 재료가 갈린 것이라 캐시도 같이
 //    죽는 게 맞다(`themeRank/sectionSeries` 의 분 단면 WeakMap 과 같은 수법·같은 이유).
 //    안쪽 키에 날짜·조건·노브·상한을 싣는다.
 const MEMO = new WeakMap<object, Map<string, CellEvalResult>>();
 /**
  * 한 재료(하루 스냅샷)당 살려 두는 조합 수. 산수는 **동시에 서 있는 서로 다른 조건 벌**이다:
- * 핀 둘(시트·결과) + 작업 깔때기(작업 대상) + 차트 = 4 가 현실적 상한이고, 조건을 만지는 동안
+ * 구독 패널 셋(시트·결과·작업 대상) + 차트 = 4 가 현실적 상한이고, 조건을 만지는 동안
  * 직전 것도 살아 있어야 편집이 매끄럽다(단계 ④ 에서 3 → 6). 넘치면 LRU 스래싱으로 **매 렌더
- * 재평가**가 나는데 그 대가가 5.7초다. 담는 것은 결과 배열이라 힙 부담은 작다.
+ * 재평가**가 나는데 그 대가가 0.25~0.47초다. 담는 것은 결과 배열이라 힙 부담은 작다.
  */
 const MEMO_CAP = 6;
 
@@ -308,28 +304,22 @@ export const cellHitToItem = (h: CellHit, date: string): FunnelItem => ({
     time: minuteToHms(h.min),
 });
 
-export function useCellSet(fresh: SetExpr | null, date: string, opts?: CellEvalOptions): CellSetView {
-    // ⚠ 들어오는 `expr` 은 **이미 커밋된 것**이다 — 호출부가 `selectEvalExpr`(「계산」을 누른 순간의
-    //   식)로 만든다. 여기서 또 늦추지 않는다: 관문이 두 곳이면 어느 쪽이 관문인지 알 수 없다.
-    //
-    // 2026-09-21 부터 관문은 디바운스가 아니라 **스냅샷**이다. 하루 평가는 손을 멈춘 뒤 한 번이라도
-    // 여전히 자동이라, 시작을 사람이 정하려면 박자가 아니라 "누른 순간의 한 벌"이어야 한다.
-    // 날짜는 **스냅샷 밖**이다 — 조건이 안 바뀐 이동이고 그게 하루 모드의 작업 자체다.
-    const expr = fresh;
-    // 참조를 펼치려면 저장 집합이 필요하다 — **같은 스냅샷**을 쓴다(식과 저장물이 어긋나면 안 된다).
-    const evalSets = useWorkbench((st) => st.evalSets);
-    const savedSets = evalSets ?? EMPTY_SETS;
-    const computed = evalSets !== null;
-    // 낡음 — 계산 뒤 저장물이 바뀌었다. 화면은 **옛 결과를 계속 그리면서** 이걸 말한다
-    // (비우면 이 코드베이스에서 언제나 "조건에 다 걸렸다"로 읽힌다).
-    const stale = useWorkbench(selectEvalStale);
+export function useCellSet(
+    expr: SetExpr | null,
+    /** 참조를 펼칠 저장물 — **식과 같은 박자**여야 한다(호출부가 `funnel.slowSets` 를 그대로 넘긴다). */
+    savedSets: readonly { id: string; expr: SetExpr; universe: Universe }[],
+    date: string,
+    opts?: CellEvalOptions,
+): CellSetView {
+    // ⚠ 늦추는 일은 **호출부가 한다** — 2026-09-22 에 「계산」 관문이 걷히면서 박자의 주인이
+    //   깔때기 한 곳(`slowExpr`/`slowSets`)으로 모였다. 여기서 또 늦추면 관문이 두 곳이 된다.
     const narrowedEarly = useMemo(
         () => (expr === null
             ? { expr: null, stages: [] as CellStageStatus[] }
             : toCellExpr(expr, (id) => savedSets.find((f) => f.id === id))),
         [expr, savedSets],
     );
-    // 평가할 조건이 없으면 **하루 재료를 안 당긴다** — /day-replay 는 한 날 ~15MB 다.
+    // 평가할 조건이 없으면 **하루 재료를 안 당긴다** — /day-replay 는 한 날 13MB 다(실측).
     // (라벨 층은 이 재료가 없어도 선다 — 멤버십에서 오므로. 조건 없음 = 안 보여줌 규칙과 같은 결.)
     const snapQ = useDaySnapshot(narrowedEarly.expr !== null ? date : null);
     const stocks = snapQ.data?.stocks;
@@ -394,21 +384,8 @@ export function useCellSet(fresh: SetExpr | null, date: string, opts?: CellEvalO
         isLoading: snapQ.isLoading || (needsGrid && auto.isLoading),
         error: (snapQ.error as Error | null) ?? (needsGrid ? auto.error : null),
         themesReady: !needsZone || themes.ready,
-        computed,
-        stale,
+        evaluable: narrowed.expr !== null,
     };
-}
-
-/**
- * 머리글이 읽는 **계산 상태** — 「계산」 버튼과 「낡음」 표시가 이 하나를 본다(2026-09-21).
- *
- * 패널마다 도는 `useCellSet` 과 **같은 세대**로 잡으므로 답이 갈리지 않는다(세대가 관문이라
- * 어느 훅에서 잡든 같은 순간의 값이다).
- */
-export function useDayEvalStatus(): { computed: boolean; stale: boolean } {
-    const computed = useWorkbench((s) => s.evalSets !== null);
-    const stale = useWorkbench(selectEvalStale);
-    return { computed, stale };
 }
 
 /** 이 셀 식이 그 술어를 쓰나 — 재료 게이트(격자·분 단면)의 자. 트리를 끝까지 건다. */

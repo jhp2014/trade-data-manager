@@ -1,7 +1,7 @@
-// 집합 편성 패널 — **가운데가 본론, 집합은 상시 한 줄**이라는 배치 규약.
+// 집합 편성 패널 — **줄 0 = 열린 집합 하나**라는 배치 규약(2026-09-22).
 //
-// 여기서 재는 건 조건 판정이 아니라 **자리**다: 처음 열었을 때 보이는 게 보드인가, 집합 줄이 늘 서서
-// "지금 보는 집합"을 말하는가, 관리(저장·고정·열기·이름·삭제)가 줄 끝 판 **하나**에 사는가(우클릭 없음).
+// 여기서 재는 건 조건 판정이 아니라 **자리**다: 줄 0 에 지금 열린 집합 하나가 서는가, 목록과
+// 관리(새 집합·열기·이름·삭제)가 그 칩의 판 **하나**에 사는가, 「집합 편성」 글자와 붙박이 칩이 없는가.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { exprOfStages, leavesOf, refNode, type SetExpr, type SetTerm } from "../expr.js";
 import { fireEvent, render, within } from "@testing-library/react";
@@ -38,73 +38,72 @@ const btnByTitle = (c: HTMLElement, prefix: string): HTMLElement => {
 const chipByText = (c: HTMLElement, text: string): HTMLElement | undefined =>
     [...c.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(text));
 
-const RESET = { selectedSetRef: null, savedSets: [], panelUi: {}, filterMode: "longitudinal" as const, evalSets: null };
+const RESET = { savedSets: [], panelUi: {}, filterMode: "longitudinal" as const };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
-describe("집합 줄은 상시 한 줄 — 처음 보이는 것이 곧 본론(조건 목록)이다", () => {
-    it("붙박이 둘(전체·연동)은 늘 서 있다", () => {
+describe("줄 0 — 열린 집합 하나", () => {
+    it("붙박이 칩(전체·연동)은 없고, 머리글의 「집합 편성」 글자도 없다", () => {
         const { container } = renderPanel();
-        expect(chipByText(container, "전체")).toBeDefined();
-        expect(chipByText(container, "연동")).toBeDefined();
+        expect(chipByText(container, "전체")).toBeUndefined();
+        expect(chipByText(container, "연동")).toBeUndefined();
+        expect(container.textContent).not.toContain("집합 편성"); // 패널 탭이 이미 이름을 말한다
         expect(container.textContent).toContain("→"); // 전체 → 생존은 머리글이 상시로 말한다
     });
 
-    // 칩 줄은 **한 줄로 못 박혀 있다**(ScrollRow): 두 줄이 되면 본문 높이가 튀어 보드가 밀린다.
-    it("집합 줄은 줄바꿈하지 않는다 — 넘치면 가로로 굴린다, 안내는 툴팁으로", () => {
+    it("줄 0 의 칩은 **테두리만 액센트**다 — 채움은 드릴다운 열림 전용", () => {
+        seedEditing(exprOfStages([]));
         const { container } = renderPanel();
-        const row = chipByText(container, "전체")!.parentElement!;
-        expect(row.style.flexWrap).toBe("nowrap");
-        expect(row.style.overflowX).toBe("auto");
-        expect(container.querySelector("[title*='집합 관리']")).toBeTruthy(); // 안내는 줄 이름 툴팁에만 산다
-        expect(container.textContent).not.toContain("줄 끝 ⋯");
+        const chip = btnByTitle(container, "집합 목록");
+        expect(chip.style.background).toBe("transparent");
+        expect(chip.style.borderColor || chip.style.border).toContain("accent");
+        expect(chip.textContent).toContain("▾"); // 목록을 여는 손잡이
     });
 });
 
-describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는 그 값", () => {
+describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·삭제)", () => {
     const ONE = [{ id: "fs1", name: "돌파", expr: exprOfStages([]), universe: "longitudinal" as const }];
 
-    it("저장 집합은 고정 없이는 줄에 안 서고(⋯ 판에만), 고르면 줄에 서며 다시 누르면 연동으로 돌아온다", () => {
-        useWorkbench.setState({ savedSets: ONE });
+    it("판에서 고르면 **그 집합이 열리고**(뿌리가 된다) 판이 닫힌다", () => {
+        seedEditing(exprOfStages([]), ONE);
         const { container, baseElement } = renderPanel();
-        expect(chipByText(container, "돌파")).toBeUndefined();
-
-        fireEvent.click(btnByTitle(container, "집합 관리"));
+        fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
-        fireEvent.click(btnByTitle(mgr, "돌파 —")); // 판에서 고르면 판이 닫힌다
-        expect(useWorkbench.getState().selectedSetRef).toEqual({ kind: "saved", setId: "fs1" });
-        expect(chipByText(container, "돌파")).toBeDefined(); // 고른 것은 줄에 선다
-
-        fireEvent.click(btnByTitle(container, "돌파 —"));
-        expect(useWorkbench.getState().selectedSetRef).toBeNull();
+        fireEvent.click(btnByTitle(mgr, "돌파 —"));
+        expect(useWorkbench.getState().editingSetId).toBe("fs1");
+        expect(useWorkbench.getState().editPath, "연 집합이 곧 뿌리다").toEqual(["fs1"]);
     });
 
-    it("칩에는 멤버 수가 안 적힌다 — 이름만(수는 툴팁)", () => {
-        useWorkbench.setState({ savedSets: ONE, selectedSetRef: { kind: "saved", setId: "fs1" } });
-        const { container } = renderPanel();
-        expect(chipByText(container, "돌파")!.textContent).toBe("돌파");
-        expect(chipByText(container, "전체")!.textContent).toBe("전체");
+    it("판은 **지금 모드의 집합만** 세운다", () => {
+        seedEditing(exprOfStages([]), [...ONE, { id: "fs-day", name: "오늘후보", expr: exprOfStages([]), universe: "daily" as const }]);
+        const { container, baseElement } = renderPanel();
+        fireEvent.click(btnByTitle(container, "집합 목록"));
+        const mgr = baseElement as HTMLElement;
+        expect(within(mgr).queryByText("돌파")).toBeTruthy();
+        expect(within(mgr).queryByText("오늘후보"), "하루 집합은 종단 모드 목록에 없다").toBeNull();
     });
 
-    it("칩 우클릭은 아무것도 안 연다 — 관리는 줄 끝 판 하나(고정·열기·이름·삭제)", () => {
-        useWorkbench.setState({ savedSets: ONE, selectedSetRef: { kind: "saved", setId: "fs1" } });
+    it("고정 칸이 없다 — 줄에 칩이 하나뿐이라 고정할 것이 없다", () => {
+        seedEditing(exprOfStages([]), ONE);
         const { container, baseElement } = renderPanel();
-        fireEvent.contextMenu(btnByTitle(container, "돌파 —"));
-        expect(within(baseElement as HTMLElement).queryByText("보드에 열기")).toBeNull();
-
-        fireEvent.click(btnByTitle(container, "집합 관리"));
+        fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
-        // 고정 — 줄에 늘 선다(고른 것과 무관). 판에서도 안 사라진다(해제할 자리가 그 판뿐이라).
-        fireEvent.click(btnByTitle(mgr, "돌파 — 줄에 고정"));
-        expect(btnByTitle(mgr, "돌파 — 고정 해제").getAttribute("aria-pressed")).toBe("true");
-        // 삭제는 2단계 — 한 번으로는 안 지워진다.
-        fireEvent.click(btnByTitle(mgr, "삭제(한 번 더"));
+        expect([...mgr.querySelectorAll("button")].some((b) => (b.title ?? "").includes("고정"))).toBe(false);
+    });
+
+    it("삭제는 2단계 — 한 번으로는 안 지워지고, 목록이 비지도 않는다", () => {
+        seedEditing(exprOfStages([]), ONE);
+        const { container, baseElement } = renderPanel();
+        fireEvent.click(btnByTitle(container, "집합 목록"));
+        const mgr = baseElement as HTMLElement;
+        // ⚠ **그 행의** 손잡이를 눌러야 한다 — 목록에 여러 행이 있으면 첫 행이 잡힌다.
+        const row = [...mgr.querySelectorAll("div")].find((d) => (d.textContent ?? "").startsWith("돌파") && d.querySelector("button[title^='삭제']"))!;
+        fireEvent.click(within(row).getByTitle(/^삭제\(한 번 더/));
         expect(useWorkbench.getState().savedSets.some((x) => x.id === "fs1")).toBe(true);
-        fireEvent.click(btnByTitle(mgr, "정말 삭제"));
+        fireEvent.click(within(row).getByTitle(/^정말 삭제/));
         expect(useWorkbench.getState().savedSets.some((x) => x.id === "fs1")).toBe(false);
-        // ⚠ 목록이 비지는 않는다 — **편집할 집합은 늘 하나 있다**(빈 집합이 다시 선다).
-        expect(useWorkbench.getState().savedSets).toHaveLength(1);
-        expect(useWorkbench.getState().selectedSetRef).toBeNull(); // 보던 집합이 지워지면 포인터가 풀린다
+        // ⚠ 목록이 비지는 않는다 — **편집할 집합은 늘 하나 있다**.
+        expect(useWorkbench.getState().savedSets.length).toBeGreaterThan(0);
     });
 
     // 편집 = 저장이라 「저장」 버튼이 없다(2026-09-20) — 남은 손은 **＋ 새 집합** 하나다.
@@ -112,7 +111,7 @@ describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는
         seedEditing(exprOfStages([{ id: "st1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }]), ONE);
         const before = useWorkbench.getState().savedSets.length;
         const { container, baseElement } = renderPanel();
-        fireEvent.click(btnByTitle(container, "집합 관리"));
+        fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
         expect(mgr.querySelector("input[placeholder='집합 이름']"), "「저장」 입력이 없다").toBeNull();
 
@@ -127,7 +126,7 @@ describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는
     it("이름 바꾸기 — 행의 이름 버튼 → 입력 → Enter. 다른 집합과 같은 이름은 무시된다", () => {
         useWorkbench.setState({ savedSets: [...ONE, { id: "fs2", name: "눌림", expr: exprOfStages([]), universe: "longitudinal" as const }] });
         const { container, baseElement } = renderPanel();
-        fireEvent.click(btnByTitle(container, "집합 관리"));
+        fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
         fireEvent.click([...mgr.querySelectorAll("button")].find((b) => b.title === "이름 바꾸기")!);
         const input = mgr.querySelector("input[value='돌파']") as HTMLInputElement;
@@ -155,7 +154,7 @@ describe("집합 관리 판 — 쓰는 곳으로 구획한다", () => {
         useWorkbench.setState({ savedSets: [shared, a, b, lone], editingSetId: "a", editPath: ["a"] });
 
         const { container, baseElement } = renderPanel();
-        fireEvent.click(btnByTitle(container, "집합 관리"));
+        fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
         expect(mgr.textContent).toContain("여럿이 쓰는 집합");
         expect(mgr.textContent).toContain("아무도 안 쓰는 집합");
@@ -184,13 +183,12 @@ describe("머리글 — 모드와 계산", () => {
         expect(long.container.textContent).toContain("→");
     });
 
-    it("하루 모드는 **「계산」 버튼**이 서고, 안 눌렀으면 그 사실을 말한다", () => {
-        seedEditing(exprOfStages([cellStage]));
-        useWorkbench.setState({ filterMode: "daily", evalSets: null });
+    // 2026-09-22: 「계산」 관문은 철회됐다(실측 0.25~0.47초) — 하루도 종단처럼 자동이다.
+    it("하루 모드에는 「계산」도 「낡음」도 없고, 종단 정산도 안 쓴다", () => {
+        seedEditing(exprOfStages([cellStage]), [], "daily");
         const daily = renderPanel();
-        expect(daily.container.textContent).toContain("계산");
-        // ⚠ 이 한 줄이 본론이다 — 빈 화면이 "조건에 다 걸렸다"로 읽히지 않게 화면이 갈라 말한다.
-        expect(daily.container.textContent).toContain("아직 계산 안 함");
+        expect(daily.container.textContent).not.toContain("계산");
+        expect(daily.container.textContent).not.toContain("낡음");
         expect(daily.container.textContent, "종단 정산은 안 쓴다").not.toContain("→");
     });
 

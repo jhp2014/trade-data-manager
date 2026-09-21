@@ -54,14 +54,14 @@ export function HotPointsPanel(): JSX.Element {
         : subject.time !== null ? pointKeyOf(subject.code, subject.date, subject.time)
             : chartKeyOf(subject.code, subject.date);
 
-    const selectedView = v.viewOf(null);
-    const filtersOn = stages.some((st) => st.enabled !== false && st.predicates.length > 0);
-    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null) || filtersOn;
+    // ⚠ 오버레이 게이트는 **뷰 계약**(isFiltering)이다 — 잎 수로 재면 `OR(참조…)` 집합처럼
+    //   조건 잎이 0인데 참조로 좁혀진 경우에 멤버 표시가 조용히 꺼진다(useSetViews 의 같은 규칙).
+    const selectedView = v.view;
     const memberKeys = useMemo<ReadonlySet<string> | null>(
-        () => (pointerOn && selectedView.isFiltering && !selectedView.broken
-            ? new Set(selectedView.viewedPointRefs.map((p) => pointKeyOf(p.stockCode, p.date, p.time)))
+        () => (selectedView.isFiltering && !selectedView.broken
+            ? new Set(selectedView.viewedPointRefs.map((p: { stockCode: string; date: string; time: string }) => pointKeyOf(p.stockCode, p.date, p.time)))
             : null),
-        [pointerOn, selectedView],
+        [selectedView],
     );
 
     // 되짚기 — 보드 목록의 급타점 줄에서 온 신호(편집면이 달라 결과와 키를 가른다).

@@ -28,12 +28,12 @@ import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { projectionOf } from "../../lib/useThemeProjection.js";
 import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import { unionNames } from "../../lib/groupIndex.js";
-import type { SetRef } from "../../lib/setRef.js";
-import { selectObservedExpr, useWorkbench } from "../../store/workbench.js";
+import { selectObservedExpr, selectObservedSetId, useWorkbench } from "../../store/workbench.js";
+import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { useDebounced, EVAL_DEBOUNCE_MS } from "../../lib/useDebounced.js";
 import { buildAxisOrderIndex, buildAxisOrderIndexes } from "./axisLookup.js";
 import { resolveBound, toFunnelStage, type EvalLookup } from "./evaluate.js";
-import { activeExpr, leavesOf } from "./expr.js";
+import { activeExpr, leavesOf, type SetExpr } from "./expr.js";
 import type { LabelLookup } from "./label.js";
 import { refGrainOf, refMembersOf, type DefMaterials, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
 import { useSetViews, type ViewedSet } from "./useSetViews.js";
@@ -53,9 +53,8 @@ export interface FunnelView {
     stagesOrdered: OrderedStage[];
     /** 평가에 실제로 들어간 단계 — stagesOrdered 에서 활성만 남긴 것(정산 인덱스와 1:1). */
     active: FilterStage[];
-    // ⚠ "지금 보는 집합"(viewedItems 등)은 **계약에 없다** — viewOf 로만 나간다. 한때 최상위 필드였는데,
-    // 선택 포인터 도입 후 그 필드는 포인터를 무시한 작업 깔때기 시선이라, 직접 읽는 소비자가 생기는
-    // 순간 "목록에서 집합을 골랐는데 이 패널만 안 따라온다"는 조용한 갈림이 된다.
+    // ⚠ "지금 보는 집합"(viewedItems 등)은 **계약에 없다** — `view` 로만 나간다. 로딩 가드와 시선
+    // 겹치기가 그 안에 들어 있어서, 직접 읽는 소비자가 생기면 그 화면만 가드를 빠뜨린다.
     /** 정산 결과. 로딩 중이면 null. */
     result: FunnelResult | null;
     /** 죽은 참조(지워진 그룹·축)를 든 단계 id — 화면이 표시하고, 정리는 사용자가 결정한다. */
@@ -69,18 +68,25 @@ export interface FunnelView {
     // (blockedLabels — "이 항목을 어느 단계가 막았나" — 도 있었다: 결과 목록의 열이었는데 목록과
     //  함께 갔다. 필요해지면 blockedBy(core)를 다시 감싸면 된다.)
     /**
-     * 집합 참조 풀기 — 짚음 채널·패널 바인딩이 실은 SetRef 를 항목 집합으로. 깔때기가 이미 들고 있는
-     * 재료(유니버스·사전·판정기)를 그대로 쓰므로 **여기가 유일한 리졸버 자리**다(두 벌이면 딴 답을 낸다).
-     * 같은 참조는 캐시로 한 번만 푼다(정규화 키) — 재료가 바뀌면 캐시째 새로 선다. 로딩 중엔 빈 집합.
+     * 저장 집합 하나 풀기 — 깔때기가 이미 들고 있는 재료(유니버스·사전·판정기)를 그대로 쓰므로
+     * **여기가 유일한 리졸버 자리**다(두 벌이면 딴 답을 낸다). 같은 id 는 캐시로 한 번만 푼다 —
+     * 재료가 바뀌면 캐시째 새로 선다. 로딩 중엔 빈 집합. 소비자는 집합 목록의 건수 하나다.
      */
-    resolveSet: (ref: SetRef) => ResolvedSet;
+    resolveSet: (setId: string) => ResolvedSet;
     /**
-     * 패널이 보는 집합 — 바인딩 하나로 ViewedSet 을 돌려준다.
-     * null = **연동**(필터 패널의 선택 포인터를 따라간다 — 목록에서 고른 집합, 없으면 작업 깔때기 시선),
-     * 참조 = 그 집합에 고정(층위 변환 포함).
-     * 소비 패널은 viewOf(자기 바인딩) 하나만 읽으면 되고, 바인딩이 없던 시절의 코드와 같은 필드를 쓴다.
+     * 구독 패널이 보는 집합 — **관측 집합(경로의 뿌리) 하나**(2026-09-22).
+     * 고를 것이 없어졌으므로 인자도 없다 — 다른 집합을 보려면 그 집합을 **열면**(`editSet`) 된다.
      */
-    viewOf: (ref: SetRef | null) => ViewedSet;
+    view: ViewedSet;
+    /**
+     * **평가가 보는 늦은 식과 저장물** — 종단(여기)과 하루(`useCellSet`)가 **같은 박자**를 써야 한다.
+     *
+     * ⚠ 하루 경로가 제 디바운스를 따로 걸면 두 우주의 수가 서로 다른 순간의 조건에서 나오고, 참조
+     * 해결(저장물)과 식이 어긋난 채 평가된다(2026-09-22 「계산」 관문을 걷으면서 생긴 자리 —
+     * 그 전에는 하루의 박자를 `evalSets` 스냅샷이 대신하고 있었다).
+     */
+    slowExpr: SetExpr;
+    slowSets: readonly SavedSet[];
 }
 
 /** 재료 세대 일련번호 — 값 자체엔 뜻이 없고 "바뀌었다"만 말한다(발급은 아래 materialsEpoch). */
@@ -296,7 +302,7 @@ export function useFilterFunnel(): FunnelView {
      * 평가에 들어가는 식 — 꺼졌거나 빈 조건은 걷힌다.
      *
      * ⚠ **손을 멈춘 뒤에 따라온다**(디바운스). 편집이 곧 저장이라 한 글자마다 식이 바뀌는데,
-     * 하루 우주에서 존 순위 조건이 켜져 있으면 평가 한 번이 5.7초다. 저장은 즉시고 평가만 늦춘다
+     * 하루 우주는 평가 한 번이 0.25~0.47초 + `/day-replay` 13MB 다. 저장은 즉시고 평가만 늦춘다
      * (편집 버퍼를 되살리는 대신 — decisions).
      */
     const evalExprMemo = useMemo(() => activeExpr(expr), [expr]);
@@ -417,7 +423,8 @@ export function useFilterFunnel(): FunnelView {
         [baseCtx, grain, active, result],
     );
 
-    const { resolveSet, viewOf } = useSetViews(result, setCtx);
+    const observedId = useWorkbench(selectObservedSetId);
+    const { resolveSet, view } = useSetViews(result, setCtx, observedId);
 
     const deadStageIds = useMemo(
         () => (isLoading ? [] : stages.filter((s) => s.predicates.some((p) => isPredicateDead(p, grainLook))).map((s) => s.id)),
@@ -447,8 +454,10 @@ export function useFilterFunnel(): FunnelView {
             deadStageIds,
             labelLook,
             resolveSet,
-            viewOf,
+            view,
+            slowExpr: expr,
+            slowSets: savedSets,
         }),
-        [isLoading, grain, universe, stagesOrdered, active, result, deadStageIds, labelLook, resolveSet, viewOf],
+        [isLoading, grain, universe, stagesOrdered, active, result, deadStageIds, labelLook, resolveSet, view, expr, savedSets],
     );
 }

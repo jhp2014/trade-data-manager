@@ -84,7 +84,7 @@ describe("편집 = 저장 — 「저장 안 한 변경」이라는 상태가 없
         const store = await loadStore();
         store.getState().createSet();
         const id = store.getState().editingSetId;
-        expect(JSON.parse(storage.get("wb.editingSetId.v1")!)).toBe(id);
+        expect(JSON.parse(storage.get("wb.editSeat.v1")!).longitudinal.id).toBe(id);
     });
 });
 
@@ -134,17 +134,6 @@ describe("삭제 — 깨진 참조는 표식을 달고 남는다", () => {
         expect(refsOf(outerExpr), "참조는 그대로 — 리졸버가 '깨짐'으로 받는다").toEqual([inner]);
     });
 
-    it("선택한 집합을 지우면 포인터가 풀린다 — 연동 패널 전부가 죽은 참조를 보게 두지 않는다", async () => {
-        stubStorage();
-        const store = await loadStore();
-        store.getState().createSet();
-        const second = store.getState().editingSetId;
-        store.getState().selectSet({ kind: "saved", setId: second });
-        expect(store.getState().selectedSetRef).toEqual({ kind: "saved", setId: second });
-
-        store.getState().deleteSet(second);
-        expect(store.getState().selectedSetRef).toBeNull();
-    });
 });
 
 describe("이름 — 손으로 지은 것만 충돌을 본다", () => {
@@ -245,7 +234,7 @@ describe("편집 대상과 관측 대상", () => {
         store.getState().addFilterStage([datePred]);
         store.getState().addGroupTerm();
         const inner = store.getState().editingSetId;
-        expect(JSON.parse(storage.get("wb.editPath.v1")!)).toEqual([root, inner]);
+        expect(JSON.parse(storage.get("wb.editSeat.v1")!).longitudinal.path).toEqual([root, inner]);
 
         const again = await loadStore(); // 새로고침
         expect(again.getState().editPath, "경로가 그대로 선다").toEqual([root, inner]);
@@ -260,5 +249,64 @@ describe("편집 대상과 관측 대상", () => {
         store.getState().addFilterStage([datePred]);
         expect(selectObservedExpr(store.getState())).toBe(selectEditingExpr(store.getState()));
         expect(store.getState().editPath).toEqual([second]);
+    });
+});
+
+// ── 모드가 장부를 가른다 (2026-09-22) ──────────────────────────────────────
+//
+// 여기가 없으면 아무도 이 분리를 못 잡는다: 다른 검사는 전부 종단 한 모드에서만 돈다.
+describe("모드별 편집 자리 — 모드를 바꾸면 장부가 통째로 갈린다", () => {
+    it("새 집합·묶음은 **지금 모드**로 태어난다", async () => {
+        stubStorage();
+        const store = await loadStore();
+        store.getState().setFilterMode("daily");
+        store.getState().createSet();
+        const made = store.getState().savedSets.find((x) => x.id === store.getState().editingSetId)!;
+        expect(made.universe, "하루 모드에서 만들면 하루 집합이다").toBe("daily");
+        store.getState().addGroupTerm();
+        const inner = store.getState().savedSets.find((x) => x.id === store.getState().editingSetId)!;
+        expect(inner.universe).toBe("daily");
+    });
+
+    it("모드를 오가면 **각자 보던 자리**로 돌아온다", async () => {
+        stubStorage();
+        const store = await loadStore();
+        const longSeat = store.getState().editingSetId;
+
+        store.getState().setFilterMode("daily");
+        const daySeat = store.getState().editingSetId;
+        expect(daySeat, "하루에 집합이 없으면 그때 빈 집합을 만든다").not.toBe(longSeat);
+
+        store.getState().setFilterMode("longitudinal");
+        expect(store.getState().editingSetId).toBe(longSeat);
+        store.getState().setFilterMode("daily");
+        expect(store.getState().editingSetId).toBe(daySeat);
+    });
+
+    it("자리는 **영속**이다 — 새로고침 뒤에도 모드별로 제자리", async () => {
+        const storage = stubStorage();
+        const store = await loadStore();
+        store.getState().setFilterMode("daily");
+        const daySeat = store.getState().editingSetId;
+        const seats = JSON.parse(storage.get("wb.editSeat.v1")!);
+        expect(seats.daily.id).toBe(daySeat);
+        expect(seats.longitudinal.id, "종단 자리도 그대로 남는다").toBeTruthy();
+
+        const again = await loadStore();
+        expect(again.getState().editingSetId, "부팅 모드(하루)의 자리로 선다").toBe(daySeat);
+    });
+
+    it("모드를 넘는 참조는 거절한다 — 항 순서로 우주가 뒤집히지 않게", async () => {
+        stubStorage();
+        const store = await loadStore();
+        store.getState().setFilterMode("daily");
+        store.getState().createSet();
+        const dayId = store.getState().editingSetId;
+        store.getState().setFilterMode("longitudinal");
+        const longId = store.getState().editingSetId;
+
+        store.getState().addSetRef(dayId); // 종단 집합에 하루 집합을 붙이려는 손
+        const me = store.getState().savedSets.find((x) => x.id === longId)!;
+        expect(refsOf(me.expr), "안 붙는다").toEqual([]);
     });
 });

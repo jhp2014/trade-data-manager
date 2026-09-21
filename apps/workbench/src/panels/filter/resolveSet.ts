@@ -15,9 +15,7 @@ import {
     expandUniverse, funnelKey, tallyFunnel,
     type ChartRef, type FunnelItem, type FunnelResult, type Grain, type PointDefinition,
 } from "@trade-data-manager/market/domain";
-import { expandToPointItems } from "../../lib/grainView.js";
 import { judgeKeyOf } from "../../lib/pointDef.js";
-import type { SetRef } from "../../lib/setRef.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { toFunnelStage, type EvalLookup, type RefMemberSet, type RefMembers } from "./evaluate.js";
 import { activeExpr, exprOfStages, leavesOf, refsOf, type SetExpr } from "./expr.js";
@@ -97,44 +95,26 @@ export interface ResolvedSet {
 
 const BROKEN: ResolvedSet = { broken: true, grain: "day", items: [] };
 
-export function resolveSetRef(ref: SetRef, ctx: SetResolveCtx): ResolvedSet {
-    switch (ref.kind) {
-        case "universe":
-            return { broken: false, grain: "day", items: expandUniverse(ctx.candidates, "day", ctx.timesOf) };
-
-        case "survivors": {
-            const r = resolveDef(null, ctx);
-            // 미배치(결손) 수를 **여기서도** 낸다 — 저장 집합 경로만 내면 같은 사실이 작업 깔때기에서만
-            // 조용히 사라진다(참조가 깨졌을 때 "빈 집합"과 "전량 결손"이 화면에서 구분이 안 된다).
-            return { broken: false, grain: r.grain, items: r.tally.survivors, pending: r.tally.pendingCount };
-        }
-
-        case "saved":
-            return resolveSaved(ref.setId, ctx);
-
-        case "items":
-            return {
-                broken: false,
-                grain: ref.items.some((i) => i.time !== undefined) ? "point" : "day",
-                items: [...ref.items],
-            };
-
-        case "orphan":
-            // 폐지된 옛 바인딩의 잔해 — 항상 깨진 참조. 화면이 라벨과 "다시 고르기"로 받는다.
-            return BROKEN;
-    }
+/**
+ * 저장 집합 하나를 푼다 — **참조를 푸는 유일한 공개 입구**(2026-09-22).
+ *
+ * 옛 `resolveSetRef(SetRef)` 의 다섯 갈래(전체·최종 생존·저장 집합·orphan·항목 목록)는 전부 죽었다:
+ * 집합을 가리키는 주소가 **편집 경로 하나**가 되면서 그 갈래들의 생산자가 사라졌다(선택 포인터·패널 핀).
+ * 작업 깔때기(`resolveDef(null)`)는 여전히 `ctx.activeFilter` 로 살아 있다 — 참조 풀이가 그걸 딛는다.
+ */
+export function resolveSavedSet(setId: string, ctx: SetResolveCtx): ResolvedSet {
+    return resolveSaved(setId, ctx);
 }
 
 /**
- * 참조의 하루→타점 전개(∀) — **자기 정의의 시각으로**. 이미 타점 층위면 그대로.
- *   · 저장 집합 = 그 집합 pointDef 의 시각(전개까지 자립 — "게이트 30 집합"의 타점은 게이트 30 세계의 것).
- *   · 그 외(유니버스·작업 깔때기 유래) = 현재 정의의 시각(ctx.timesOf).
- * viewedPointRefs(구독 패널의 타점 전개)가 쓴다 — 여기만 다른 시각을 쓰면 시트 행과 칩 건수가 갈린다.
+ * **관측 집합(작업 깔때기)의 풀이** — 깔때기가 방금 낸 정산을 그대로 포장한다(`ctx.activeFilter`).
+ *
+ * ⚠ 이게 없으면 집합 줄의 건수가 **지금 보고 있는 그 집합을 한 번 더 평가**한다(깔때기가 이미 센 것을).
+ * 미배치(결손) 수를 같이 내는 이유도 그대로다 — 안 내면 "빈 집합"과 "전량 결손"이 화면에서 구분이 안 된다.
  */
-export function expandRefToPoints(ref: SetRef, r: ResolvedSet, ctx: SetResolveCtx): FunnelItem[] {
-    if (r.grain === "point") return [...r.items];
-    if (ref.kind === "saved") return expandToPointItems(r.items, ctx.materialsFor(ctx.savedSetOf(ref.setId)?.pointDef).timesOf);
-    return expandToPointItems(r.items, ctx.timesOf);
+export function resolveWorkingSet(ctx: SetResolveCtx): ResolvedSet {
+    const r = resolveDef(null, ctx);
+    return { broken: false, grain: r.grain, items: r.tally.survivors, pending: r.tally.pendingCount };
 }
 
 /**

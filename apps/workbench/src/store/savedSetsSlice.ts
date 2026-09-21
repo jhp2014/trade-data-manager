@@ -14,10 +14,11 @@ import type { PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
 import { parseStages } from "../panels/filter/stage.js";
 import { appendTerm, emptyExpr, hasCycle, parseExpr, refNode, refsOf, type SetExpr } from "../panels/filter/expr.js";
-import { universeOfExpr, parseUniverse, type Universe } from "../panels/filter/universe.js";
+import { universeOfExpr, parseUniverse, UNIVERSES, type Universe } from "../panels/filter/universe.js";
 import { parsePointDef } from "../lib/pointDef.js";
 import { persistPointDef } from "./pointDefSlice.js";
 import { loadJson, saveJson } from "./persist.js";
+import { loadFilterMode } from "./filterMode.js";
 
 
 // v3 로 키를 올린 이유(2026-09-09): 허용 폭 T 가 정의에서 결과 술어로 내려가 옛 결과 술어에 t 가 없다 —
@@ -130,46 +131,86 @@ export function parseSavedSets(o: unknown): SavedSet[] | null {
 /** 새 집합 id — 시각 + 난수 꼬리(같은 ms 의 연속 생성이 같은 id 가 되지 않게). */
 const newSetId = (): string => `fs${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-/** 빈 집합 하나 — 이름은 안 짓는다(자동 이름 = 점선 칩). */
-const blankSet = (): SavedSet => ({ id: newSetId(), expr: emptyExpr(), universe: "longitudinal" });
+/** 빈 집합 하나 — 이름은 안 짓는다(자동 이름 = 점선 칩). **태어나는 모드가 곧 그 집합의 우주**다. */
+const blankSet = (universe: Universe): SavedSet => ({ id: newSetId(), expr: emptyExpr(), universe });
+
+/** 이 모드에 속한 집합들 — 목록·자리·폴백이 **같은 자**를 쓴다. */
+export const setsOfMode = (sets: readonly SavedSet[], mode: Universe): SavedSet[] =>
+    sets.filter((x) => x.universe === mode);
 
 /**
- * 저장 집합 로드 — **하나도 없으면 빈 집합 하나를 만든다.**
- * 잎이 최상위에 못 뜨는 모델이라(2026-09-20) 편집할 집합이 반드시 하나는 있어야 한다.
+ * 저장 집합 로드 — **지금 모드에 하나도 없으면 빈 집합 하나를 만든다.**
+ * 잎이 최상위에 못 뜨는 모델이라(2026-09-20) 편집할 집합이 반드시 하나는 있어야 하고,
+ * 모드가 장부를 가른 뒤로는(2026-09-22) 그 불변식이 **모드별**이다.
+ * ⚠ **반대 모드의 빈 집합은 여기서 안 만든다** — 쓰지도 않은 모드에 빈 집합이 서 있게 된다.
+ *   전환하는 순간(`switchSeat`) 만든다.
  */
-const loadSavedSets = (): SavedSet[] => {
+const loadSavedSets = (mode: Universe): SavedSet[] => {
     const sets = parseSavedSets(loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null))) ?? [];
-    return sets.length > 0 ? sets : persistSavedSets([blankSet()]);
+    return setsOfMode(sets, mode).length > 0 ? sets : persistSavedSets([...sets, blankSet(mode)]);
 };
-
-/** 편집 대상은 **영속**이다 — 새로고침 뒤 보던 집합으로 돌아온다. */
-const EDITING_KEY = "wb.editingSetId.v1";
-
-/** 지워진 집합을 가리키던 편집 대상은 **첫 집합으로** 떨어진다(빈 화면보다 낫다 — 목록이 곧 작업면). */
-const loadEditingId = (sets: readonly SavedSet[]): string => {
-    const saved = loadJson(EDITING_KEY, (o) => (typeof o === "string" && o !== "" ? o : null));
-    return saved !== null && sets.some((x) => x.id === saved) ? saved : sets[0]!.id;
-};
-
-const persistEditing = (id: string): string => { saveJson(EDITING_KEY, id); return id; };
 
 /**
- * 드릴다운 경로도 **영속**이다(2026-09-21).
+ * **모드별 편집 자리**(영속 — 2026-09-22). `{ longitudinal: {id, path}, daily: {id, path} }`.
  *
- * ⚠ 한때 세션이었는데, 경로의 **뿌리가 곧 관측 대상**이 된 뒤로는 그러면 안 된다: 새로고침하면
- * 경로가 `[편집 대상]` 으로 재구성돼 **내려가 있던 자식 집합이 뿌리가 되고**, 그 집합이 비어 있으면
- * 필터가 0(= 제한 없음)이 되어 전 모수가 하류로 쏟아진다(먹통이던 그 자리가 되살아난다).
+ * 경로가 영속인 이유는 2026-09-21 그대로다: 경로의 **뿌리가 곧 관측 대상**이라, 새로고침에
+ * `[편집 대상]` 으로 재구성되면 **내려가 있던 자식 집합이 뿌리가 되고** 그 집합이 비어 있으면
+ * 필터 0(= 제한 없음)이 되어 전 모수가 하류로 쏟아진다.
  */
-const EDIT_PATH_KEY = "wb.editPath.v1";
+const EDIT_SEAT_KEY = "wb.editSeat.v1";
+/** 승계 원본 — 모드가 하나였던 시절의 두 키. 한 번 읽고 나면 새 키가 진실이다(옛 키는 안 지운다). */
+const OLD_EDITING_KEY = "wb.editingSetId.v1";
+const OLD_EDIT_PATH_KEY = "wb.editPath.v1";
 
-/** 지워진 칸은 버린다 — 남은 게 없으면 편집 대상 하나짜리 경로. */
-const loadEditPath = (sets: readonly SavedSet[], editingId: string): string[] => {
-    const raw = loadJson(EDIT_PATH_KEY, (o) => (Array.isArray(o) && o.every((x) => typeof x === "string") ? (o as string[]) : null)) ?? [];
-    const path = raw.filter((id) => sets.some((x) => x.id === id));
-    return path.length > 0 && path[path.length - 1] === editingId ? path : [editingId];
+export interface EditSeat { id: string; path: string[] }
+type SeatMap = Partial<Record<Universe, EditSeat>>;
+
+const parseSeatMap = (o: unknown): SeatMap | null => {
+    if (typeof o !== "object" || o === null) return null;
+    const out: SeatMap = {};
+    for (const u of UNIVERSES) {
+        const raw = (o as Record<string, unknown>)[u];
+        if (typeof raw !== "object" || raw === null) continue;
+        const r = raw as { id?: unknown; path?: unknown };
+        if (typeof r.id !== "string" || r.id === "") continue;
+        const path = Array.isArray(r.path) && r.path.every((x) => typeof x === "string") ? (r.path as string[]) : [r.id];
+        out[u] = { id: r.id, path };
+    }
+    return out;
 };
 
-const persistPath = (path: string[]): string[] => { saveJson(EDIT_PATH_KEY, path); return path; };
+/** 옛 두 키 → 그 집합의 **우주 칸**으로. 한 번뿐이다(새 키가 서면 안 읽힌다). */
+const legacySeat = (sets: readonly SavedSet[]): SeatMap => {
+    const id = loadJson(OLD_EDITING_KEY, (o) => (typeof o === "string" && o !== "" ? o : null));
+    const set = id === null ? undefined : sets.find((x) => x.id === id);
+    if (!set) return {};
+    const raw = loadJson(OLD_EDIT_PATH_KEY, (o) => (Array.isArray(o) && o.every((x) => typeof x === "string") ? (o as string[]) : null)) ?? [];
+    const path = raw.filter((p) => sets.some((x) => x.id === p));
+    return { [set.universe]: { id: set.id, path: path.length > 0 && path[path.length - 1] === set.id ? path : [set.id] } };
+};
+
+const loadSeats = (sets: readonly SavedSet[]): SeatMap => {
+    const stored = parseSeatMap(loadJson(EDIT_SEAT_KEY, (o) => o));
+    return stored !== null && Object.keys(stored).length > 0 ? stored : legacySeat(sets);
+};
+
+const persistSeats = (seats: SeatMap): SeatMap => { saveJson(EDIT_SEAT_KEY, seats); return seats; };
+
+/**
+ * 그 모드의 자리를 고른다 — 저장된 자리가 살아 있으면 그것, 아니면 **그 모드의 첫 집합**.
+ * 그 모드에 집합이 하나도 없으면 `null`(호출자가 빈 집합을 만든다).
+ */
+const seatIn = (sets: readonly SavedSet[], mode: Universe, seats: SeatMap): EditSeat | null => {
+    const mine = setsOfMode(sets, mode);
+    const saved = seats[mode];
+    if (saved && mine.some((x) => x.id === saved.id)) {
+        // 지워진 칸은 버린다 — 남은 게 없으면 편집 대상 하나짜리 경로.
+        const path = saved.path.filter((id) => sets.some((x) => x.id === id));
+        return { id: saved.id, path: path.length > 0 && path[path.length - 1] === saved.id ? path : [saved.id] };
+    }
+    const first = mine[0];
+    return first ? { id: first.id, path: [first.id] } : null;
+};
 
 export interface SavedSetsSlice {
     /** 저장 집합들(영속) — 집합 편성 패널이 만든 산출물. 집합 칩·연동 피커의 유일한 저장물 목록. */
@@ -180,9 +221,9 @@ export interface SavedSetsSlice {
      */
     editingSetId: string;
     /**
-     * 루트부터 지금까지의 **드릴다운 경로**(세션) — 마지막 칸이 곧 `editingSetId` 다.
-     * 빵부스러기와 위쪽 칩 줄(= 경로의 **루트** 집합)이 이걸 읽는다. 영속이 아닌 이유: 화면 사정이지
-     * 저장물이 아니고, 새로고침 뒤엔 편집 대상 하나만 복원되면 충분하다.
+     * 루트부터 지금까지의 **드릴다운 경로**(영속) — 마지막 칸이 곧 `editingSetId` 다.
+     * 뿌리가 곧 **관측 대상**이라 줄 쌓임이 그걸 그리고 구독 패널이 그걸 본다.
+     * ⚠ 이 둘은 **지금 모드의 자리**다 — 저장은 모드별(`wb.editSeat.v1`)이고 `setFilterMode` 가 갈아 끼운다.
      */
     editPath: string[];
     /** 편집 대상 갈아타기 — 사본을 뜨지 않는다(사본이 있으면 "저장 안 한 변경"이 되살아난다). 경로는 새로 시작한다. */
@@ -217,12 +258,42 @@ export interface SavedSetsSlice {
 export const refUniverse = (sets: readonly SavedSet[]) => (id: string): Universe | null =>
     sets.find((x) => x.id === id)?.universe ?? null;
 
+/**
+ * 모드별 자리의 **현재 값**(모듈 상태) — 스토어 필드(`editingSetId`/`editPath`)는 "지금 모드의 자리"
+ * 하나뿐이라, 반대 모드의 자리는 여기와 localStorage 에 산다. 쓰기는 전부 `putSeat` 하나를 지난다.
+ */
+let seats: SeatMap = {};
+
+/** 자리 하나를 그 모드 칸에 적고 스토어 조각으로 낸다 — 영속과 상태가 **같은 손**에서 갈린다. */
+const putSeat = (mode: Universe, id: string, path: string[]): { editingSetId: string; editPath: string[] } => {
+    seats = persistSeats({ ...seats, [mode]: { id, path } });
+    return { editingSetId: id, editPath: path };
+};
+
+/**
+ * 모드를 갈아탄다 — 그 모드의 자리를 세우고, 그 모드에 집합이 하나도 없으면 **그때** 만든다.
+ * ⚠ `filterFunnelSlice.setFilterMode` 가 유일한 호출자다(슬라이스 방향: funnel → savedSets).
+ */
+export const switchSeat = (
+    s: { savedSets: SavedSet[] },
+    mode: Universe,
+): { savedSets: SavedSet[]; editingSetId: string; editPath: string[] } => {
+    const hit = seatIn(s.savedSets, mode, seats);
+    if (hit) return { savedSets: s.savedSets, ...putSeat(mode, hit.id, hit.path) };
+    const made = blankSet(mode);
+    const savedSets = persistSavedSets([...s.savedSets, made]);
+    return { savedSets, ...putSeat(mode, made.id, [made.id]) };
+};
+
 export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSetsSlice> = (set) => {
-    const sets = loadSavedSets();
+    const mode = loadFilterMode();
+    const sets = loadSavedSets(mode);
+    seats = loadSeats(sets);
+    // 부팅 자리 — 위 loadSavedSets 가 "이 모드에 집합이 하나는 있다"를 이미 보장한다.
+    const seat = seatIn(sets, mode, seats)!;
     return {
     savedSets: sets,
-    editingSetId: persistEditing(loadEditingId(sets)),
-    editPath: loadEditPath(sets, loadEditingId(sets)),
+    ...putSeat(mode, seat.id, seat.path),
 
     // 갈아타기만 한다 — **사본을 안 뜬다**(편집 = 저장이라 사본이 곧 "저장 안 한 변경"이다).
     // 정의(pointDef)는 그 집합의 것으로 되돌린다 — 없는 집합은 현재 정의 유지(관대 병합 규칙).
@@ -230,9 +301,8 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         const f = s.savedSets.find((x) => x.id === id);
         if (!f) return {};
         return {
-            editingSetId: persistEditing(id),
-            editPath: persistPath([id]), // 목록에서 고른 건 **새 뿌리**다 — 경로를 물려받지 않는다
-            selectedSetRef: null, // 편집 대상이 곧 "지금 보는 것" — 포인터는 최종 생존으로 돌아온다
+            // 목록에서 고른 건 **새 뿌리**다 — 경로를 물려받지 않는다.
+            ...putSeat(s.filterMode, id, [id]),
             ...(f.pointDef ? { pointDef: persistPointDef(f.pointDef) } : {}),
         };
     }),
@@ -242,28 +312,28 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         // 같은 집합이 경로에 또 나오면(다이아몬드) 거기서 잘라 붙인다 — 빵부스러기가 길어지지 않게.
         const at = s.editPath.indexOf(setId);
         const path = at >= 0 ? s.editPath.slice(0, at + 1) : [...s.editPath, setId];
-        return { editingSetId: persistEditing(setId), editPath: persistPath(path), selectedSetRef: null };
+        return putSeat(s.filterMode, setId, path);
     }),
 
     popTo: (index) => set((s) => {
         const path = s.editPath.slice(0, index + 1);
         const id = path[path.length - 1];
         if (id === undefined || id === s.editingSetId) return {};
-        return { editingSetId: persistEditing(id), editPath: persistPath(path), selectedSetRef: null };
+        return putSeat(s.filterMode, id, path);
     }),
 
     createSet: () => set((s) => {
-        const made = blankSet();
-        return { savedSets: persistSavedSets([...s.savedSets, made]), editingSetId: persistEditing(made.id), editPath: persistPath([made.id]), selectedSetRef: null };
+        const made = blankSet(s.filterMode); // 새 집합은 **지금 모드**로 태어난다
+        return { savedSets: persistSavedSets([...s.savedSets, made]), ...putSeat(s.filterMode, made.id, [made.id]) };
     }),
 
     // 새 묶음 = 빈 집합 + 지금 식에 참조 한 항 + 그 집합으로 내려가기.
     // ⚠ 순환은 원리적으로 안 난다 — 갓 만든 집합은 아직 아무것도 안 가리킨다.
     addGroupTerm: () => set((s) => {
-        const made = blankSet();
+        const made = blankSet(s.filterMode); // 묶음도 **지금 모드**로 태어난다
         const withSet = [...s.savedSets, made];
         const next = withSet.map((x) => (x.id === s.editingSetId ? { ...x, expr: appendTerm(x.expr, refNode(made.id)) } : x));
-        return { savedSets: persistSavedSets(next), editingSetId: persistEditing(made.id), editPath: persistPath([...s.editPath, made.id]), selectedSetRef: null };
+        return { savedSets: persistSavedSets(next), ...putSeat(s.filterMode, made.id, [...s.editPath, made.id]) };
     }),
 
     addSetRef: (setId) => set((s) => {
@@ -272,11 +342,15 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         const me = s.savedSets.find((x) => x.id === s.editingSetId);
         if (!target || !me) return {};
         if (refsOf(me.expr).includes(setId)) return {}; // 이미 붙어 있다(같은 항 둘은 뜻이 없다)
+        // ⚠ **모드를 넘는 참조는 거절한다**(2026-09-22) — `universeOfExpr` 이 왼쪽에서 처음 만나는
+        //   한쪽-전용 항으로 우주를 정하므로, 섞이면 **항 순서에 따라** 집합이 목록 사이를 옮겨 다닌다.
+        //   화면(후보 목록)도 거르지만 문지기는 여기 하나여야 한다(순환 거절과 같은 자리·같은 이유).
+        if (target.universe !== s.filterMode) return {};
         // ⚠ 순환 거절 — 저 집합이 (건너서라도) 나를 가리키면 평가가 무한히 내려가고 빵부스러기도 끝이 없다.
         const exprOfSet = (id: string): SetExpr | undefined => s.savedSets.find((x) => x.id === id)?.expr;
         if (hasCycle(s.editingSetId, target.expr, exprOfSet)) return {};
         const next = s.savedSets.map((x) => (x.id === s.editingSetId ? { ...x, expr: appendTerm(x.expr, refNode(setId)) } : x));
-        return { savedSets: persistSavedSets(next), selectedSetRef: null };
+        return { savedSets: persistSavedSets(next) };
     }),
 
     renameSet: (id, name) => set((s) => {
@@ -296,8 +370,10 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     deleteSet: (id) => set((s) => {
         // 하나도 안 남으면 빈 집합을 다시 세운다 — 편집할 집합이 반드시 하나는 있어야 한다.
         const rest = s.savedSets.filter((x) => x.id !== id);
-        const next = persistSavedSets(rest.length > 0 ? rest : [blankSet()]);
-        const sel = s.selectedSetRef;
+        // 폴백은 **같은 모드 안에서** 찾는다 — 반대 모드 집합으로 내려앉으면 모드와 자리가 어긋난다.
+        const withFallback = setsOfMode(rest, s.filterMode).length > 0 ? rest : [...rest, blankSet(s.filterMode)];
+        const next = persistSavedSets(withFallback);
+        const home = setsOfMode(next, s.filterMode)[0]!;
         return {
             savedSets: next,
             // 편집 중이던 집합이 지워지면 **첫 집합으로** 내려앉는다(빈 화면보다 낫다).
@@ -305,18 +381,15 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
             //   배열이 남고, 뿌리가 바뀌면 **관측 대상이 말없이 갈려** 하류가 전 모수를 다시 센다.
             //   지워진 칸부터 잘라 낸다(그 아래는 더 이상 이 경로의 것이 아니다).
             ...(s.editingSetId === id
-                ? { editingSetId: persistEditing(next[0]!.id), editPath: persistPath([next[0]!.id]) }
+                ? putSeat(s.filterMode, home.id, [home.id])
                 : (() => {
                     const cut = s.editPath.indexOf(id);
                     if (cut < 0) return { editPath: s.editPath };
-                    const path = cut === 0 ? [next[0]!.id] : s.editPath.slice(0, cut);
-                    return { editingSetId: persistEditing(path[path.length - 1]!), editPath: persistPath(path) };
+                    const path = cut === 0 ? [home.id] : s.editPath.slice(0, cut);
+                    return putSeat(s.filterMode, path[path.length - 1]!, path);
                 })()),
-            // 선택 포인터도 그 집합이면 푼다 — 연동 패널 전부가 죽은 참조를 보게 두지 않는다.
-            // 고정 바인딩은 일부러 안 푼다(깨진 참조 표시가 그쪽의 계약이다 — 패널마다 라벨과 전환 손잡이가 받는다).
             // ⚠ **이 집합을 참조하던 식은 안 고친다** — 깨진 참조가 표식을 달고 서는 게 규칙이다
             //   (조용히 넓어지지 않는다). 그 자리를 빼는 손은 편집면에 있다.
-            ...(sel?.kind === "saved" && sel.setId === id ? { selectedSetRef: null } : {}),
         };
     }),
     };

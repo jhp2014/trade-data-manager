@@ -16,7 +16,7 @@ const renderPanel = (): ReturnType<typeof render> =>
         wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers>,
     });
 
-const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [], sessionUi: {}, themeBindings: {}, panelUi: {} };
+const RESET = { filterStages: [], funnelSelection: null, savedSets: [], sessionUi: {}, themeBindings: {}, panelUi: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 

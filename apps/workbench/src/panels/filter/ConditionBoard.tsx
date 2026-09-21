@@ -208,9 +208,12 @@ export function ConditionBoard({ panelId: _panelId }: {
     const attachable = useMemo(() => {
         const exprOfSet = (id: string): SetExpr | undefined => savedSets.find((x) => x.id === id)?.expr;
         const mine = refsOf(expr);
+        // ⚠ **같은 모드만** 후보다(2026-09-22) — 섞이면 `universeOfExpr` 이 항 순서로 우주를 정해
+        //   집합이 목록 사이를 옮겨 다닌다. 거절은 스토어(`addSetRef`)가 한 번 더 한다.
         return savedSets.filter((f) => f.id !== editingSetId && !mine.includes(f.id)
+            && f.universe === setUniverse
             && !hasCycle(editingSetId, f.expr, exprOfSet));
-    }, [savedSets, expr, editingSetId]);
+    }, [savedSets, expr, editingSetId, setUniverse]);
 
     /**
      * 화면에 쌓이는 **줄들** — 경로 그대로다(줄 쌓임 자체가 경로라 빵부스러기가 없다).

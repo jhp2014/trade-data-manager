@@ -8,7 +8,6 @@
 
 import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
-import type { SetRef } from "../lib/setRef.js";
 import {
     newStage, renameGroupInStages,
     type FilterPredicate, type FilterStage,
@@ -18,20 +17,14 @@ import {
 } from "../panels/filter/expr.js";
 
 import { applyRailToExpr, type RailKey } from "../panels/filter/stageBinding.js";
-import { effectiveUniverse, universeOfExpr, type Universe } from "../panels/filter/universe.js";
-import { persistSavedSets, refUniverse, type SavedSet } from "./savedSetsSlice.js";
+import { universeOfExpr, type Universe } from "../panels/filter/universe.js";
+import { persistSavedSets, refUniverse, switchSeat, type SavedSet } from "./savedSetsSlice.js";
+import { loadFilterMode, saveFilterMode } from "./filterMode.js";
 import { loadJson, saveJson } from "./persist.js";
 import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
 
 /** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
 const GAZE_PRESENCE_KEY = "wb.workset.presenceFilter.v2"; // v2: 골격 존재 리터럴 리셋
-
-/**
- * 작업면의 모드 — **영속**이다. 세션으로 두면 새로고침마다 종단으로 떨어져 하루 작업 국면이 매번
- * 끊긴다. 2026-09-19 가 기각한 것은 "우주를 **집합의** 저장 필드로 되돌리기"(`wb.filterUniverse`·
- * `setFilterUniverse`·`⧉ 복제`)이고, 이건 화면 상태의 영속이라 다른 물건이다.
- */
-const FILTER_MODE_KEY = "wb.filterMode.v1";
 
 /**
  * v2: **묶음이 곧 집합**(2026-09-20 — 식 1층화). 옛 키(v1·`wb.filterStages.*`·슬롯)는 **안 읽는다**.
@@ -59,7 +52,7 @@ const FILTER_MODE_KEY = "wb.filterMode.v1";
 
 
 /** 편집·관측 대상을 푸는 데 필요한 것 — 셀렉터들이 공유하는 최소 조각. */
-export type EditingCtx = { editingSetId: string; editPath: readonly string[]; savedSets: readonly SavedSet[] };
+export type EditingCtx = { editingSetId: string; editPath: readonly string[]; savedSets: readonly SavedSet[]; filterMode: Universe };
 
 /**
  * ## 편집 대상과 관측 대상은 **다른 것**이다 (2026-09-21)
@@ -77,8 +70,11 @@ const exprOfSet = (s: EditingCtx, id: string | undefined): SetExpr =>
 /** 손이 닿는 집합의 식 — **쓰기 손과 그 거울**이 이걸 읽는다(주소가 갈리면 편집이 안 먹는다). */
 export const selectEditingExpr = (s: EditingCtx): SetExpr => exprOfSet(s, s.editingSetId);
 
-/** 구독 패널이 **보는** 집합의 식 — 경로의 뿌리. 경로가 비었으면 편집 대상이 곧 뿌리다. */
-export const selectObservedExpr = (s: EditingCtx): SetExpr => exprOfSet(s, s.editPath[0] ?? s.editingSetId);
+/** 구독 패널이 **보는** 집합의 id — 경로의 뿌리. 경로가 비었으면 편집 대상이 곧 뿌리다. */
+export const selectObservedSetId = (s: EditingCtx): string => s.editPath[0] ?? s.editingSetId;
+
+/** 구독 패널이 **보는** 집합의 식 — 경로의 뿌리. */
+export const selectObservedExpr = (s: EditingCtx): SetExpr => exprOfSet(s, selectObservedSetId(s));
 
 /** 파생이 빈 식을 낼 때 **같은 객체**를 준다 — 셀렉터 얕은 비교가 매번 깨지지 않게. */
 const EMPTY_EXPR = emptyExpr();
@@ -86,35 +82,15 @@ const EMPTY_EXPR = emptyExpr();
 export interface FilterFunnelSlice {
 
     /**
-     * 선택 포인터 — 집합 편성 패널 안의 **단 하나의 선택**. null = 작업 깔때기(최종 생존),
-     * 참조 = 집합 칩에서 고른 것. 연동 패널과 레일 오버레이가 전부 이 하나를 본다.
-     * 시선이지 조건이 아니라 영속하지 않고, **깔때기를 만지는 순간 작업 깔때기로 복귀**한다(사용자 확정).
-     */
-    selectedSetRef: SetRef | null;
-    selectSet: (ref: SetRef | null) => void;
-    /**
-     * **작업면의 모드** — 종단/하루 중 지금 무엇을 하러 왔나(2026-09-21 사람이 고른다).
+     * **작업면의 모드** — 종단/하루 중 지금 무엇을 하러 왔나. **전역이다**(2026-09-22):
+     * 바꾸면 집합 목록·편집 자리·구독 패널의 라우팅이 전부 같이 넘어간다.
      *
-     * ⚠ 집합의 `universe`(조건에서 **파생**)와 다른 물건이다. 파생은 집합의 성질이고(참조 해결·핀·
-     * `refUniverse` 가 쓴다), 이건 작업면의 상태다. 모드가 있으면 **팔레트가 처음부터 갈려**
-     * "첫 조건이 말없이 우주를 정하는" 일이 없어진다(2026-09-21 실사용이 잡은 자리).
+     * ⚠ 집합의 `universe`(조건에서 **파생**)와 다른 물건이다. 파생은 집합의 성질이고(참조 해결·
+     * `refUniverse` 가 쓴다), 이건 작업면의 상태이자 **하류 라우팅의 자**다 — 파생은 조건이 없으면
+     * null → 종단으로 떨어져, 하루 모드의 빈 집합이 패널을 통째로 종단 기계로 보낸다.
      */
     filterMode: Universe;
     setFilterMode: (u: Universe) => void;
-    /**
-     * **마지막으로 「계산」을 누른 순간의 저장물 한 벌** — 하루 우주의 평가는 이것만 본다(2026-09-21).
-     *
-     * `null` = 아직 한 번도 안 눌렀다(재료를 안 당긴다 — 부팅에 `/day-replay` 15MB 를 안 받는다).
-     *
-     * ⚠ **세대 번호가 아니라 스냅샷이어야 한다.** 번호로 두고 소비자마다 제 값을 잡으면 ① 나중에
-     * 마운트한 패널이 **새 조건**을 잡아 누른 적 없는 평가가 한 번 더 돌고, ② 그 패널만 다른 수를
-     * 낸다. 스냅샷이면 언제 마운트해도 같은 것을 본다.
-     *
-     * ⚠ **영속하지 않는다** — 새 세션은 "아직 계산 안 함"에서 시작하는 것이 이 모델의 뜻이다.
-     * 저장은 즉시고(편집 = 저장) 늦는 것은 평가뿐이라, 커밋 버튼의 부활이 아니다.
-     */
-    evalSets: readonly SavedSet[] | null;
-    computeNow: () => void;
     /**
      * 월 시선 — 전역 하나(작업셋 월 줄이 주인, 구독 패널은 viewOf 를 거쳐 자동으로 따른다). null = 전체.
      * 집합 포인터와 같은 성질(시선이지 조건이 아니다)이라 영속하지 않는다. 기본 = 전체(사용자 확정).
@@ -186,18 +162,9 @@ export const selectEditingUniverse = (s: EditingCtx): Universe | null =>
 export const selectObservedUniverse = (s: EditingCtx): Universe | null =>
     universeOfExpr(selectObservedExpr(s), refUniverse(s.savedSets));
 
-/** 「계산」을 누른 순간의 관측 식 — 하루 평가가 보는 유일한 식. null = 아직 안 눌렀다. */
-export const selectEvalExpr = (s: EvalCtx): SetExpr | null =>
-    s.evalSets === null ? null : (s.evalSets.find((x) => x.id === (s.editPath[0] ?? s.editingSetId))?.expr ?? EMPTY_EXPR);
-
-/**
- * 계산 뒤 저장물이 바뀌었나 — 화면의 「낡음」이 이 한 비트다.
- * ⚠ 한 번도 안 눌렀으면 **낡은 게 아니라 아직 안 센 것**이다(둘을 합치면 화면이 거짓말한다).
- */
-export const selectEvalStale = (s: EvalCtx): boolean => s.evalSets !== null && s.evalSets !== s.savedSets;
-
-/** 평가 맥락을 푸는 데 필요한 것. */
-export type EvalCtx = EditingCtx & { evalSets: readonly SavedSet[] | null };
+// 2026-09-22: 옛 `evalSets`(「계산」을 누른 순간의 저장물 스냅샷)·`computeNow`·`selectEvalExpr`·
+// `selectEvalStale` 은 **없다** — 실측으로 하루 평가가 0.25~0.47초라 관문의 근거가 사라졌다.
+// 평가의 박자는 이제 깔때기의 디바운스 하나(`useFilterFunnel` 의 `slowExpr`/`slowSets`)다.
 
 /**
  * **편집이 곧 저장이다**(2026-09-20) — 「저장 안 한 변경」이라는 상태가 없다.
@@ -208,41 +175,29 @@ export type EvalCtx = EditingCtx & { evalSets: readonly SavedSet[] | null };
  * ⚠ 구독 패널이 한 글자마다 재평가되는 대가는 **평가 쪽 디바운스**가 받는다(useFilterFunnel),
  * 저장은 즉시다. 편집 버퍼 + 커밋은 기각 — 없애기로 한 개념이 이름만 바꿔 돌아온다(decisions).
  */
-export const putExpr = (s: EditingCtx, expr: SetExpr): Pick<FilterFunnelSlice, "selectedSetRef"> & { savedSets: SavedSet[] } => {
+export const putExpr = (s: EditingCtx, expr: SetExpr): { savedSets: SavedSet[] } => {
     // 편집 대상이 목록에 없으면 **그 id 로 만든다** — "편집할 집합은 늘 하나 있다"는 불변식을 쓰기
     // 경로에서도 지킨다(조용히 버리면 손이 먹히고, 사용자는 왜 안 되는지 알 길이 없다).
     const has = s.savedSets.some((x) => x.id === s.editingSetId);
     const next = has
         ? s.savedSets.map((x) => (x.id === s.editingSetId ? { ...x, expr } : x))
-        : [...s.savedSets, { id: s.editingSetId, expr, universe: "longitudinal" as const }];
+        // 없는 집합을 여기서 만들면 **지금 모드**로 태어난다(blankSet 과 같은 규칙).
+        : [...s.savedSets, { id: s.editingSetId, expr, universe: s.filterMode }];
     // 우주는 여기서 안 굳힌다 — `persistSavedSets` 의 재조정이 파생 규칙 한 곳에서 맡는다.
     const savedSets = persistSavedSets(next);
-    // 조건을 만졌다 = 선택 포인터는 **편집 중인 집합**으로 복귀(= survivors). 칩에서 딴 집합을 보던
-    // 중이라도, 조건을 고치는 손은 "지금 이걸 보겠다"는 뜻이다(편집의 대가가 화면에 보여야 한다).
-    return { savedSets, selectedSetRef: null };
+    // 2026-09-22: **선택 포인터로 복귀시킬 것이 없다** — 집합을 가리키는 주소가 편집 경로 하나뿐이라,
+    // 조건을 만지면 그 집합이 이미 하류가 보는 것이다.
+    return { savedSets };
 };
 
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => {
     return {
-    selectedSetRef: null,
     gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
     gazePresence: loadJson(GAZE_PRESENCE_KEY, parsePresenceDnf) ?? [],
-    filterMode: loadJson(FILTER_MODE_KEY, (o) => (o === "daily" || o === "longitudinal" ? o : null)) ?? "longitudinal",
-    setFilterMode: (u) => set(() => { saveJson(FILTER_MODE_KEY, u); return { filterMode: u }; }),
-    evalSets: null,
-    computeNow: () => set((s) => ({ evalSets: s.savedSets })),
+    filterMode: loadFilterMode(),
+    // 모드를 바꾸면 **자리도 같이 갈아 끼운다** — 그 모드에 집합이 없으면 그때 빈 집합을 만든다.
+    setFilterMode: (u) => set((s) => (u === s.filterMode ? {} : { filterMode: saveFilterMode(u), ...switchSeat(s, u) })),
 
-    // 포인터는 **우주를 넘지 않는다**(단계 ② 불변식 ①) — 넘게 두면 "하루 집합을 골랐더니 종단
-    // 구독 패널이 전부 비는" 사고가 열린다. 전역 포인터를 우주별로 둘 두는 안은 과설계라 기각.
-    selectSet: (ref) => set((s) => {
-        if (ref?.kind === "saved") {
-            const set = s.savedSets.find((x) => x.id === ref.setId);
-            // 포인터는 우주를 안 넘는다(불변식 ①) — 양쪽 다 **파생값**으로 잰다.
-            const here = effectiveUniverse(universeOfExpr(selectEditingExpr(s), refUniverse(s.savedSets)));
-            if (set && effectiveUniverse(universeOfExpr(set.expr, refUniverse(s.savedSets))) !== here) return {};
-        }
-        return { selectedSetRef: ref };
-    }),
     setGazeMonths: (months) => set(() => ({ gazeMonths: months })),
     setGazePresence: (dnf) => set(() => { saveJson(GAZE_PRESENCE_KEY, dnf); return { gazePresence: dnf }; }),
 

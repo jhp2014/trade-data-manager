@@ -1,17 +1,16 @@
 // 패널 바인딩(단계 ④) — **두 우주를 한 계약으로** 내는 훅의 불변식 셋:
-//  ① 같은 (조건, 날짜)를 보는 소비자가 둘이어도 **평가는 한 벌**이다(키가 갈리면 5.7초가 곱해진다).
+//  ① 같은 (조건, 날짜)를 보는 소비자가 둘이어도 **평가는 한 벌**이다(키가 갈리면 비용이 곱해진다).
 //  ② 고정(핀)은 전역 선택을 안 따라가고, 재마운트를 건너 살아남는다.
-//  ③ 조건이 없으면 **하루 재료를 안 당긴다**(/day-replay 는 한 날 ~15MB — setup 의 네트워크 그물이 증인).
+//  ③ 조건이 없으면 **하루 재료를 안 당긴다**(/day-replay 는 한 날 13MB — setup 의 네트워크 그물이 증인).
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { exprOfStages } from "../expr.js";
-import { act, render } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import type { DayReplay, MinuteDerived } from "@trade-data-manager/wire";
 import { kstToUnix } from "@trade-data-manager/market/domain";
 import { Providers, seedEditing, seededClient } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import { useBoundSet } from "../useBoundSet.js";
 import type { FilterStage } from "../stage.js";
-import type { SavedSet } from "../../../store/savedSetsSlice.js";
 
 const evalSpy = vi.fn();
 vi.mock("@trade-data-manager/market/domain", async (importOriginal) => {
@@ -67,17 +66,13 @@ const renderProbes = (ids: string[], withSnapshot = true): ReturnType<typeof ren
     );
 };
 
-const savedDaily: SavedSet = {
-    id: "fs-day", name: "오늘 후보", expr: exprOfStages([wideStage]),
-    universe: "daily",
-};
 
 beforeEach(() => {
     localStorage.clear();
     evalSpy.mockClear();
     useWorkbench.setState({
         focus: { ...useWorkbench.getState().focus, date: DATE, code: "", time: null },
-        panelUi: {}, selectedSetRef: null,
+        panelUi: {},
         // 하루 평가는 **손으로 시작한다**(2026-09-21) — 저장물 스냅샷이 곧 "계산을 눌렀다"다.
         // 안 심으면 아래 검사들이 전부 0건이 되는데, 그건 버그가 아니라 이 모델의 뜻이다.
     });
@@ -85,130 +80,42 @@ beforeEach(() => {
 });
 
 describe("useBoundSet — 하루 우주", () => {
-    it("소비자가 둘이어도 **평가는 한 벌**이다(모듈 메모 — 키가 갈리면 5.7초가 곱해진다)", () => {
+    it("소비자가 둘이어도 **평가는 한 벌**이다(모듈 메모 — 키가 갈리면 비용이 곱해진다)", () => {
         renderProbes(["a", "b"]);
         expect(seen.a!.view.viewedItems).toHaveLength(3);
         expect(seen.b!.view.viewedItems).toHaveLength(3);
         expect(evalSpy, "같은 (조건, 날짜, opts) 는 한 번만 평가한다").toHaveBeenCalledTimes(1);
     });
 
-    // 우주 파생(9단계) 이후 조건 0개 = 우주 미정 = 종단이라, 하루 경로가 아예 안 선다.
-    it("조건이 없으면 재료를 안 당긴다 — 네트워크도 안 친다", () => {
-        seedEditing(exprOfStages([]));
+    it("종단 모드면 하루 경로가 아예 안 선다 — 재료도 안 당긴다", () => {
+        seedEditing(exprOfStages([]), [], "longitudinal");
         renderProbes(["a"], false); // 재료를 안 심었다: 당기면 setup 의 네트워크 그물이 이 테스트를 죽인다
-        expect(seen.a!.universe, "조건 0개 = 우주 미정 = 종단").toBe("longitudinal");
+        expect(seen.a!.universe).toBe("longitudinal");
         expect(seen.a!.day.on, "하루 경로가 안 선다 — 이게 이 검사의 본론이다").toBe(false);
         expect(evalSpy).not.toHaveBeenCalled();
     });
-
-    it("폐지된 종류를 가리키던 핀(옛 조립)은 **거르는 빈 집합 + 이유**다 — 조용히 연동으로 떨어지면 딴 집합을 그린다", () => {
-        seedEditing(exprOfStages([wideStage]), [savedDaily]);
-        useWorkbench.setState({ panelUi: { a: { setPin: { kind: "assembly", id: "as1" } } } }); // 저장물에 남은 옛 조립 핀
-        renderProbes(["a"]);
-        expect(seen.a!.view.viewedItems).toHaveLength(0);
-        // 이 둘이 이 검사의 본론이다 — 시트·시뮬은 `isFiltering` 으로 "거르나"를 가른다.
-        expect(seen.a!.view.isFiltering, "거르고 있다(빈 집합)").toBe(true);
-        expect(seen.a!.view.broken, "이유가 있다").toBe(true);
-    });
-
-    it("최종 생존은 작업 깔때기의 조건으로 풀린다 — 연동과 같은 것을 본다", () => {
-        useWorkbench.setState({ panelUi: { a: { setPin: { kind: "survivors" } } } });
-        renderProbes(["a", "b"]);
-        expect(seen.a!.view.viewedItems).toHaveLength(3);
-        expect(seen.a!.view.broken).toBe(false);
-        expect(evalSpy, "고정과 연동이 같은 조건이면 평가도 한 벌").toHaveBeenCalledTimes(1);
-    });
 });
 
-describe("useBoundSet — 계산은 손으로 시작한다 (2026-09-21)", () => {
-    it("한 번도 안 눌렀으면 **재료를 안 당기고**, 빈 목록이 아니라 「이유 있는 빈 집합」이다", () => {
-        seedEditing(exprOfStages([wideStage]), [], false); // 계산을 안 누른 상태
-        renderProbes(["a"], false); // 재료를 안 심었다: 당기면 setup 의 네트워크 그물이 이 검사를 죽인다
+describe("useBoundSet — 모드가 라우팅을 정한다 (2026-09-22)", () => {
+    it("평가할 조건이 없으면(전부 결손) **이유 있는 빈 집합**이다 — 빈 목록이 아니다", () => {
+        // 종단 전용 조건(date)을 하루 모드에 두면 결손이라 평가할 식이 안 남는다.
+        seedEditing(exprOfStages([{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATE, to: DATE }] }] }]), [], "daily");
+        renderProbes(["a"], false); // 재료를 안 당기는 것도 이 검사의 일부다
         expect(seen.a!.day.on, "하루 경로는 선다").toBe(true);
-        expect(seen.a!.day.computed).toBe(false);
         expect(seen.a!.view.viewedItems).toHaveLength(0);
         // ⚠ 본론 — `isFiltering && broken` 이라야 화면이 "조건에 다 걸렸다"로 안 읽는다.
-        expect(seen.a!.view.broken, "이유 있는 빈 집합").toBe(true);
+        //   「계산」 관문이 걷히면서 이 가드가 그 자리를 물려받았다(재료 없음 · 조건 없음 · 전부 결손).
+        expect(seen.a!.view.isFiltering, "거르고 있다").toBe(true);
+        expect(seen.a!.view.broken, "값은 아직 모른다").toBe(true);
         expect(evalSpy).not.toHaveBeenCalled();
     });
 
-    it("누른 뒤 조건이 바뀌면 **낡음**이 서고, 옛 결과는 그대로 남는다", () => {
-        renderProbes(["a"]);
-        expect(seen.a!.view.viewedItems).toHaveLength(3);
-        expect(seen.a!.day.stale).toBe(false);
-        act(() => useWorkbench.getState().addFilterStage([{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 99 } }] }]));
-        expect(seen.a!.day.stale, "조건이 바뀌었다").toBe(true);
-        expect(seen.a!.view.viewedItems, "옛 결과를 계속 그린다 — 비우면 '다 걸렸다'로 읽힌다").toHaveLength(3);
+    it("빈 집합을 하루 모드에서 열어도 **하루로** 라우팅된다 — 파생은 종단으로 떨어진다", () => {
+        seedEditing(exprOfStages([]), [], "daily");
+        renderProbes(["a"], false);
+        expect(seen.a!.universe, "자는 모드다(파생이 아니다)").toBe("daily");
+        expect(seen.a!.day.unsupported, "조건이 없다고 말한다").toBeTruthy();
+        expect(evalSpy, "조건이 없으면 재료를 안 당긴다").not.toHaveBeenCalled();
     });
 });
 
-describe("useBoundSet — 종단 집합에 고정한 패널", () => {
-    it("작업 우주를 하루로 갈아타도 **제 집합을 계속 푼다**(④ 의 목표 시나리오)", () => {
-        const savedLong: SavedSet = {
-            id: "fs-long", name: "9월 돌파", expr: exprOfStages([]),
-            universe: "longitudinal",
-        };
-        seedEditing(exprOfStages([]), [savedLong]);
-        useWorkbench.setState({ panelUi: { a: { setPin: { kind: "saved", setId: "fs-long" } } } });
-        renderProbes(["a"]);
-        expect(seen.a!.universe).toBe("longitudinal");
-        const before = seen.a!.view.viewedItems.length;
-        expect(before, "종단 집합은 유니버스에서 항목이 나온다").toBeGreaterThan(0);
-
-        // 작업 깔때기만 하루로 — 고정한 패널은 종단 그대로여야 한다.
-        // ⚠ **항목 수를 본다**: 한때 리졸버가 맥락 우주와 대조해 여기서 조용히 빈 집합이 됐는데,
-        //   universe·broken 만 보면 그 증상이 안 잡힌다(둘 다 그대로였다 — 리뷰가 잡은 테스트 구멍).
-        // 우주는 파생이라 토글이 없다(2026-09-19 9단계) — **하루 전용 조건을 걸어** 작업 우주를 옮긴다.
-        act(() => useWorkbench.getState().addFilterStage([{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] }]));
-        expect(seen.a!.universe).toBe("longitudinal");
-        expect(seen.a!.day.on).toBe(false);
-        expect(seen.a!.view.broken).toBe(false);
-        expect(seen.a!.view.viewedItems.length, "고정한 집합은 작업 우주와 무관하게 계속 풀린다").toBe(before);
-    });
-});
-
-describe("useBoundSet — 고정(핀)", () => {
-    it("고정하면 전역 선택을 안 따라간다 — 연동 패널만 따라간다", () => {
-        // 포인터는 **우주를 못 넘는다**(단계 ② 불변식 ①) — 우주는 파생이라 토글이 없으니
-        // 작업 식에 **하루 전용 조건**(wideStage)을 둬서 집합과 우주를 맞춘다.
-        seedEditing(exprOfStages([wideStage]), [savedDaily]);
-        renderProbes(["pinned", "linked"]);
-
-        // 포인터가 없을 때 눌러도 **뭔가는 묶인다** — 연동이 실제로 풀리는 대상(최종 생존)이다.
-        // (무반응이면 손잡이가 고장 난 것으로 읽힌다 — 리뷰가 잡은 자리.)
-        act(() => seen.pinned!.togglePin());
-        expect(seen.pinned!.pinned).toEqual({ kind: "survivors" });
-        act(() => seen.pinned!.togglePin()); // 해제하고 본론으로
-
-        // 전역 포인터를 저장 집합으로 → 둘 다 따라간다
-        act(() => useWorkbench.getState().selectSet({ kind: "saved", setId: "fs-day" }));
-        expect(seen.pinned!.label).toBe("오늘 후보");
-        expect(seen.linked!.label).toBe("오늘 후보");
-
-        // 하나만 고정 → 전역을 풀어도 그 패널은 제자리
-        act(() => seen.pinned!.togglePin());
-        expect(seen.pinned!.pinned).toEqual({ kind: "saved", setId: "fs-day" });
-        act(() => useWorkbench.getState().selectSet(null));
-        expect(seen.pinned!.label, "고정된 패널은 안 따라간다").toBe("오늘 후보");
-        expect(seen.linked!.label, "연동 패널은 따라간다").toMatch(/연동/);
-    });
-
-    it("핀은 패널 낟알로 영속한다 — 재마운트를 건너 살아남는다", () => {
-        seedEditing(exprOfStages([wideStage]), [savedDaily]);
-        useWorkbench.setState({ selectedSetRef: { kind: "saved", setId: "fs-day" } });
-        const first = renderProbes(["a"]);
-        act(() => seen.a!.togglePin());
-        expect(useWorkbench.getState().panelUi.a?.setPin).toEqual({ kind: "saved", setId: "fs-day" });
-        first.unmount();
-
-        renderProbes(["a"]);
-        expect(seen.a!.pinned).toEqual({ kind: "saved", setId: "fs-day" });
-    });
-
-    it("지워진 집합을 가리키는 핀은 **그대로 둔다** — 조용한 연동 폴백 금지", () => {
-        useWorkbench.setState({ panelUi: { a: { setPin: { kind: "saved", setId: "없는것" } } } });
-        renderProbes(["a"]);
-        expect(seen.a!.pinned).toEqual({ kind: "saved", setId: "없는것" });
-        expect(seen.a!.label).toBe("(지워진 집합)");
-    });
-});

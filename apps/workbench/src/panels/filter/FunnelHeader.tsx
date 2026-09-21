@@ -20,7 +20,6 @@ import { selectEditingExpr, selectEditingUniverse, useWorkbench } from "../../st
 import { FAIL, POINT_DEF } from "../../styles/palette.js";
 import { modeMismatch, UNIVERSE_LABEL, UNIVERSES } from "./universe.js";
 import { leafCount, refsOf } from "./expr.js";
-import { useDayEvalStatus } from "./useCellSet.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 
 export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
@@ -31,8 +30,6 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
     // 집합이 **실제로** 어느 우주인지(조건에서 파생) — 모드와 어긋나면 화면이 말해야 한다.
     const derived = useWorkbench(selectEditingUniverse);
     const mismatch = modeMismatch(setUniverse, derived);
-    const computeNow = useWorkbench((s) => s.computeNow);
-    const evalStatus = useDayEvalStatus();
     const date = useWorkbench((s) => s.focus.date);
     const expr = useWorkbench(selectEditingExpr);
     const exprIsEmpty = leafCount(expr) === 0 && refsOf(expr).length === 0;
@@ -48,7 +45,6 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
 
     return (
         <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>
-            <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>집합 편성</span>
             {/* 모드 — **사람이 고른다**(2026-09-21). 조건 팔레트가 여기서 갈리므로 "첫 조건이 말없이
                 우주를 정하는" 일이 없다. 하루면 **날짜 칩**이 따라 선다(날짜는 정의가 아니라 전역 시선). */}
             <span style={{ display: "flex", gap: 2, flexShrink: 0 }} role="group" aria-label="작업 모드">
@@ -75,26 +71,9 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
                 전부 결손이라 하루 집합이면 **언제나 0** 이 나온다("조건에 다 걸렸다"로 읽히는 거짓말).
                 하루의 수는 셀 엔진이 내므로 그 자리(작업 대상 패널)에 있고, 여기서는 그 사실을 말한다. */}
             {setUniverse === "daily" ? (
-                // 하루는 **손으로 시작한다** — 그날 270종목 × ~390분을 되짚는 일이라 자동으로 돌면
-                // 조건을 만지는 내내 그 값을 문다(2026-09-21 사용자 확정). 수 자체는 작업 대상 패널이 말한다.
-                <>
-                    <button onClick={computeNow} style={{
-                        font: "inherit", fontSize: 10.5, padding: "1px 9px", borderRadius: 3, cursor: "pointer",
-                        border: `1px solid ${evalStatus.stale ? "var(--warning)" : "var(--border-default)"}`,
-                        background: "var(--bg-secondary)",
-                        color: evalStatus.stale ? "var(--warning)" : "var(--text-secondary)", flexShrink: 0,
-                    }} title={evalStatus.computed
-                        ? "지금 조건으로 다시 셉니다 — 화면의 수는 계산을 누른 순간의 것입니다."
-                        : "아직 한 번도 안 셌습니다 — 누르면 그날 재료를 받아 셉니다(하루 ~15MB)."}>
-                        계산{evalStatus.stale ? " · 낡음" : ""}
-                    </button>
-                    {!evalStatus.computed && (
-                        <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}
-                            title="빈 화면이 '조건에 다 걸렸다'는 뜻이 아닙니다 — 아직 세지 않았습니다.">
-                            아직 계산 안 함
-                        </span>
-                    )}
-                </>
+                // 하루의 수는 **셀 엔진**이 내므로 그 자리(작업 대상 패널)에 있다 — 여기선 비운다.
+                // 2026-09-22: 「계산」·「낡음」·「아직 계산 안 함」은 없다(실측 0.25~0.47초 — 관문의 근거가 사라졌다).
+                null
             ) : (
                 <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}
                     title="후보 전체 → 걸린 필터를 다 통과한 수">

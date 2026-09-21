@@ -31,7 +31,7 @@ const paramsOf = (id: string): ThemePredicate["params"] => {
     return (s.predicates[0] as ThemePredicate).params;
 };
 
-const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [], sessionUi: {}, themeBindings: {}, panelUi: {} };
+const RESET = { filterStages: [], funnelSelection: null, savedSets: [], sessionUi: {}, themeBindings: {}, panelUi: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 

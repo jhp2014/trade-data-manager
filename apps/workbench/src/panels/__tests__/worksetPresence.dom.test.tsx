@@ -52,7 +52,7 @@ const chipMenu = (chip: string): void => { fireEvent.contextMenu(screen.getByRol
 describe("작업셋 E안 — 모수·DNF·집합", () => {
     beforeEach(() => {
         localStorage.clear(); // 영속(필터 DNF·좁히기·헤더 핀)이 테스트를 건너 새면 안 된다
-        useWorkbench.setState({ selectedSetRef: null, savedSets: [] });
+        useWorkbench.setState({ savedSets: [] });
     });
 
     it("네 출처가 각각 혼자서도 행을 만든다 — 무시만/그룹만/코멘트만 있는 날 포함", () => {
@@ -148,10 +148,11 @@ describe("작업셋 E안 — 모수·DNF·집합", () => {
     it("집합은 **읽기만** — 머리글 라벨이 보는 집합을 말하고, 고르는 칩은 이 패널에 없다(집합 편성의 몫)", () => {
         useWorkbench.setState({ savedSets: [{ id: "fs1", name: "돌파", expr: exprOfStages([]), universe: "longitudinal" }] });
         renderWithProviders(<WorksetPanel />, SEED);
-        expect(screen.getByTitle(/^지금 보는 집합: 연동/)).toBeTruthy();
+        expect(screen.getByTitle(/^지금 보는 집합: /)).toBeTruthy();
         expect(screen.queryByTitle(/^유니버스/)).toBeNull(); // 집합 칩 줄이 없다(월 줄의 "전체"는 다른 채널)
         expect(screen.queryByTitle(/^집합 전부 보기/)).toBeNull();
-        act(() => { useWorkbench.setState({ selectedSetRef: { kind: "saved", setId: "fs1" } }); });
+        // 2026-09-22: 고르는 포인터가 없다 — **뿌리를 갈아타면** 라벨이 따라온다.
+        act(() => { useWorkbench.setState({ editingSetId: "fs1", editPath: ["fs1"] }); });
         expect(screen.getByTitle(/^지금 보는 집합: 돌파/)).toBeTruthy();
     });
 
@@ -218,7 +219,7 @@ describe("작업셋 — 타점 행 그룹 아이콘(좌표 라벨)", () => {
 
     beforeEach(() => {
         localStorage.clear();
-        useWorkbench.setState({ selectedSetRef: null, savedSets: [] });
+        useWorkbench.setState({ savedSets: [] });
     });
 
     it("아이콘은 그 좌표의 라벨을 말한다 — 하루 그룹은 타점 행으로 안 내려온다", () => {

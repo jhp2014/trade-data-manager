@@ -59,26 +59,17 @@ export function OutcomePanel({ panelId = "outcome-rails" }: { panelId?: string }
     // 바인딩은 **패널 것**이다(2026-09-18 단계 ④): 기본 연동 + 이 패널에 고정 가능, 하루 우주면 셀 집합.
     const bound = useBoundSet(panelId);
     const selectedView = bound.view;
-    const filtersOn = stages.some((st) => st.enabled !== false && st.predicates.length > 0);
-    // 고정된 패널은 **전역 포인터와 무관하게** 자기 집합을 오버레이한다(고정의 뜻이 그것이다).
-    const pointerOn = useWorkbench((s) => s.selectedSetRef !== null) || filtersOn || bound.pinned !== null;
     // n/N 의 재료 — 이 패널은 타점 층위다(값은 라벨 좌표에만 굽혀 있다. 하루 후보는 "표현 안 됨"으로 선다).
     const boundMembers = useMemo(
         () => setMembersOf(bound.view, "point", (it) => it.time !== undefined && outcomes.byKey.has(pointKeyOf(it.stockCode, it.date, it.time))),
         [bound.view, outcomes],
     );
-    const controls: ControlSpec[] = [{
-        kind: "toggle", id: "setPin", name: "집합 고정", label: "고정",
-        help: bound.pinned !== null
-            ? "고정 해제 — 다시 전역 선택을 따라갑니다"
-            : "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다",
-        on: bound.pinned !== null, set: bound.togglePin,
-    }];
+    const controls: ControlSpec[] = [];
     const memberKeys = useMemo<ReadonlySet<string> | null>(
-        () => (pointerOn && selectedView.isFiltering && !selectedView.broken
+        () => (selectedView.isFiltering && !selectedView.broken
             ? new Set(selectedView.viewedPointRefs.map((p) => pointKeyOf(p.stockCode, p.date, p.time)))
             : null),
-        [pointerOn, selectedView],
+        [selectedView],
     );
 
     // 되짚기 — 보드 목록의 결과 줄에서 온 신호(OUTCOME_REVEAL — 레일 패널과 키가 다르다: 편집면이 다르다).

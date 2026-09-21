@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hmsToMinute, minuteToHms } from "@trade-data-manager/market/domain";
-import { selectEvalExpr, selectObservedStages, selectObservedUniverse, useWorkbench } from "../store/workbench.js";
+import { selectObservedSetId, selectObservedStages, useWorkbench } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
 import type { CellHit } from "@trade-data-manager/market/domain";
@@ -33,7 +33,7 @@ import { pointKey, chartKeyOf } from "../lib/pointKey.js";
 import { matchesPresenceDnf, hasActiveDnf, dnfSummary } from "../lib/presence.js";
 import { applyMonthClick, normalizeMonths, MONTH_PICK_HINT } from "./filter/monthPick.js";
 import { useFunnel } from "./filter/FunnelContext.js";
-import { linkedTargetLabel, setRefLabel } from "./filter/useSetBinding.js";
+import { setDisplayName } from "./filter/label.js";
 import { PIN } from "../styles/palette.js";
 import { openAndFocus } from "../lib/openPanel.js";
 
@@ -77,7 +77,6 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     const goToDay = useWorkbench((s) => s.goToDay);
     const goToPoint = useWorkbench((s) => s.goToPoint);
     const savedSets = useWorkbench((s) => s.savedSets);
-    const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
     const gazeMonths = useWorkbench((s) => s.gazeMonths);
     const setGazeMonths = useWorkbench((s) => s.setGazeMonths);
 
@@ -92,18 +91,17 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
 
     // ── 하루·셀 우주 — 편집 중인 집합의 타입이 이 패널의 모습을 정한다(decisions 「집합」 단계 ③).
     //    종단이면 지금까지의 3층 목록 그대로, 하루면 그날의 셀 ∪ 라벨 2층 목록이 된다.
-    const setUniverse = useWorkbench(selectObservedUniverse);
+    // ⚠ 라우팅의 자는 **모드**다(2026-09-22) — 파생은 조건 0개면 종단으로 떨어진다.
     const stages = useWorkbench(selectObservedStages);
-    const evalExpr = useWorkbench(selectEvalExpr);
-    const isDaily = setUniverse === "daily";
+    const isDaily = useWorkbench((s) => s.filterMode) === "daily";
     const pid = panelId ?? "workset";
     const [sortMode, setSortMode] = usePanelUi<"stock" | "time">(pid, "daySort", "stock");
     const [collapsedCodes, setCollapsedCodes] = usePanelUi<string[]>(pid, "dayCollapsed", []);
     const [showLabels, setShowLabels] = usePanelUi(pid, "dayLabels", true);
     const [datePinned, setDatePinned] = usePanelUi(pid, "datePin", false);
     // 셀 평가 — 상한은 **종목 그룹째** 자른다(반토막이면 머리의 ◇ n 이 거짓말을 한다).
-    // 하루 평가는 **「계산」을 누른 순간의 식**만 본다(2026-09-21) — 안 눌렀으면 null(재료 미조회).
-    const cellSet = useCellSet(isDaily ? evalExpr : null, focusDate, DAY_SET_OPTS);
+    // 식·저장물은 깔때기의 **늦은 한 벌**(slowExpr/slowSets) — 종단과 같은 박자여야 수가 안 갈린다.
+    const cellSet = useCellSet(isDaily ? funnel.slowExpr : null, funnel.slowSets, focusDate, DAY_SET_OPTS);
     const pointMemberships = useGroups().pointMemberships;
 
     /**
@@ -173,18 +171,17 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
         setGazeMonths([...next]);
     };
 
-    // ── 집합 — 전역 선택 포인터(selectedSetRef)를 **읽는다**(고르는 자리는 집합 편성의 SetRow 하나).
+    // ── 집합 — **관측 집합 하나**를 읽는다(2026-09-22: 고르는 포인터가 없어졌다).
     //    렌즈 규칙은 구독 패널과 같은 한 줄 — 보는 집합이 "걸려 있으면" 렌즈다(작업셋만 다른 규칙을 두면
-    //    옆 패널은 좁아졌는데 여기만 무반응인 어긋남이 생긴다). 전체는 걸림이 아니므로 렌즈가 안 선다.
-    const isUniverse = selectedSetRef?.kind === "universe";
-    // 보는 집합의 이름 — 어휘는 집합 줄과 같은 한 벌(setRefLabel/linkedTargetLabel). 클릭 = 집합 편성 패널로
-    // (닫혀 있으면 연다) — 고르는 손은 거기 하나뿐이라 여기는 길만 낸다.
-    const setLabel = selectedSetRef === null
-        ? linkedTargetLabel(funnel.viewOf(null).isFiltering)
-        : setRefLabel(selectedSetRef, savedSets, funnel.labelLook);
+    //    옆 패널은 좁아졌는데 여기만 무반응인 어긋남이 생긴다).
+    const observedId = useWorkbench(selectObservedSetId);
+    // 이름 어휘는 집합 줄과 같은 한 벌(setDisplayName). 클릭 = 집합 편성 패널로(닫혀 있으면 연다).
+    const setLabel = useMemo(() => {
+        const f = savedSets.find((x) => x.id === observedId);
+        return f ? setDisplayName(f, funnel.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)";
+    }, [savedSets, observedId, funnel.labelLook]);
     const goToFunnelPanel = (): void => openAndFocus("filter-funnel-1");
-    const linkedView = funnel.viewOf(null);
-    const view = isUniverse ? null : linkedView;
+    const view = funnel.view;
     const lensOn = view !== null && view.isFiltering && !view.broken;
     const memberPointKeys = useMemo(
         () => (view === null ? new Set<string>() : new Set(view.viewedPointRefs.map((r) => pointKey(r)))),

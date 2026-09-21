@@ -9,7 +9,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { useWorkbench } from "../store/workbench.js";
 import { refUniverse, type SavedSet } from "../store/savedSetsSlice.js";
-import { effectiveUniverse, universeOfExpr } from "../panels/filter/universe.js";
+import { effectiveUniverse, universeOfExpr, type Universe } from "../panels/filter/universe.js";
 import type { SetExpr } from "../panels/filter/expr.js";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
@@ -221,15 +221,15 @@ export function renderWithProviders(ui: ReactElement, seed: Seed = {}): RenderRe
  * 편집 대상 심기 — **편집이 곧 저장**이 된 뒤로(2026-09-20) 식은 필드가 아니라 "편집 중인 집합의
  * 것"이다. 그래서 검사는 `filterExpr` 을 못 꽂고, 집합 하나를 만들어 편집 대상으로 둔다.
  *
- * 우주는 **파생**이라 안 받는다 — 조건이 정한다(그래서 하루 집합을 원하면 하루 전용 조건을 심는다).
+ * ⚠ **모드도 같이 심는다**(2026-09-22) — 하류 라우팅의 자가 `filterMode` 라, 안 심으면 조건에서
+ * 파생된 우주와 화면의 모드가 어긋나 하루 검사가 전부 종단 기계로 간다. 기본값은 식이 정하는 우주다
+ * (검사가 따로 말하고 싶으면 `mode` 로 못 박는다).
  */
-export function seedEditing(expr: SetExpr, others: readonly SavedSet[] = [], commit = true): string {
+export function seedEditing(expr: SetExpr, others: readonly SavedSet[] = [], mode?: Universe): string {
     const id = "edit";
-    const editing: SavedSet = { id, expr, universe: effectiveUniverse(universeOfExpr(expr, refUniverse(others))) };
+    const universe = effectiveUniverse(universeOfExpr(expr, refUniverse(others)));
+    const editing: SavedSet = { id, expr, universe: mode ?? universe };
     const savedSets = [editing, ...others];
-    // ⚠ `commit` 은 **「계산」을 눌렀다**는 뜻이다(2026-09-21) — 하루 평가는 안 누르면 재료조차 안
-    //   당기므로, 안 심으면 하루 검사가 전부 0건이 된다(버그가 아니라 이 모델의 뜻). 그 상태 자체를
-    //   재는 검사만 `commit: false` 로 부른다.
-    useWorkbench.setState({ savedSets, editingSetId: id, editPath: [id], evalSets: commit ? savedSets : null });
+    useWorkbench.setState({ savedSets, editingSetId: id, editPath: [id], filterMode: mode ?? universe });
     return id;
 }

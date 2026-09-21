@@ -41,18 +41,15 @@ export function SetBindingLabel({ bound, members }: {
         ...(bound.day.truncated && !bound.day.tooWide ? ["상한 초과 — 잘림"] : []),
     ].join(" · ");
     const tail = daily ? dayTail : gazeTail;
-    const pinned = bound.pinned !== null;
     return (
         <span style={label}
             title={[
                 `보는 집합: ${UNIVERSE_LABEL[bound.universe]} · ${bound.label}`,
-                pinned ? "이 패널에 고정됨(전역 선택을 안 따라갑니다)" : "연동 — 전역 선택을 따라갑니다",
                 tail ? (daily ? `날짜 ${tail}` : `시선 ${tail}`) : "",
                 `표현됨 ${members.okCount} / 전체 ${members.total}`,
                 bound.day.unsupported ?? "",
             ].filter(Boolean).join(" · ")}>
             <span style={badge}>{UNIVERSE_LABEL[bound.universe]}</span>
-            {pinned && <span style={{ color: "var(--text-tertiary)", marginRight: 3 }}>🔒</span>}
             <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{bound.label}</span>
             <span style={{ color: "var(--text-tertiary)", marginLeft: 5, fontVariantNumeric: "tabular-nums" }}>
                 {members.okCount}/{members.total}

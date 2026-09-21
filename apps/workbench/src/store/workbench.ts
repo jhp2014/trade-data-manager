@@ -34,7 +34,7 @@ export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, BoardMa
 export type { HistoryEntry, HistorySlice } from "./historySlice.js";
 export type { RankViewSlice } from "./rankViewSlice.js";
 export type { FilterFunnelSlice } from "./filterFunnelSlice.js";
-export { allStagesOf, selectEditingExpr, selectEditingStages, selectEditingUniverse, selectEvalExpr, selectEvalStale, selectObservedExpr, selectObservedStages, selectObservedUniverse } from "./filterFunnelSlice.js";
+export { allStagesOf, selectEditingExpr, selectEditingStages, selectEditingUniverse, selectObservedExpr, selectObservedSetId, selectObservedStages, selectObservedUniverse } from "./filterFunnelSlice.js";
 export type { SavedSet, SavedSetsSlice } from "./savedSetsSlice.js";
 export type { PointDefSlice } from "./pointDefSlice.js";
 export type { ThemeBindingSlice } from "./themeBindingSlice.js";

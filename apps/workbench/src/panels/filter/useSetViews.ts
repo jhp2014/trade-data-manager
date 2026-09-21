@@ -1,26 +1,25 @@
 // 집합 시선 배선 — 깔때기 정산(result)과 리졸버 재료(ctx)를 받아 **보는 집합**을 만든다.
 //
 // useFilterFunnel 의 뒷반쪽을 뗀 것: 앞반쪽은 재료를 모아 정산까지(조회기·유니버스·tally), 여기는
-// 그 재료로 참조를 풀고(resolveSet) 뷰 계약(ViewedSet)으로 포장한다(viewOf). 나뉜 이유는 수명이다 —
-// 재료·정산은 사전과 편집을 따라 살고, 시선(선택 포인터·월·존재 필터)은 클릭마다 산다.
+// 그 재료로 관측 집합을 뷰 계약(ViewedSet)으로 포장한다(view). 나뉜 이유는 수명이다 —
+// 재료·정산은 사전과 편집을 따라 살고, 시선(월·존재 필터)은 클릭마다 산다.
 //
 // ⚠ result === null 이 곧 로딩이다("정산 결과. 로딩 중이면 null" — FunnelView 계약). 로딩 중의
 // 빈 집합으로 거르면 빈 화면이 "조건에 다 걸렸다"로 읽히므로, 가드는 전부 여기(뷰 계약 안)에 있다.
 import { useCallback, useMemo } from "react";
 import type { FunnelItem, FunnelResult } from "@trade-data-manager/market/domain";
 import { chartKey } from "../../lib/pointKey.js";
-import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import { useWorkbench } from "../../store/workbench.js";
-import { expandRefToPoints, resolveSetRef, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
+import { resolveSavedSet, resolveWorkingSet, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
 import { refsOf } from "./expr.js";
 import { usePresenceIndex } from "../../lib/usePresence.js";
 import { emptyPresence, hasActiveDnf, matchesPresenceDnf } from "../../lib/presence.js";
 
 
-/** 구독 패널이 소비하는 "보는 집합"의 계약 — viewOf 가 돌려주는 유일한 모양. */
+/** 구독 패널이 소비하는 "보는 집합"의 계약 — `view` 가 내는 유일한 모양. */
 export interface ViewedSet {
     /**
-     * 걸린 게 있나 — false 면 구독자는 거르지 않는다(전체 = 제한 없음). 명시 바인딩은 로딩이 끝나면 true.
+     * 걸린 게 있나 — false 면 구독자는 거르지 않는다(전체 = 제한 없음).
      * ⚠ 로딩 가드가 **여기 들어 있다**(로딩 중 false) — 판정이 안 끝난 빈 집합으로 거르면 빈 화면이
      * "조건에 다 걸렸다"로 읽히는데, 그 가드를 소비자마다 되풀이하게 두면 하나는 반드시 빠뜨린다.
      */
@@ -33,18 +32,20 @@ export interface ViewedSet {
 }
 
 export interface SetViews {
-    /** 집합 참조 풀기 — 계약과 캐시 규칙은 FunnelView.resolveSet 주석 참조. */
-    resolveSet: (ref: SetRef) => ResolvedSet;
-    /** 패널이 보는 집합 — 계약은 FunnelView.viewOf 주석 참조. */
-    viewOf: (ref: SetRef | null) => ViewedSet;
+    /** 저장 집합 하나 풀기 — 목록의 건수가 쓴다. 캐시 규칙은 FunnelView.resolveSet 주석 참조. */
+    resolveSet: (setId: string) => ResolvedSet;
+    /**
+     * 구독 패널이 보는 집합 — **관측 집합(경로의 뿌리)의 정산에 시선을 겹친 것 하나**(2026-09-22).
+     * 인자가 없어진 것이 이 판의 요점이다: 집합을 가리키는 주소가 편집 경로 하나뿐이라 고를 것이 없다.
+     */
+    view: ViewedSet;
 }
 
 /**
  * ctx 는 **재료가 하나라도 바뀌면 새로 서는** 메모여야 한다(useFilterFunnel 이 만든다) — 리졸버와
  * 그 캐시의 수명이 ctx 의 참조 동일성에 매여 있다.
  */
-export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): SetViews {
-    const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
+export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx, observedId: string): SetViews {
     // 시선(전역) — "보는 집합 = 집합 ∩ 월 ∩ 존재필터"를 **여기 한 곳**에서 접는다. 소비자(골격·시트·
     // 그룹목록·작업셋 렌즈·레일 오버레이)마다 되풀이하면 하나는 빠뜨리고, 그 화면만 딴 것을 그린다.
     // 존재필터의 낟알은 day: 타점 항목도 "그 날이 통과하면 통과"(작업셋 행 필터와 같은 의미론).
@@ -73,15 +74,17 @@ export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): Se
      */
     const resolveSet = useMemo(() => {
         const cache = new Map<string, ResolvedSet>();
-        return (ref: SetRef): ResolvedSet => {
-            const k = setRefKey(ref);
-            const hit = cache.get(k);
+        return (setId: string): ResolvedSet => {
+            const hit = cache.get(setId);
             if (hit) return hit;
-            const r: ResolvedSet = isLoading ? { broken: false, grain: "day", items: [] } : resolveSetRef(ref, ctx);
-            cache.set(k, r);
+            // 관측 집합은 **깔때기 정산을 재사용**한다 — 안 그러면 지금 보는 그 집합을 한 번 더 평가한다.
+            const r: ResolvedSet = isLoading
+                ? { broken: false, grain: "day", items: [] }
+                : setId === observedId ? resolveWorkingSet(ctx) : resolveSavedSet(setId, ctx);
+            cache.set(setId, r);
             return r;
         };
-    }, [ctx, isLoading]);
+    }, [ctx, isLoading, observedId]);
 
     // 지금 보는 집합 — 작업 깔때기의 최종 생존에 시선을 겹친 것.
     const viewedItems = useMemo<FunnelItem[]>(
@@ -115,41 +118,8 @@ export function useSetViews(result: FunnelResult | null, ctx: SetResolveCtx): Se
         () => ({ isFiltering: !isLoading && isFiltering, broken: false, viewedItems, viewedChartKeys, viewedPointRefs }),
         [isLoading, isFiltering, viewedItems, viewedChartKeys, viewedPointRefs],
     );
-    const boundViewOf = useMemo(() => {
-        const cache = new Map<string, ViewedSet>();
-        return (ref: SetRef): ViewedSet => {
-            const k = setRefKey(ref);
-            const hit = cache.get(k);
-            if (hit) return hit;
-            const r = resolveSet(ref);
-            const items = r.items.filter(inGaze); // 월 시선 — 집합 정의는 그대로, 보이는 창만 좁힌다
-            const v: ViewedSet = {
-                isFiltering: !isLoading, // 로딩 중의 빈 집합으로 거르면 "조건에 다 걸렸다"로 읽힌다
-                broken: r.broken,
-                viewedItems: items,
-                viewedChartKeys: new Set(items.map((i) => chartKey(i))),
-                // 전개(∀) — 하루 항목은 그날 타점 전부로, **그 참조 자신의 정의의 시각으로**(저장 집합·조립의
-                // 자립 — 현재 정의로 전개하면 "게이트 30 집합"의 타점이 게이트 50 세계의 것이 된다).
-                // 타점 0인 하루는 대표가 없다(결손으로 보일 자리). 시선(inGaze)은 day 낟알이라 전개 뒤 걸러도 같다.
-                // ⚠ 로딩 가드 — expandRefToPoints 의 조립 갈래는 r 이 아니라 ctx 로 재정산하므로, 로딩 중의
-                // 빈 스텁(r.items=[])을 지나쳐 미완성 재료로 전개한다. 뷰 계약의 가드가 여기서도 서야 한다.
-                viewedPointRefs: isLoading ? [] : expandRefToPoints(ref, r, ctx)
-                    .filter((i) => i.time !== undefined && inGaze(i))
-                    .map((i) => ({ stockCode: i.stockCode, date: i.date, time: i.time! })),
-            };
-            cache.set(k, v);
-            return v;
-        };
-    }, [resolveSet, ctx, isLoading, inGaze]);
-    // 연동(null) = **선택 포인터를 따라간다**: 목록에서 집합을 고르면 그 집합, 깔때기를 만지는 순간
-    // 작업 깔때기 시선으로 복귀(포인터 리셋은 슬라이스가 한다 — 여기는 읽기만).
-    const viewOf = useCallback(
-        (ref: SetRef | null): ViewedSet => {
-            const target = ref ?? selectedSetRef;
-            return target === null ? gazeView : boundViewOf(target);
-        },
-        [gazeView, boundViewOf, selectedSetRef],
-    );
-
-    return { resolveSet, viewOf };
+    // 2026-09-22: 옛 `boundViewOf`(참조 하나를 풀어 뷰로 포장) 와 `viewOf(ref)` 는 죽었다 —
+    // 구독 패널이 고를 수 있는 참조가 없어졌다. 다른 집합을 보려면 **그 집합을 열면** 된다
+    // (칩 줄의 「열기」 = `editSet` — 그러면 그게 관측 뿌리가 되어 여기 정산이 바뀐다).
+    return { resolveSet, view: gazeView };
 }

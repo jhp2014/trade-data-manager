@@ -54,7 +54,7 @@ const renderPanelUnder = (): ReturnType<typeof render> => {
     });
 };
 
-const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [], panelUi: {}, sessionUi: {} };
+const RESET = { filterStages: [], funnelSelection: null, savedSets: [], panelUi: {}, sessionUi: {} };
 beforeEach(() => { useWorkbench.setState(RESET); useWorkbench.getState().resetPointDef(); });
 afterEach(() => { useWorkbench.setState(RESET); useWorkbench.getState().resetPointDef(); localStorage.clear(); });
 

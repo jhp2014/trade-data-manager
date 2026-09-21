@@ -69,13 +69,7 @@ export function TradeSimPanel({ panelId = "trade-sim" }: { panelId?: string }): 
         () => setMembersOf(bound.view, "point", (it) => it.time !== undefined && sim.byKey.has(pointKeyOf(it.stockCode, it.date, it.time))),
         [bound.view, sim],
     );
-    const controls: ControlSpec[] = [{
-        kind: "toggle", id: "setPin", name: "집합 고정", label: "고정",
-        help: bound.pinned !== null
-            ? "고정 해제 — 다시 전역 선택을 따라갑니다"
-            : "지금 보는 집합을 이 패널에 고정 — 다른 패널에서 집합을 바꿔도 여기는 안 따라갑니다",
-        on: bound.pinned !== null, set: bound.togglePin,
-    }];
+    const controls: ControlSpec[] = [];
 
     const agg = useMemo(() => {
         const keys = survivorKeys ?? [...sim.byKey.keys()];

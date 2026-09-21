@@ -1,12 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { exprOfStages, refNode, type SetExpr, type SetTerm } from "../expr.js";
 import { DEFAULT_POINT_DEFINITION, type ChartRef, type FunnelItem, type PointDefinition } from "@trade-data-manager/market/domain";
-import type { SetRef } from "../../../lib/setRef.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import { chartKey } from "../../../lib/pointKey.js";
 import type { EvalLookup } from "../evaluate.js";
 import type { FilterStage } from "../stage.js";
-import { expandRefToPoints, resolveSetRef, type SetResolveCtx } from "../resolveSet.js";
+import { resolveSavedSet, resolveWorkingSet, type SetResolveCtx } from "../resolveSet.js";
 
 /** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
 const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
@@ -90,33 +89,23 @@ const withLook = (base: SetResolveCtx, look: EvalLookup): SetResolveCtx => ({
 
 const codesOf = (r: { items: FunnelItem[] }): string[] => r.items.map((i) => `${i.stockCode.slice(-1)}${i.time ? "@" + i.time.slice(0, 5) : ""}`);
 
-describe("resolveSetRef — 우주 게이트", () => {
+describe("resolveSavedSet — 우주 게이트", () => {
     it("**하루 집합은 이 기계가 안 푼다** — otherUniverse 로 접는다(맥락이 아니라 집합 자신의 우주가 기준)", () => {
-        const r = resolveSetRef({ kind: "saved", setId: "fs-day" }, ctx);
+        const r = resolveSavedSet("fs-day", ctx);
         expect(r.otherUniverse).toBe(true);
         expect(r.items).toEqual([]);
         // 깨짐과 **일부러 구분**한다 — 깨짐은 고칠 것이고 이건 사실이라 화면 문구가 다르다.
         expect(r.broken).toBe(false);
         // 같은 조건을 든 종단 집합은 그대로 풀린다(게이트가 조건이 아니라 우주를 본다는 증거).
-        expect(resolveSetRef({ kind: "saved", setId: "fs1" }, ctx).otherUniverse).toBeUndefined();
+        expect(resolveSavedSet("fs1", ctx).otherUniverse).toBeUndefined();
     });
 });
 
-describe("resolveSetRef — 산지별 풀이", () => {
-    it("유니버스: 후보 하루 전부, day 층위", () => {
-        const r = resolveSetRef({ kind: "universe" }, ctx);
-        expect(r).toMatchObject({ broken: false, grain: "day" });
-        expect(codesOf(r)).toEqual(["1", "2", "3"]);
-    });
-
+describe("resolveWorkingSet — 관측 집합은 깔때기 정산을 재사용한다", () => {
     it("최종 생존: 작업 깔때기의 생존자", () => {
-        const r = resolveSetRef({ kind: "survivors" }, ctx);
+        const r = resolveWorkingSet(ctx);
         expect(r.grain).toBe("day");
         expect(codesOf(r)).toEqual(["1", "2"]); // 날짜 ≤ 07-02
-    });
-
-    it("orphan(폐지된 옛 바인딩) = 항상 깨진 참조", () => {
-        expect(resolveSetRef({ kind: "orphan", label: "그룹 테마" }, ctx)).toEqual({ broken: true, grain: "day", items: [] });
     });
 });
 
@@ -124,22 +113,22 @@ describe("resolveSetRef — 산지별 풀이", () => {
 
 describe("저장 집합 — 자립 저장물의 풀이(판정 엔진은 깔때기 것 그대로)", () => {
     it("부위=생존자: 제 조건 사본으로 판정 — 작업 깔때기와 독립", () => {
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs1" }, ctx))).toEqual(["1", "2"]);
+        expect(codesOf(resolveSavedSet("fs1", ctx))).toEqual(["1", "2"]);
     });
 
     it("조건이 다른 집합은 다른 모수 — 작업 깔때기(≤07-02)와도 서로와도 독립", () => {
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs2" }, ctx)).sort()).toEqual(["1", "2", "3"]);
+        expect(codesOf(resolveSavedSet("fs2", ctx)).sort()).toEqual(["1", "2", "3"]);
     });
 
     it("지워진 집합 = 깨진 참조", () => {
-        expect(resolveSetRef({ kind: "saved", setId: "없는집합" }, ctx).broken).toBe(true);
+        expect(resolveSavedSet("없는집합", ctx).broken).toBe(true);
     });
 });
 
 describe("작업 깔때기", () => {
     it("단계가 하나도 안 걸린 작업 깔때기의 생존 = 전부(공허참)", () => {
         const empty: SetResolveCtx = { ...ctx, activeStages: [], workingExpr: exprOfStages([]) };
-        expect(codesOf(resolveSetRef({ kind: "survivors" }, empty))).toEqual(["1", "2", "3"]);
+        expect(codesOf(resolveWorkingSet(empty))).toEqual(["1", "2", "3"]);
     });
 
     it("⚠ 작업 깔때기는 주입된 정산(activeFilter)을 **그대로 재사용**한다 — 재평가하면 grain(자동 해상도)이 갈리고 비용이 두 배가 된다", () => {
@@ -152,11 +141,11 @@ describe("작업 깔때기", () => {
                 tally: { universe: 1, survivors: [{ stockCode: "000003", date: "2026-07-03", time: "11:00:00" }], pendingCount: 0 },
             },
         };
-        const r = resolveSetRef({ kind: "survivors" }, injected);
+        const r = resolveWorkingSet(injected);
         expect(r.grain).toBe("point");
         expect(codesOf(r)).toEqual(["3@11:00"]);
         // 저장 집합(fs1)은 주입본과 무관 — 제 조건 사본으로 평가된다.
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs1" }, injected))).toEqual(["1", "2"]);
+        expect(codesOf(resolveSavedSet("fs1", injected))).toEqual(["1", "2"]);
     });
 });
 
@@ -171,25 +160,25 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
     it("무관한 깔때기 편집(새 ctx·같은 세대)은 재정산하지 않고, 재료 세대가 바뀌면 반드시 재정산한다", () => {
         const { look, calls } = counting();
         const base: SetResolveCtx = { ...withLook(ctx, look), materialsEpoch: "정찰-세대-1" };
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs1" }, base))).toEqual(["1", "2"]);
+        expect(codesOf(resolveSavedSet("fs1", base))).toEqual(["1", "2"]);
         const n1 = calls();
         expect(n1).toBeGreaterThan(0);
 
         // 작업 깔때기 조건만 바뀐 새 ctx(레일 편집) — 저장 집합의 정의·재료는 그대로라 정산이 안 돈다.
         const edited: SetResolveCtx = { ...base, activeStages: [], workingExpr: exprOfStages([]) };
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "fs1" }, edited))).toEqual(["1", "2"]);
+        expect(codesOf(resolveSavedSet("fs1", edited))).toEqual(["1", "2"]);
         expect(calls()).toBe(n1);
 
         // 재료 세대가 바뀌면(유니버스·사전·축 값 변경) 캐시가 통째로 버려진다.
         const newMaterials: SetResolveCtx = { ...base, materialsEpoch: "정찰-세대-2" };
-        resolveSetRef({ kind: "saved", setId: "fs1" }, newMaterials);
+        resolveSavedSet("fs1", newMaterials);
         expect(calls()).toBeGreaterThan(n1);
     });
 
     it("정의가 바뀐 집합(덮어쓰기)은 같은 세대라도 재정산된다", () => {
         const { look, calls } = counting();
         const base: SetResolveCtx = { ...withLook(ctx, look), materialsEpoch: "정찰-세대-3" };
-        resolveSetRef({ kind: "saved", setId: "fs1" }, base);
+        resolveSavedSet("fs1", base);
         const n1 = calls();
 
         const overwritten: SetResolveCtx = {
@@ -198,16 +187,16 @@ describe("세션 캐시 — 저장 집합의 정산은 (정의 × 재료 세대)
                 ? { id: "fs1", name: "테마 생존", expr: exprOfStages([dateStage("d2", "2026-07-01", "2026-07-01")]), universe: "longitudinal" as const }
                 : savedSets.get(id)),
         };
-        const r = resolveSetRef({ kind: "saved", setId: "fs1" }, overwritten);
+        const r = resolveSavedSet("fs1", overwritten);
         expect(codesOf(r)).toEqual(["1"]); // 새 정의(날짜 ≤ 07-01)로 다시 정산됐다
         expect(calls()).toBe(n1); // 날짜 조건은 그룹 판정을 안 부른다 — 낡은 그룹 정산을 안 썼다는 뜻
     });
 
     it("작업 깔때기는 세션 캐시를 안 탄다 — 편집마다 정의가 달라 세대 안에서 무한히 쌓인다", () => {
         const base: SetResolveCtx = { ...ctx, materialsEpoch: "정찰-세대-4" };
-        expect(codesOf(resolveSetRef({ kind: "survivors" }, base))).toEqual(["1", "2"]);
+        expect(codesOf(resolveWorkingSet(base))).toEqual(["1", "2"]);
         const edited: SetResolveCtx = { ...base, activeStages: [], workingExpr: exprOfStages([]) };
-        expect(codesOf(resolveSetRef({ kind: "survivors" }, edited))).toEqual(["1", "2", "3"]); // 편집이 즉시 반영
+        expect(codesOf(resolveWorkingSet(edited))).toEqual(["1", "2", "3"]); // 편집이 즉시 반영
     });
 });
 
@@ -235,47 +224,20 @@ describe("저장 집합의 자기-정의 평가 — 재료가 정의를 따라�
     };
 
     it("⚠ 같은 조건 사본·다른 pointDef 두 집합은 **서로 다른 정산**이다(세션 캐시 오염 회귀선)", () => {
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "g50" }, dctx))).toEqual(["1@09:30"]);
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "g30" }, dctx))).toEqual(["1@09:30", "1@10:00"]);
+        expect(codesOf(resolveSavedSet("g50", dctx))).toEqual(["1@09:30"]);
+        expect(codesOf(resolveSavedSet("g30", dctx))).toEqual(["1@09:30", "1@10:00"]);
         // 반대 순서로 다시 물어도(캐시 히트 경로) 각자 자기 정의의 답이다.
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "g30" }, { ...dctx }))).toEqual(["1@09:30", "1@10:00"]);
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "g50" }, { ...dctx }))).toEqual(["1@09:30"]);
+        expect(codesOf(resolveSavedSet("g30", { ...dctx }))).toEqual(["1@09:30", "1@10:00"]);
+        expect(codesOf(resolveSavedSet("g50", { ...dctx }))).toEqual(["1@09:30"]);
     });
 
-    it("day 층위 저장 집합의 타점 전개(expandRefToPoints)도 **자기 정의의 시각**으로", () => {
-        const dsets = new Map(sets);
-        dsets.set("d50", { id: "d50", name: "day50", expr: exprOfStages([dateStage("dd", "2026-07-01", "2026-07-03")]), universe: "longitudinal" as const, pointDef: defGate(50) });
-        const c2: SetResolveCtx = { ...dctx, savedSetOf: (id) => dsets.get(id) };
-
-        const savedRef = { kind: "saved", setId: "d50" } as const;
-        const r = resolveSetRef(savedRef, c2);
-        expect(r.grain).toBe("day");
-        // 현재 정의(timesOf)로 전개했다면 A 둘 + C 하나 — 자기 정의(게이트 50)의 시각은 A@09:30 하나뿐.
-        expect(codesOf({ items: expandRefToPoints(savedRef, r, c2) })).toEqual(["1@09:30"]);
-    });
 
     it("정의 사본 없는 옛 저장물은 현재 정의로 평가된다", () => {
         const old = new Map(sets);
         old.set("noDef", { id: "noDef", name: "옛것", expr: exprOfStages(stagesSame), universe: "longitudinal" as const });
         const octx: SetResolveCtx = { ...dctx, savedSetOf: (id) => old.get(id) };
         // 현재 재료(timesOf)의 시각: A 둘 + C 하나 — 그중 조건(≤10:30)에 드는 A 둘.
-        expect(codesOf(resolveSetRef({ kind: "saved", setId: "noDef" }, octx))).toEqual(["1@09:30", "1@10:00"]);
-    });
-});
-
-describe("항목 목록(세션) — 판정 없이 그대로", () => {
-    it("시각이 하나라도 있으면 point 층위", () => {
-        const ref: SetRef = {
-            kind: "items", label: "밴드",
-            items: [{ stockCode: "000001", date: "2026-07-01", time: "09:30:00" }, { stockCode: "000002", date: "2026-07-02" }],
-        };
-        const r = resolveSetRef(ref, ctx);
-        expect(r.grain).toBe("point");
-        expect(r.items).toHaveLength(2);
-    });
-
-    it("전부 하루면 day 층위", () => {
-        expect(resolveSetRef({ kind: "items", label: "x", items: [{ stockCode: "000002", date: "2026-07-02" }] }, ctx).grain).toBe("day");
+        expect(codesOf(resolveSavedSet("noDef", octx))).toEqual(["1@09:30", "1@10:00"]);
     });
 });
 
@@ -290,12 +252,12 @@ describe("참조 잎 — 작업 식에서도 풀린다", () => {
     it("작업 식의 `∈ 저장 집합` 이 저장 후와 **같은 답**을 낸다", () => {
         // fs2 = 날짜 ≤ 07-03 → A·B·C. 참조 하나만 든 작업 식도 그 셋이어야 한다.
         const c: SetResolveCtx = { ...ctx, activeStages: [], workingExpr: refTo("fs2") };
-        expect(codesOf(resolveSetRef({ kind: "survivors" }, c))).toEqual(["1", "2", "3"]);
+        expect(codesOf(resolveWorkingSet(c))).toEqual(["1", "2", "3"]);
     });
 
     it("지워진 집합을 가리키는 참조는 **결손**이지 거짓이 아니다 — 전량 미배치", () => {
         const c: SetResolveCtx = { ...ctx, activeStages: [], workingExpr: refTo("없는집합") };
-        const r = resolveSetRef({ kind: "survivors" }, c);
+        const r = resolveWorkingSet(c);
         expect(r.items).toEqual([]);
         expect(r.pending, "결손이면 미배치로 센다(값을 지어내지 않는다)").toBeGreaterThan(0);
     });
@@ -311,7 +273,7 @@ describe("참조 잎 — 작업 식에서도 풀린다", () => {
             ...ctx, activeStages: [], workingExpr: refTo("fs-pt"),
             savedSetOf: (id) => (id === "fs-pt" ? pointSet : savedSets.get(id)),
         };
-        const r = resolveSetRef({ kind: "survivors" }, c);
+        const r = resolveWorkingSet(c);
         // 참조가 타점 집합이므로 **바깥 낟알도 타점으로 올라간다**(refGrainOf) — 차트 행으로 안 뭉갠다.
         expect(r.grain).toBe("point");
         expect(codesOf(r)).toEqual(["1@09:30"]);

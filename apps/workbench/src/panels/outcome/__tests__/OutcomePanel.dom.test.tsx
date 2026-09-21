@@ -88,7 +88,7 @@ const trackOf = (c: HTMLElement, label: string): HTMLElement => {
 };
 const stages = (): ReturnType<typeof selectEditingStages> => selectEditingStages(useWorkbench.getState());
 
-const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [], panelUi: {}, sessionUi: {} };
+const RESET = { filterStages: [], funnelSelection: null, savedSets: [], panelUi: {}, sessionUi: {} };
 beforeEach(() => { useWorkbench.setState(RESET); useWorkbench.getState().resetPointDef(); });
 afterEach(() => { useWorkbench.setState(RESET); useWorkbench.getState().resetPointDef(); localStorage.clear(); });
 
