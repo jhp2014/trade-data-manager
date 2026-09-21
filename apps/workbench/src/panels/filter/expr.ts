@@ -358,7 +358,14 @@ export const isFoldedNode = (x: FoldedItem): x is FoldedNode => x.kind === "and"
  * ⚠ 평가도 표시도 전부 이걸 지나야 한다 — 두 곳에서 따로 접으면 같은 식이 화면과 평가에서
  * 다른 뜻이 된다(옛 "필터 UI 가 두 곳" 함정의 식 판).
  */
+const foldMemo = new WeakMap<SetExpr, FoldedNode>();
+
 export function foldExpr(e: SetExpr): FoldedNode {
+    // ⚠ **식 객체에 메모한다**(WeakMap) — `evalExpr` 은 **항목마다** 불린다(종단 모수 1만 좌표).
+    //   안 접어 두면 접기 비용과 배열 할당이 항목 수만큼 곱해진다(2026-09-21 실사용이 "AND/OR 을
+    //   바꾸면 화면이 멈춘다"로 잡은 자리). 식은 편집마다 새 객체라 캐시가 낡을 수 없다.
+    const hit = foldMemo.get(e);
+    if (hit !== undefined) return hit;
     const top = topOpOf(e);
     const of: FoldedItem[] = [];
     let i = 0;
@@ -372,7 +379,9 @@ export function foldExpr(e: SetExpr): FoldedNode {
         of.push({ kind: opAt(e, g.from), id: `${e.id}#g${g.from}`, of: e.of.slice(g.from, g.to + 1) });
         i = g.to + 1;
     }
-    return { kind: top, id: e.id, of };
+    const made: FoldedNode = { kind: top, id: e.id, of };
+    foldMemo.set(e, made);
+    return made;
 }
 
 // ── 저장물 파싱 ────────────────────────────────────────────────────────────
