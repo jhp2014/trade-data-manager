@@ -5,12 +5,14 @@
 // 조건과 묶음이 **한 줄에 섞여** 가로로 선다. 칩을 누르면 그 내용이 **아랫줄**에 열리고, 다시 누르면
 // 닫힌다(조건도 묶음도 같은 토글).
 //
-// ## 열림은 **연한 채움**, 종류는 **테두리** (2026-09-22)
-// 선택 색은 조건·묶음이 **같다**(연한 액센트). 채움을 옅게 두는 것이 요점이다 — 짙게 채우면
-// 테두리가 묻혀 묶음의 정체(보라 · 손 이름 실선 / 자동 이름 점선)가 열릴 때만 사라진다.
-// 그래서 채널이 셋으로 갈린다: **채움 = 열림 · 테두리 = 종류와 이름 여부 · `▼` = 묶음**.
+// ## 열림은 **액센트 채움**, 종류는 `▼` (2026-09-22)
+// 선택 색은 조건·묶음이 **같다** — 머리글의 모드 칩과 같은 액센트다. ⚠ 한때 옅은 채움
+// (`--accent-soft`)을 썼는데 **미선택 칩(`--bg-tertiary`)과 명도가 거의 같아 안 보였다**(실사용).
+// 선택은 눈에 띄어야 하는 상태라 옅게 둘 자리가 아니다.
 // ⚠ **`▼` 는 묶음 전용**이다 — 뜻이 "층이 하나 늘었다" 하나여야 한다. 조건 열림은 펼쳐진 내용이
 // 있는 게 아니라 **값을 고치는 중**이라 그 기호가 사실과 다르다.
+// 채움이 짙어 테두리가 묻히므로, 묶음의 **자동 이름**만 안쪽 점선으로 계속 말한다(그 한 비트가
+// "아직 생각이 안 굳음"이라 열렸을 때 특히 볼 값이 있다).
 //
 // ## 줄 쌓임 자체가 경로다 — 빵부스러기가 없다
 // 옛 2층(위 지도 + 아래 편집면)은 항이 하나일 때 **같은 것을 두 번 그렸다**. 여기서는 위 줄의 열린
@@ -81,8 +83,11 @@ const chipBase = {
     whiteSpace: "nowrap" as const, flexShrink: 0, cursor: "pointer", lineHeight: 1.35,
 };
 
-/** 열림의 **유일한 신호** — 연한 액센트 채움. 조건이든 묶음이든 같다(종류는 테두리가 말한다). */
-const OPEN_BG = "var(--accent-soft)";
+/** 열림의 **유일한 신호** — 액센트 채움. 조건이든 묶음이든 같다(종류는 `▼` 가 말한다). */
+const openChip = {
+    ...chipBase,
+    background: "var(--accent-primary)", color: "#fff", border: "1px solid var(--accent-primary)",
+};
 
 /** 우클릭으로 뜬 판 — 무엇을 눌렀나에 따라 항목이 갈린다. */
 type Ctx =
@@ -164,13 +169,12 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                             onContextMenu={rc((e) => ({ kind: "cond", termId: p.id, enabled: p.enabled, neg: p.neg, x: e.clientX, y: e.clientY }))}
                             title={`${p.label}${p.enabled ? "" : " (꺼짐)"} — 눌러서 아랫줄에서 값을 고칩니다. 우클릭 = NOT·끄기·빼기`}
                             style={{
-                                ...chipBase, border: "1px solid transparent",
-                                background: isOpen ? OPEN_BG : "var(--bg-tertiary)",
+                                ...(isOpen ? openChip : { ...chipBase, background: "var(--bg-tertiary)", border: "1px solid transparent" }),
                                 ...(p.enabled ? {} : { textDecoration: "line-through", opacity: 0.65 }),
                             }}>
                             {/* ⚠ 조건에는 `▼` 를 안 단다 — 펼쳐진 내용이 있는 게 아니라 값을 고치는 중이다.
                                 `▼` 의 뜻은 **"층이 하나 늘었다"** 하나로 남는다(묶음 전용). */}
-                            {p.neg && <span style={{ color: FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
+                            {p.neg && <span style={{ color: isOpen ? "#fff" : FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
                             {p.label}
                         </button>
                     );
@@ -184,17 +188,19 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                         title={info.broken
                             ? "가리키는 집합이 지워졌습니다 — 우클릭으로 이 자리를 뺄 수 있습니다"
                             : `${info.name} — 눌러서 이 묶음의 내용을 아랫줄에 엽니다${info.usedBy >= 2 ? `. 쓰는 곳 ${info.usedBy} — 고치면 ${info.usedBy}곳이 같이 바뀝니다` : ""}`}
-                        style={{
-                            ...chipBase,
-                            // 열림은 **채움만** — 테두리는 종류와 이름 여부를 계속 말한다.
-                            background: isOpen ? OPEN_BG : "transparent",
+                        style={isOpen ? {
+                            ...openChip,
+                            // 채움이 짙어 테두리가 묻힌다 — **자동 이름만** 안쪽 점선으로 계속 말한다.
+                            ...(info.named ? {} : { outline: "1px dashed rgba(255,255,255,0.85)", outlineOffset: "-3px" }),
+                        } : {
+                            ...chipBase, background: "transparent",
                             // 손 이름 = 실선 · 자동 이름 = 점선(아직 생각이 안 굳었다는 뜻).
                             border: `1px ${info.named ? "solid" : "dashed"} ${info.broken ? FAIL : PIN}`,
                             color: info.broken ? FAIL : PIN,
                             cursor: info.broken ? "context-menu" : "pointer",
                         }}>
                         {isOpen && <span style={{ fontSize: 8, marginRight: 5, verticalAlign: 1 }}>▼</span>}
-                        {p.neg && <span style={{ color: FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
+                        {p.neg && <span style={{ color: isOpen ? "#fff" : FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
                         {info.name}
                         {info.usedBy >= 2 && <span style={{ opacity: 0.7, marginLeft: 4 }}>·{info.usedBy}</span>}
                     </button>
