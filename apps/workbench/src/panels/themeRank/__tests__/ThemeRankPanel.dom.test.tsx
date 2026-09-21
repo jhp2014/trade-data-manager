@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
-import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
+import { selectEditingStages, useWorkbench } from "../../../store/workbench.js";
 import { DEFAULT_THEME_STRENGTH } from "../../../lib/themeStrength.js";
 import { ThemeRankPanel } from "../ThemeRankPanel.js";
 
@@ -19,15 +19,15 @@ const renderPanel = (): ReturnType<typeof render> =>
 
 const addThemeRow = (over: Partial<typeof DEFAULT_THEME_STRENGTH> = {}): string => {
     act(() => useWorkbench.getState().addFilterStage([{ kind: "themeStrength", params: { ...DEFAULT_THEME_STRENGTH, ...over } }]));
-    const stages = selectFilterStages(useWorkbench.getState());
+    const stages = selectEditingStages(useWorkbench.getState());
     return stages[stages.length - 1]!.id;
 };
 
 const bind = (rowId: string): void => act(() => useWorkbench.getState().bindTheme(rowId, PANEL));
 
-type ThemePredicate = Extract<ReturnType<typeof selectFilterStages>[number]["predicates"][number], { kind: "themeStrength" }>;
+type ThemePredicate = Extract<ReturnType<typeof selectEditingStages>[number]["predicates"][number], { kind: "themeStrength" }>;
 const paramsOf = (id: string): ThemePredicate["params"] => {
-    const s = selectFilterStages(useWorkbench.getState()).find((x) => x.id === id)!;
+    const s = selectEditingStages(useWorkbench.getState()).find((x) => x.id === id)!;
     return (s.predicates[0] as ThemePredicate).params;
 };
 

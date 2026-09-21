@@ -37,7 +37,7 @@ import { subjectStatus, useSubject } from "../lib/subject.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { SubjectBadge } from "../components/SubjectBadge.js";
 import { usePersistedState } from "../store/persist.js";
-import { selectFilterStages, useWorkbench } from "../store/workbench.js";
+import { selectObservedStages, useWorkbench } from "../store/workbench.js";
 import type { ReviewPointKey } from "@trade-data-manager/market/domain";
 
 // 타점 분석 시트 — 행=타점(라벨 좌표, 2026-09-18 B) · 열=축별 순위. (축은 전부 계산 축 — 판단축은 2026-08-25 폐지.)
@@ -139,7 +139,7 @@ function SheetBody({ panelId, rowMode, setRowMode, navRef }: {
     //  OR 이 돌아올 때 열을 다시 가를지는 그때 판단한다.)
     // ⚠ 셀렉터 안에서 filter 하지 않는다 — 매번 새 배열이라 **스토어의 모든 갱신**이 이 컴포넌트를
     //   깨우고 시트 전량 재정렬로 번진다(zustand 는 얕은 비교). stages 를 그대로 구독하고 여기서 접는다.
-    const allStages = useWorkbench(selectFilterStages);
+    const allStages = useWorkbench(selectObservedStages);
     const outcomeStages = useMemo(() => allStages.filter((st) => st.predicates.some((pr) => pr.kind === "outcome")), [allStages]);
     const outScopes = useMemo<OutScope[] | undefined>(() => {
         if (dayMode) return undefined;

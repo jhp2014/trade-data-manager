@@ -4,6 +4,9 @@ import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
 import { exprOfStages, type SetExpr, type SetTerm } from "../expr.js";
 
+/** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
+const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
+
 const look: LabelLookup = {
     groupName: (id) => (({ g1: "돌파", g2: "눌림" }) as Record<string, string>)[id],
     axisName: (id: string) => (id === "a1" ? "눌림깊이" : undefined),
@@ -109,16 +112,16 @@ describe("setDisplayName — 참조도 항이다", () => {
     const ref = (setId: string): SetTerm => ({ kind: "ref", id: `r-${setId}`, setId });
 
     it("참조만 든 집합은 '빈 집합'이 아니다 — 첫 항의 이름 + 외 N", () => {
-        const expr: SetExpr = { kind: "and", id: "root", of: [ref("a"), ref("b")] };
+        const expr: SetExpr = mk("and", "root", [ref("a"), ref("b")]);
         expect(setDisplayName({ expr }, look, (id) => (id === "a" ? "아침 돌파" : "거래대금"))).toBe("아침 돌파 외 1");
     });
 
     it("참조 이름을 안 주면 (묶음) — 이름 짓다가 그래프를 걷지 않는다", () => {
-        const expr: SetExpr = { kind: "and", id: "root", of: [ref("a")] };
+        const expr: SetExpr = mk("and", "root", [ref("a")]);
         expect(setDisplayName({ expr }, look)).toBe("(묶음)");
     });
 
     it("진짜 빈 식만 '빈 집합'이다", () => {
-        expect(setDisplayName({ expr: { kind: "and", id: "root", of: [] } }, look)).toBe("빈 집합");
+        expect(setDisplayName({ expr: mk("and", "root", []) }, look)).toBe("빈 집합");
     });
 });

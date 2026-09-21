@@ -9,7 +9,7 @@ import { computedAxisView, type AxisRef } from "./computedAxis.js";
 import { derivedOfAuto } from "./defDerived.js";
 import { gridFeatureFeeds } from "./gridFeatures.js";
 import { useAutoPoints, usePointGrids } from "./PointGridsContext.js";
-import { selectFilterStages, useWorkbench } from "../store/workbench.js";
+import { allStagesOf, useWorkbench } from "../store/workbench.js";
 import { hotAxisFeeds, hotInstancesKeyOf, hotInstancesOf } from "./hotAxis.js";
 
 /** 계산 축의 화면용 메타 — 값 자체가 아니라 값을 어떻게 놓고 어떻게 읽는지. */
@@ -57,7 +57,11 @@ export function useRankAxesValue(): RankAxesView {
     // 급타점 축 인스턴스 — 조건 하나가 축 하나다(런타임 등록의 유일한 예외, hotAxis.ts).
     // ⚠ 항등 셀렉터로 구독하고 useMemo 로 접는다 — 셀렉터 안에서 배열을 만들면 얕은 비교가 늘 실패해
     //   스토어의 모든 갱신이 이 훅을 깨운다(decisions.md 2026-09-09).
-    const stages = useWorkbench(selectFilterStages);
+    // ⚠ **저장 집합 전부**의 잎을 본다(useSheetColumns 의 생사 기준과 같은 규칙) — 관측 뿌리만
+    //   보면 묶음으로 내려가 만든 급타점 조건의 축이 안 서고, prefs 청소가 그 키를 유령으로 본다.
+    //   셀렉터가 아니라 memo 인 이유: 파생 배열을 셀렉터에서 내면 얕은 비교가 매번 깨진다.
+    const savedSets = useWorkbench((s) => s.savedSets);
+    const stages = useMemo(() => allStagesOf(savedSets), [savedSets]);
     const hotInstances = useMemo(() => hotInstancesOf(stages), [stages]);
     const hotKey = hotInstancesKeyOf(hotInstances);
     const computed = useMemo(() => {

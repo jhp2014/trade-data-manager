@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hmsToMinute, minuteToHms } from "@trade-data-manager/market/domain";
-import { selectFilterExpr, selectFilterStages, selectFilterUniverse, useWorkbench } from "../store/workbench.js";
+import { selectEvalExpr, selectObservedStages, selectObservedUniverse, useWorkbench } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
 import type { CellHit } from "@trade-data-manager/market/domain";
@@ -92,9 +92,9 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
 
     // ── 하루·셀 우주 — 편집 중인 집합의 타입이 이 패널의 모습을 정한다(decisions 「집합」 단계 ③).
     //    종단이면 지금까지의 3층 목록 그대로, 하루면 그날의 셀 ∪ 라벨 2층 목록이 된다.
-    const setUniverse = useWorkbench(selectFilterUniverse);
-    const stages = useWorkbench(selectFilterStages);
-    const expr = useWorkbench(selectFilterExpr);
+    const setUniverse = useWorkbench(selectObservedUniverse);
+    const stages = useWorkbench(selectObservedStages);
+    const evalExpr = useWorkbench(selectEvalExpr);
     const isDaily = setUniverse === "daily";
     const pid = panelId ?? "workset";
     const [sortMode, setSortMode] = usePanelUi<"stock" | "time">(pid, "daySort", "stock");
@@ -102,7 +102,8 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     const [showLabels, setShowLabels] = usePanelUi(pid, "dayLabels", true);
     const [datePinned, setDatePinned] = usePanelUi(pid, "datePin", false);
     // 셀 평가 — 상한은 **종목 그룹째** 자른다(반토막이면 머리의 ◇ n 이 거짓말을 한다).
-    const cellSet = useCellSet(isDaily ? expr : null, focusDate, DAY_SET_OPTS);
+    // 하루 평가는 **「계산」을 누른 순간의 식**만 본다(2026-09-21) — 안 눌렀으면 null(재료 미조회).
+    const cellSet = useCellSet(isDaily ? evalExpr : null, focusDate, DAY_SET_OPTS);
     const pointMemberships = useGroups().pointMemberships;
 
     /**

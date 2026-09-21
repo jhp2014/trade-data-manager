@@ -223,9 +223,13 @@ export function renderWithProviders(ui: ReactElement, seed: Seed = {}): RenderRe
  *
  * 우주는 **파생**이라 안 받는다 — 조건이 정한다(그래서 하루 집합을 원하면 하루 전용 조건을 심는다).
  */
-export function seedEditing(expr: SetExpr, others: readonly SavedSet[] = []): string {
+export function seedEditing(expr: SetExpr, others: readonly SavedSet[] = [], commit = true): string {
     const id = "edit";
     const editing: SavedSet = { id, expr, universe: effectiveUniverse(universeOfExpr(expr, refUniverse(others))) };
-    useWorkbench.setState({ savedSets: [editing, ...others], editingSetId: id, editPath: [id] });
+    const savedSets = [editing, ...others];
+    // ⚠ `commit` 은 **「계산」을 눌렀다**는 뜻이다(2026-09-21) — 하루 평가는 안 누르면 재료조차 안
+    //   당기므로, 안 심으면 하루 검사가 전부 0건이 된다(버그가 아니라 이 모델의 뜻). 그 상태 자체를
+    //   재는 검사만 `commit: false` 로 부른다.
+    useWorkbench.setState({ savedSets, editingSetId: id, editPath: [id], evalSets: commit ? savedSets : null });
     return id;
 }

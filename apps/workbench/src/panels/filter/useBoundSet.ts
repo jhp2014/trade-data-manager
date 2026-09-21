@@ -20,7 +20,7 @@ import { useCallback, useMemo } from "react";
 import type { FunnelItem } from "@trade-data-manager/market/domain";
 import { chartKey } from "../../lib/pointKey.js";
 import type { SetRef } from "../../lib/setRef.js";
-import { selectFilterExpr, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
+import { selectEvalExpr, selectObservedUniverse, useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { useFunnel } from "./FunnelContext.js";
 import { DAY_SET_OPTS, useCellSet } from "./useCellSet.js";
@@ -44,6 +44,10 @@ export interface DaySetState {
     themesReady: boolean;
     /** 이 우주에서 이 바인딩을 못 푸는 이유(풀 수 있으면 null). */
     unsupported: string | null;
+    /** 한 번이라도 계산했나 — false 면 **0건이 아니라 "아직 안 셈"** 이다(2026-09-21). */
+    computed: boolean;
+    /** 계산 뒤 조건이 바뀌었나 — 옛 결과를 그리면서 이걸 말한다. */
+    stale: boolean;
 }
 
 export interface BoundSet {
@@ -80,8 +84,9 @@ export function useBoundSet(panelId: string): BoundSet {
     const funnel = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
     const selectedSetRef = useWorkbench((s) => s.selectedSetRef);
-    const workingUniverse = effectiveUniverse(useWorkbench(selectFilterUniverse));
-    const workingExpr = useWorkbench(selectFilterExpr);
+    const workingUniverse = effectiveUniverse(useWorkbench(selectObservedUniverse));
+    const evalSets = useWorkbench((s) => s.evalSets);
+    const evalExpr = useWorkbench(selectEvalExpr);
     const focusDate = useWorkbench((s) => s.focus.date);
 
     /** 지금 따라가는 대상 — 핀이 있으면 그것, 없으면 전역 포인터(연동). */
@@ -89,9 +94,16 @@ export function useBoundSet(panelId: string): BoundSet {
     const universe = targetUniverseOf(target, savedSets, workingUniverse);
     const daily = universe === "daily";
 
+    /**
+     * 하루 평가가 볼 식 — **「계산」을 누른 순간의 스냅샷**에서 만든다(2026-09-21).
+     *
+     * ⚠ 신선한 저장물로 만들면 편집마다 새 식이 나와 관문이 무의미해지고, **모드를 종단으로 돌려도**
+     *   이 값이 살아 있어 `/day-replay`(한 날 ~15MB)를 계속 당긴다. 안 눌렀으면 `null` — 그게
+     *   "재료를 안 당긴다"는 계약의 전부다.
+     */
     const dayExpr = useMemo(
-        () => (daily ? dayExprOf(target, savedSets, workingExpr) : null),
-        [daily, target, savedSets, workingExpr],
+        () => (daily && evalSets !== null && evalExpr !== null ? dayExprOf(target, evalSets, evalExpr) : null),
+        [daily, target, evalSets, evalExpr],
     );
     // ⚠ 훅은 조건부로 못 부른다 — 종단이면 빈 조건을 넘긴다. 그러면 `useCellSet` 이 **재료조차 안 당긴다**
     //   (조건 0건 = /day-replay 미조회 — 그 성질이 여기서 값을 한다).
@@ -109,7 +121,9 @@ export function useBoundSet(panelId: string): BoundSet {
             // 로딩 가드는 **뷰 계약 안에** 있다(useSetViews 와 같은 규칙) — 소비자마다 되풀이하면
             // 하나는 빠뜨리고, 그 화면만 로딩 중을 "조건에 맞는 게 없습니다"로 말한다.
             isFiltering: !cellSet.isLoading,
-            broken: false,
+            // ⚠ **아직 안 센 것은 0건이 아니다** — 계산을 한 번도 안 눌렀으면 "이유 있는 빈 집합"으로
+            //   낸다(2026-09-21). 그냥 빈 목록으로 두면 화면이 "조건에 다 걸렸다"로 읽는다.
+            broken: !cellSet.computed,
             viewedItems: items,
             viewedChartKeys: new Set(items.map((i) => chartKey(i))),
             // 하루 우주의 항목은 **전부 좌표**다(전개할 하루 항목이 없다).
@@ -160,6 +174,8 @@ export function useBoundSet(panelId: string): BoundSet {
             error: daily ? cellSet.error : null,
             themesReady: !daily || cellSet.themesReady,
             unsupported,
+            computed: !daily || cellSet.computed,
+            stale: daily && cellSet.stale,
         },
     };
 }

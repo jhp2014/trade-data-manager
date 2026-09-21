@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
     DEFAULT_HOT_R, DEFAULT_HOT_W, HOT_MAX_INSTANCES, clampHotR, clampHotW, nextFreeHotParams, type HotParams,
 } from "../../lib/hotPoints.js";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { useLinkedStageId } from "../filter/themeLink.js";
 import { stageKind, type FilterStage } from "../filter/stage.js";
 
@@ -60,7 +60,7 @@ export interface LinkedHot {
 }
 
 export function useLinkedHot(): LinkedHot {
-    const stages = useWorkbench(selectFilterStages);
+    const stages = useWorkbench(selectEditingStages);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
     const setSessionUi = useWorkbench((s) => s.setSessionUi);
     const [conflictAt, setConflictAt] = useState<HotParams | null>(null);

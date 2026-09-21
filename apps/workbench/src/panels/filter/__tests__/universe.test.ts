@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { committingUniverse, effectiveUniverse, kindDeficiency, parseUniverse, predicateDeficiency, stageDeficiency, universeOfExpr, universeOfStages, UNIVERSES, type Universe } from "../universe.js";
-import { exprOfStages, refNode } from "../expr.js";
+import { exprOfStages, refNode, type SetExpr, type SetTerm } from "../expr.js";
 import type { FilterPredicate, PredicateKind } from "../stage.js";
+
+/** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
+const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
 
 // 이 표가 **스펙**이고 테스트는 그 사본이다 — 결손 지도의 단일 출처(universe.ts)가 여기와 어긋나면
 // 팔레트의 회색과 평가의 결손이 다른 이야기를 한다.
@@ -83,12 +86,12 @@ describe("칸·우주 파생", () => {
     // ⚠ 이게 참조를 보는 이유다 — `A ∨ B`(둘 다 하루 집합)는 **조건 잎이 하나도 없다**.
     //   참조를 안 보면 종단으로 파생돼 하루 패널이 제 집합을 못 찾는다.
     it("조립(참조만 든 식)의 우주는 참조가 정한다", () => {
-        const assembled = { kind: "or" as const, id: "g1", of: [refNode("s-a"), refNode("s-b")] };
+        const assembled = mk("or", "g1", [refNode("s-a"), refNode("s-b")]);
         const noRefs = (): null => null;
         expect(universeOfExpr(assembled, noRefs), "가리키는 집합을 모르면 미정").toBeNull();
         expect(universeOfExpr(assembled, (id) => (id === "s-a" ? "daily" : null))).toBe("daily");
         // 지워진 참조는 우주를 안 정한다 — 그 뒤의 조건 잎이 정한다.
-        const mixed = { kind: "and" as const, id: "g2", of: [refNode("사라진것"), { kind: "cond" as const, stage: cellStage }] };
+        const mixed = mk("and", "g2", [refNode("사라진것"), { kind: "cond" as const, stage: cellStage }]);
         expect(universeOfExpr(mixed, noRefs)).toBe("daily");
     });
 

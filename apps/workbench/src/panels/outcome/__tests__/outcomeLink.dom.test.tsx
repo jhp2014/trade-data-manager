@@ -5,7 +5,7 @@
 // 그 한 경로에서만 깨진다(2026-09-09 리뷰 지적).
 import { describe, it, expect, beforeEach } from "vitest";
 import { act, renderHook } from "@testing-library/react";
-import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
+import { selectEditingStages, useWorkbench } from "../../../store/workbench.js";
 import { OUTCOME_LINK_SCOPE, OUTCOME_T_KEY, OUTCOME_T_SCOPE, useLinkedOutcome } from "../outcomeLink.js";
 import type { FilterPredicate } from "../../filter/stage.js";
 
@@ -14,11 +14,11 @@ const outPred = (metric: "extHigh" | "dropFromHigh", t: number): FilterPredicate
 /** 결과 조건 행을 세우고 그 id 를 돌려준다(보드의 ＋조건과 같은 경로). */
 const addOutcome = (metric: "extHigh" | "dropFromHigh", t: number): string => {
     act(() => { useWorkbench.getState().addFilterStage([outPred(metric, t)]); });
-    const stages = selectFilterStages(useWorkbench.getState());
+    const stages = selectEditingStages(useWorkbench.getState());
     return stages[stages.length - 1]!.id;
 };
 const tOfStage = (id: string): number | undefined => {
-    const p = selectFilterStages(useWorkbench.getState()).find((s) => s.id === id)?.predicates[0];
+    const p = selectEditingStages(useWorkbench.getState()).find((s) => s.id === id)?.predicates[0];
     return p?.kind === "outcome" ? p.t : undefined;
 };
 
@@ -36,7 +36,7 @@ describe("표시 T — 연동 행의 T ?? 탐색 T", () => {
         expect(result.current.displayT).toBe(2); // 도메인 하한 = 기본
         act(() => { result.current.setDisplayT(9); });
         expect(result.current.displayT).toBe(9);
-        expect(selectFilterStages(useWorkbench.getState())).toHaveLength(0);
+        expect(selectEditingStages(useWorkbench.getState())).toHaveLength(0);
     });
 
     it("조건이 서면 첫 행이 자동 연동되고 표시 T 가 그 조건의 T 를 따른다", () => {

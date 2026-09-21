@@ -89,6 +89,8 @@ beforeEach(() => {
         panelUi: {},
         savedSets: [],
         selectedSetRef: null,
+        // 하루 평가는 **손으로 시작한다**(2026-09-21) — 저장물 스냅샷이 곧 "계산을 눌렀다"다.
+        evalSets: [],
     });
     useKeymapDynamic.setState({ commands: {} });
     act(() => selectRowNavOwner("workset"));

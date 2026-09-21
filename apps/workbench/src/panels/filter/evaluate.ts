@@ -18,7 +18,7 @@ import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { passesPoint, type SectionRanks, type ThemeProjection } from "../../lib/themeStrength.js";
 import { isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { isPredicateEmpty, unknownPredicate, type AxisBound, type FilterPredicate, type FilterStage } from "./stage.js";
-import type { SetExpr, SetTerm } from "./expr.js";
+import { foldExpr, isFoldedNode, type FoldedNode, type SetExpr, type SetTerm } from "./expr.js";
 
 /** 판정에 필요한 바깥 재료. 없는 것은 전부 `undefined` = 판단 불가(탈락 아님). */
 export interface EvalLookup {
@@ -261,9 +261,16 @@ export function evalTerm(t: SetTerm, item: FunnelItem, look: EvalLookup, refs: R
     return t.neg === true ? not3(v) : v;
 }
 
+/**
+ * 식 한 벌의 판정 — **접기는 `foldExpr` 한 곳**이다(평가와 표시가 같은 트리를 본다).
+ * 괄호는 그냥 한 층 더인 묶음이라 3치 규칙(`and3`/`or3`)이 그대로 내려간다.
+ */
 export function evalExpr(e: SetExpr, item: FunnelItem, look: EvalLookup, refs: RefMembers = () => null): Verdict {
-    const vs = e.of.map((t) => evalTerm(t, item, look, refs));
-    return e.kind === "and" ? and3(vs) : or3(vs);
+    const evalNode = (n: FoldedNode): Verdict => {
+        const vs = n.of.map((x) => (isFoldedNode(x) ? evalNode(x) : evalTerm(x, item, look, refs)));
+        return n.kind === "and" ? and3(vs) : or3(vs);
+    };
+    return evalNode(foldExpr(e));
 }
 
 /**

@@ -26,11 +26,27 @@ export type Universe = "longitudinal" | "daily";
 
 export const UNIVERSES: readonly Universe[] = ["longitudinal", "daily"];
 
-/** 뱃지 문구 — 화면에서 우주를 말하는 유일한 어휘(패널마다 다른 말을 쓰지 않게). */
+/**
+ * 뱃지 문구 — 화면에서 우주를 말하는 유일한 어휘(패널마다 다른 말을 쓰지 않게).
+ * 꼬리표(`· 좌표`/`· 셀`)는 2026-09-21 에 뗐다 — 모드 스위치가 상시라 낱말 하나면 읽힌다.
+ */
 export const UNIVERSE_LABEL: Record<Universe, string> = {
-    longitudinal: "종단 · 좌표",
-    daily: "하루 · 셀",
+    longitudinal: "종단",
+    daily: "하루",
 };
+
+/**
+ * 고른 모드와 집합이 어긋났나 — 어긋났으면 사람이 읽을 한 줄, 아니면 null.
+ *
+ * 모드는 팔레트를 처음부터 가르므로 이 상태는 **드물다**(조건을 든 채 모드를 손으로 바꿀 때만).
+ * 그래도 조용히 두면 "하루라고 적힌 머리글 아래 종단 결과"가 서므로 화면이 말해야 한다.
+ */
+export function modeMismatch(mode: Universe, derived: Universe | null): string | null {
+    if (derived === null || derived === mode) return null;
+    return derived === "daily"
+        ? "이 집합은 **하루** 조건으로 이뤄져 있습니다 — 하루 모드에서 봐야 제 수가 나옵니다."
+        : "이 집합은 **종단** 조건으로 이뤄져 있습니다 — 종단 모드에서 봐야 제 수가 나옵니다.";
+}
 
 /** 저장물 승계 — 부재·오염은 **종단**이다(우주 선언이 없던 시절 저장물의 행동 그대로). */
 export const parseUniverse = (v: unknown): Universe => (v === "daily" ? "daily" : "longitudinal");

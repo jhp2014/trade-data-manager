@@ -1,14 +1,16 @@
 // 조건 보드 — 집합 편성의 본론. 여기서 재는 건 **관리소의 규약**이다:
-//   ① 걸린 것이 종류를 가리지 않고 전부 한 목록에 선다(불변식 — 안 보이는데 숫자가 달라지면 사고)
-//   ② 줄에는 값 편집 손잡이가 없다(편집면은 종류마다 따로 — 두 문법으로 만지지 않게)
-//   ③ 이름 클릭 = 그 종류의 편집면으로(레일 = 신호, 테마 = 연동, 그룹 = 그 자리 팝오버)
+//   ① 걸린 것이 종류를 가리지 않고 전부 **한 줄에 칩으로** 선다(안 보이는데 숫자가 달라지면 사고)
+//   ② 칩을 누르면 그 내용이 **아랫줄**에 열린다 — 편집면은 한 곳이다(두 문법으로 만지지 않게)
+//   ③ 편집면의 이름 클릭 = 그 종류의 편집면으로(레일 = 신호, 테마 = 연동, 그룹 = 그 자리 팝오버)
 //   ④ ＋ 조건 = 생성 입구 하나. **레일만 행을 안 만든다**(빈 술어 필터 금지 · 긋는 순간 조건)
+//
+// ⚠ 2026-09-21 부터 조건 줄은 **열었을 때만** 선다 — 그래서 대부분의 검사가 `openChip` 으로 시작한다.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { exprOfStages, refsOf } from "../expr.js";
+import { exprOfStages, refsOf, topOpOf } from "../expr.js";
 import { act, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
-import { selectFilterExpr, selectFilterStages, useWorkbench } from "../../../store/workbench.js";
+import { selectEditingExpr, selectEditingStages, useWorkbench } from "../../../store/workbench.js";
 import { DEFAULT_THEME_STRENGTH } from "../../../lib/themeStrength.js";
 import { ConditionBoard } from "../ConditionBoard.js";
 
@@ -35,7 +37,14 @@ const byText = (c: HTMLElement, text: string): HTMLButtonElement | undefined =>
     buttons(c).filter((b) => b.dataset.chip === undefined).find((b) => (b.textContent ?? "").includes(text));
 const chipByText = (c: HTMLElement, text: string): HTMLButtonElement | undefined =>
     buttons(c).filter((b) => b.dataset.chip !== undefined).find((b) => (b.textContent ?? "").includes(text));
-const stages = (): ReturnType<typeof selectFilterStages> => selectFilterStages(useWorkbench.getState());
+const stages = (): ReturnType<typeof selectEditingStages> => selectEditingStages(useWorkbench.getState());
+/** 칩을 눌러 **아랫줄 편집면**을 연다 — 조건 줄은 이제 늘 서 있지 않다(2026-09-21). */
+const openChip = (c: HTMLElement, text: string): void => {
+    const chip = chipByText(c, text);
+    if (!chip) throw new Error(`칩 '${text}' 가 없다`);
+    act(() => { fireEvent.click(chip); });
+};
+const rows = (c: HTMLElement): HTMLElement[] => [...c.querySelectorAll("[data-row]")] as HTMLElement[];
 
 const DATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[0], to: DATES[1] }] }] };
 const THEME_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "themeStrength" as const, params: { ...DEFAULT_THEME_STRENGTH } }] };
@@ -43,20 +52,23 @@ const RESET = { funnelSelection: null, selectedSetRef: null, savedSets: [], edit
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
-describe("한 목록 — 종류를 가리지 않고 걸린 것이 전부 선다", () => {
-    it("레일에서 만든 조건(날짜)도, 테마 행도 같은 목록에 요약 줄로 선다", () => {
+describe("한 줄 — 종류를 가리지 않고 걸린 것이 전부 칩으로 선다", () => {
+    it("레일에서 만든 조건(날짜)도, 테마 행도 같은 줄에 칩으로 선다", () => {
         seedEditing(exprOfStages([DATE_STAGE, THEME_STAGE]));
         const { container } = renderBoard();
-        expect(container.textContent).toContain("26.07.06~26.07.07"); // 날짜 요약
-        expect(container.textContent).toContain("존 30/40 · 등락"); // 테마 요약(칩·패널과 같은 한 벌)
-        expect(container.textContent).toContain("날짜");
-        expect(container.textContent).toContain("테마");
+        expect(chipByText(container, "26.07.06~26.07.07"), "날짜 요약").toBeDefined();
+        expect(chipByText(container, "존 30/40 · 등락"), "테마 요약(칩·패널과 같은 한 벌)").toBeDefined();
+        expect(rows(container), "줄은 하나 — 내려간 게 없다").toHaveLength(1);
     });
 
-    it("조건이 없으면 어디서 만드는지 적는다 — 빈 자리로 두면 왜 없는지 모른다", () => {
+    // ⚠ "조건 없음"은 **줄이 제 입으로** 말한다 — 위에 또 적으면, 묶음으로 내려가 아랫줄이 비었을 때
+    //   화면 맨 위가 "없음"이라면서 바로 아래 줄에는 조건이 서 있는 모순이 생긴다(실측이 잡은 자리).
+    it("조건이 없으면 **그 줄이** 제한 없음을 말한다 — 같은 말을 두 자리에서 하지 않는다", () => {
         const { container } = renderBoard();
+        expect(rows(container)).toHaveLength(1);
+        expect(rows(container)[0]!.textContent).toContain("조건 없음 — 제한이 없습니다");
         expect(container.textContent).toContain("＋ 조건");
-        expect(container.textContent).toContain("으로 만듭니다");
+        expect(container.textContent, "옛 상단 안내는 죽었다").not.toContain("으로 만듭니다");
     });
 });
 
@@ -80,6 +92,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
     it("1차원 조건(날짜)은 **그 자리 팝오버**를 연다 — 패널 경계를 안 넘는다(2026-09-19 레일 패널 철거)", () => {
         seedEditing(exprOfStages([DATE_STAGE]));
         const { container, baseElement } = renderBoard();
+        openChip(container, "26.07.06~26.07.07");
         act(() => { fireEvent.click(byText(container, "26.07.06~26.07.07")!); });
         expect(baseElement.textContent).toContain("날짜 구간");
     });
@@ -87,6 +100,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
     it("테마 조건 — 미연동 행 이름 클릭 = 연동 메뉴(pull: 이 보드가 유일한 연동 손잡이)", () => {
         seedEditing(exprOfStages([DATE_STAGE, THEME_STAGE]));
         const { container, baseElement } = renderBoard();
+        openChip(container, "존 30/40");
         act(() => { fireEvent.click(byText(container, "존 30/40")!); });
         // 자동 연동 폐지 — 세션 포인터 대신 메뉴가 뜬다(미연동 조건판 목록 + 새 조건판).
         expect(baseElement.textContent).toContain("연동할 조건판");
@@ -101,6 +115,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         // 슬롯 대장(기본 시딩)에 없는 판 id — ×로 소멸된 판이 남긴 바인딩의 모양.
         act(() => { useWorkbench.getState().bindTheme("t1", "theme-rank-9"); });
         const { container } = renderBoard();
+        openChip(container, "존 30/40");
         expect(container.textContent).not.toContain("테마 순위 [조건] 9");
         expect(container.textContent).toContain("○ 미연동");
     });
@@ -110,6 +125,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         // 살아 있지 않은 행 id 가 기본 판(슬롯 1)을 가리키는 고아 — 집합 적용의 통째 교체가 남기는 모양.
         act(() => { useWorkbench.getState().bindTheme("dead-row", "theme-rank-1"); });
         const { container, baseElement } = renderBoard();
+        openChip(container, "존 30/40");
         act(() => { fireEvent.click(byText(container, "존 30/40")!); });
         expect(byText(baseElement as HTMLElement, "○ 테마 순위 [조건]")).toBeTruthy();
     });
@@ -118,6 +134,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         seedEditing(exprOfStages([THEME_STAGE]));
         act(() => { useWorkbench.getState().bindTheme("t1", "theme-rank-1"); });
         const { container, baseElement } = renderBoard();
+        openChip(container, "존 30/40");
         expect(container.textContent).toContain("◆ 테마 순위 [조건]");
         act(() => { fireEvent.click(byText(container, "◆ 테마 순위 [조건]")!); });
         expect(baseElement.textContent).toContain("연동 해제");
@@ -230,6 +247,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
         const { container, baseElement } = render(<ConditionBoard panelId="filter-funnel-1" />, {
             wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
         });
+        openChip(container, "눌림"); // 칩 → 아랫줄 편집면
         act(() => { fireEvent.click(byText(container, "눌림")!); }); // 줄 이름 → 그 자리 팔레트(편집)
         const addRow = [...baseElement.querySelectorAll("button")]
             .find((b) => (b.textContent ?? "").includes("재돌파") && !container.contains(b))!; // 팔레트 쪽 행만
@@ -246,6 +264,7 @@ describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
     it("◉ 토글로 깔때기에서 빼고, ✕ 로 지운다", () => {
         seedEditing(exprOfStages([DATE_STAGE]));
         const { container } = renderBoard();
+        openChip(container, "26.07.06~26.07.07");
         act(() => { fireEvent.click(buttons(container).find((b) => b.title.startsWith("이 조건 끄기"))!); });
         expect(stages()[0]!.enabled).toBe(false);
         act(() => { fireEvent.click(buttons(container).find((b) => b.title === "이 조건 지우기")!); });
@@ -253,23 +272,51 @@ describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
     });
 });
 
-// 7단계 — 식 트리 편집면. 괄호를 손으로 치지 않고 **두 버튼**이 중첩을 만든다는 것이 핵심 계약이다.
-describe("식 한 벌 — 연산자 하나·항 부정", () => {
+// ── 연산자와 괄호 (2026-09-21) ─────────────────────────────────────────────
+//
+// 연산자는 **경계마다 하나**고, 판을 열어 바꾼다. 섞이는 순간 괄호가 박히므로 화면에 "읽는 규칙을
+// 알아야 뜻이 정해지는 식"이 서지 않는다.
+describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
     const stage2 = { id: "d2", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
+    const stage3 = { id: "d3", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[0], to: DATES[0] }] }] };
 
-    it("묶음은 연산자 뱃지와 자식 수를 말한다 — AND 기본", () => {
+    it("항 사이에 연산자가 낱말로 선다 — AND 기본", () => {
         seedEditing(exprOfStages([DATE_STAGE, stage2]));
         const { container } = renderBoard();
+        expect(buttons(container).filter((b) => b.dataset.op !== undefined)).toHaveLength(1);
         expect(byText(container, "AND")).toBeDefined();
-        expect(container.textContent).toContain("모두 · 2");
     });
 
-    it("뱃지 클릭 = AND ↔ OR 토글", () => {
+    it("연산자 판에서 OR 을 고르면 그 자리가 바뀐다", () => {
         seedEditing(exprOfStages([DATE_STAGE, stage2]));
-        const { container } = renderBoard();
-        act(() => { fireEvent.click(byText(container, "AND")!); });
-        expect(selectFilterExpr(useWorkbench.getState()).kind).toBe("or");
-        expect(container.textContent).toContain("하나라도 · 2");
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(buttons(container).find((b) => b.dataset.op === "0")!); });
+        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "OR — 하나라도")!); });
+        expect(topOpOf(selectEditingExpr(useWorkbench.getState()))).toBe("or");
+    });
+
+    // ⚠ 본론 — 숨은 우선순위가 없다는 규칙이 화면에서도 성립하는지.
+    it("섞이는 순간 **괄호가 박힌다** — `a AND b OR c`", () => {
+        seedEditing(exprOfStages([DATE_STAGE, stage2, stage3]));
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(buttons(container).find((b) => b.dataset.op === "1")!); });
+        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "OR — 하나라도")!); });
+        const e = selectEditingExpr(useWorkbench.getState());
+        expect(e.groups, "앞의 AND 구간이 괄호로 묶인다").toEqual([{ from: 0, to: 1 }]);
+        expect(container.textContent).toContain("(");
+        expect(container.textContent).toContain(")");
+    });
+
+    it("「이 자리를 바깥으로」는 연산자를 안 건드리고 괄호만 뒤집는다", () => {
+        seedEditing(exprOfStages([DATE_STAGE, stage2, stage3]));
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(buttons(container).find((b) => b.dataset.op === "1")!); });
+        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "OR — 하나라도")!); });
+        act(() => { fireEvent.click(buttons(container).find((b) => b.dataset.op === "0")!); });
+        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "이 자리를 바깥으로")!); });
+        const e = selectEditingExpr(useWorkbench.getState());
+        expect(e.groups, "뒤의 OR 구간이 묶인다").toEqual([{ from: 1, to: 2 }]);
+        expect(e.ops, "연산자는 그대로").toEqual(["and", "or"]);
     });
 
     // 조건 만들기의 입구는 하나다 — 셀 종류든 아니든 같은 손을 지나 **지금 식의 끝**에 붙는다.
@@ -279,27 +326,28 @@ describe("식 한 벌 — 연산자 하나·항 부정", () => {
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(byText(container, "＋ 조건")!); });
         act(() => { fireEvent.click(byText(baseElement, "테마 강도")!); });
-        const e = selectFilterExpr(useWorkbench.getState());
-        expect(e.kind, "연산자는 안 바뀐다").toBe("and");
+        const e = selectEditingExpr(useWorkbench.getState());
+        expect(topOpOf(e), "연산자는 안 바뀐다").toBe("and");
         expect(e.of.map((t) => t.kind)).toEqual(["cond", "cond"]);
     });
 
-    it("항 부정 — NOT 이 식에 실리고 줄에 표식이 선다", () => {
+    it("항 부정 — NOT 이 식에 실리고 칩에 표식이 선다", () => {
         seedEditing(exprOfStages([DATE_STAGE]));
         const { container } = renderBoard();
+        openChip(container, "26.07.06~26.07.07");
         const negBtn = buttons(container).find((b) => b.title.startsWith("이 조건 부정"));
         expect(negBtn).toBeDefined();
         act(() => { fireEvent.click(negBtn!); });
-        const e = selectFilterExpr(useWorkbench.getState());
-        expect(e.kind === "and" && e.of[0]!.neg).toBe(true);
+        const e = selectEditingExpr(useWorkbench.getState());
+        expect(e.of[0]!.neg).toBe(true);
     });
 });
 
-// ── 화면 2층 — 위는 지도, 아래는 작업대 (2026-09-20) ───────────────────────
+// ── 줄 쌓임 = 경로 (2026-09-21) ────────────────────────────────────────────
 //
-// ⚠ 편집면이 두 곳이면 옛 "필터 UI 가 두 곳" 함정이다. 그래서 **위 칩 줄의 클릭은 짚기/내려가기뿐**
-//   이고, 값 편집·부정·끄기·삭제는 전부 아래에서 한다. 이 검사가 그 경계의 회귀 게이트다.
-describe("2층 — 칩 줄(지도) · 편집면(작업대) · 빵부스러기", () => {
+// ⚠ 빵부스러기가 없다 — 줄이 쌓이는 것 자체가 경로다. 그리고 **내려가도 윗줄은 그대로**여야 한다
+//   (관측 대상은 경로의 뿌리라 하류가 안 흔들린다 — 빈 묶음 클릭이 먹통이던 자리).
+describe("줄 쌓임 — 내려가면 줄이 하나 는다", () => {
     it("＋ 묶음 = 빈 집합을 만들어 참조로 붙이고 **그 안으로 내려간다**", () => {
         seedEditing(exprOfStages([DATE_STAGE]));
         const outer = useWorkbench.getState().editingSetId;
@@ -311,28 +359,28 @@ describe("2층 — 칩 줄(지도) · 편집면(작업대) · 빵부스러기", 
         expect(st.editPath, "빵부스러기가 자란다").toEqual([outer, st.editingSetId]);
         expect(refsOf(st.savedSets.find((x) => x.id === outer)!.expr), "바깥에는 참조가 남는다")
             .toEqual([st.editingSetId]);
-        expect(selectFilterExpr(st).of, "새 집합은 비어서 시작한다").toEqual([]);
+        expect(selectEditingExpr(st).of, "새 집합은 비어서 시작한다").toEqual([]);
     });
 
-    it("위 칩 줄은 **뿌리 집합**을 그린다 — 내려가도 지도는 안 바뀐다", () => {
+    it("내려가면 줄이 하나 늘고 **윗줄은 그대로**다", () => {
         seedEditing(exprOfStages([DATE_STAGE]));
         const { container } = renderBoard();
-        const rootLabel = chipByText(container, "26.07")?.textContent;
-        expect(rootLabel, "뿌리의 조건이 칩으로 선다").toBeDefined();
+        expect(rows(container)).toHaveLength(1);
+        expect(chipByText(container, "26.07"), "뿌리의 조건이 칩으로 선다").toBeDefined();
 
         act(() => { fireEvent.click(byText(container, "＋ 묶음")!); });
-        expect(chipByText(container, "26.07"), "내려가도 지도는 뿌리 그대로").toBeDefined();
+        expect(rows(container), "줄이 하나 는다").toHaveLength(2);
+        expect(chipByText(container, "26.07"), "윗줄은 그대로").toBeDefined();
     });
 
-    it("빵부스러기의 윗칸을 누르면 그 층으로 되돌아간다", () => {
+    it("윗줄의 칩을 누르면 그 층이 다시 편집 대상이 된다 — 빵부스러기 없이", () => {
         seedEditing(exprOfStages([DATE_STAGE]));
         const outer = useWorkbench.getState().editingSetId;
         const { container } = renderBoard();
         act(() => { fireEvent.click(byText(container, "＋ 묶음")!); });
+        expect(useWorkbench.getState().editingSetId).not.toBe(outer);
 
-        const crumbs = buttons(container).filter((b) => b.dataset.chip === "crumb");
-        expect(crumbs.length, "루트 › 지금 두 칸").toBe(2);
-        act(() => { fireEvent.click(crumbs[0]!); });
+        openChip(container, "26.07"); // 윗줄의 조건 칩
         expect(useWorkbench.getState().editingSetId).toBe(outer);
         expect(useWorkbench.getState().editPath).toEqual([outer]);
     });

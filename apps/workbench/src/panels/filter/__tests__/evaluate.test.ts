@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { exprOfStages, type SetExpr } from "../expr.js";
+import { exprOfStages, type SetExpr, type SetTerm } from "../expr.js";
 import { evalExpr, evalGroupExpr3, evalPredicate3, evalStage, toFunnelStage, type EvalLookup } from "../evaluate.js";
 import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
 import type { FunnelItem } from "@trade-data-manager/market/domain";
+
+/** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
+const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
 
 const item: FunnelItem = { stockCode: "000880", date: "2025-07-01", time: "09:21:00" };
 const dayItem: FunnelItem = { stockCode: "000880", date: "2025-07-01" };
@@ -207,10 +210,10 @@ describe("evalStage / toFunnelStages — 단계는 술어들의 AND", () => {
     it("OR 식 — 하나라도 참이면 참. 부정은 **항에** 붙는다(식은 부정을 안 든다)", () => {
         const yes = stage([{ kind: "group", expr: lit("g1"), scope: "day" }]);
         const no = stage([{ kind: "group", expr: lit("없는그룹"), scope: "day" }]);
-        const or: SetExpr = { kind: "or", id: "n1", of: [{ kind: "cond", stage: yes }, { kind: "cond", stage: no }] };
+        const or: SetExpr = mk("or", "n1", [{ kind: "cond", stage: yes }, { kind: "cond", stage: no }]);
         expect(evalExpr(or, item, look())).toBe(true);
         // 항마다 부정하면 드모르간으로 AND(¬…) 과 같은 뜻 — 여기선 yes 가 참이라 거짓이 된다.
-        const negated: SetExpr = { kind: "and", id: "n1", of: or.of.map((t) => ({ ...t, neg: true })) };
+        const negated: SetExpr = mk("and", "n1", or.of.map((t) => ({ ...t, neg: true })));
         expect(evalExpr(negated, item, look())).toBe(false);
     });
 });

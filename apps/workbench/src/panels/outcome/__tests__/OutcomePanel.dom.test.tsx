@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import type { PointGrid } from "@trade-data-manager/market/domain";
 import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
 import { pointGridsQuery } from "../../../api/queries.js";
-import { selectFilterStages, useWorkbench } from "../../../store/workbench.js";
+import { selectEditingStages, useWorkbench } from "../../../store/workbench.js";
 import { RAIL_PAD } from "../../filter/rail/Rail.js";
 import { OutcomePanel } from "../OutcomePanel.js";
 import { OUTCOME_T_KEY, OUTCOME_T_SCOPE } from "../outcomeLink.js";
@@ -86,7 +86,7 @@ const trackOf = (c: HTMLElement, label: string): HTMLElement => {
     if (!track) throw new Error(`레일 '${label}' 에 그을 수 있는 트랙이 없다(disabledNote 상태)`);
     return track as HTMLElement;
 };
-const stages = (): ReturnType<typeof selectFilterStages> => selectFilterStages(useWorkbench.getState());
+const stages = (): ReturnType<typeof selectEditingStages> => selectEditingStages(useWorkbench.getState());
 
 const RESET = { filterStages: [], funnelSelection: null, selectedSetRef: null, savedSets: [], panelUi: {}, sessionUi: {} };
 beforeEach(() => { useWorkbench.setState(RESET); useWorkbench.getState().resetPointDef(); });

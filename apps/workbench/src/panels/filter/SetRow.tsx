@@ -22,7 +22,7 @@ import { useState } from "react";
 import { InlineRename } from "../../ui/InlineRename.js";
 import { GazeChip } from "../../components/ControlChrome.js";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
-import { selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
+import { selectEditingUniverse, useWorkbench } from "../../store/workbench.js";
 import { usePersistedState } from "../../store/persist.js";
 import { setRefKey, type SetRef } from "../../lib/setRef.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
@@ -124,10 +124,12 @@ export function SetRow(): JSX.Element {
  * 목록의 구획 — **쓰는 곳**으로 가른다(2026-09-20). 숨기는 게 아니라 나누기만 한다.
  * 0 칸이 청소 창구고, 2+ 칸이 "고치면 여럿이 같이 바뀐다"를 미리 말한다.
  */
-const SECTIONS: readonly { key: string; title: string; has: (n: number) => boolean }[] = [
-    { key: "shared", title: "여럿이 쓰는 집합 — 고치면 같이 바뀝니다 ·", has: (n) => n >= 2 },
-    { key: "one", title: "한 곳에서 쓰는 집합 ·", has: (n) => n === 1 },
-    { key: "free", title: "아무도 안 쓰는 집합 — 지워도 안전합니다 ·", has: (n) => n === 0 },
+const SECTIONS: readonly { key: string; title: string; has: (n: number) => boolean; foldByDefault: boolean }[] = [
+    { key: "shared", title: "여럿이 쓰는 집합 — 고치면 같이 바뀝니다 ·", has: (n) => n >= 2, foldByDefault: false },
+    // ⚠ **전용 부품은 기본 접힘**(2026-09-21) — `＋ 묶음` 이 조건 추가의 주 입구가 되면 이 칸이
+    //   빠르게 불어난다. 접기는 **숨기기가 아니다**: 머리에 수가 서고 한 번 누르면 펴진다.
+    { key: "one", title: "한 곳에서만 쓰는 전용 부품 ·", has: (n) => n === 1, foldByDefault: true },
+    { key: "free", title: "아무도 안 쓰는 집합 — 지워도 안전합니다 ·", has: (n) => n === 0, foldByDefault: false },
 ];
 
 /** 집합 관리 판 — 위는 ＋ 새 집합, 아래는 집합 목록(쓰는 곳으로 구획, 행마다 고정·편집·이름·삭제). */
@@ -145,12 +147,14 @@ function SetManager({ pins, onTogglePin, onPick }: {
     const deleteSet = useWorkbench((s) => s.deleteSet);
     const editingSetId = useWorkbench((s) => s.editingSetId);
     // 우주는 **파생**이다 — 고르는 토글도, 우주를 넘기는 ⧉ 복제도 없다(2026-09-19 9단계).
-    const setUniverse = effectiveUniverse(useWorkbench(selectFilterUniverse));
+    const setUniverse = effectiveUniverse(useWorkbench(selectEditingUniverse));
 
     /** 쓰는 곳 — 이 집합을 참조하는 저장 집합 수. 구획과 배지가 같은 자를 쓴다. */
     const usedByOf = (id: string): number => savedSets.filter((x) => refsOf(x.expr).includes(id)).length;
     const [renaming, setRenaming] = useState<string | null>(null); // 이름 편집 중인 집합 id — draft 는 InlineRename 이 든다
     const [armedDelete, setArmedDelete] = useState<string | null>(null);
+    /** 구획 펼침(세션) — 기본값은 구획이 들고, 손이 닿은 것만 여기 남는다. */
+    const [folded, setFolded] = useState<Record<string, boolean>>({});
     const selectedKey = selectedSetRef === null ? null : setRefKey(selectedSetRef);
 
     return (
@@ -163,13 +167,18 @@ function SetManager({ pins, onTogglePin, onPick }: {
 
             {/* ⚠ **구획만 나눈다 — 숨기지 않는다.** 안 보이는 내부 집합을 두면 익명 묶음이 이름만 바꿔
                 돌아온다(2026-09-19 기각분이 예고한 함정). 쓰는 곳 0 칸이 자연스러운 청소 창구다. */}
-            {SECTIONS.map(({ key, title, has }) => {
+            {SECTIONS.map(({ key, title, has, foldByDefault }) => {
                 const rows = savedSets.filter((f) => has(usedByOf(f.id)));
                 if (rows.length === 0) return null;
+                const open = folded[key] ?? !foldByDefault;
                 return (
                     <div key={key}>
-                        <div style={sectionHead}>{title} {rows.length}개</div>
-                        {rows.map(renderRow)}
+                        <button onClick={() => setFolded((f) => ({ ...f, [key]: !open }))}
+                            title={open ? "접기" : "펴기"}
+                            style={{ ...sectionHead, display: "flex", width: "100%", textAlign: "left", border: "none", cursor: "pointer", gap: 4 }}>
+                            <span style={{ width: 8 }}>{open ? "▾" : "▸"}</span>{title} {rows.length}개
+                        </button>
+                        {open && rows.map(renderRow)}
                     </div>
                 );
             })}

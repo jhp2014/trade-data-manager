@@ -3,13 +3,16 @@
 // 여기서 재는 건 조건 판정이 아니라 **자리**다: 처음 열었을 때 보이는 게 보드인가, 집합 줄이 늘 서서
 // "지금 보는 집합"을 말하는가, 관리(저장·고정·열기·이름·삭제)가 줄 끝 판 **하나**에 사는가(우클릭 없음).
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { exprOfStages, leavesOf, refNode } from "../expr.js";
+import { exprOfStages, leavesOf, refNode, type SetExpr, type SetTerm } from "../expr.js";
 import { fireEvent, render, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import { FilterFunnelPanel } from "../../FilterFunnelPanel.js";
+
+/** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
+const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
 
 const A = "005930", B = "000660";
 const DATES = ["2026-07-06", "2026-07-07"];
@@ -35,7 +38,7 @@ const btnByTitle = (c: HTMLElement, prefix: string): HTMLElement => {
 const chipByText = (c: HTMLElement, text: string): HTMLElement | undefined =>
     [...c.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(text));
 
-const RESET = { filterExpr: exprOfStages([]), selectedSetRef: null, savedSets: [], panelUi: {} };
+const RESET = { selectedSetRef: null, savedSets: [], panelUi: {}, filterMode: "longitudinal" as const, evalSets: null };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
@@ -146,8 +149,8 @@ describe("집합 칩 = 전역 선택 포인터 — 연동 패널이 구독하는
 describe("집합 관리 판 — 쓰는 곳으로 구획한다", () => {
     it("세 칸이 서고 아무도 안 쓰는 집합도 **보인다**", () => {
         const shared: SavedSet = { id: "sh", name: "양념장", expr: exprOfStages([]), universe: "longitudinal" };
-        const a: SavedSet = { id: "a", name: "불고기", expr: { kind: "and", id: "root", of: [refNode("sh")] }, universe: "longitudinal" };
-        const b: SavedSet = { id: "b", name: "제육", expr: { kind: "and", id: "root", of: [refNode("sh")] }, universe: "longitudinal" };
+        const a: SavedSet = { id: "a", name: "불고기", expr: mk("and", "root", [refNode("sh")]), universe: "longitudinal" };
+        const b: SavedSet = { id: "b", name: "제육", expr: mk("and", "root", [refNode("sh")]), universe: "longitudinal" };
         const lone: SavedSet = { id: "lone", name: "혼자", expr: exprOfStages([]), universe: "longitudinal" };
         useWorkbench.setState({ savedSets: [shared, a, b, lone], editingSetId: "a", editPath: ["a"] });
 
@@ -167,21 +170,34 @@ describe("집합 관리 판 — 쓰는 곳으로 구획한다", () => {
 
 // ⚠ 실측이 "하루 우주인데 건수가 늘 0" 으로 헷갈린 자리 — 저 정산은 **종단 기계**의 것이고
 //   셀 술어는 거기서 전부 결손이라 하루 집합이면 언제나 0 이다("조건에 다 걸렸다"로 읽힌다).
-describe("머리글 건수 — 하루 우주에서는 종단 정산을 안 쓴다", () => {
+//   2026-09-21 부터 그 자리에는 **「계산」 버튼**이 선다(하루 평가는 손으로 시작한다).
+describe("머리글 — 모드와 계산", () => {
     const cellStage = {
         id: "c1", enabled: true,
         predicates: [{ kind: "cellValue" as const, field: "ratePct" as const, ranges: [{ from: { kind: "value" as const, value: 5 } }] }],
     };
 
-    it("종단이면 `전체 → 생존` 을 적고, 하루면 어디서 보는지를 적는다", () => {
+    it("종단 모드는 `전체 → 생존` 을 적는다(재료가 구워져 있어 자동으로 따라온다)", () => {
         seedEditing(exprOfStages([{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[1] }] }] }]));
+        useWorkbench.setState({ filterMode: "longitudinal" });
         const long = renderPanel();
         expect(long.container.textContent).toContain("→");
-        long.unmount();
+    });
 
+    it("하루 모드는 **「계산」 버튼**이 서고, 안 눌렀으면 그 사실을 말한다", () => {
         seedEditing(exprOfStages([cellStage]));
+        useWorkbench.setState({ filterMode: "daily", evalSets: null });
         const daily = renderPanel();
-        expect(daily.container.textContent, "하루·셀 뱃지가 선다").toContain("하루");
-        expect(daily.container.textContent).toContain("셀 수는 작업 대상에서");
+        expect(daily.container.textContent).toContain("계산");
+        // ⚠ 이 한 줄이 본론이다 — 빈 화면이 "조건에 다 걸렸다"로 읽히지 않게 화면이 갈라 말한다.
+        expect(daily.container.textContent).toContain("아직 계산 안 함");
+        expect(daily.container.textContent, "종단 정산은 안 쓴다").not.toContain("→");
+    });
+
+    it("모드와 집합이 어긋나면 한 번 클릭으로 건너갈 손잡이가 선다", () => {
+        seedEditing(exprOfStages([cellStage])); // 하루 조건인데
+        useWorkbench.setState({ filterMode: "longitudinal" }); // 모드는 종단
+        const { container } = renderPanel();
+        expect(container.textContent).toContain("모드 바꾸기");
     });
 });

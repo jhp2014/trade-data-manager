@@ -26,12 +26,16 @@ import { loadJson, saveJson } from "./persist.js";
 /**
  * v5: **묶음이 곧 집합**(2026-09-20 — 식 1층화). 옛 키(v4·v3·그 이전)는 **안 읽는다**.
  *
- * ⚠ 승계를 안 만든 것은 사용자 확정이다("기존 저장물 제거해도 된다"). 그 대가로 집합·조건 id 가
- * 새로 생기므로 **그 id 를 주소로 쓰던 것들도 같이 리셋된다** — 패널 핀·테마 순위 판 연동·시트의
- * 결과 열/급타점 열 설정(폭·고정·숨김·프리셋). 옛 키는 **지우지 않는다**: 안 읽으면 자연히 죽고,
- * 되돌릴 자리를 남긴다(이 레포의 관례).
+ * ⚠ 승계를 안 만든 것은 사용자 확정이다("기존 저장물 제거해도 된다" — 2026-09-20, 식 모양이 다시
+ * 바뀐 2026-09-21 에도 같은 확정). 그 대가로 집합·조건 id 가 새로 생기므로 **그 id 를 주소로 쓰던
+ * 것들도 같이 리셋된다** — 패널 핀·테마 순위 판 연동·시트의 결과 열/급타점 열 설정(폭·고정·숨김·
+ * 프리셋). 옛 키는 **지우지 않는다**: 안 읽으면 자연히 죽고, 되돌릴 자리를 남긴다(이 레포의 관례).
+ *
+ * ⚠ **v6 = 식에 `ops`·`groups` 가 생긴 판**(한 겹 괄호). v5 를 그대로 읽으면 `kind` 만 있고 `ops` 가
+ * 없어 파서가 전부 `and` 로 채우는데, 그러면 옛 OR 집합이 **조용히 AND** 가 된다 — 키를 올려
+ * 안 읽는 쪽이 정직하다.
  */
-const SAVED_SETS_KEY = "wb.savedSets.v5";
+const SAVED_SETS_KEY = "wb.savedSets.v6";
 
 /**
  * 저장 집합 — **자립 저장물**(이름 + 조건 사본). 집합끼리 아무것도 공유하지 않는다: 같은 깔때기에서
@@ -149,6 +153,24 @@ const loadEditingId = (sets: readonly SavedSet[]): string => {
 
 const persistEditing = (id: string): string => { saveJson(EDITING_KEY, id); return id; };
 
+/**
+ * 드릴다운 경로도 **영속**이다(2026-09-21).
+ *
+ * ⚠ 한때 세션이었는데, 경로의 **뿌리가 곧 관측 대상**이 된 뒤로는 그러면 안 된다: 새로고침하면
+ * 경로가 `[편집 대상]` 으로 재구성돼 **내려가 있던 자식 집합이 뿌리가 되고**, 그 집합이 비어 있으면
+ * 필터가 0(= 제한 없음)이 되어 전 모수가 하류로 쏟아진다(먹통이던 그 자리가 되살아난다).
+ */
+const EDIT_PATH_KEY = "wb.editPath.v1";
+
+/** 지워진 칸은 버린다 — 남은 게 없으면 편집 대상 하나짜리 경로. */
+const loadEditPath = (sets: readonly SavedSet[], editingId: string): string[] => {
+    const raw = loadJson(EDIT_PATH_KEY, (o) => (Array.isArray(o) && o.every((x) => typeof x === "string") ? (o as string[]) : null)) ?? [];
+    const path = raw.filter((id) => sets.some((x) => x.id === id));
+    return path.length > 0 && path[path.length - 1] === editingId ? path : [editingId];
+};
+
+const persistPath = (path: string[]): string[] => { saveJson(EDIT_PATH_KEY, path); return path; };
+
 export interface SavedSetsSlice {
     /** 저장 집합들(영속) — 집합 편성 패널이 만든 산출물. 집합 칩·연동 피커의 유일한 저장물 목록. */
     savedSets: SavedSet[];
@@ -200,7 +222,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     return {
     savedSets: sets,
     editingSetId: persistEditing(loadEditingId(sets)),
-    editPath: [loadEditingId(sets)],
+    editPath: loadEditPath(sets, loadEditingId(sets)),
 
     // 갈아타기만 한다 — **사본을 안 뜬다**(편집 = 저장이라 사본이 곧 "저장 안 한 변경"이다).
     // 정의(pointDef)는 그 집합의 것으로 되돌린다 — 없는 집합은 현재 정의 유지(관대 병합 규칙).
@@ -209,7 +231,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         if (!f) return {};
         return {
             editingSetId: persistEditing(id),
-            editPath: [id], // 목록에서 고른 건 **새 뿌리**다 — 경로를 물려받지 않는다
+            editPath: persistPath([id]), // 목록에서 고른 건 **새 뿌리**다 — 경로를 물려받지 않는다
             selectedSetRef: null, // 편집 대상이 곧 "지금 보는 것" — 포인터는 최종 생존으로 돌아온다
             ...(f.pointDef ? { pointDef: persistPointDef(f.pointDef) } : {}),
         };
@@ -220,19 +242,19 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         // 같은 집합이 경로에 또 나오면(다이아몬드) 거기서 잘라 붙인다 — 빵부스러기가 길어지지 않게.
         const at = s.editPath.indexOf(setId);
         const path = at >= 0 ? s.editPath.slice(0, at + 1) : [...s.editPath, setId];
-        return { editingSetId: persistEditing(setId), editPath: path, selectedSetRef: null };
+        return { editingSetId: persistEditing(setId), editPath: persistPath(path), selectedSetRef: null };
     }),
 
     popTo: (index) => set((s) => {
         const path = s.editPath.slice(0, index + 1);
         const id = path[path.length - 1];
         if (id === undefined || id === s.editingSetId) return {};
-        return { editingSetId: persistEditing(id), editPath: path, selectedSetRef: null };
+        return { editingSetId: persistEditing(id), editPath: persistPath(path), selectedSetRef: null };
     }),
 
     createSet: () => set((s) => {
         const made = blankSet();
-        return { savedSets: persistSavedSets([...s.savedSets, made]), editingSetId: persistEditing(made.id), editPath: [made.id], selectedSetRef: null };
+        return { savedSets: persistSavedSets([...s.savedSets, made]), editingSetId: persistEditing(made.id), editPath: persistPath([made.id]), selectedSetRef: null };
     }),
 
     // 새 묶음 = 빈 집합 + 지금 식에 참조 한 항 + 그 집합으로 내려가기.
@@ -241,7 +263,7 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         const made = blankSet();
         const withSet = [...s.savedSets, made];
         const next = withSet.map((x) => (x.id === s.editingSetId ? { ...x, expr: appendTerm(x.expr, refNode(made.id)) } : x));
-        return { savedSets: persistSavedSets(next), editingSetId: persistEditing(made.id), editPath: [...s.editPath, made.id], selectedSetRef: null };
+        return { savedSets: persistSavedSets(next), editingSetId: persistEditing(made.id), editPath: persistPath([...s.editPath, made.id]), selectedSetRef: null };
     }),
 
     addSetRef: (setId) => set((s) => {
@@ -279,7 +301,17 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
         return {
             savedSets: next,
             // 편집 중이던 집합이 지워지면 **첫 집합으로** 내려앉는다(빈 화면보다 낫다).
-            ...(s.editingSetId === id ? { editingSetId: persistEditing(next[0]!.id), editPath: [next[0]!.id] } : { editPath: s.editPath.filter((x) => x !== id) }),
+            // ⚠ 경로 **중간이나 뿌리**가 지워지면 남은 칸을 이어 붙이면 안 된다 — 부모-자식이 아닌
+            //   배열이 남고, 뿌리가 바뀌면 **관측 대상이 말없이 갈려** 하류가 전 모수를 다시 센다.
+            //   지워진 칸부터 잘라 낸다(그 아래는 더 이상 이 경로의 것이 아니다).
+            ...(s.editingSetId === id
+                ? { editingSetId: persistEditing(next[0]!.id), editPath: persistPath([next[0]!.id]) }
+                : (() => {
+                    const cut = s.editPath.indexOf(id);
+                    if (cut < 0) return { editPath: s.editPath };
+                    const path = cut === 0 ? [next[0]!.id] : s.editPath.slice(0, cut);
+                    return { editingSetId: persistEditing(path[path.length - 1]!), editPath: persistPath(path) };
+                })()),
             // 선택 포인터도 그 집합이면 푼다 — 연동 패널 전부가 죽은 참조를 보게 두지 않는다.
             // 고정 바인딩은 일부러 안 푼다(깨진 참조 표시가 그쪽의 계약이다 — 패널마다 라벨과 전환 손잡이가 받는다).
             // ⚠ **이 집합을 참조하던 식은 안 고친다** — 깨진 참조가 표식을 달고 서는 게 규칙이다

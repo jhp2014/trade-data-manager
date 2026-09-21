@@ -2,7 +2,7 @@
 // 이 훅으로 제 연동을 든다. ⚠ **테마는 2026-09-17 부터 이 관용구를 안 쓴다** — 테마 행↔조건판은
 // 영속 1:1 바인딩(store/themeBindingSlice, pull — 결정권은 보드)이고, 옛 useLinkedThemeStage 는 은퇴했다.
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { stageKind, type FilterStage } from "./stage.js";
 import { DEFAULT_THEME_STRENGTH, type ThemeStrengthParams } from "../../lib/themeStrength.js";
 
@@ -20,7 +20,7 @@ export function themeParamsOf(s: FilterStage): ThemeStrengthParams | null {
  * 손으로 다시 쓰면 같은 존 순위가 두 숫자로 갈린다(2026-09-17 pull 연동 재편의 따름 규칙).
  */
 export function useThemeKnobParams(): ThemeStrengthParams {
-    const stages = useWorkbench(selectFilterStages);
+    const stages = useWorkbench(selectEditingStages);
     const bindings = useWorkbench((s) => s.themeBindings);
     return useMemo(() => {
         const themeStages = stages.filter((s) => stageKind(s) === "themeStrength");

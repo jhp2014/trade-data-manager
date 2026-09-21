@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { exprOfStages, refNode, type SetExpr } from "../expr.js";
+import { exprOfStages, refNode, type SetExpr, type SetTerm } from "../expr.js";
 import { DEFAULT_POINT_DEFINITION, type ChartRef, type FunnelItem, type PointDefinition } from "@trade-data-manager/market/domain";
 import type { SetRef } from "../../../lib/setRef.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
@@ -7,6 +7,9 @@ import { chartKey } from "../../../lib/pointKey.js";
 import type { EvalLookup } from "../evaluate.js";
 import type { FilterStage } from "../stage.js";
 import { expandRefToPoints, resolveSetRef, type SetResolveCtx } from "../resolveSet.js";
+
+/** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
+const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
 
 // 유니버스: A(타점 둘) · B(타점 0) · C(타점 하나)
 const A: ChartRef = { stockCode: "000001", date: "2026-07-01" };
@@ -282,7 +285,7 @@ describe("항목 목록(세션) — 판정 없이 그대로", () => {
 // 두 가지를 잠근다: ① 작업 식의 참조도 풀린다(기본값 "늘 모름"으로 두면 승격 직후 전량 미배치)
 // ② 낟알이 갈려도 키가 화해된다(안 하면 오류도 결손도 없이 **정확한 공집합**).
 describe("참조 잎 — 작업 식에서도 풀린다", () => {
-    const refTo = (setId: string): SetExpr => ({ kind: "and", id: "root", of: [refNode(setId)] });
+    const refTo = (setId: string): SetExpr => (mk("and", "root", [refNode(setId)]));
 
     it("작업 식의 `∈ 저장 집합` 이 저장 후와 **같은 답**을 낸다", () => {
         // fs2 = 날짜 ≤ 07-03 → A·B·C. 참조 하나만 든 작업 식도 그 셋이어야 한다.

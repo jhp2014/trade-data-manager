@@ -13,7 +13,7 @@
 // 강제고, 여기 말고 다른 곳에서 T 를 지어내면 화면마다 다른 기준이 서는 옛 사고로 되돌아간다.
 import { useCallback, useMemo, useState } from "react";
 import { TOLERANCE_MAX_PCT, TOLERANCE_MIN_PCT } from "@trade-data-manager/market/domain";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { useLinkedStageId } from "../filter/themeLink.js";
 import { stageKind, type FilterStage } from "../filter/stage.js";
 
@@ -58,7 +58,7 @@ export interface LinkedOutcome {
 const clampT = (t: number): number => Math.min(TOLERANCE_MAX_PCT, Math.max(TOLERANCE_MIN_PCT, t));
 
 export function useLinkedOutcome(): LinkedOutcome {
-    const stages = useWorkbench(selectFilterStages);
+    const stages = useWorkbench(selectEditingStages);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
     const setSessionUi = useWorkbench((s) => s.setSessionUi);
     const [conflictAt, setConflictAt] = useState<number | null>(null);

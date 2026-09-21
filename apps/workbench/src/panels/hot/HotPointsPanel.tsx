@@ -18,7 +18,7 @@ import {
 } from "../../lib/hotPoints.js";
 import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
 import { useSubject } from "../../lib/subject.js";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { LEG_HIGH } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { HOT_REVEAL, rowIdOfKey, useBoardReveal, useRevealConsumer } from "../filter/boardReveal.js";
@@ -44,7 +44,7 @@ export function HotPointsPanel(): JSX.Element {
     const pairs = useHotPairs();
     const auto = useAutoPoints();
     const counts = countsAt(display.w, display.r);
-    const stages = useWorkbench(selectFilterStages);
+    const stages = useWorkbench(selectEditingStages);
     const applyRail = useWorkbench((s) => s.applyFilterRail);
     const v = useFunnel();
 

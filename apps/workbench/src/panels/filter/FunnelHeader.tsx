@@ -16,21 +16,25 @@
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
-import { selectFilterExpr, selectFilterUniverse, useWorkbench } from "../../store/workbench.js";
+import { selectEditingExpr, selectEditingUniverse, useWorkbench } from "../../store/workbench.js";
 import { FAIL, POINT_DEF } from "../../styles/palette.js";
-import { effectiveUniverse, UNIVERSE_LABEL } from "./universe.js";
+import { modeMismatch, UNIVERSE_LABEL, UNIVERSES } from "./universe.js";
 import { leafCount, refsOf } from "./expr.js";
+import { useDayEvalStatus } from "./useCellSet.js";
 import type { FunnelView } from "./useFilterFunnel.js";
 
 export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
     const clearStages = useWorkbench((s) => s.clearFilterStages);
-    // 편집 대상의 **타입**(우주) — 전역 모드 스위치가 아니라 "지금 만지는 집합이 무엇인가"의 표시다.
-    // 바꾸는 손은 집합 줄의 `＋ 새 집합 ▾` 하나뿐(decisions 「집합」).
-    // 우주는 **파생**이다(2026-09-19 9단계) — null = 아직 안 정해짐(중립 조건뿐이거나 조건 0개).
-    const derived = useWorkbench(selectFilterUniverse);
-    const setUniverse = effectiveUniverse(derived);
+    // **작업면의 모드** — 사람이 고른다(2026-09-21). 이게 팔레트를 처음부터 가른다.
+    const setUniverse = useWorkbench((s) => s.filterMode);
+    const setMode = useWorkbench((s) => s.setFilterMode);
+    // 집합이 **실제로** 어느 우주인지(조건에서 파생) — 모드와 어긋나면 화면이 말해야 한다.
+    const derived = useWorkbench(selectEditingUniverse);
+    const mismatch = modeMismatch(setUniverse, derived);
+    const computeNow = useWorkbench((s) => s.computeNow);
+    const evalStatus = useDayEvalStatus();
     const date = useWorkbench((s) => s.focus.date);
-    const expr = useWorkbench(selectFilterExpr);
+    const expr = useWorkbench(selectEditingExpr);
     const exprIsEmpty = leafCount(expr) === 0 && refsOf(expr).length === 0;
 
     const controls = useMemo<ControlSpec[]>(() => [
@@ -45,18 +49,20 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
     return (
         <PanelHeader padding="5px 10px" style={{ whiteSpace: "nowrap" }}>
             <span style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>집합 편성</span>
-            {/* 우주 뱃지 — 이 패널이 무엇을 편집 중인지 말하는 한 자리. 하루면 **날짜 칩**이 따라 선다
-                (날짜는 정의가 아니라 변수라 전역 시선의 거울이다 — 불변식 ③). */}
-            <span style={{
-                fontSize: 10, flexShrink: 0, borderRadius: 8, padding: "0 6px",
-                color: setUniverse === "daily" ? "var(--accent-primary)" : "var(--text-secondary)",
-                border: `1px solid ${setUniverse === "daily" ? POINT_DEF : "var(--border-default)"}`,
-            }} title={derived === null
-                ? "아직 우주가 안 정해졌습니다 — 한쪽에만 사는 조건(등락률·격자 Point 등 하루 재료, 축값·결과 등 종단 재료)을 처음 걸면 그때 정해집니다. 그 전엔 종단으로 평가합니다."
-                : setUniverse === "daily"
-                    ? "하루·셀 우주 — 그날 전 (종목,분) 셀이 모수다. 날짜는 정의가 아니라 전역 시선이 주는 변수. **조건이 정한 것이지 고른 것이 아니다.**"
-                    : "종단 · 좌표 우주 — 라벨 좌표 전부가 모수다(전 기간). **조건이 정한 것이지 고른 것이 아니다.**"}>
-                {derived === null ? "우주 · 미정" : UNIVERSE_LABEL[setUniverse]}
+            {/* 모드 — **사람이 고른다**(2026-09-21). 조건 팔레트가 여기서 갈리므로 "첫 조건이 말없이
+                우주를 정하는" 일이 없다. 하루면 **날짜 칩**이 따라 선다(날짜는 정의가 아니라 전역 시선). */}
+            <span style={{ display: "flex", gap: 2, flexShrink: 0 }} role="group" aria-label="작업 모드">
+                {UNIVERSES.map((u) => (
+                    <button key={u} onClick={() => setMode(u)} title={u === "daily"
+                        ? "하루 — 그날 전 (종목,분) 셀이 모수다. 계산이 비싸 「계산」을 눌러야 돈다."
+                        : "종단 — 라벨 좌표 전부가 모수다(전 기간). 재료가 이미 구워져 있어 자동으로 따라온다."}
+                        style={{
+                            font: "inherit", fontSize: 10, padding: "1px 7px", borderRadius: 3, cursor: "pointer",
+                            border: "1px solid transparent",
+                            background: setUniverse === u ? POINT_DEF : "transparent",
+                            color: setUniverse === u ? "#fff" : "var(--text-tertiary)",
+                        }}>{UNIVERSE_LABEL[u]}</button>
+                ))}
             </span>
             {setUniverse === "daily" && (
                 <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-secondary)", flexShrink: 0 }}
@@ -69,10 +75,26 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
                 전부 결손이라 하루 집합이면 **언제나 0** 이 나온다("조건에 다 걸렸다"로 읽히는 거짓말).
                 하루의 수는 셀 엔진이 내므로 그 자리(작업 대상 패널)에 있고, 여기서는 그 사실을 말한다. */}
             {setUniverse === "daily" ? (
-                <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}
-                    title="하루·셀 우주의 건수는 셀 엔진이 냅니다 — 작업 대상 패널이 그 수를 말합니다. 여기 종단 정산은 셀 술어를 전부 결손으로 보므로 뜻이 없습니다.">
-                    셀 수는 작업 대상에서
-                </span>
+                // 하루는 **손으로 시작한다** — 그날 270종목 × ~390분을 되짚는 일이라 자동으로 돌면
+                // 조건을 만지는 내내 그 값을 문다(2026-09-21 사용자 확정). 수 자체는 작업 대상 패널이 말한다.
+                <>
+                    <button onClick={computeNow} style={{
+                        font: "inherit", fontSize: 10.5, padding: "1px 9px", borderRadius: 3, cursor: "pointer",
+                        border: `1px solid ${evalStatus.stale ? "var(--warning)" : "var(--border-default)"}`,
+                        background: "var(--bg-secondary)",
+                        color: evalStatus.stale ? "var(--warning)" : "var(--text-secondary)", flexShrink: 0,
+                    }} title={evalStatus.computed
+                        ? "지금 조건으로 다시 셉니다 — 화면의 수는 계산을 누른 순간의 것입니다."
+                        : "아직 한 번도 안 셌습니다 — 누르면 그날 재료를 받아 셉니다(하루 ~15MB)."}>
+                        계산{evalStatus.stale ? " · 낡음" : ""}
+                    </button>
+                    {!evalStatus.computed && (
+                        <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}
+                            title="빈 화면이 '조건에 다 걸렸다'는 뜻이 아닙니다 — 아직 세지 않았습니다.">
+                            아직 계산 안 함
+                        </span>
+                    )}
+                </>
             ) : (
                 <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}
                     title="후보 전체 → 걸린 필터를 다 통과한 수">
@@ -82,6 +104,17 @@ export function FunnelHeader({ v }: { v: FunnelView }): JSX.Element {
             <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}>
                 필터 {v.active.length}{v.stagesOrdered.length > v.active.length ? ` / ${v.stagesOrdered.length}` : ""}
             </span>
+            {/* 모드와 집합이 어긋났다 — 팔레트가 갈려 있어 드문 상태지만, 조용히 두면 "하루라고 적힌
+                머리글 아래 종단 결과"가 선다. 눌러서 그 집합의 우주로 건너간다. */}
+            {mismatch !== null && derived !== null && (
+                <button onClick={() => setMode(derived)} title={mismatch}
+                    style={{
+                        font: "inherit", fontSize: 10.5, padding: "1px 7px", borderRadius: 3, cursor: "pointer",
+                        border: `1px solid ${FAIL}`, background: "transparent", color: FAIL, flexShrink: 0,
+                    }}>
+                    {UNIVERSE_LABEL[derived]} 집합입니다 — 모드 바꾸기
+                </button>
+            )}
             {/* 죽은 참조는 손잡이가 아니라 **상태**다 — 그래서 컨트롤 줄이 아니라 보는 집합 옆에 선다. */}
             {v.deadStageIds.length > 0 && (
                 <span style={{ fontSize: 10.5, color: FAIL, flexShrink: 0 }} title="지워진 그룹·축을 가리키는 조건이 있습니다. 그 필터는 판단 불가(미배치)로 잡힙니다.">

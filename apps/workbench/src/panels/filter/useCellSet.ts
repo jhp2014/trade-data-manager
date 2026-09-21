@@ -26,14 +26,13 @@ import {
 } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
-import { useWorkbench } from "../../store/workbench.js";
-import { useDebounced, EVAL_DEBOUNCE_MS } from "../../lib/useDebounced.js";
+import { selectEvalStale, useWorkbench } from "../../store/workbench.js";
 import { useAutoPoints } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { useThemeKnobParams } from "./themeLink.js";
 import { cellMaterialsOf } from "./cellMaterials.js";
 import type { FilterStage } from "./stage.js";
-import { activeExpr, type SetExpr, type SetTerm } from "./expr.js";
+import { activeExpr, foldExpr, isFoldedNode, type FoldedNode, type SetExpr, type SetTerm } from "./expr.js";
 import { stageDeficiency, type Universe } from "./universe.js";
 
 /**
@@ -79,7 +78,17 @@ export interface CellSetView {
     error: Error | null;
     /** 존 순위 재료 준비 여부 — 멤버십 로딩 중엔 그 칸이 조용히 비므로 화면이 모름을 말할 재료. */
     themesReady: boolean;
+    /**
+     * 한 번이라도 「계산」을 눌렀나. false 면 이 수들은 **0건이 아니라 "아직 안 셈"** 이다 —
+     * 화면이 그 둘을 갈라 말해야 한다("조건에 다 걸렸다"로 읽히는 그 실패).
+     */
+    computed: boolean;
+    /** 계산 뒤 조건·저장물이 바뀌었나 — 화면은 옛 결과를 **계속 그리면서** 이걸 말한다. */
+    stale: boolean;
 }
+
+/** 아직 안 커밋된 상태의 저장물 — 같은 객체라야 아래 메모들이 헛돌지 않는다. */
+const EMPTY_SETS: readonly { id: string; expr: SetExpr; universe: Universe }[] = [];
 
 /**
  * 식(종단 어휘) → 셀 식(core 어휘). **결손 잎은 제 묶음을 통째로 빼낸다** — 그 사실은 status 가 말한다.
@@ -174,8 +183,12 @@ export function toCellExpr(
         try {
             const node = walk(target.expr, inner);
             if (node === null || node === ABSENT) return node;
+            // ⚠ **id 를 이 항의 것으로 갈아 준다** — 모든 집합의 루트 id 가 `"root"` 라, 그대로 두면
+            //   루트 OR 의 가지 둘이 인라인 참조일 때 엔진의 `byCondition`/`tags` 키가 겹쳐 두 가지가
+            //   한 칸으로 합쳐진다(차트 hover 라벨이 조용히 틀린다).
+            const named: CellExpr = node.kind === "pred" ? node : { ...node, id: t.id };
             // 부정은 **감싸서** 싣는다 — 안쪽 노드의 neg 를 뒤집으면 이중 부정이 뜻을 잃는다.
-            return t.neg === true ? { kind: "and", id: t.id, of: [node], neg: true } : node;
+            return t.neg === true ? { kind: "and", id: t.id, of: [named], neg: true } : named;
         } finally {
             visiting.delete(t.setId);
             mine.push(...inner);
@@ -183,25 +196,22 @@ export function toCellExpr(
     };
 
     /**
-     * 식 한 벌(= 집합 하나) → 셀 식. `mine` 은 **이 식이 기여한 조건 id 들**이다 — 오염 대상을
+     * 접힌 묶음 하나 → 셀 식. `mine` 은 **이 묶음이 기여한 조건 id 들**이다 — 오염 대상을
      * 여기서 모은다(참조 안쪽까지 포함해야 묶음이 빠졌을 때 그 조건들도 이유를 받는다).
-     *
-     * ⚠ **부재를 먼저 걷는다**(activeExpr) — 꺼진 조건·빈 술어는 결손이 아니라 **없는 것**이다.
-     *   둘을 한 null 로 합류시키면 AND 오염 규칙이 부재까지 먹어 조건 하나를 끄면 집합이 통째로
-     *   사라진다(종단 경로는 늘 걷어내므로 멀쩡해, 같은 식이 두 우주에서 다른 답을 내던 자리다).
      */
-    const walk = (raw: SetExpr, mine: string[]): Out => {
-        const e = activeExpr(raw);
+    const walkNode = (n: FoldedNode, mine: string[]): Out => {
         const of: CellExpr[] = [];
         const here: string[] = [];
         let poisoned = false;
         let absent = false;
-        for (const t of e.of) {
-            const r = t.kind === "cond" ? condOf(t, here) : refOf(t, here);
+        for (const x of n.of) {
+            // 괄호는 **한 층 더인 묶음**일 뿐이라 같은 3치 규칙이 그대로 내려간다
+            // (결손은 제 AND 를 오염시키고, 부재는 그냥 빠지며 OR 에선 묶음째 제한 없음).
+            const r = isFoldedNode(x) ? walkNode(x, here) : (x.kind === "cond" ? condOf(x, here) : refOf(x, here));
             // ⚠ AND 가 오염돼도 **항을 끝까지 걷는다** — 여기서 바로 빠져나오면 뒤쪽 항이 walk 를
             //   안 지나 `status` 에 아예 안 실리고, 화면의 결손 수가 그만큼 덜 세어진다("결손은 조용히
             //   사라지지 않는다"가 제 구현에서 새던 자리). 걷는 값은 싸다 — 평가가 아니라 번역이다.
-            if (r === null) { if (e.kind === "and") poisoned = true; continue; } // OR 은 그 항만 빠진다
+            if (r === null) { if (n.kind === "and") poisoned = true; continue; } // OR 은 그 항만 빠진다
             // 부재(제한 없음) — AND 에선 그냥 빠지고, **OR 에선 묶음 전체가 제한 없음**이 된다
             //   (참인 항이 하나라도 있으면 OR 은 늘 참이다).
             if (r === ABSENT) { absent = true; continue; }
@@ -212,10 +222,22 @@ export function toCellExpr(
             poison(here, "같은 묶음에 이 우주에서 평가할 수 없는 조건이 있어 묶음째 빠졌습니다");
             return null;
         }
-        if (absent && e.kind === "or") return ABSENT;
+        if (absent && n.kind === "or") return ABSENT;
         if (of.length === 0) return absent ? ABSENT : null;
-        return { kind: e.kind, id: e.id, of };
+        return { kind: n.kind, id: n.id, of };
     };
+
+    /**
+     * 집합 하나(= 식 한 벌) → 셀 식. **부재를 먼저 걷고**(activeExpr) **접는다**(foldExpr).
+     *
+     * ⚠ **부재를 먼저 걷는다** — 꺼진 조건·빈 술어는 결손이 아니라 **없는 것**이다. 둘을 한 null 로
+     *   합류시키면 AND 오염 규칙이 부재까지 먹어 조건 하나를 끄면 집합이 통째로 사라진다(종단
+     *   경로는 늘 걷어내므로 멀쩡해, 같은 식이 두 우주에서 다른 답을 내던 자리다).
+     *
+     * ⚠ 접기는 **평가·표시와 같은 `foldExpr`** 을 지난다 — 여기서 따로 접으면 같은 식이 화면과
+     *   평가에서 다른 뜻이 된다.
+     */
+    const walk = (raw: SetExpr, mine: string[]): Out => walkNode(foldExpr(activeExpr(raw)), mine);
 
     const out = walk(input, []);
     // 루트가 부재(= 제한 없음)면 "조건 없음"과 같다 — 재료를 안 당기는 그 상태(null).
@@ -286,14 +308,20 @@ export const cellHitToItem = (h: CellHit, date: string): FunnelItem => ({
 });
 
 export function useCellSet(fresh: SetExpr | null, date: string, opts?: CellEvalOptions): CellSetView {
-    // ⚠ 늦추는 자리가 **여기**여야 한다 — 소비자(작업 대상·차트·바인딩)는 스토어를 직접 읽으므로
-    //   깔때기 훅에만 디바운스를 걸면 이 경로가 그대로 맨몸으로 돈다(2026-09-20 리뷰가 잡은 자리).
-    const expr = useDebounced(fresh, EVAL_DEBOUNCE_MS);
-    // 참조를 펼치려면 저장 집합이 필요하다 — 훅이 읽어 순수부에 넘긴다(호출부는 그대로).
-    // ⚠ 저장물도 **같은 박자로** 늦는다: 신선한 것을 쓰면 편집마다 번역이 새 객체를 내고, 그 객체가
-    //   메모 키라 결국 매 편집이 재평가를 부른다(식만 늦춘 것은 소용이 없다).
-    const freshSavedSets = useWorkbench((st) => st.savedSets);
-    const savedSets = useDebounced(freshSavedSets, EVAL_DEBOUNCE_MS);
+    // ⚠ 들어오는 `expr` 은 **이미 커밋된 것**이다 — 호출부가 `selectEvalExpr`(「계산」을 누른 순간의
+    //   식)로 만든다. 여기서 또 늦추지 않는다: 관문이 두 곳이면 어느 쪽이 관문인지 알 수 없다.
+    //
+    // 2026-09-21 부터 관문은 디바운스가 아니라 **스냅샷**이다. 하루 평가는 손을 멈춘 뒤 한 번이라도
+    // 여전히 자동이라, 시작을 사람이 정하려면 박자가 아니라 "누른 순간의 한 벌"이어야 한다.
+    // 날짜는 **스냅샷 밖**이다 — 조건이 안 바뀐 이동이고 그게 하루 모드의 작업 자체다.
+    const expr = fresh;
+    // 참조를 펼치려면 저장 집합이 필요하다 — **같은 스냅샷**을 쓴다(식과 저장물이 어긋나면 안 된다).
+    const evalSets = useWorkbench((st) => st.evalSets);
+    const savedSets = evalSets ?? EMPTY_SETS;
+    const computed = evalSets !== null;
+    // 낡음 — 계산 뒤 저장물이 바뀌었다. 화면은 **옛 결과를 계속 그리면서** 이걸 말한다
+    // (비우면 이 코드베이스에서 언제나 "조건에 다 걸렸다"로 읽힌다).
+    const stale = useWorkbench(selectEvalStale);
     const narrowedEarly = useMemo(
         () => (expr === null
             ? { expr: null, stages: [] as CellStageStatus[] }
@@ -365,7 +393,21 @@ export function useCellSet(fresh: SetExpr | null, date: string, opts?: CellEvalO
         isLoading: snapQ.isLoading || (needsGrid && auto.isLoading),
         error: (snapQ.error as Error | null) ?? (needsGrid ? auto.error : null),
         themesReady: !needsZone || themes.ready,
+        computed,
+        stale,
     };
+}
+
+/**
+ * 머리글이 읽는 **계산 상태** — 「계산」 버튼과 「낡음」 표시가 이 하나를 본다(2026-09-21).
+ *
+ * 패널마다 도는 `useCellSet` 과 **같은 세대**로 잡으므로 답이 갈리지 않는다(세대가 관문이라
+ * 어느 훅에서 잡든 같은 순간의 값이다).
+ */
+export function useDayEvalStatus(): { computed: boolean; stale: boolean } {
+    const computed = useWorkbench((s) => s.evalSets !== null);
+    const stale = useWorkbench(selectEvalStale);
+    return { computed, stale };
 }
 
 /** 이 셀 식이 그 술어를 쓰나 — 재료 게이트(격자·분 단면)의 자. 트리를 끝까지 건다. */

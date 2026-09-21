@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { datePred, loadStore, stubStorage } from "../test/funnelStoreHarness.js";
-import { selectFilterStages } from "./filterFunnelSlice.js";
+import { selectEditingStages } from "./filterFunnelSlice.js";
 
 // 필터 깔때기 슬라이스 — 조건 한 벌의 이관·영속·시선(선택 칸) 정리 규칙.
 // 저장 집합(저장·열기·덮어쓰기·삭제)은 savedSetsSlice.test 로 갈라져 있다.
@@ -24,16 +24,16 @@ describe("조건 한 벌의 자리 — 식은 **편집 중인 집합의 것**이
             "wb.filterSlots": { active: 0, slots: [[{ id: "slot", enabled: true, predicates: [datePred] }], [], []] },
         });
         const store = await loadStore();
-        expect(selectFilterStages(store.getState())).toEqual([]);
+        expect(selectEditingStages(store.getState())).toEqual([]);
     });
 
-    it("저장 집합 키(v5)에서 읽는다 — 편집 대상의 식이 곧 조건 한 벌", async () => {
+    it("저장 집합 키(v6)에서 읽는다 — 편집 대상의 식이 곧 조건 한 벌", async () => {
         stubStorage({
-            "wb.savedSets.v5": [{ id: "fs1", expr: { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "now", enabled: true, predicates: [datePred] } }] }, universe: "longitudinal" }],
+            "wb.savedSets.v6": [{ id: "fs1", expr: { id: "root", of: [{ kind: "cond", stage: { id: "now", enabled: true, predicates: [datePred] } }], ops: [], groups: [] }, universe: "longitudinal" }],
             "wb.editingSetId.v1": "fs1",
         });
         const store = await loadStore();
-        expect(selectFilterStages(store.getState()).map((s) => s.id)).toEqual(["now"]);
+        expect(selectEditingStages(store.getState()).map((s) => s.id)).toEqual(["now"]);
     });
 });
 
@@ -42,12 +42,12 @@ describe("편집은 곧 영속", () => {
         const storage = stubStorage();
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
-        expect(selectFilterStages(store.getState())).toHaveLength(1);
+        expect(selectEditingStages(store.getState())).toHaveLength(1);
         const id = store.getState().editingSetId;
-        const raw = JSON.parse(storage.get("wb.savedSets.v5")!) as { id: string; expr: { kind: string; of: unknown[] } }[];
+        const raw = JSON.parse(storage.get("wb.savedSets.v6")!) as { id: string; expr: { of: unknown[]; ops: unknown[] } }[];
         const mine = raw.find((x) => x.id === id)!;
-        expect(mine.expr.kind).toBe("and");
         expect(mine.expr.of).toHaveLength(1);
+        expect(mine.expr.ops, "항이 하나면 연산자가 없다").toEqual([]);
     });
 });
 
@@ -56,7 +56,7 @@ describe("선택 포인터 — 깔때기를 만지는 순간 작업 깔때기로
         stubStorage();
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
-        const id = selectFilterStages(store.getState())[0].id;
+        const id = selectEditingStages(store.getState())[0].id;
 
         store.getState().selectSet({ kind: "universe" });
         expect(store.getState().selectedSetRef).toEqual({ kind: "universe" });
@@ -76,11 +76,11 @@ describe("조건 개명 — 빈 이름은 자동 라벨로 되돌린다", () => 
         stubStorage();
         const store = await loadStore();
         store.getState().addFilterStage([datePred]);
-        const id = selectFilterStages(store.getState())[0]!.id;
+        const id = selectEditingStages(store.getState())[0]!.id;
 
         store.getState().renameFilterStage(id, "  돌파  ");
-        expect(selectFilterStages(store.getState())[0]!.name).toBe("돌파");
+        expect(selectEditingStages(store.getState())[0]!.name).toBe("돌파");
         store.getState().renameFilterStage(id, "   ");
-        expect(selectFilterStages(store.getState())[0]!.name).toBeUndefined();
+        expect(selectEditingStages(store.getState())[0]!.name).toBeUndefined();
     });
 });

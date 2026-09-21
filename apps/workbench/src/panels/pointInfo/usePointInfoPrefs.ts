@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { usePersistedState } from "../../store/persist.js";
 import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import { hotAxisId, hotInstancesOf } from "../../lib/hotAxis.js";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { allStagesOf, useWorkbench } from "../../store/workbench.js";
 import { HIDDEN_KEY, ORDER_KEY, moveRow, orderRows, parseKeys, pruneRowKeys } from "./prefs.js";
 import type { PointInfoRow } from "./rows.js";
 
@@ -26,7 +26,10 @@ export function usePointInfoPrefs(rows: readonly PointInfoRow[], live: { axisKey
     const [hidden, setHidden] = usePersistedState<string[]>(HIDDEN_KEY, parseKeys, []);
 
     // 격자 로딩 창에 잠깐 없는 축들 — 시트와 같은 보호 목록(없으면 로딩 중 한 번에 유령으로 몰린다).
-    const stages = useWorkbench(selectFilterStages);
+    // ⚠ 유령 청소의 보호 목록이라 **저장 집합 전부**를 본다 — 좁히면 지금 안 보이는 집합의 축 키가
+    //   유령으로 잡혀 **영구 삭제**된다(useSheetColumns 의 생사 기준과 같은 이유).
+    const savedSets = useWorkbench((s) => s.savedSets);
+    const stages = useMemo(() => allStagesOf(savedSets), [savedSets]);
     const liveAxisKeys = useMemo(
         () => [...live.axisKeys, ...GRID_AXIS_IDS, ...hotInstancesOf(stages).map((h) => hotAxisId(h.stageId))],
         [live.axisKeys, stages],

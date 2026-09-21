@@ -15,7 +15,7 @@ import { OUTCOME_METRIC_NAME, type OutcomeMetric } from "../../lib/outcomeMetric
 import { useLabelRows, useOutcomeSlices, useOutcomeWalks } from "../../lib/PointGridsContext.js";
 import { chartKeyOf, pointKeyOf } from "../../lib/pointKey.js";
 import { useSubject } from "../../lib/subject.js";
-import { selectFilterStages, useWorkbench } from "../../store/workbench.js";
+import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { LEG_HIGH } from "../../styles/palette.js";
 import { useBoundSet } from "../filter/useBoundSet.js";
 import { SetBindingLabel } from "../filter/SetBindingLabel.js";
@@ -45,7 +45,7 @@ export function OutcomePanel({ panelId = "outcome-rails" }: { panelId?: string }
     // 표시 T 와 연동 행 — 이 판의 모든 값이 이 T 단면에서 나온다(단일 출처는 outcomeLink).
     const { outcomeStages, linkedId, setLinked, displayT, setDisplayT, conflictAt } = useLinkedOutcome();
     const outcomes = sliceAt(displayT);
-    const stages = useWorkbench(selectFilterStages);
+    const stages = useWorkbench(selectEditingStages);
     const applyRail = useWorkbench((s) => s.applyFilterRail);
 
     // 마커·멤버 오버레이 — 레일 위젯의 공용 규약과 같은 계약(subject 판정·viewOf). 결과 레일은 전부 타점 층위라

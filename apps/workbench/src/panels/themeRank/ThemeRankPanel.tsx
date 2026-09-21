@@ -12,7 +12,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { SubjectBadge } from "../../components/SubjectBadge.js";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
-import { useWorkbench, selectFilterStages } from "../../store/workbench.js";
+import { useWorkbench, selectEditingStages } from "../../store/workbench.js";
 import { useDock } from "../../store/dock.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { themeStrengthLabel } from "../filter/label.js";
@@ -39,7 +39,7 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
 
     // ── 연동 행 — 영속 바인딩의 역방향(나를 가리키는 행). 고아(행 소멸)는 여기서 자연히 미연동이 된다.
     const bindings = useWorkbench((s) => s.themeBindings);
-    const stages = useWorkbench(selectFilterStages);
+    const stages = useWorkbench(selectEditingStages);
     const linked = useMemo(() => {
         const stageId = Object.entries(bindings).find(([, pid]) => pid === panelId)?.[0];
         if (stageId === undefined) return null;

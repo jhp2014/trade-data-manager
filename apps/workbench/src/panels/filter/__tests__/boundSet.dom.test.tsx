@@ -78,6 +78,8 @@ beforeEach(() => {
     useWorkbench.setState({
         focus: { ...useWorkbench.getState().focus, date: DATE, code: "", time: null },
         panelUi: {}, selectedSetRef: null,
+        // 하루 평가는 **손으로 시작한다**(2026-09-21) — 저장물 스냅샷이 곧 "계산을 눌렀다"다.
+        // 안 심으면 아래 검사들이 전부 0건이 되는데, 그건 버그가 아니라 이 모델의 뜻이다.
     });
     seedEditing(exprOfStages([wideStage]));
 });
@@ -115,6 +117,28 @@ describe("useBoundSet — 하루 우주", () => {
         expect(seen.a!.view.viewedItems).toHaveLength(3);
         expect(seen.a!.view.broken).toBe(false);
         expect(evalSpy, "고정과 연동이 같은 조건이면 평가도 한 벌").toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("useBoundSet — 계산은 손으로 시작한다 (2026-09-21)", () => {
+    it("한 번도 안 눌렀으면 **재료를 안 당기고**, 빈 목록이 아니라 「이유 있는 빈 집합」이다", () => {
+        seedEditing(exprOfStages([wideStage]), [], false); // 계산을 안 누른 상태
+        renderProbes(["a"], false); // 재료를 안 심었다: 당기면 setup 의 네트워크 그물이 이 검사를 죽인다
+        expect(seen.a!.day.on, "하루 경로는 선다").toBe(true);
+        expect(seen.a!.day.computed).toBe(false);
+        expect(seen.a!.view.viewedItems).toHaveLength(0);
+        // ⚠ 본론 — `isFiltering && broken` 이라야 화면이 "조건에 다 걸렸다"로 안 읽는다.
+        expect(seen.a!.view.broken, "이유 있는 빈 집합").toBe(true);
+        expect(evalSpy).not.toHaveBeenCalled();
+    });
+
+    it("누른 뒤 조건이 바뀌면 **낡음**이 서고, 옛 결과는 그대로 남는다", () => {
+        renderProbes(["a"]);
+        expect(seen.a!.view.viewedItems).toHaveLength(3);
+        expect(seen.a!.day.stale).toBe(false);
+        act(() => useWorkbench.getState().addFilterStage([{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 99 } }] }]));
+        expect(seen.a!.day.stale, "조건이 바뀌었다").toBe(true);
+        expect(seen.a!.view.viewedItems, "옛 결과를 계속 그린다 — 비우면 '다 걸렸다'로 읽힌다").toHaveLength(3);
     });
 });
 

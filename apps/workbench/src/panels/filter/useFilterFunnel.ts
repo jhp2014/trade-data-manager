@@ -29,7 +29,7 @@ import { projectionOf } from "../../lib/useThemeProjection.js";
 import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import { unionNames } from "../../lib/groupIndex.js";
 import type { SetRef } from "../../lib/setRef.js";
-import { selectFilterExpr, useWorkbench } from "../../store/workbench.js";
+import { selectObservedExpr, useWorkbench } from "../../store/workbench.js";
 import { useDebounced, EVAL_DEBOUNCE_MS } from "../../lib/useDebounced.js";
 import { buildAxisOrderIndex, buildAxisOrderIndexes } from "./axisLookup.js";
 import { resolveBound, toFunnelStage, type EvalLookup } from "./evaluate.js";
@@ -109,7 +109,7 @@ export function useFilterFunnel(): FunnelView {
      * 스토어를 직접 읽으므로 즉각 반응하고, 여기서 나오는 수(생존·낟알·목록)만 늦는다.
      * ⚠ 둘을 섞으면 안 된다 — 낟알을 새 식으로, 정산을 옛 식으로 재면 항목과 판정이 어긋난다.
      */
-    const freshExpr = useWorkbench(selectFilterExpr);
+    const freshExpr = useWorkbench(selectObservedExpr);
     const expr = useDebounced(freshExpr, EVAL_DEBOUNCE_MS);
     const stages = useMemo(() => leavesOf(expr), [expr]);
     const freshSavedSets = useWorkbench((s) => s.savedSets);
