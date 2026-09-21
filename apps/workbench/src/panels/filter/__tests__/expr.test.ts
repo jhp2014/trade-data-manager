@@ -9,7 +9,8 @@ import { describe, it, expect } from "vitest";
 import {
     activeExpr, appendLeaf, appendTerm, emptyExpr, exprOfStages, filterLeaves, findTerm, foldExpr,
     hasCycle, isFoldedNode, leafCount, leavesOf, mapLeaves, negOf, negateTerm, opAt, parseExpr,
-    promoteBoundary, refNode, refsOf, removeTerm, replaceTerm, setAllOps, setOpAt, topOpOf,
+    refNode, refsOf, removeGroupAt, removeTerm, replaceTerm, setAllOps, setOpAt,
+    toggleBoundaryGroup, topOpOf, canSetOpAt, canToggleBoundary, negateGroupAt,
     type Op, type SetExpr, type SetTerm,
 } from "../expr.js";
 import { parseStages, type FilterStage } from "../stage.js";
@@ -220,9 +221,9 @@ describe("섞이는 순간 괄호가 박힌다 — 숨은 우선순위가 없다
         expect(shape(setOpAt(expr("and", [cond("a"), cond("b"), cond("c")]), 1, "or"))).toBe("(a and b) or c");
     });
 
-    it("「이 자리를 바깥으로」는 연산자를 안 건드리고 괄호만 뒤집는다", () => {
+    it("괄호 안쪽을 자르면 한 겹을 지키느라 괄호가 반대쪽으로 옮겨간다(옛 「바깥으로」)", () => {
         const e = setOpAt(expr("and", [cond("a"), cond("b"), cond("c")]), 1, "or");
-        const flipped = promoteBoundary(e, 0);
+        const flipped = toggleBoundaryGroup(e, 0);
         expect(shape(flipped)).toBe("a and (b or c)");
         expect(opAt(flipped, 0), "연산자는 그대로다").toBe("and");
         expect(opAt(flipped, 1)).toBe("or");
@@ -314,7 +315,7 @@ describe("항이 줄어도 불변식이 선다 — 표시와 평가가 안 갈�
     };
 
     it("`a AND (b OR c) AND d` 에서 b 를 지워도 뜻이 한 가지다", () => {
-        const base = promoteBoundary(setOpAt(expr("and", [cond("a"), cond("b"), cond("c"), cond("d")]), 1, "or"), 0);
+        const base = toggleBoundaryGroup(setOpAt(expr("and", [cond("a"), cond("b"), cond("c"), cond("d")]), 1, "or"), 0);
         expect(shape(base)).toBe("a and (b or c) and d");
         const next = removeTerm(base, "b");
         expect(sane(next), "괄호 밖이 섞인 채로 남지 않는다").toBe(true);
@@ -323,7 +324,7 @@ describe("항이 줄어도 불변식이 선다 — 표시와 평가가 안 갈�
 
     it("**끄기**(activeExpr)도 같은 길을 지난다 — 조건 하나를 끄면 뜻이 조용히 안 바뀐다", () => {
         const off: SetTerm = { kind: "cond", stage: { ...st("b"), enabled: false } };
-        const raw = promoteBoundary(setOpAt({ ...expr("and", [cond("a"), off, cond("c"), cond("d")]) }, 1, "or"), 0);
+        const raw = toggleBoundaryGroup(setOpAt({ ...expr("and", [cond("a"), off, cond("c"), cond("d")]) }, 1, "or"), 0);
         const live = activeExpr(raw);
         expect(sane(live)).toBe(true);
         expect(live.ops).toHaveLength(live.of.length - 1);
@@ -342,5 +343,74 @@ describe("항이 줄어도 불변식이 선다 — 표시와 평가가 안 갈�
             groups: [{ from: 1, to: 2 }],
         };
         expect(sane(parseExpr(raw, parseStages)!)).toBe(true);
+    });
+});
+
+// ── 괄호는 손의 것 (2026-09-22) ────────────────────────────────────────────
+//
+// 여기서 잠그는 것 셋:
+//  ① **경계 토글 하나**로 만들기·넓히기·자르기·풀기가 다 된다.
+//  ② 괄호는 **자동으로 안 사라진다** — 사라지면 거기 걸린 NOT 이 조용히 증발한다.
+//  ③ 한 항으로 줄면 접히되 **NOT 은 그 항으로 내려앉는다**(XOR).
+
+describe("경계 토글 — 괄호 조작의 유일한 손", () => {
+    const four = (): SetExpr => expr("and", [cond("a"), cond("b"), cond("c"), cond("d")]);
+
+    it("밖이면 삼키고(만들기), 이웃이면 넓히고, 안이면 거기서 자른다", () => {
+        const made = toggleBoundaryGroup(four(), 0);
+        expect(shape(made)).toBe("(a and b) and c and d");
+        const wide = toggleBoundaryGroup(made, 1);
+        expect(shape(wide)).toBe("(a and b and c) and d");
+        const cut = toggleBoundaryGroup(wide, 0);
+        expect(shape(cut), "한 항짜리는 접힌다").toBe("a and (b and c) and d");
+    });
+
+    it("줄 전체를 덮는 괄호는 뜻이 없어 사라진다 — **NOT 이 붙으면 남는다**", () => {
+        const all = toggleBoundaryGroup(toggleBoundaryGroup(expr("and", [cond("a"), cond("b"), cond("c")]), 0), 1);
+        expect(all.groups, "줄 그 자체다").toEqual([]);
+
+        const negd = negateGroupAt(toggleBoundaryGroup(expr("and", [cond("a"), cond("b"), cond("c")]), 0), 0);
+        expect(negd.groups[0]!.neg).toBe(true);
+        const grown = toggleBoundaryGroup(negd, 1);
+        expect(grown.groups, "NOT 이 있으니 전체를 덮어도 남는다").toEqual([{ from: 0, to: 2, neg: true }]);
+    });
+
+    it("괄호 안이 섞이는 토글은 **거절**한다 — 한 겹이라 안쪽에 또 칠 자리가 없다", () => {
+        // 자동 괄호가 양옆에 둘 선 뒤(`(a AND b) OR (c AND d)`), 가운데 OR 을 삼키면 둘을 이어
+        // 붙이는 셈이라 두 괄호의 NOT 을 합칠 길이 없다 — 거절한다.
+        const mixed = setOpAt(four(), 1, "or");
+        expect(shape(mixed)).toBe("(a and b) or (c and d)");
+        expect(toggleBoundaryGroup(mixed, 1), "식이 안 바뀐다").toBe(mixed);
+        expect(canToggleBoundary(mixed, 1)).toBe(false);
+    });
+});
+
+describe("괄호의 NOT", () => {
+    it("NOT 붙은 괄호는 자르기·풀기를 거절한다 — NOT 이 갈 곳이 없다", () => {
+        const g = negateGroupAt(toggleBoundaryGroup(expr("and", [cond("a"), cond("b"), cond("c"), cond("d")]), 0), 0);
+        expect(toggleBoundaryGroup(g, 0), "자르기 거절").toBe(g);
+        expect(removeGroupAt(g, 0), "풀기 거절").toBe(g);
+        expect(removeGroupAt(negateGroupAt(g, 0), 0).groups, "NOT 을 떼면 풀린다").toEqual([]);
+    });
+
+    it("한 항으로 줄면 괄호가 접히고 **NOT 이 그 항으로 내려앉는다**", () => {
+        const g = negateGroupAt(toggleBoundaryGroup(expr("and", [cond("a"), cond("b"), cond("c")]), 0), 0);
+        const next = removeTerm(g, "b");
+        expect(next.groups, "괄호는 접혔다").toEqual([]);
+        expect(negOf(next, "a"), "NOT 이 a 로 내려앉았다").toBe(true);
+    });
+
+    it("항이 이미 NOT 이면 **상쇄**된다 — `NOT(NOT a)` = `a`", () => {
+        const base = negateTerm(expr("and", [cond("a"), cond("b"), cond("c")]), "a");
+        const g = negateGroupAt(toggleBoundaryGroup(base, 0), 0);
+        const next = removeTerm(g, "b");
+        expect(negOf(next, "a")).toBe(false);
+    });
+
+    it("괄호가 있으면 연산자 바꾸기가 한 겹을 깰 때 **거절**한다(손이 친 괄호를 안 흔든다)", () => {
+        const g = toggleBoundaryGroup(expr("and", [cond("a"), cond("b"), cond("c"), cond("d")]), 0);
+        expect(setOpAt(g, 2, "or"), "바깥이 and·or 로 섞인다 — 거절").toBe(g);
+        expect(canSetOpAt(g, 2, "or")).toBe(false);
+        expect(canSetOpAt(g, 0, "or"), "괄호 안을 통째로 or 로 바꾸는 건 된다").toBe(true);
     });
 });

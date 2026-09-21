@@ -30,12 +30,11 @@ import { useFunnel } from "./FunnelContext.js";
 import { Note } from "./grain.js";
 import { ExprRow, type RowHandlers } from "./ExprRow.js";
 import { FAIL, PIN } from "../../styles/palette.js";
-import { iconBtn } from "./ui.js";
 import type { CellValueRange } from "@trade-data-manager/market/domain";
 import { CellStageFields } from "./CellPredicateFields.js";
 import { kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
 import { GroupEditors, RailEditors, type GroupEditorAnchor, type RailEditor } from "./ConditionEditors.js";
-import { hasCycle, idOf, leavesOf, negateTerm, promoteBoundary, refsOf, removeTerm, setOpAt, type SetExpr, type SetTerm } from "./expr.js";
+import { hasCycle, idOf, leavesOf, mapLeaves, negateGroupAt, negateTerm, refsOf, removeGroupAt, removeTerm, setOpAt, toggleBoundaryGroup, type SetExpr, type SetTerm } from "./expr.js";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { PointDefHead } from "./PointDefHead.js";
 import { useGroupCreateFlow } from "./useGroupCreateFlow.js";
@@ -59,7 +58,6 @@ export function ConditionBoard({ panelId: _panelId }: {
     const v = useFunnel();
     const axes = useRankAxes();
     const stages = useWorkbench(selectEditingStages);
-    const toggleStage = useWorkbench((s) => s.toggleFilterStage);
     const removeStage = useWorkbench((s) => s.removeFilterStage);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
     const setStage = useWorkbench((s) => s.setFilterStage);
@@ -248,12 +246,23 @@ export function ConditionBoard({ panelId: _panelId }: {
         },
         onDrill: (sid, target) => {
             const i = rows.indexOf(sid);
-            if (i >= 0 && sid !== editingSetId) popTo(i);
+            if (i < 0) return;
+            // ⚠ **이미 열린 묶음을 다시 누르면 닫는다** — 조건 칩의 짚기가 토글인데 묶음만 안 닫히면
+            //   같은 자리의 같은 손짓이 종류마다 다르게 군다(실사용이 잡은 자리).
+            if (rows[i + 1] === target) { setPicked(null); popTo(i); return; }
+            if (sid !== editingSetId) popTo(i);
             setPicked(null);
             drillInto(target);
         },
         onSetOp: (sid, at, op) => actOn(sid, (e) => setOpAt(e, at, op)),
-        onPromote: (sid, at) => actOn(sid, (e) => promoteBoundary(e, at)),
+        // 괄호 조작은 **경계 토글 하나** — 만들기·넓히기·자르기·풀기가 여기 모인다(2026-09-22).
+        onToggleBoundary: (sid, at) => actOn(sid, (e) => toggleBoundaryGroup(e, at)),
+        onNegateGroup: (sid, at) => actOn(sid, (e) => negateGroupAt(e, at)),
+        onUngroup: (sid, from) => actOn(sid, (e) => removeGroupAt(e, from)),
+        // 항의 성질은 **우클릭 전용**이다 — 아랫줄은 값만 맡는다.
+        onNegateTerm: (sid, termId) => actOn(sid, (e) => negateTerm(e, termId)),
+        onToggleTerm: (sid, stageId) => actOn(sid, (e) => mapLeaves(e, (x) => (x.id === stageId ? { ...x, enabled: !x.enabled } : x))),
+        onRemoveTerm: (sid, termId) => { actOn(sid, (e) => removeTerm(e, termId)); setPicked(null); },
     }), [chipLabelOf, refInfo, rows, editingSetId, popTo, drillInto, actOn]);
 
     /** 지금 **열려 있는 항** — 마지막 줄의 짚은 조건이거나, 내려와 있는 묶음(그 부모 줄의 항)이다. */
@@ -277,7 +286,7 @@ export function ConditionBoard({ panelId: _panelId }: {
      * ⚠ 참조의 **내용**은 그 자리에서 못 고친다 — 고치면 그 집합을 쓰는 다른 식이 전부 따라 바뀐다.
      * 그래서 내용 편집은 내려간 줄(아랫줄)에서만 일어난다.
      */
-    const refRow = (t: Extract<SetTerm, { kind: "ref" }>, parent: string): JSX.Element => {
+    const refRow = (t: Extract<SetTerm, { kind: "ref" }>): JSX.Element => {
         const { name, usedBy } = refInfo(t.setId);
         return (
             <div key={t.id} style={{
@@ -291,9 +300,10 @@ export function ConditionBoard({ panelId: _panelId }: {
                     <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}
                         title={`고치면 ${usedBy}곳이 같이 바뀝니다`}>쓰는 곳 {usedBy}</span>
                 )}
-                <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                    <button onClick={() => actOn(parent, (e) => negateTerm(e, t.id))} style={iconBtn} title="이 참조 부정(NOT)">NOT</button>
-                    <button onClick={() => actOn(parent, (e) => removeTerm(e, t.id))} style={iconBtn} title="이 자리에서 뺀다 — 집합 자체는 안 지워진다">✕</button>
+                {/* ⚠ NOT·빼기는 **여기 없다**(2026-09-22) — 칩 우클릭 전용이다. 이 띠는 "지금 어느
+                    묶음에 내려와 있나"만 말한다(그 내용은 아랫줄이 이미 그리고 있다). */}
+                <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--text-tertiary)" }}>
+                    우클릭으로 NOT · 빼기
                 </span>
             </div>
         );
@@ -313,9 +323,6 @@ export function ConditionBoard({ panelId: _panelId }: {
             linkedLabel={stageKind(t.stage) === "themeStrength" ? (livePanelOf(t.stage.id) !== undefined ? slotTitleOf(livePanelOf(t.stage.id)!) : "미연동") : undefined}
             onLinkedClick={(e) => setThemeLink({ stageId: t.stage.id, x: e.clientX, y: e.clientY })}
             onOpen={(e) => openEditor(t.stage, e)}
-            onToggle={() => toggleStage(t.stage.id)}
-            onNegate={() => actOn(parent, (e) => negateTerm(e, t.stage.id))}
-            onRemove={() => { removeStage(t.stage.id); setPicked(null); }}
         />
     );
 
@@ -342,7 +349,7 @@ export function ConditionBoard({ panelId: _panelId }: {
                     ⚠ 편집면은 한 곳이다 — 줄에 손잡이를 또 달면 옛 "필터 UI 가 두 곳" 함정이다. */}
                 {!v.isLoading && openTerm !== null && (openTerm.term.kind === "cond"
                     ? condRow(openTerm.term, openTerm.parent)
-                    : refRow(openTerm.term, openTerm.parent))}
+                    : refRow(openTerm.term))}
 
                 {!v.isLoading && (
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0" }}>

@@ -37,8 +37,9 @@ export function FilterRow({
     onLinkedClick?: (e: React.MouseEvent) => void;
     /** 이름 클릭 — 그 종류의 편집면으로(좌표는 그 자리에 여는 팝오버가 쓴다). */
     onOpen: (e: React.MouseEvent) => void;
-    onToggle: () => void;
-    onRemove: () => void;
+    /** 없으면 그 손잡이를 안 그린다 — 집합 편성의 아랫줄은 **값만** 맡으므로 안 넘긴다. */
+    onToggle?: () => void;
+    onRemove?: () => void;
 }): JSX.Element {
     return (
         <div
@@ -79,13 +80,19 @@ export function FilterRow({
                         <span title="전용 패널이 이 행을 비추는 중 — 거기서 만지면 이 줄이 바뀝니다"
                             style={{ fontSize: 9.5, color: "var(--accent-primary)" }}>◆ 연동</span>
                     )}
-                    {/* 끄기는 지우기와 다르다 — 잠깐 빼보는 것이 "이 조건이 일을 하나"를 보는 유일한 손짓이다. */}
-                    <button onClick={onToggle} title={stage.enabled ? "이 조건 끄기(빼고 보기)" : "다시 켜기"} style={iconBtn}>{stage.enabled ? "◉" : "○"}</button>
+                    {/* ⚠ 끄기·부정·지우기는 **여기 없다**(2026-09-22) — 칩 우클릭 전용이다. 아랫줄은
+                        **값**만 맡는다: 같은 일이 두 자리에 있으면 옛 "필터 UI 가 두 곳" 함정이다.
+                        (손잡이를 옵셔널로 받아 두는 이유는 다른 소비자가 아직 있을 수 있어서다.) */}
+                    {onToggle !== undefined && (
+                        <button onClick={onToggle} title={stage.enabled ? "이 조건 끄기(빼고 보기)" : "다시 켜기"} style={iconBtn}>{stage.enabled ? "◉" : "○"}</button>
+                    )}
                     {onNegate !== undefined && (
                         <button onClick={onNegate} title={neg === true ? "부정 해제" : "이 조건 부정(¬)"}
                             style={{ ...iconBtn, color: neg === true ? FAIL : undefined }}>¬</button>
                     )}
-                    <button onClick={onRemove} title="이 조건 지우기" style={{ ...iconBtn, color: FAIL }}>✕</button>
+                    {onRemove !== undefined && (
+                        <button onClick={onRemove} title="이 조건 지우기" style={{ ...iconBtn, color: FAIL }}>✕</button>
+                    )}
                 </span>
             </div>
 

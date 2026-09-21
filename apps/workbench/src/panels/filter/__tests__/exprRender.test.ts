@@ -3,7 +3,7 @@
 // 숨은 우선순위가 없으므로 "지워도 되는 괄호"라는 개념 자체가 없다.
 import { describe, it, expect } from "vitest";
 import { exprToText, renderExpr } from "../exprRender.js";
-import { promoteBoundary, setOpAt, type SetExpr, type SetTerm } from "../expr.js";
+import { setOpAt, toggleBoundaryGroup, type SetExpr, type SetTerm } from "../expr.js";
 import type { FilterStage } from "../stage.js";
 
 const st = (id: string): FilterStage => ({ id, enabled: true, predicates: [] });
@@ -31,7 +31,7 @@ describe("renderExpr — 항·연산자·괄호", () => {
     it("손으로 친 괄호를 그대로 그린다 — 연산자는 괄호 **안쪽**에 선다", () => {
         const e = setOpAt(and([leaf("a"), leaf("b"), leaf("c")]), 1, "or");
         expect(text(e)).toBe("(a AND b) OR c");
-        expect(text(promoteBoundary(e, 0))).toBe("a AND (b OR c)");
+        expect(text(toggleBoundaryGroup(e, 0))).toBe("a AND (b OR c)");
     });
 
     it("항이 하나면 연산자가 안 나오고, 비면 아무것도 안 낸다", () => {

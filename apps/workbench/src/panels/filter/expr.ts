@@ -14,9 +14,13 @@
 // 이름이 지킬 것이 없다. 겹은 **하나까지** — 더 필요하면 이름 붙여 층으로 올린다.
 //
 // ## 숨은 우선순위가 없다 — 섞이는 순간 괄호가 박힌다
-// 불변식: **괄호 밖의 연산자는 전부 같고, 각 괄호 안의 연산자도 전부 같다.** 그래서 `a OR b AND c`
-// 같은 "읽는 규칙을 알아야 뜻이 정해지는" 식이 **존재할 수 없다**. 연산자를 바꾸면 `regroup` 이
-// 그 자리를 바깥으로 삼아 괄호를 다시 친다(`setOpAt`), 자리만 바깥으로 옮기는 손은 `promoteBoundary`.
+// 불변식: **괄호 밖의 연산자는 전부 같고, 각 괄호 안의 연산자도 전부 같다**(`oneLayerHolds`).
+// 그래서 `a OR b AND c` 같은 "읽는 규칙을 알아야 뜻이 정해지는" 식이 **존재할 수 없다**.
+//
+// ## 괄호는 손의 것이다 (2026-09-22)
+// 괄호가 **하나도 없을 때** 연산자를 섞으면 자동으로 박힌다(모호한 식 방지). 그 뒤로는 사람 것이라
+// **자동으로 안 사라지고**, 불변식을 깨는 편집은 **거절**한다(식을 안 바꾸고 화면이 이유를 말한다).
+// 조작은 경계 토글 하나다(`toggleBoundaryGroup` — 밖이면 삼키고 안이면 거기서 자른다).
 //
 // ## 중첩은 식 안이 아니라 **집합 사이**에 있다
 // 묶음이 곧 저장 집합이므로, 안쪽 묶음은 그 자리에 **참조**로 선다.
@@ -46,10 +50,17 @@ export type SetTerm =
     /** 다른 저장 집합 한 벌 — 내용은 그 집합의 것이고, 여기선 멤버십만 묻는다. */
     | ({ kind: "ref"; id: NodeId; setId: string } & Negatable);
 
-/** 괄호 한 겹 — **항 인덱스 구간**(양끝 포함). 길이 2 이상이고 서로 겹치지 않는다. */
+/**
+ * 괄호 한 겹 — **항 인덱스 구간**(양끝 포함). 길이 2 이상이고 서로 겹치지 않는다.
+ *
+ * ⚠ **괄호는 손의 것이다**(2026-09-22) — 첫 섞임에 자동으로 박히지만 **자동으로는 안 사라진다**.
+ * 자동으로 걷히면 `NOT(a OR b) AND c` 에서 OR 을 AND 로 바꾸는 순간 **NOT 이 조용히 증발한다**.
+ */
 export interface Group {
     from: number;
     to: number;
+    /** 이 괄호의 부정 — `not3` 그대로 내려간다(모름을 뒤집어도 모름). */
+    neg?: boolean;
 }
 
 /**
@@ -92,8 +103,35 @@ export const refNode = (setId: string): SetTerm => ({ kind: "ref", id: newNodeId
 
 // ── 모양 불변식 ────────────────────────────────────────────────────────────
 
-/** 구간이 온전한 괄호인가 — 길이 2 이상이고 줄 전체를 덮지 않는다(전체 괄호는 뜻이 없다). */
-const usableGroup = (g: Group, n: number): boolean => g.to > g.from && !(g.from === 0 && g.to === n - 1);
+/**
+ * 구간이 온전한 괄호인가 — 길이 2 이상이라야 하고, 줄 전체를 덮는 괄호는 **NOT 이 있을 때만** 뜻이 있다.
+ * (`NOT(a OR b OR c)` 는 뜻이 있고, `(a OR b OR c)` 는 줄 그 자체라 뜻이 없다.)
+ */
+const usableGroup = (g: Group, n: number): boolean =>
+    g.to > g.from && (g.neg === true || !(g.from === 0 && g.to === n - 1));
+
+/** 항 하나에 NOT 을 겹친다 — 두 번이면 상쇄(`not3(not3(x)) = x`, 3치에서도 정확). */
+const xorNeg = (t: SetTerm, neg: boolean): SetTerm => {
+    if (!neg) return t;
+    if (t.neg === true) { const { neg: _drop, ...rest } = t; return rest as SetTerm; }
+    return { ...t, neg: true };
+};
+
+/** 괄호 밖 경계들의 연산자 — 불변식 검사와 `topOpOf` 가 같은 자를 쓴다. */
+const outsideOps = (ops: readonly Op[], groups: readonly Group[]): Op[] =>
+    ops.filter((_, i) => !groups.some((g) => g.from <= i && i + 1 <= g.to));
+
+/**
+ * 한 겹이 성립하나 — **괄호 안도 밖도 연산자가 균일**해야 한다.
+ *
+ * ⚠ 이건 고른 제약이 아니라 **한 겹 + 숨은 우선순위 없음**의 귀결이다: `(a AND b OR c)` 는 읽는 법이
+ * 둘이라(`((a AND b) OR c)` / `(a AND (b OR c))`) 안쪽 괄호 하나 더 없이는 뜻이 안 정해진다.
+ */
+export function oneLayerHolds(ops: readonly Op[], groups: readonly Group[]): boolean {
+    for (const g of groups) for (let i = g.from; i < g.to; i++) if (ops[i] !== ops[g.from]) return false;
+    const out = outsideOps(ops, groups);
+    return out.every((o) => o === out[0]);
+}
 
 /**
  * 모양을 성립하게 다듬는다 — `ops` 길이 보정, 괄호 정렬·클램프·겹침 제거, 그리고 **불변식 강제**.
@@ -108,18 +146,33 @@ export function normalizeExpr(e: SetExpr): SetExpr {
     const n = e.of.length;
     const want = Math.max(n - 1, 0);
     const ops = e.ops.length === want ? e.ops : Array.from({ length: want }, (_, i) => e.ops[i] ?? e.ops[e.ops.length - 1] ?? "and");
+    let of = e.of;
     const sorted = [...e.groups]
-        .map((g) => ({ from: Math.max(0, Math.min(g.from, n - 1)), to: Math.max(0, Math.min(g.to, n - 1)) }))
-        .filter((g) => usableGroup(g, n))
+        .map((g) => ({ ...g, from: Math.max(0, Math.min(g.from, n - 1)), to: Math.max(0, Math.min(g.to, n - 1)) }))
         .sort((a, b) => a.from - b.from);
     const cleaned: Group[] = [];
-    for (const g of sorted) if (cleaned.length === 0 || g.from > cleaned[cleaned.length - 1]!.to) cleaned.push(g);
-    // 바깥 연산자 = 괄호에 안 든 첫 경계. 그게 없으면(전부 괄호 안) 첫 연산자를 바깥으로 삼는다.
-    const outside = ops.findIndex((_, i) => !cleaned.some((g) => g.from <= i && i + 1 <= g.to));
-    const top: Op = ops[outside >= 0 ? outside : 0] ?? "and";
-    const groups = regroup(e.of, ops, top);
-    const same = ops === e.ops && groups.length === e.groups.length && groups.every((g, i) => g.from === e.groups[i]!.from && g.to === e.groups[i]!.to);
-    return same ? e : { ...e, ops, groups };
+    for (const g of sorted) {
+        if (cleaned.length > 0 && g.from <= cleaned[cleaned.length - 1]!.to) continue; // 겹침 — 뒤엣것을 버린다
+        // ⚠ **한 항으로 줄어든 괄호는 접힌다 — NOT 은 그 항으로 내려앉는다.** 항이 빠지면(드래그가
+        //   아니라 `removeTerm`·`activeExpr`·파싱 실패) 자연히 생기는 모양이고, 그냥 버리면 NOT 이
+        //   조용히 증발한다. `NOT(NOT A)` = `A` 라 XOR 이 정확하다.
+        if (g.to === g.from) {
+            if (g.neg === true && of[g.from] !== undefined) {
+                of = of === e.of ? [...of] : of;
+                of[g.from] = xorNeg(of[g.from]!, true);
+            }
+            continue;
+        }
+        if (!usableGroup(g, n)) continue;
+        cleaned.push(g);
+    }
+    // ⚠ 괄호는 **손의 것**이라 여기서 다시 치지 않는다 — 불변식이 깨진 채 들어오면(손으로 쓴 저장물)
+    //   그때만 마지막 방어로 다시 친다. 정상 경로에서는 `setOpAt`·`toggleBoundaryGroup` 이 애초에
+    //   깨지는 편집을 거절하므로 이 갈래가 안 돈다.
+    const groups = oneLayerHolds(ops, cleaned) ? cleaned : regroup(of, ops, outsideOps(ops, cleaned)[0] ?? ops[0] ?? "and");
+    const same = of === e.of && ops === e.ops && groups.length === e.groups.length
+        && groups.every((g, i) => g.from === e.groups[i]!.from && g.to === e.groups[i]!.to && g.neg === e.groups[i]!.neg);
+    return same ? e : { ...e, of, ops, groups };
 }
 
 /** 경계 `i`(항 i 와 i+1 사이)를 품은 괄호 — 없으면 null. */
@@ -157,28 +210,85 @@ function regroup(of: SetTerm[], ops: Op[], top: Op): Group[] {
 }
 
 /**
- * 연산자 바꾸기 — 그 자리를 **바깥**으로 삼아 괄호를 다시 친다(섞이는 순간 괄호가 박힌다).
- * 예: `a AND b AND c` 의 가운데를 OR 로 → `(a AND b) OR c`.
+ * 연산자 바꾸기.
+ *  · 괄호가 **하나도 없으면** 그 자리를 바깥으로 삼아 자동으로 박는다(`a AND b AND c` → `(a AND b) OR c`).
+ *  · 괄호가 **이미 있으면** 손의 것이라 안 건드린다 — 그 변경이 한 겹을 깨면 **거절**한다(식이 안 바뀐다).
+ *
+ * ⚠ 거절이 자동 재괄호보다 낫다: 다시 치면 사람이 친 괄호와 **거기 걸린 NOT** 이 말없이 갈린다.
  */
 export function setOpAt(e: SetExpr, i: number, op: Op): SetExpr {
     if (i < 0 || i >= e.ops.length || e.ops[i] === op) return e;
     const ops = e.ops.map((o, k) => (k === i ? op : o));
-    return normalizeExpr({ ...e, ops, groups: regroup(e.of, ops, op) });
+    if (e.groups.length === 0) return normalizeExpr({ ...e, ops, groups: regroup(e.of, ops, op) });
+    if (!oneLayerHolds(ops, e.groups)) return e; // 거절 — 화면이 "괄호를 먼저 푸세요"라고 말한다
+    return normalizeExpr({ ...e, ops });
+}
+
+/** 이 연산자를 바꿀 수 있나 — 화면이 판에서 회색으로 세우고 이유를 말할 재료. */
+export const canSetOpAt = (e: SetExpr, i: number, op: Op): boolean =>
+    i >= 0 && i < e.ops.length && (e.ops[i] === op || e.groups.length === 0
+        || oneLayerHolds(e.ops.map((o, k) => (k === i ? op : o)), e.groups));
+
+/**
+ * **경계 토글** — 괄호 조작의 유일한 손이다(2026-09-22). 이 경계가
+ *  · 괄호 **밖**이면 → 안으로 삼킨다(새 괄호 / 이웃 괄호 넓히기)
+ *  · 괄호 **안**이면 → 거기서 자른다(쪼개기 / 풀기)
+ *
+ * 만들기·넓히기·자르기·풀기가 한 손짓 한 뜻으로 모인다. 한 겹을 깨거나 NOT 을 잃는 이동은 거절한다.
+ */
+export function toggleBoundaryGroup(e: SetExpr, i: number): SetExpr {
+    if (i < 0 || i >= e.ops.length) return e;
+    const inside = e.groups.find((g) => g.from <= i && i + 1 <= g.to);
+    if (inside) {
+        // ⚠ NOT 붙은 괄호는 **못 자른다** — 쪼개면 NOT 이 갈 곳이 없다(드모르간으로 분배하지 않는다).
+        if (inside.neg === true) return e;
+        const rest = e.groups.filter((g) => g !== inside);
+        const left: Group = { from: inside.from, to: i };
+        const right: Group = { from: i + 1, to: inside.to };
+        return normalizeExpr({ ...e, groups: [...rest, left, right] });
+    }
+    const left = e.groups.find((g) => g.to === i);
+    const right = e.groups.find((g) => g.from === i + 1);
+    // 양옆이 다 괄호면 이어 붙이는 셈이라 두 NOT 을 합칠 길이 없다 — 거절한다.
+    if (left && right) return e;
+    const grown: Group = left ? { ...left, to: i + 1 } : right ? { ...right, from: i } : { from: i, to: i + 1 };
+    const rest = e.groups.filter((g) => g !== left && g !== right);
+    const next = [...rest, grown];
+    if (!oneLayerHolds(e.ops, next)) return e; // 괄호 안이 섞인다 — 거절
+    return normalizeExpr({ ...e, groups: next });
+}
+
+/**
+ * ⚠ 옛 「이 자리를 바깥으로」(`promoteBoundary`)는 **이 하나에 흡수됐다**(2026-09-22): 섞인 줄에서
+ * 괄호 안쪽을 자르면 한 겹을 지키느라 괄호가 반대쪽으로 옮겨간다 — `(a AND b) OR c` 의 AND 자리를
+ * 자르면 `a AND (b OR c)` 다. 손잡이가 둘일 이유가 없다.
+ */
+
+/** 이 경계를 토글할 수 있나 — 화면이 회색 + 이유로 세울 재료. */
+export const canToggleBoundary = (e: SetExpr, i: number): boolean => toggleBoundaryGroup(e, i) !== e;
+
+/**
+ * 괄호 통째로 풀기 — `from` 에서 시작하는 괄호를 없앤다.
+ * ⚠ **NOT 이 붙어 있으면 거절**한다 — 풀면 NOT 이 갈 곳이 없다(드모르간으로 항에 분배하지 않는다).
+ *   화면이 "NOT 을 먼저 떼세요"라고 말한다.
+ */
+export function removeGroupAt(e: SetExpr, from: number): SetExpr {
+    const g = e.groups.find((x) => x.from === from);
+    if (!g || g.neg === true) return e;
+    return normalizeExpr({ ...e, groups: e.groups.filter((x) => x !== g) });
+}
+
+/** 괄호 부정 토글 — 경계 `i` 를 품은 괄호에 NOT 을 걸거나 뗀다. */
+export function negateGroupAt(e: SetExpr, i: number): SetExpr {
+    const g = e.groups.find((x) => x.from <= i && i + 1 <= x.to);
+    if (!g) return e;
+    const next = e.groups.map((x) => (x === g ? (x.neg === true ? { from: x.from, to: x.to } : { ...x, neg: true }) : x));
+    return normalizeExpr({ ...e, groups: next });
 }
 
 /** 줄 전체를 한 연산자로 — 괄호가 통째로 사라진다(섞임이 없으면 괄호도 없다). */
 export const setAllOps = (e: SetExpr, op: Op): SetExpr =>
     normalizeExpr({ ...e, ops: e.ops.map(() => op), groups: [] });
-
-/**
- * 이 자리를 **바깥으로** — 연산자는 그대로 두고 괄호만 뒤집는다.
- * `(a AND b) OR c` 에서 `AND` 자리를 바깥으로 누르면 `a AND (b OR c)` 가 된다.
- * 괄호를 손으로 옮기는 유일한 손잡이다(드래그 없음 — 대상이 모호해진다).
- */
-export function promoteBoundary(e: SetExpr, i: number): SetExpr {
-    if (i < 0 || i >= e.ops.length) return e;
-    return normalizeExpr({ ...e, groups: regroup(e.of, e.ops, e.ops[i]!) });
-}
 
 // ── 읽기 ──────────────────────────────────────────────────────────────────
 
@@ -269,7 +379,9 @@ function pruneTerms(e: SetExpr, keep: (t: SetTerm) => boolean): SetExpr {
     const groups: Group[] = [];
     for (const g of e.groups) {
         const inside = keepIdx.filter((i) => i >= g.from && i <= g.to).map((i) => at.get(i)!);
-        if (inside.length >= 2) groups.push({ from: inside[0]!, to: inside[inside.length - 1]! });
+        // ⚠ 항이 하나만 남아도 **버리지 않는다** — 버리면 거기 걸린 NOT 이 조용히 증발한다.
+        //   `normalizeExpr` 이 한 항짜리 괄호를 접으면서 NOT 을 그 항으로 내려앉힌다.
+        if (inside.length >= 1) groups.push({ ...g, from: inside[0]!, to: inside[inside.length - 1]! });
     }
     return normalizeExpr({ ...e, of, ops, groups });
 }
@@ -346,6 +458,8 @@ export interface FoldedNode {
     kind: Op;
     id: NodeId;
     of: FoldedItem[];
+    /** 괄호의 NOT — 평가가 `not3` 로 받는다(루트 노드는 안 든다). */
+    neg?: boolean;
 }
 export type FoldedItem = SetTerm | FoldedNode;
 
@@ -376,7 +490,10 @@ export function foldExpr(e: SetExpr): FoldedNode {
             i += 1;
             continue;
         }
-        of.push({ kind: opAt(e, g.from), id: `${e.id}#g${g.from}`, of: e.of.slice(g.from, g.to + 1) });
+        of.push({
+            kind: opAt(e, g.from), id: `${e.id}#g${g.from}`, of: e.of.slice(g.from, g.to + 1),
+            ...(g.neg === true ? { neg: true as const } : {}),
+        });
         i = g.to + 1;
     }
     const made: FoldedNode = { kind: top, id: e.id, of };
@@ -431,12 +548,15 @@ export function parseExpr(o: unknown, parseStages: StageParser): SetExpr | null 
     const groups: Group[] = [];
     for (const raw of Array.isArray(r.groups) ? r.groups : []) {
         if (typeof raw !== "object" || raw === null) continue;
-        const g = raw as { from?: unknown; to?: unknown };
+        const g = raw as { from?: unknown; to?: unknown; neg?: unknown };
         if (typeof g.from !== "number" || typeof g.to !== "number") continue;
         const lo = g.from;
         const hi = g.to;
         const inside = from.filter((i) => i >= lo && i <= hi).map((i) => at.get(i)!);
-        if (inside.length >= 2) groups.push({ from: inside[0]!, to: inside[inside.length - 1]! });
+        // ⚠ 항이 하나만 남아도 **버리지 않는다** — `normalizeExpr` 이 NOT 을 그 항으로 내려앉힌다.
+        if (inside.length >= 1) {
+            groups.push({ from: inside[0]!, to: inside[inside.length - 1]!, ...((g as { neg?: unknown }).neg === true ? { neg: true as const } : {}) });
+        }
     }
     return normalizeExpr({ id: typeof r.id === "string" && r.id !== "" ? r.id : ROOT_ID, of, ops, groups });
 }

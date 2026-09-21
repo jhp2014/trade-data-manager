@@ -268,7 +268,9 @@ export function evalTerm(t: SetTerm, item: FunnelItem, look: EvalLookup, refs: R
 export function evalExpr(e: SetExpr, item: FunnelItem, look: EvalLookup, refs: RefMembers = () => null): Verdict {
     const evalNode = (n: FoldedNode): Verdict => {
         const vs = n.of.map((x) => (isFoldedNode(x) ? evalNode(x) : evalTerm(x, item, look, refs)));
-        return n.kind === "and" ? and3(vs) : or3(vs);
+        const v = n.kind === "and" ? and3(vs) : or3(vs);
+        // 괄호의 NOT — `not3(모름) = 모름`(부정이 결손을 되살리지 않는다).
+        return n.neg === true ? not3(v) : v;
     };
     return evalNode(foldExpr(e));
 }

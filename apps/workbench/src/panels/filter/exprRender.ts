@@ -21,7 +21,7 @@ export type ExprPiece =
     /** 연산자 — 칩 사이의 접속. 낱말로 적고(`AND`/`OR`), `at` 은 그 경계의 번호다. */
     | { kind: "op"; op: Op; at: number; inGroup: boolean }
     /** 괄호 — 손으로 친 한 겹. `at` 은 그 괄호가 덮는 첫 항의 번호(열기·닫기가 같은 값). */
-    | { kind: "open"; at: number }
+    | { kind: "open"; at: number; neg: boolean }
     | { kind: "close"; at: number };
 
 /**
@@ -46,7 +46,7 @@ export function renderExpr(
             out.push({ kind: "op", op: opAt(e, i - 1), at: i - 1, inGroup: e.groups.some((g) => g.from <= i - 1 && i <= g.to) });
         }
         const opened = opens.get(i);
-        if (opened) out.push({ kind: "open", at: opened.from });
+        if (opened) out.push({ kind: "open", at: opened.from, neg: opened.neg === true });
         const neg = t.neg === true;
         if (t.kind === "cond") out.push({ kind: "leaf", id: idOf(t), label: labelOf(idOf(t)), neg, enabled: t.stage.enabled });
         else out.push({ kind: "ref", id: t.id, setId: t.setId, label: setNameOf(t.setId), neg });
@@ -62,7 +62,7 @@ export function exprToText(pieces: readonly ExprPiece[]): string {
     for (const p of pieces) {
         if (p.kind === "leaf" || p.kind === "ref") out += `${p.neg ? "NOT " : ""}${p.label}`;
         else if (p.kind === "op") out += p.op === "and" ? " AND " : " OR ";
-        else if (p.kind === "open") out += "(";
+        else if (p.kind === "open") out += p.neg ? "NOT (" : "(";
         else out += ")";
     }
     // 괄호 안쪽 공백을 다듬는다 — `( a AND b )` 가 아니라 `(a AND b)` 로 읽혀야 한다.

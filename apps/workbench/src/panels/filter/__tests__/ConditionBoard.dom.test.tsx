@@ -45,6 +45,14 @@ const openChip = (c: HTMLElement, text: string): void => {
     act(() => { fireEvent.click(chip); });
 };
 const rows = (c: HTMLElement): HTMLElement[] => [...c.querySelectorAll("[data-row]")] as HTMLElement[];
+/** 우클릭 — 항의 성질(NOT·끄기·빼기)과 괄호 조작은 **여기 전용**이다(2026-09-22). */
+const rightClick = (el: Element): void => { act(() => { fireEvent.contextMenu(el); }); };
+/** 뜬 판에서 한 줄 고르기 — 판은 포털이 아니라 줄 안에 fixed 로 선다. */
+const pickItem = (c: HTMLElement, text: string): void => {
+    const it = [...c.querySelectorAll('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes(text));
+    if (!it) throw new Error(`판에 '${text}' 가 없다`);
+    act(() => { fireEvent.click(it); });
+};
 
 const DATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[0], to: DATES[1] }] }] };
 const THEME_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "themeStrength" as const, params: { ...DEFAULT_THEME_STRENGTH } }] };
@@ -261,13 +269,19 @@ describe("＋ 조건 — 생성 입구 하나", () => {
 // ⚠ 순서는 결과가 아니라 **서술**을 정한다(어느 필터가 무엇을 죽였나) — 그래서 표시 순서와 store
 //   배열 인덱스의 사상이 어긋나면 숫자가 조용히 틀린다. 층위를 넘는 드롭 차단도 여기서 잰다.
 describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
-    it("◉ 토글로 깔때기에서 빼고, ✕ 로 지운다", () => {
+    // ⚠ 아랫줄은 **값만** 맡는다(2026-09-22) — 끄기·지우기·NOT 은 칩 우클릭 전용이다.
+    it("칩 우클릭으로 끄고, 우클릭으로 지운다 — 아랫줄에는 그 손잡이가 없다", () => {
         seedEditing(exprOfStages([DATE_STAGE]));
         const { container } = renderBoard();
         openChip(container, "26.07.06~26.07.07");
-        act(() => { fireEvent.click(buttons(container).find((b) => b.title.startsWith("이 조건 끄기"))!); });
+        expect(buttons(container).some((b) => b.title === "이 조건 지우기"), "아랫줄에 지우기가 없다").toBe(false);
+
+        rightClick(chipByText(container, "26.07.06~26.07.07")!);
+        pickItem(container, "끄기");
         expect(stages()[0]!.enabled).toBe(false);
-        act(() => { fireEvent.click(buttons(container).find((b) => b.title === "이 조건 지우기")!); });
+
+        rightClick(chipByText(container, "26.07.06~26.07.07")!);
+        pickItem(container, "지우기");
         expect(stages()).toHaveLength(0);
     });
 });
@@ -279,6 +293,7 @@ describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
 describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
     const stage2 = { id: "d2", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
     const stage3 = { id: "d3", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[0], to: DATES[0] }] }] };
+    const stage4 = { id: "d4", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
 
     it("항 사이에 연산자가 낱말로 선다 — AND 기본", () => {
         seedEditing(exprOfStages([DATE_STAGE, stage2]));
@@ -307,16 +322,53 @@ describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
         expect(container.textContent).toContain(")");
     });
 
-    it("「이 자리를 바깥으로」는 연산자를 안 건드리고 괄호만 뒤집는다", () => {
+    // ⚠ 괄호 조작은 **경계 토글 하나**다(2026-09-22) — 만들기·넓히기·자르기·풀기가 여기 모인다.
+    it("경계 우클릭 = 괄호로 묶기 — 균일한 줄에서도 칠 수 있다(NOT 을 걸 자리가 생긴다)", () => {
         seedEditing(exprOfStages([DATE_STAGE, stage2, stage3]));
-        const { container, baseElement } = renderBoard();
-        act(() => { fireEvent.click(buttons(container).find((b) => b.dataset.op === "1")!); });
-        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "OR — 하나라도")!); });
-        act(() => { fireEvent.click(buttons(container).find((b) => b.dataset.op === "0")!); });
-        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "이 자리를 바깥으로")!); });
-        const e = selectEditingExpr(useWorkbench.getState());
-        expect(e.groups, "뒤의 OR 구간이 묶인다").toEqual([{ from: 1, to: 2 }]);
-        expect(e.ops, "연산자는 그대로").toEqual(["and", "or"]);
+        const { container } = renderBoard();
+        rightClick(buttons(container).find((b) => b.dataset.op === "0")!);
+        pickItem(container, "괄호로 묶기");
+        expect(selectEditingExpr(useWorkbench.getState()).groups).toEqual([{ from: 0, to: 1 }]);
+    });
+
+    it("이웃 경계를 또 누르면 괄호가 넓어지고, 안쪽을 누르면 거기서 잘린다", () => {
+        seedEditing(exprOfStages([DATE_STAGE, stage2, stage3, stage4]));
+        const { container } = renderBoard();
+        rightClick(buttons(container).find((b) => b.dataset.op === "0")!);
+        pickItem(container, "괄호로 묶기");
+        rightClick(buttons(container).find((b) => b.dataset.op === "1")!);
+        pickItem(container, "괄호로 묶기");
+        expect(selectEditingExpr(useWorkbench.getState()).groups, "넓어진다").toEqual([{ from: 0, to: 2 }]);
+
+        rightClick(buttons(container).find((b) => b.dataset.op === "0")!);
+        pickItem(container, "괄호 자르기");
+        expect(selectEditingExpr(useWorkbench.getState()).groups, "한 항짜리는 접히고 뒤만 남는다").toEqual([{ from: 1, to: 2 }]);
+    });
+
+    // ⚠ 줄 전체를 덮는 괄호는 **뜻이 없다**(줄 그 자체다) — NOT 이 붙어야 남는다.
+    it("괄호가 줄 전체를 덮으면 사라진다 — 단 NOT 이 붙어 있으면 남는다", () => {
+        seedEditing(exprOfStages([DATE_STAGE, stage2, stage3]));
+        const { container } = renderBoard();
+        rightClick(buttons(container).find((b) => b.dataset.op === "0")!);
+        pickItem(container, "괄호로 묶기");
+        rightClick(buttons(container).find((b) => b.dataset.op === "1")!);
+        pickItem(container, "괄호로 묶기");
+        expect(selectEditingExpr(useWorkbench.getState()).groups, "줄 그 자체라 뜻이 없다").toEqual([]);
+    });
+
+    it("괄호 우클릭 = NOT — 그리고 NOT 붙은 괄호는 **풀기가 막힌다**", () => {
+        seedEditing(exprOfStages([DATE_STAGE, stage2, stage3]));
+        const { container } = renderBoard();
+        rightClick(buttons(container).find((b) => b.dataset.op === "0")!);
+        pickItem(container, "괄호로 묶기");
+
+        rightClick(container.querySelector("[data-paren]")!);
+        pickItem(container, "NOT");
+        expect(selectEditingExpr(useWorkbench.getState()).groups[0]!.neg).toBe(true);
+
+        rightClick(container.querySelector("[data-paren]")!);
+        const ungroup = [...container.querySelectorAll('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("괄호 풀기"))!;
+        expect((ungroup as HTMLButtonElement).disabled, "NOT 이 갈 곳이 없어 막힌다").toBe(true);
     });
 
     // 조건 만들기의 입구는 하나다 — 셀 종류든 아니든 같은 손을 지나 **지금 식의 끝**에 붙는다.
@@ -331,15 +383,12 @@ describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
         expect(e.of.map((t) => t.kind)).toEqual(["cond", "cond"]);
     });
 
-    it("항 부정 — NOT 이 식에 실리고 칩에 표식이 선다", () => {
+    it("항 부정 — 칩 우클릭으로 NOT 이 식에 실린다", () => {
         seedEditing(exprOfStages([DATE_STAGE]));
         const { container } = renderBoard();
-        openChip(container, "26.07.06~26.07.07");
-        const negBtn = buttons(container).find((b) => b.title.startsWith("이 조건 부정"));
-        expect(negBtn).toBeDefined();
-        act(() => { fireEvent.click(negBtn!); });
-        const e = selectEditingExpr(useWorkbench.getState());
-        expect(e.of[0]!.neg).toBe(true);
+        rightClick(chipByText(container, "26.07.06~26.07.07")!);
+        pickItem(container, "NOT");
+        expect(selectEditingExpr(useWorkbench.getState()).of[0]!.neg).toBe(true);
     });
 });
 

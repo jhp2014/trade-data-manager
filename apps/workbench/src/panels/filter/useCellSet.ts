@@ -224,7 +224,8 @@ export function toCellExpr(
         }
         if (absent && n.kind === "or") return ABSENT;
         if (of.length === 0) return absent ? ABSENT : null;
-        return { kind: n.kind, id: n.id, of };
+        // 괄호의 NOT — **감싸지 않고 그 묶음에 싣는다**(core CellExpr 의 묶음도 neg 를 든다).
+        return { kind: n.kind, id: n.id, of, ...(n.neg === true ? { neg: true as const } : {}) };
     };
 
     /**
