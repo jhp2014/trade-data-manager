@@ -19,7 +19,7 @@ import { expandToPointItems } from "../../lib/grainView.js";
 import { judgeKeyOf } from "../../lib/pointDef.js";
 import type { SetRef } from "../../lib/setRef.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
-import { toFunnelStage, type EvalLookup, type RefMembers } from "./evaluate.js";
+import { toFunnelStage, type EvalLookup, type RefMemberSet, type RefMembers } from "./evaluate.js";
 import { activeExpr, exprOfStages, leavesOf, refsOf, type SetExpr } from "./expr.js";
 import { activeStages, funnelOrder, resolveAutoGrain, type FilterStage, type GrainLookup } from "./stage.js";
 
@@ -149,18 +149,33 @@ export function expandRefToPoints(ref: SetRef, r: ResolvedSet, ctx: SetResolveCt
 const resolving = new Set<string>();
 
 export function refMembersOf(ctx: SetResolveCtx, selfId: string | null): RefMembers {
+    /**
+     * ⚠ **집합당 한 번만 만든다.** 이 함수는 `evalExpr` 안에서 **항목마다** 불린다(종단 모수 수천
+     * 좌표). 메모가 없으면 항목마다 `r.items` 를 두 번 훑어 `Set` 을 두 개 새로 만들어서,
+     * 비용이 **항목 수 × 멤버 수**로 곱해진다 — 실측: 참조 하나 붙이는 데 **46초** 단일 블록
+     * (2026-09-21 실사용이 "빈 묶음 만들면 오래 걸린다"로 잡은 자리). `resolveSaved` 는 이미
+     * 메모돼 있었지만 **키 집합 만들기가 밖에 있었다**.
+     *
+     * 닫는 쪽 수명은 호출자와 같다 — `resolveDef` 가 집합마다 한 번 만들어 그 정산 루프가 쓰고 버린다.
+     */
+    const made = new Map<string, RefMemberSet | null>();
     return (setId) => {
-        if (setId === selfId || resolving.has(setId)) return null; // 순환 — 결손으로 끊는다
+        // ⚠ 순환은 **캐시하지 않는다** — `resolving` 은 호출 스택의 상태라, 그때의 null 을 굳히면
+        //   같은 집합이 다른 자리에서 멀쩡히 풀릴 때도 결손으로 남는다.
+        if (setId === selfId || resolving.has(setId)) return null;
+        const hit = made.get(setId);
+        if (hit !== undefined) return hit;
         resolving.add(setId);
         try {
             const r = resolveSaved(setId, ctx);
-            if (r.broken || r.otherUniverse === true) return null;
             // 낟알과 두 키 집합을 같이 낸다 — 판정(낟알 화해)은 evaluate.refHas 한 곳이다.
-            return {
+            const out: RefMemberSet | null = r.broken || r.otherUniverse === true ? null : {
                 grain: r.grain,
                 keys: new Set(r.items.map(funnelKey)),
                 dayKeys: new Set(r.items.map((i) => `${i.stockCode}|${i.date}|`)),
             };
+            made.set(setId, out);
+            return out;
         } finally {
             resolving.delete(setId);
         }
