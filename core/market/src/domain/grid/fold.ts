@@ -19,10 +19,13 @@
 //    원본과 정확히 같다. 세션 첫 봉은 언제나 사건(maxBefore 0)이라 선행 국면이 실제 값에서 시작한다.
 //
 // ## 근사다 — 감수한다(사용자 확정: 하루는 탐색이라 대강 유사하면 충분)
-//  · **확정 시각을 잃는다** — p% 확정 봉은 대개 1% 피벗 **사이**에 있어 S 에 없다. **이른 경계**를 쓴다:
-//    확정시킨 원소 직전의 1% 피벗 다음 분(그보다 이른 봉에는 p% 되돌림이 원리적으로 없다 — 그 앞 구간의
-//    최저는 그 구간의 1% 저점 피벗이고 그건 S 에 있다). 약한 미래 누출이다(확정을 조금 일찍 본다).
-//  · 사이 봉의 저가·고가를 잃어 극값 선택이 드물게 갈린다(실측 3일: 직접 2% 대비 타점 사라짐 2 · 생김 2 / 312).
+//  · **확정 시각을 잃는다** — p% 확정 봉은 대개 1% 피벗 **사이**에 있어 S 에 없다. **이른 경계**를 쓴다
+//    (그보다 이른 봉에는 p% 되돌림이 원리적으로 없다 — 규칙은 본문 `earlyConfirm`). 약한 미래 누출이다
+//    (확정을 조금 일찍 본다).
+//  · 사이 봉의 저가·고가, 그리고 **피벗 봉의 반대쪽 값**(저점 피벗 장대 봉의 고가 등)을 잃어 극값 선택이
+//    갈린다 — 확정자가 거기 숨으면 확정이 늦고(이른 경계의 유일한 예외) 피벗 하나를 통째로 놓치기도 한다.
+//    실측(recon:day-fold, 3일 1,108차트): 피벗 모양 일치 2% 77% · 3% 83%, 그래도 마디 재돌파 타점은
+//    2% 사라짐 0·생김 0 / 267, 3% 생김 1 / 175(레벨 = 갱신 사건이라 S 에 온전히 있다). 확정 앞섬 p50 1분.
 //  · 그래서 같은 (종목, 날짜)의 재돌파가 하루(접은 2%)와 종단(직접 2%)에서 ~1% 다를 수 있다 — 버그 아님.
 import { DAY_GRID_DETECT_OPTIONS, levelCrossIdxOf, zigzagIdxOf, type GridBarMark, type GridPivot, type PointGrid } from "./grid.js";
 
@@ -77,20 +80,36 @@ export function foldGrid(g: PointGrid, pct: number, fromPct: number = DAY_GRID_D
     const raw = zigzagIdxOf(highs, lows, pct, (i) => mins[i]);
     const crossIdx = levelCrossIdxOf(raw, highs, (i) => mins[i]);
 
-    // 이른 경계 — 확정시킨 원소 **직전의 1% 피벗** 다음 분(극값 다음 분보다 이르면 그리로).
+    // 이른 경계 — 실제 p% 확정 봉 X 가 원리적으로 이보다 이를 수 없는 분. 하한 셋의 최대:
+    //  ⓐ 극값 다음 분(자기 봉 확정 금지).
+    //  ⓑ 극값이 1% 피벗이면 그 **1% 확정 시각** — p% 되돌림 봉은 1% 되돌림 봉이기도 하다. 이게 없으면
+    //     극값 바로 뒤 1% 피벗이 확정 원소일 때 경계가 극값+1 까지 내려가 수 시간 앞선다(실측 max 509분).
+    //  ⓒ 확정 원소 직전의 1% 피벗 P — P 가 **필요한 쪽을 아는 피벗**(고점 확정엔 저점, 저점 확정엔 고점)이면
+    //     P 는 확정 못 했으니 X 는 P 뒤, 모르는 쪽이면 P 자신이 X 일 수 있다(장대 봉 — 실측 1분 늦음의 원인).
+    // 확정 원소 자신보다 늦지는 않다(그 원소가 실제로 필요한 값을 가졌다).
+    const pivotByMin = new Map(g.pivots.map((p) => [p.min, p]));
     const pivotMins = g.pivots.map((p) => p.min); // 시간 강한 오름차순(격자 불변식 ①)
-    const earlyConfirm = (extremeMin: number, confirmMin: number): number => {
+    const earlyConfirm = (kind: "high" | "low", extremeMin: number, confirmMin: number): number => {
+        let bound = extremeMin + 1; // ⓐ
+        const own = pivotByMin.get(extremeMin);
+        if (own !== undefined && own.kind === kind && own.confirmedMin !== null) bound = Math.max(bound, own.confirmedMin); // ⓑ
         let lo = 0;
         let hi = pivotMins.length - 1;
-        let before = -Infinity;
+        let before = -1;
         while (lo <= hi) {
             const mid = (lo + hi) >> 1;
             if (pivotMins[mid] < confirmMin) {
-                before = pivotMins[mid];
+                before = mid;
                 lo = mid + 1;
             } else hi = mid - 1;
         }
-        return Math.max(before + 1, extremeMin + 1);
+        if (before >= 0) {
+            const p = g.pivots[before];
+            // 고점 확정엔 저가가, 저점 확정엔 고가가 필요하다 — 사건 봉이면 둘 다 안다.
+            const knowsNeeded = p.kind !== kind || byMin.get(p.min)!.tv !== null;
+            bound = Math.max(bound, p.min + (knowsNeeded ? 1 : 0)); // ⓒ
+        }
+        return Math.min(bound, confirmMin);
     };
 
     let crossTvUnknown = 0;
@@ -107,7 +126,7 @@ export function foldGrid(g: PointGrid, pct: number, fromPct: number = DAY_GRID_D
         kind: r.kind,
         min: mins[r.idx],
         price: r.kind === "high" ? highs[r.idx] : lows[r.idx],
-        confirmedMin: r.confirmIdx === null ? null : earlyConfirm(mins[r.idx], mins[r.confirmIdx]),
+        confirmedMin: r.confirmIdx === null ? null : earlyConfirm(r.kind, mins[r.idx], mins[r.confirmIdx]),
         cum: S[r.idx].cum,
         cross: crossIdx[k] === null ? null : markOf(crossIdx[k]!),
     }));
