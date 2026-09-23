@@ -19,9 +19,10 @@ import { usePointGrids } from "../../lib/PointGridsContext.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 
 export type BreakoutView = {
-    /** 그날 전 종목 생성기 후보 수(이름표 거르기 적용) — 다른 AND 필터는 모른다(그건 집합 수). 재료 전이면 null.
+    /** 그날 전 종목 생성기 후보 수(이름표 거르기 적용) — 다른 AND 필터는 모른다(그건 집합 수). 재료 전이면 null,
+     *  재료 실패면 "error"(기다려도 안 온다 — 로딩으로 두면 옆의 집합 수와 다른 말을 한다).
      *  ⚠ 포커스 종목과 무관하다 — 종목을 안 짚어도 그날 수는 선다. */
-    dayTotal: number | null;
+    dayTotal: number | null | "error";
 } & (
     | { status: "loading" }
     | { status: "empty"; why: string }
@@ -36,7 +37,9 @@ export function useBreakoutView(code: string, date: string, knobs: BreakoutChain
     const { zigzagPct, bandPct, label } = knobs;
 
     // 그날 전 종목 — 노브가 바뀔 때만 다시 센다(400종목 × 720분, ms 급).
-    const dayTotal = useMemo(() => {
+    const materialError = snapQ.error !== null || pointGrids.error !== null;
+    const dayTotal = useMemo((): number | null | "error" => {
+        if (materialError) return "error";
         if (!stocks || byDate === null) return null;
         let n = 0;
         for (const s of stocks) {
@@ -45,7 +48,7 @@ export function useBreakoutView(code: string, date: string, knobs: BreakoutChain
         }
         return n;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [stocks, byDate, date, zigzagPct, bandPct, label]);
+    }, [materialError, stocks, byDate, date, zigzagPct, bandPct, label]);
 
     return useMemo<BreakoutView>(() => {
         if (snapQ.error) return { dayTotal, status: "empty", why: `분봉 재료 조회 실패: ${(snapQ.error as Error).message}` };

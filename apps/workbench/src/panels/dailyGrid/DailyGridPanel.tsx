@@ -148,7 +148,7 @@ export function DailyGridPanel({ panelId, baseTitle }: { panelId: string; baseTi
             </div>
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px", padding: "3px 10px", fontSize: 10.5, color: "var(--text-tertiary)", borderTop: "1px solid var(--border-subtle)" }}>
-                <span><span style={{ color: labelColor("high") }}>▼</span> 첫 사건 · <span style={{ color: labelColor("high") }}>▽</span> 연장(사슬 최대 대금 이상)</span>
+                <span><span style={{ color: labelColor("high") }}>▼</span> 첫 사건 · <span style={{ color: labelColor("high") }}>▽</span> 연장(사슬 최대 대금 이상) · 회색 ▽ = 이름표로 걸러짐</span>
                 <span><span style={{ color: labelColor("high") }}>━ ┅</span> 고가 밴드 상단·하단</span>
                 <span><span style={{ color: labelColor("baseline") }}>━ ┅</span> 기준선·기준선 밴드 하단 · 보라 = 기준선 돌파</span>
                 <span>띠 = 한 사슬(zigzag 만큼 눌리면 끝)</span>
@@ -157,7 +157,7 @@ export function DailyGridPanel({ panelId, baseTitle }: { panelId: string; baseTi
             <div style={{ maxHeight: 150, overflowY: "auto", borderTop: "1px solid var(--border-default)", padding: "3px 10px 6px" }}>
                 <div className="tabular" style={{ fontSize: 10.5, color: "var(--text-secondary)", marginBottom: 2 }}
                     title="생성기 = 이 돌파 줄 단독(이름표 거르기만) · 집합 = 생성소의 조건 전부를 통과한 수(작업 대상 목록)">
-                    그날 생성기 {view.dayTotal !== null ? view.dayTotal.toLocaleString("ko-KR") : "…"}
+                    그날 생성기 {view.dayTotal === "error" ? "오류" : view.dayTotal !== null ? view.dayTotal.toLocaleString("ko-KR") : "…"}
                     {" · "}집합 {setCount}
                     {view.status === "ready" && ` · 이 종목 ${shown.length}`}
                 </div>
