@@ -101,7 +101,10 @@ export type FilterPredicate =
     // 종단 평가기에서 이 셋은 **결손(undefined)** 이고, 그 사실은 universe.ts 의 결손 지도가 말한다.
     | Extract<CellPredicate, { kind: "cellValue" }>
     | Extract<CellPredicate, { kind: "priorHighBreak" }>
-    | Extract<CellPredicate, { kind: "gridPoint" }>;
+    | Extract<CellPredicate, { kind: "gridPoint" }>
+    // 하루 타점 조건 둘(2026-09-23 — decisions 「하루 타점」). 판정 노브가 payload 에 산다(옛 「타점 정의」 판정 노브).
+    | Extract<CellPredicate, { kind: "baselineBreak" }>
+    | Extract<CellPredicate, { kind: "levelRebreak" }>;
 
 export type PredicateKind = FilterPredicate["kind"];
 
@@ -153,6 +156,8 @@ export function isPredicateEmpty(p: FilterPredicate): boolean {
         case "cellValue": return p.ranges.every((r) => !r.from && !r.to);
         case "priorHighBreak": return false; // 창 하나라 항상 조건이다
         case "gridPoint": return false;
+        case "baselineBreak":
+        case "levelRebreak": return false; // 노브가 전부 기본값을 가져 항상 조건이다
         default: return unknownPredicate(p); // 자물쇠 — 빠뜨리면 그 종류가 "무제한 통과"로 샌다
     }
 }
@@ -207,7 +212,9 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
         // 셀 = (종목,날짜,분) — 좌표와 같은 모양이라 층위도 타점이다.
         case "cellValue":
         case "priorHighBreak":
-        case "gridPoint": return "point";
+        case "gridPoint":
+        case "baselineBreak":
+        case "levelRebreak": return "point";
         default: return unknownPredicate(p); // 자물쇠: 빠뜨리면 그 조건이 보드에서 "(지워짐)"으로 보인다
     }
 }
@@ -489,6 +496,8 @@ function parsePredicate(o: unknown): FilterPredicate | null {
         case "cellValue":
         case "priorHighBreak":
         case "gridPoint":
+        case "baselineBreak":
+        case "levelRebreak":
             return parseCellPredicate(o) as FilterPredicate | null;
         default:
             return null;

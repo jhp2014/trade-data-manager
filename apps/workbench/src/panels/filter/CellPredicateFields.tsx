@@ -53,7 +53,7 @@ export function CellPredicateField({ p, onChange }: { p: CellPredicate; onChange
     return null;
 }
 
-const CELL_KINDS: ReadonlySet<string> = new Set(["cellValue", "priorHighBreak", "gridPoint"]);
+const CELL_KINDS: ReadonlySet<string> = new Set(["cellValue", "priorHighBreak", "gridPoint", "baselineBreak", "levelRebreak"]);
 export const isCellPredicate = (p: FilterPredicate): p is CellPredicate => CELL_KINDS.has(p.kind) || p.kind === "time";
 
 /**

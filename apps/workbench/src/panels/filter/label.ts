@@ -56,7 +56,16 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
         case "cellValue": return cellValueLabel(p);
         case "priorHighBreak": return `전고 돌파 (${p.days}일)`;
         case "gridPoint": return "격자 Point";
+        // 노브를 라벨에 싣는다 — 같은 종류가 게이트·zigzag 별로 여러 줄 설 수 있다(hotPoints 의 (W,r) 선례).
+        case "baselineBreak": return `기준선 돌파 ${dayKnobLabel(p)}`;
+        case "levelRebreak": return `마디 재돌파 ${p.zigzagPct}% ${dayKnobLabel(p)}`;
     }
+}
+
+/** 하루 타점 노브 꼬리 — `50억 · 양봉 · m'0.5 · 전부`. 기본(레벨당 하나)은 안 적는다. */
+function dayKnobLabel(p: Extract<FilterPredicate, { kind: "baselineBreak" | "levelRebreak" }>): string {
+    return [`${p.gateEok}억`, p.bullOnly ? "양봉" : null, `m'${p.approachPct}`, p.onePerLevel ? null : "전부"]
+        .filter((x): x is string => x !== null).join(" · ");
 }
 
 /** 셀 값 술어 한 줄 — `등락률 ≥ 5%` 처럼 경계까지 싣는다(같은 필드의 조건이 여럿 설 수 있다). */
@@ -103,6 +112,8 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         case "cellValue": return "셀 값";
         case "priorHighBreak": return "전고";
         case "gridPoint": return "격자";
+        case "baselineBreak":
+        case "levelRebreak": return "타점";
         default: {
             // 자물쇠 — 옛 `default: return ""` 는 종류를 빠뜨려도 컴파일이 통과하고 증상이 조용했다
             // (보드 줄의 종류 라벨만 빈칸). `never` 대입이 그 구멍을 컴파일 에러로 바꾼다.

@@ -43,7 +43,9 @@ export function railKeyOf(p: FilterPredicate): RailKey | null {
         // 셀 술어 — 하루 우주의 레일(분포 스트립)은 아직 없다. 켤 때 어댑터 하나로 붙는다.
         case "cellValue":
         case "priorHighBreak":
-        case "gridPoint": return null;
+        case "gridPoint":
+        case "baselineBreak":
+        case "levelRebreak": return null;
         // 자물쇠 — 빠뜨리면 그은 컷이 그 행에 조용히 안 붙는다(stage.ts).
         default: return unknownPredicate(p);
     }

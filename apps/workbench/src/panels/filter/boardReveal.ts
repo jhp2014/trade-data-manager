@@ -80,7 +80,9 @@ export function rowIdOfStage(s: FilterStage): string {
         // 종류로 뭉치면(그룹처럼) 되짚기가 엉뚱한 칸을 연다.
         case "cellValue":
         case "priorHighBreak":
-        case "gridPoint": return `cell:${s.id}`;
+        case "gridPoint":
+        case "baselineBreak":
+        case "levelRebreak": return `cell:${s.id}`;
         case "date": return "date";
         case "time": return "time";
         case "themeStrength": return `theme:${s.id}`;
