@@ -5,7 +5,7 @@ import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { selectEditingExpr, selectEditingUniverse, useWorkbench } from "../../store/workbench.js";
 import { FAIL } from "../../styles/palette.js";
-import { leafCount, refsOf } from "../filter/expr.js";
+import { leafCount, leavesOf, refsOf } from "../filter/expr.js";
 import type { FunnelView } from "../filter/useFilterFunnel.js";
 import { useBoundSet } from "../filter/useBoundSet.js";
 
@@ -16,6 +16,9 @@ export function DailyGenHeader({ v, panelId }: { v: FunnelView; panelId: string 
     const expr = useWorkbench(selectEditingExpr);
     const exprIsEmpty = leafCount(expr) === 0 && refsOf(expr).length === 0;
     const bound = useBoundSet(panelId);
+    const leaves = leavesOf(expr);
+    const all = leaves.length;
+    const on = leaves.filter((x) => x.enabled).length;
 
     const controls = useMemo<ControlSpec[]>(() => [
         {
@@ -44,8 +47,9 @@ export function DailyGenHeader({ v, panelId }: { v: FunnelView; panelId: string 
                     후보 {count}
                 </span>
             )}
+            {/* 조건 수 — **편집 집합의 잎**을 센다(`v.active` 는 종단 깔때기의 것이라 하루에선 늘 0). 참조 항은 수에 안 든다. */}
             <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}>
-                조건 {v.active.length}{v.stagesOrdered.length > v.active.length ? ` / ${v.stagesOrdered.length}` : ""}
+                조건 {on}{all > on ? ` / ${all}` : ""}
             </span>
             {/* 열린 집합이 종단 조건을 품고 있다(옛 저장물) — 모드를 바꾸는 손은 없다(종단 보류). 사실만 말한다. */}
             {derived === "longitudinal" && (

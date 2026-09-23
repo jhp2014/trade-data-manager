@@ -18,16 +18,15 @@ import type { ReplayStock } from "../../api/dayReplay.js";
 import { usePointGrids } from "../../lib/PointGridsContext.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 
-export type BreakoutView =
+export type BreakoutView = {
+    /** 그날 전 종목 생성기 후보 수(이름표 거르기 적용) — 다른 AND 필터는 모른다(그건 집합 수). 재료 전이면 null.
+     *  ⚠ 포커스 종목과 무관하다 — 종목을 안 짚어도 그날 수는 선다. */
+    dayTotal: number | null;
+} & (
     | { status: "loading" }
     | { status: "empty"; why: string }
-    | {
-        status: "ready";
-        stock: ReplayStock;
-        res: BreakoutChainResult & { baselinePct: number | null };
-        /** 그날 전 종목 생성기 후보 수(이름표 거르기 적용) — 다른 AND 필터는 모른다(그건 집합 수). */
-        dayTotal: number;
-    };
+    | { status: "ready"; stock: ReplayStock; res: BreakoutChainResult & { baselinePct: number | null } }
+);
 
 export function useBreakoutView(code: string, date: string, knobs: BreakoutChainKnobs & { label: BreakoutLabelFilter }): BreakoutView {
     const snapQ = useDaySnapshot(date || null);
@@ -49,13 +48,13 @@ export function useBreakoutView(code: string, date: string, knobs: BreakoutChain
     }, [stocks, byDate, date, zigzagPct, bandPct, label]);
 
     return useMemo<BreakoutView>(() => {
-        if (!date || !code) return { status: "empty", why: "포커스 종목이 없습니다 — 차트나 작업 대상에서 종목을 짚으세요" };
-        if (snapQ.error) return { status: "empty", why: `분봉 재료 조회 실패: ${(snapQ.error as Error).message}` };
-        if (!stocks || byDate === null || dayTotal === null) return { status: "loading" };
+        if (snapQ.error) return { dayTotal, status: "empty", why: `분봉 재료 조회 실패: ${(snapQ.error as Error).message}` };
+        if (!date || !code) return { dayTotal, status: "empty", why: "포커스 종목이 없습니다 — 차트나 작업 대상에서 종목을 짚으세요" };
+        if (!stocks || byDate === null) return { dayTotal, status: "loading" };
         const stock = stocks.find((s) => s.code === code);
-        if (!stock) return { status: "empty", why: `${date} 에 이 종목의 분봉이 없습니다(그날 유니버스 밖)` };
+        if (!stock) return { dayTotal, status: "empty", why: `${date} 에 이 종목의 분봉이 없습니다(그날 유니버스 밖)` };
         const res = breakoutOfStock(stock, pointGrids.gridOf(code, date)?.base ?? null, { zigzagPct, bandPct }, { trace: true });
-        return { status: "ready", stock, res, dayTotal };
+        return { dayTotal, status: "ready", stock, res };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [code, date, stocks, byDate, dayTotal, snapQ.error, zigzagPct, bandPct]);
 }
