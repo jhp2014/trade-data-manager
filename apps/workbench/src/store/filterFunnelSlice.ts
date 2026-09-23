@@ -17,7 +17,7 @@ import {
 } from "../panels/filter/expr.js";
 
 import { applyRailToExpr, type RailKey } from "../panels/filter/stageBinding.js";
-import { universeOfExpr, type Universe } from "../panels/filter/universe.js";
+import { committingUniverse, universeOfExpr, type Universe } from "../panels/filter/universe.js";
 import { persistSavedSets, refUniverse, switchSeat, type SavedSet } from "./savedSetsSlice.js";
 import { loadFilterMode, saveFilterMode } from "./filterMode.js";
 import { loadJson, saveJson } from "./persist.js";
@@ -190,6 +190,18 @@ export const putExpr = (s: EditingCtx, expr: SetExpr): { savedSets: SavedSet[] }
     return { savedSets };
 };
 
+/**
+ * **모드 문지기** — 지금 모드의 반대편에만 사는 조건은 편집 집합에 못 들어온다(2026-09-24).
+ * 모드가 하루로 고정되면서, 종단 판(시그널 결과·급타점)이 여전히 편집 집합에 조건을 밀어 넣을 수 있는
+ * 구멍이 **영구화**됐다 — 빈 하루 집합에 결과 컷 하나가 들어가면 재조정이 그 집합을 종단으로 뒤집어
+ * 하루 목록에서 사라지게 한다(`addSetRef` 의 교차 모드 거절과 같은 결). 막는 자리는 쓰기 손 한 곳.
+ */
+const crossesMode = (mode: Universe, preds: readonly FilterPredicate[]): boolean => {
+    const bad = preds.find((p) => { const u = committingUniverse(p.kind); return u !== null && u !== mode; });
+    if (bad) console.warn(`[filter] ${bad.kind} 조건은 지금 모드(${mode})에서 만들 수 없습니다 — 무시`);
+    return bad !== undefined;
+};
+
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => {
     return {
     gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
@@ -203,13 +215,13 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
 
     // ⚠ 쓰기 API 의 **주소는 조건 id**(= `stage.id`)다 — 시그니처가 안 바뀌어 소비자가 그대로다.
     //   바뀐 건 쓰는 자리뿐: 독립 저장물 → **편집 중인 집합의 식**(putExpr 이 그 한 곳).
-    addFilterStage: (predicates) => set((s) => putExpr(s, appendLeaf(selectEditingExpr(s), newStage(predicates ?? [])))),
+    addFilterStage: (predicates) => set((s) => (crossesMode(s.filterMode, predicates ?? []) ? {} : putExpr(s, appendLeaf(selectEditingExpr(s), newStage(predicates ?? []))))),
     setFilterExpr: (expr) => set((s) => putExpr(s, expr)),
-    applyFilterRail: (key, predicate, stageId) => set((s) => putExpr(s, applyRailToExpr(selectEditingExpr(s), key, predicate, stageId))),
+    applyFilterRail: (key, predicate, stageId) => set((s) => (predicate !== null && crossesMode(s.filterMode, [predicate]) ? {} : putExpr(s, applyRailToExpr(selectEditingExpr(s), key, predicate, stageId)))),
     removeFilterStage: (id) => set((s) => putExpr(s, filterLeaves(selectEditingExpr(s), (x) => x.id !== id))),
     toggleFilterStage: (id) => set((s) => putExpr(s, mapLeaves(selectEditingExpr(s), (x) => (x.id === id ? { ...x, enabled: !x.enabled } : x)))),
-    setFilterStagePredicates: (id, predicates) => set((s) => putExpr(s, mapLeaves(selectEditingExpr(s), (x) => (x.id === id ? { ...x, predicates } : x)))),
-    setFilterStage: (next) => set((s) => putExpr(s, mapLeaves(selectEditingExpr(s), (x) => (x.id === next.id ? next : x)))),
+    setFilterStagePredicates: (id, predicates) => set((s) => (crossesMode(s.filterMode, predicates) ? {} : putExpr(s, mapLeaves(selectEditingExpr(s), (x) => (x.id === id ? { ...x, predicates } : x))))),
+    setFilterStage: (next) => set((s) => (crossesMode(s.filterMode, next.predicates) ? {} : putExpr(s, mapLeaves(selectEditingExpr(s), (x) => (x.id === next.id ? next : x))))),
     renameFilterStage: (id, name) => set((s) => putExpr(s, mapLeaves(selectEditingExpr(s), (x) => {
         if (x.id !== id) return x;
         const n = name.trim();

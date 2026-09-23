@@ -39,6 +39,7 @@ export * from "./review/funnel.js";
 // "후보 로직"이라는 개념이 없다: 조건 묶음 한 칸이 곧 로직이고, 로직 추가는 조건 저장이다.
 export * from "./cellset/predicate.js";
 export * from "./cellset/engine.js";
+export * from "./cellset/breakoutChain.js";
 export * from "./cellset/seed.js";
 
 // grid — 자동 타점 격자(순수 검출): 확정 고점·구간 저점 피벗 + 신고가 캔들 목록 + 기준선 첫 터치. Point 판정은 읽기 층(points).

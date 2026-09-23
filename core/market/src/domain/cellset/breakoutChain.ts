@@ -182,3 +182,17 @@ export function baselinePctOf(baseline: number | null, basePrice: number | null)
     if (baseline === null || basePrice === null || basePrice === 0) return null;
     return Math.round(((baseline - basePrice) / basePrice) * 100 * 100) / 100;
 }
+
+/**
+ * 한 종목 — 기준선 **가격**을 받아 분봉과 같은 % 로 옮겨 사슬을 세운다. 셀 엔진과 격자판이 **같은 이 함수**를
+ * 쓴다(기준선 변환을 손으로 다시 쓰면 같은 화면에 숫자가 둘이 된다).
+ */
+export function breakoutOfStock(
+    s: ChainSeries & { basePrice: { un: number | null } },
+    baseline: number | null,
+    k: BreakoutChainKnobs,
+    opts: { trace?: boolean } = {},
+): BreakoutChainResult & { baselinePct: number | null } {
+    const baselinePct = baselinePctOf(baseline, s.basePrice.un);
+    return { ...breakoutChainsOf(s, baselinePct, k, opts), baselinePct };
+}

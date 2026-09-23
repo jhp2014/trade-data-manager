@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hmsToMinute, minuteToHms } from "@trade-data-manager/market/domain";
+import { DAILY_GEN_PANEL_ID } from "./dailyGen/dailyPanelIds.js";
 import { selectObservedSetId, selectObservedStages, useWorkbench } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
@@ -180,7 +181,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
         const f = savedSets.find((x) => x.id === observedId);
         return f ? setDisplayName(f, funnel.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)";
     }, [savedSets, observedId, funnel.labelLook]);
-    const goToFunnelPanel = (): void => openAndFocus("filter-funnel-1");
+    const goToFunnelPanel = (): void => openAndFocus(DAILY_GEN_PANEL_ID);
     const view = funnel.view;
     const lensOn = view !== null && view.isFiltering && !view.broken;
     const memberPointKeys = useMemo(

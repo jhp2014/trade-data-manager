@@ -9,6 +9,7 @@
 // 자유 축 탐색(임의 분 창·값 산점)은 관찰판(ThemeScopePanel)의 몫 — 종류 분리가 "연동해 놓고 값
 // 모드로 돌려 판정이 조용히 꺼지는" 경로를 원천 봉쇄한다.
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { DAILY_GEN_PANEL_ID } from "../dailyGen/dailyPanelIds.js";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { SubjectBadge } from "../../components/SubjectBadge.js";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
@@ -163,7 +164,7 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
                         ▣ {themeStrengthLabel(linkedParams)}
                     </span>
                 ) : (
-                    <button onClick={() => openAndFocus("filter-funnel-1")}
+                    <button onClick={() => openAndFocus(DAILY_GEN_PANEL_ID)}
                         style={{ ...label, color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
                         title="연동은 집합 편성 보드의 테마 행에서 건다(pull) — 클릭하면 보드를 연다">
                         미연동 — 연동은 편성 보드에서 ▸

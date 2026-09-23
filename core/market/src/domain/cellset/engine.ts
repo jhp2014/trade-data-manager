@@ -27,7 +27,7 @@
 // "코드 오름차순 앞 종목만 남는" 편향이 생긴다. 평가를 실제로 멈추는 건 HARD_CAP 그물 하나뿐이다
 // (조건이 사실상 전부일 때 19만 셀 × 분 단면 = 프리즈를 막는 2차 방어선. 1차는 "조건 없음 = 안 보여줌").
 import { minuteOfDayOf, type MinuteDerived } from "../replay/dayReplay.js";
-import { baselinePctOf, breakoutChainsOf, type BreakoutLabel } from "./breakoutChain.js";
+import { breakoutOfStock, type BreakoutLabel } from "./breakoutChain.js";
 import {
     CELL_VALUE_FIELDS,
     breakoutKeyOf,
@@ -168,8 +168,7 @@ interface StockPrecomputed {
 
 /** 돌파 사슬 후보 — 분봉 한 번 순회(`breakoutChainsOf`). 기준선은 분봉과 같은 반올림의 % 로 옮긴다. */
 function breakoutMinutes(p: BreakoutPred, s: CellStock, mat: CellMaterials): ReadonlyMap<number, CellBreakout> {
-    const base = baselinePctOf(mat.baselineOf?.(s.code) ?? null, s.basePrice.un);
-    const r = breakoutChainsOf(s, base, { zigzagPct: p.zigzagPct, bandPct: p.bandPct });
+    const r = breakoutOfStock(s, mat.baselineOf?.(s.code) ?? null, { zigzagPct: p.zigzagPct, bandPct: p.bandPct });
     const out = new Map<number, CellBreakout>();
     for (const c of r.candidates) out.set(minuteOfDayOf(s.times[c.i]), { label: c.label, chain: c.chain, seq: c.seq });
     return out;

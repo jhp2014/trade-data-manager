@@ -55,7 +55,8 @@ export function CellPredicateField({ p, onChange }: { p: CellPredicate; onChange
     if (p.kind === "priorHighBreak") {
         return <NumField label="창" suffix="일" value={p.days} min={1} onCommit={(v) => onChange({ ...p, days: Math.round(v) })} />;
     }
-    if (p.kind === "breakout") return <BreakoutFields p={p} onChange={onChange} />;
+    // 돌파의 노브(zigzag·밴드·이름표)는 **격자판 한 곳**에서 만진다(편집면은 한 곳 — 줄 이름 클릭 = 연동 격자판).
+    if (p.kind === "breakout") return <span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>zigzag·밴드는 격자판에서</span>;
     if (p.kind === "candleShape") {
         return <Toggle on label={CANDLE_SHAPE_LABEL[p.shape]} title="클릭 = 양봉 ↔ 음봉"
             onClick={() => onChange({ ...p, shape: p.shape === "bull" ? "bear" : "bull" })} />;
@@ -84,7 +85,7 @@ const LABEL_TEXT: Record<BreakoutLabelFilter, string> = { all: "이름표 전부
  * 돌파 생성기 노브 — **zigzag · 밴드 둘뿐**(decisions 「Daily 타점 생성 = 돌파 사슬」). 양봉·대금은 따로 거는
  * 필터 줄이다. 이름표는 구조가 아니라 후보 거르기라 여기서 순환 칩으로 고른다.
  */
-function BreakoutFields({ p, onChange }: {
+export function BreakoutFields({ p, onChange }: {
     p: Extract<CellPredicate, { kind: "breakout" }>;
     onChange: (next: CellPredicate) => void;
 }): JSX.Element {

@@ -326,7 +326,7 @@ describe("돌파 생성기 + 캔들·분봉 대금 필터", () => {
         expect(mins(evaluateCellsExpr([s], NO_MAT, and(bo(), amt)))).toEqual([3]);
     });
 
-    it("기준선 재료가 있으면 이름표가 갈린다 — 기준선 0.1% 는 분 3(0.1)에서 뚫린다", () => {
+    it("기준선 재료가 있으면 이름표가 갈린다 — 기준선 0.1% 밴드에서 사슬이 시작해 끝까지 기준선", () => {
         // 기준선 가격 10,010 = 0.1% (분봉과 같은 반올림). 밴드 1% → 하단 ≈ −0.9 라 분 0(0) 부터 기준선 밴드 사건.
         const mat: CellMaterials = { ...NO_MAT, baselineOf: () => 10_010 };
         const r = evaluateCellsExpr([s], mat, bo({ label: "baseline" }));
