@@ -17,6 +17,7 @@
 import { useMemo } from "react";
 import {
     evaluateCellsExpr,
+    kstToday,
     minuteToHms,
     type CellEvalOptions,
     type CellEvalResult,
@@ -353,6 +354,14 @@ export function useCellSet(
     const pointGrids = usePointGrids();
     // 재료가 **그 날짜의 것**일 때만 — 날짜를 넘기는 순간 옛 날짜 격자로 새 날짜 셀을 평가하면 조용히 틀린다.
     const dayGrids = dayGridQ.data?.date === date ? dayGridQ.data.byCode : null;
+    // ⚠ /point-grids 는 **과거 날짜만** 굽는다 — 오늘의 기준선은 재료가 아예 없다. 그대로 평가하면
+    //   기준선 돌파가 "0건"으로 확정돼 "기준선을 넘은 종목이 없다"로 읽힌다. 모른다고 말한다(오류 채널).
+    const baselineUnavailable = useMemo(
+        () => (needsBaseline && date >= kstToday()
+            ? new Error("오늘은 기준선 돌파를 평가할 수 없습니다 — 기준선 재료(/point-grids)는 지난 날짜만 굽습니다")
+            : null),
+        [needsBaseline, date],
+    );
     const limit = opts?.limit;
     const hardCap = opts?.hardCap;
     const limitBy = opts?.limitBy;
@@ -362,7 +371,7 @@ export function useCellSet(
         // ⚠ 재료가 없는 동안은 **null**(값을 모른다)이지 빈 결과가 아니다 — 빈 결과는 "조건에 다 걸렸다"로
         //   읽힌다(useBoundSet 의 UNRESOLVED 규칙). 기준선 재료(/point-grids)도 같다.
         if (needsDayGrid && dayGrids === null) return null;
-        if (needsBaseline && pointGrids.byDate === null) return null;
+        if (needsBaseline && (pointGrids.byDate === null || baselineUnavailable !== null)) return null;
         // 메모 키 — 조건·노브·**재료 세대를 전부** 싣는다. 하나라도 빠지면 조용히 낡은 목록을 돌려준다.
         //  · 바깥 축(WeakMap) = `stocks` 배열 참조 = 하루 재료의 세대. 오늘 날짜는 60초마다 재조회되므로
         //    이걸 안 가르면 새로 채워진 분의 후보가 세션 내내 안 뜬다.
@@ -383,7 +392,7 @@ export function useCellSet(
             });
         });
     }, [stocks, snapQ.data?.date, date, auto, themes.proj, zoneParams, narrowed, limit, hardCap, limitBy,
-        needsDayGrid, needsBaseline, dayGrids, pointGrids]);
+        needsDayGrid, needsBaseline, dayGrids, pointGrids, baselineUnavailable]);
 
     const items = useMemo<readonly FunnelItem[]>(
         () => (result ? result.hits.map((h) => cellHitToItem(h, date)) : EMPTY_ITEMS),
@@ -412,6 +421,7 @@ export function useCellSet(
             snapQ.error as Error | null,
             needsDayGrid ? (dayGridQ.error as Error | null) : null,
             needsBaseline ? pointGrids.error : null,
+            baselineUnavailable,
             needsGrid ? auto.error : null,
         ]),
         themesReady: !needsZone || themes.ready,

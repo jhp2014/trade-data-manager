@@ -263,12 +263,15 @@ interface Compiled {
     tier: 0 | 1 | 2;
     /** 이 AND 노드의 **직속 값 잎**이 정확히 하나면 그 자식(improve 의 밑값 자리). 아니면 null. */
     soleValueChild: Compiled | null;
+    /** 하루 타점 잎의 판정 키 — 셀마다 문자열을 만들지 않게 컴파일 때 한 번. 그 밖은 null. */
+    dayKey: string | null;
 }
 
 function compile(e: CellExpr, next: () => number): Compiled {
     const idx = next();
     if (e.kind === "pred") {
-        return { node: e, idx, children: [], tier: costTierOf(e.pred), soleValueChild: null };
+        const dayKey = e.pred.kind === "baselineBreak" || e.pred.kind === "levelRebreak" ? dayPointKeyOf(e.pred) : null;
+        return { node: e, idx, children: [], tier: costTierOf(e.pred), soleValueChild: null, dayKey };
     }
     // 단락 순서 = 비용 오름차순. 가지의 비용은 그 안 **가장 비싼 잎**이다(싼 가지부터 봐야 비싼 재료가 늦게 불린다).
     const children = e.of.map((c) => compile(c, next)).sort((a, b) => a.tier - b.tier);
@@ -279,6 +282,7 @@ function compile(e: CellExpr, next: () => number): Compiled {
         children,
         tier: children.reduce<0 | 1 | 2>((t, c) => (c.tier > t ? c.tier : t), 0),
         soleValueChild: e.kind === "and" && valueLeaves.length === 1 ? valueLeaves[0]! : null,
+        dayKey: null,
     };
 }
 
@@ -336,7 +340,7 @@ function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
                 break;
             case "baselineBreak":
             case "levelRebreak":
-                raw = ctx.pre.dayPoints.get(dayPointKeyOf(p))?.has(ctx.min) === true;
+                raw = ctx.pre.dayPoints.get(c.dayKey!)?.has(ctx.min) === true;
                 break;
             case "time":
                 raw = p.ranges.some((r) => {

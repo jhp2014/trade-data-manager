@@ -226,17 +226,6 @@ export function isCellPredicateEmpty(p: CellPredicate): boolean {
     }
 }
 
-/** 식이 쓰는 술어 종류를 모은다 — 재료 게이트(날짜 격자·기준선)가 **트리를 걸어** 본다(평평한 루프는 묶음 안을 못 본다). */
-export function cellExprKinds(e: CellExpr | null): Set<CellPredicateKind> {
-    const out = new Set<CellPredicateKind>();
-    const walk = (x: CellExpr): void => {
-        if (x.kind === "pred") out.add(x.pred.kind);
-        else for (const c of x.of) walk(c);
-    };
-    if (e !== null) walk(e);
-    return out;
-}
-
 /** 하루 타점 술어의 판정 키 — 같은 키면 같은 분 집합이다(엔진 사전계산의 메모 단위). 전이는 판정 밖이라 뺀다. */
 export function dayPointKeyOf(p: Extract<CellPredicate, { kind: "baselineBreak" | "levelRebreak" }>): string {
     const z = p.kind === "levelRebreak" ? `|z${p.zigzagPct}` : "";

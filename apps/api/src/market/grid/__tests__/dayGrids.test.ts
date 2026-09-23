@@ -85,7 +85,7 @@ describe("DayGrids", () => {
         expect(decoded[0]!.grid.newHighs.length).toBeGreaterThan(0);
     });
 
-    it("과거 + 수집 완료면 파일로 굳히고, 다음 인스턴스는 파일에서 읽는다", async () => {
+    it("과거 + 수집 완료면 파일로 굳힌다", async () => {
         const { grids, store } = make({ [PAST]: ["A"] });
         await grids.bundle(PAST);
         expect(store.writes).toEqual([PAST]);
@@ -130,4 +130,39 @@ describe("isCurrentDayGridFile — 규칙·옵션·봉투 중 하나라도 다�
     it("봉투 버전", () => expect(isCurrentDayGridFile({ ...ok, v: 0 })).toBe(false));
     it("규칙 버전", () => expect(isCurrentDayGridFile({ ...ok, version: POINT_GRID_RULE_VERSION - 1 })).toBe(false));
     it("굽기 옵션", () => expect(isCurrentDayGridFile({ ...ok, opts: { ...DAY_GRID_DETECT_OPTIONS, zigzagPct: 2 } })).toBe(false));
+});
+
+describe("DayGrids — 굳은 파일 읽기 경로", () => {
+    it("다음 인스턴스는 파일에서 읽는다 — 분봉을 다시 읽지 않는다", async () => {
+        const first = make({ [PAST]: ["A"] });
+        const built = await first.grids.bundle(PAST);
+        const minute = new FakeMinute({ [PAST]: ["A"] });
+        const second = new DayGrids({
+            universe: new FakeUniverse({ [PAST]: ["A"] }),
+            scan: new FakeScan({ [PAST]: ["A"] }),
+            minute,
+            rawDaily: { getRawDailyCandles: async () => [] },
+            adjDaily: { getDailyCandles: async () => [] },
+            store: first.store,
+            today: () => TODAY,
+        });
+        expect(await second.bundle(PAST)).toEqual(built);
+        expect(minute.reads).toBe(0);
+    });
+
+    it("빌드가 실패하면 in-flight 가 풀려 다음 요청이 다시 시도한다", async () => {
+        let fail = true;
+        const grids = new DayGrids({
+            universe: { stockCodesByDate: async () => { if (fail) throw new Error("db down"); return ["A"]; } },
+            scan: new FakeScan({ [PAST]: ["A"] }),
+            minute: new FakeMinute({ [PAST]: ["A"] }),
+            rawDaily: { getRawDailyCandles: async () => [] },
+            adjDaily: { getDailyCandles: async () => [] },
+            store: new MemStore(),
+            today: () => TODAY,
+        });
+        await expect(grids.bundle(PAST)).rejects.toThrow("db down");
+        fail = false;
+        expect((await grids.bundle(PAST)).charts).toHaveLength(1);
+    });
 });
