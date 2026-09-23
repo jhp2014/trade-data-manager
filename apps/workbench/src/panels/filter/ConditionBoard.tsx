@@ -29,7 +29,7 @@ import { FilterRow } from "./FilterRow.js";
 import { useFunnel } from "./FunnelContext.js";
 import { Note } from "./grain.js";
 import { ExprRow, type RowHandlers } from "./ExprRow.js";
-import { DEFAULT_BASELINE_BREAK, DEFAULT_LEVEL_REBREAK, type CellValueRange } from "@trade-data-manager/market/domain";
+import { DEFAULT_BREAKOUT, type CellValueRange } from "@trade-data-manager/market/domain";
 import { CellStageFields } from "./CellPredicateFields.js";
 import { kindDeficiency, stageDeficiency, type Universe } from "./universe.js";
 import { GroupEditors, RailEditors, type GroupEditorAnchor, type RailEditor } from "./ConditionEditors.js";
@@ -515,8 +515,9 @@ function AddCondition({ setUniverse, onCell, axes, onRail, onOutcome, onGroup, o
                     {item(close, "분봉고가", "그 분 봉의 고가(UN %)", () => onCell({ kind: "cellValue", field: "minuteHighPct", ranges: [atLeast(5)] }), "cellValue")}
                     {item(close, "존순위", "테마 존 안 순위(작을수록 위) — 분 단면을 굽는 비싼 재료입니다", () => onCell({ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }] }), "cellValue")}
                     {item(close, "전고 돌파", "직전 W 거래일 고가를 분봉 고가가 넘는 분(당일 제외)", () => onCell({ kind: "priorHighBreak", days: 20 }), "priorHighBreak")}
-                    {item(close, "기준선 돌파", "확정 기준선을 넘는(스침 포함) 봉 — 그 봉 대금 게이트·양봉·밴드 m'·레벨당 하나는 줄에서 만집니다", () => onCell({ ...DEFAULT_BASELINE_BREAK, kind: "baselineBreak" }), "baselineBreak")}
-                    {item(close, "마디 재돌파", "기준선 없이 그날 지형만으로 — 세션 신고가를 세운 확정 고점(마디)을 다시 넘는 봉. zigzag 해상도·게이트는 줄에서", () => onCell({ ...DEFAULT_LEVEL_REBREAK, kind: "levelRebreak" }), "levelRebreak")}
+                    {item(close, "돌파", "돌파 사슬 후보 — 고가(와 기준선) 밴드 사건에서 사슬이 서고, 눌림(zigzag) 전까지 대금이 커진 봉이 후보", () => onCell({ kind: "breakout", ...DEFAULT_BREAKOUT }), "breakout")}
+                    {item(close, "분봉 대금", "그 분 봉 자신의 거래대금(억) — 돌파 대금 필터", () => onCell({ kind: "cellValue", field: "minuteAmountEok", ranges: [atLeast(30)] }), "cellValue")}
+                    {item(close, "양봉", "캔들 모양 — 종가 > 시가(클릭으로 음봉)", () => onCell({ kind: "candleShape", shape: "bull" }), "candleShape")}
                     {item(close, "격자 Point", "종단 「타점 정의」 기준의 격자 파생 Point 좌표(기준선 있는 차트만)", () => onCell({ kind: "gridPoint" }), "gridPoint")}
                     {/* 시각은 **중립 종류**다(양쪽 우주에 산다) — 종단에선 아래 「시간」이 같은 종류를 레일
                         편집면으로 연다. 여기서만 안 보이는 것이지 문법이 사라지는 게 아니라 조건부로 둔다. */}

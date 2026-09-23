@@ -7,8 +7,8 @@
 // 결손으로 실었지만("있을 일 없지만 정직하게"), 새 우주에서 셀은 타임라인의 샘플이라 그 좌표는
 // 셀이 아니다(decisions 「집합」 절). 아래 마지막 케이스가 그 차이를 명시적으로 잠근다.
 import { describe, it, expect } from "vitest";
-import { probesOfDay, DEFAULT_PROBE_PARAMS, type ProbeDeps, type ProbeParams, type ProbeStock } from "../../probe/probe.js";
-import { evaluateCells } from "../engine.js";
+import { probesOfDay, DEFAULT_PROBE_PARAMS, type ProbeDeps, type ProbeParams } from "../../probe/probe.js";
+import { evaluateCells, type CellStock } from "../engine.js";
 import { seedConditionsOf, SEED_IDS, type SeedKnobs } from "../seed.js";
 import { kstToUnix } from "../../kst.js";
 
@@ -16,7 +16,8 @@ const DATE = "2026-09-16";
 const t0 = kstToUnix(DATE, "09:00:00");
 const MIN0 = 9 * 60;
 
-function stock(code: string, over: Partial<ProbeStock> & { n?: number } = {}): ProbeStock {
+/** 셀 엔진 입력(CellStock) — 옛 ProbeStock 의 상위 모양이라 두 엔진에 그대로 들어간다. */
+function stock(code: string, over: Partial<CellStock> & { n?: number } = {}): CellStock {
     const n = over.n ?? 5;
     const seq = (v: number[] | undefined, fill: number): number[] => v ?? new Array(n).fill(fill);
     return {
@@ -25,7 +26,10 @@ function stock(code: string, over: Partial<ProbeStock> & { n?: number } = {}): P
         rate: seq(over.rate as number[] | undefined, 0),
         cumAmount: seq(over.cumAmount as number[] | undefined, 0),
         minuteHigh: seq(over.minuteHigh as number[] | undefined, 0),
+        minuteOpen: seq(over.minuteOpen as number[] | undefined, 0),
+        minuteLow: seq(over.minuteLow as number[] | undefined, 0),
         trailingHighs: over.trailingHighs ?? { krx: [], un: [] },
+        basePrice: over.basePrice ?? { krx: null, un: null },
     };
 }
 
@@ -47,7 +51,7 @@ const normNew = (hits: readonly { code: string; min: number; tags: readonly stri
     hits.map((h) => `${h.code}@${h.min - MIN0}:${h.tags.map((t) => TAG_OF[t] ?? t).sort().join(",")}`);
 
 /** 같은 입력을 두 엔진에 물려 비교 — 픽스처마다 이 한 줄이면 된다. */
-function bothAgree(stocks: readonly ProbeStock[], deps: ProbeDeps, params: ProbeParams): void {
+function bothAgree(stocks: readonly CellStock[], deps: ProbeDeps, params: ProbeParams): void {
     const old = probesOfDay(stocks, deps, params);
     const now = evaluateCells(stocks, deps, seedConditionsOf(params as SeedKnobs));
     expect(normNew(now.hits), JSON.stringify(params)).toEqual(normOld(old));

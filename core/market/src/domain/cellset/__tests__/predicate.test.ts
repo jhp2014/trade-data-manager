@@ -102,25 +102,31 @@ describe("비용 등급·빈 판정·재료 사용 여부", () => {
     });
 });
 
-describe("하루 타점 술어(① 기준선 돌파 · ② 마디 재돌파)", () => {
+describe("돌파 생성기 · 캔들 모양", () => {
     it("왕복한다(전이 포함)", () => {
         const preds = [
-            { kind: "baselineBreak", gateEok: 50, bullOnly: true, approachPct: 0.5, onePerLevel: true, transition: "firstTrue" },
-            { kind: "levelRebreak", gateEok: 30, bullOnly: false, approachPct: 2, onePerLevel: false, zigzagPct: 3 },
+            { kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", transition: "firstTrue" },
+            { kind: "breakout", zigzagPct: 3, bandPct: 1, label: "baseline" },
+            { kind: "candleShape", shape: "bull" },
+            { kind: "cellValue", field: "minuteAmountEok", ranges: [{ from: { kind: "value", value: 30 } }] },
         ];
         for (const p of preds) expect(parseCellPredicate(JSON.parse(JSON.stringify(p)))).toEqual(p);
     });
 
-    it("범위 밖은 **클램프**, 빠진 필드는 기본값 — 술어를 버리지 않는다", () => {
-        expect(parseCellPredicate({ kind: "levelRebreak", gateEok: -5, approachPct: 9, zigzagPct: 0.5 }))
-            .toEqual({ kind: "levelRebreak", gateEok: 0, bullOnly: true, approachPct: 3, onePerLevel: true, zigzagPct: 1 });
-        expect(parseCellPredicate({ kind: "baselineBreak", gateEok: 12.6, zigzagPct: 4 }))
-            .toEqual({ kind: "baselineBreak", gateEok: 13, bullOnly: true, approachPct: 0.5, onePerLevel: true });
+    it("노브 범위 밖은 **클램프**, 빠진 필드는 기본값 — 술어를 버리지 않는다", () => {
+        expect(parseCellPredicate({ kind: "breakout", zigzagPct: 99, bandPct: -1, label: "?" }))
+            .toEqual({ kind: "breakout", zigzagPct: 10, bandPct: 0, label: "all" });
+        expect(parseCellPredicate({ kind: "breakout" })).toEqual({ kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all" });
     });
 
-    it("비용 등급 1 · 비어 있지 않다", () => {
-        const p = parseCellPredicate({ kind: "baselineBreak" })!;
-        expect(costTierOf(p)).toBe(1);
-        expect(isCellPredicateEmpty(p)).toBe(false);
+    it("모르는 캔들 모양은 null(그 술어만 건너뛴다)", () => {
+        expect(parseCellPredicate({ kind: "candleShape", shape: "doji" })).toBeNull();
+    });
+
+    it("비용 등급 — 돌파 1 · 캔들 0, 둘 다 비어 있지 않다", () => {
+        const b = parseCellPredicate({ kind: "breakout" })!;
+        const c = parseCellPredicate({ kind: "candleShape", shape: "bear" })!;
+        expect([costTierOf(b), costTierOf(c)]).toEqual([1, 0]);
+        expect(isCellPredicateEmpty(b) || isCellPredicateEmpty(c)).toBe(false);
     });
 });

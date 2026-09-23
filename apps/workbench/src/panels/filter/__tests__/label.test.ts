@@ -126,12 +126,14 @@ describe("setDisplayName — 참조도 항이다", () => {
     });
 });
 
-describe("하루 타점 라벨 — 노브가 인스턴스를 가른다", () => {
-    it("게이트·zigzag·후보 전부가 이름에 실린다", () => {
-        const a: FilterPredicate = { kind: "baselineBreak", gateEok: 50, bullOnly: true, approachPct: 0.5, onePerLevel: true };
-        const b: FilterPredicate = { kind: "levelRebreak", gateEok: 30, bullOnly: false, approachPct: 0, onePerLevel: false, zigzagPct: 3 };
-        expect(predicateLabel(a, look)).toBe("기준선 돌파 50억 · 양봉 · m'0.5");
-        expect(predicateLabel(b, look)).toBe("마디 재돌파 3% 30억 · m'0 · 전부");
-        expect(kindLabel("levelRebreak")).toBe("타점");
+describe("돌파 생성기 라벨 — 노브가 인스턴스를 가른다", () => {
+    it("zigzag/밴드와 이름표 거르기가 이름에 실린다", () => {
+        const a: FilterPredicate = { kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all" };
+        const b: FilterPredicate = { kind: "breakout", zigzagPct: 3, bandPct: 1, label: "baseline" };
+        const c: FilterPredicate = { kind: "candleShape", shape: "bear" };
+        expect(predicateLabel(a, look)).toBe("돌파 2%/0.5%");
+        expect(predicateLabel(b, look)).toBe("돌파 3%/1% · 기준선");
+        expect(predicateLabel(c, look)).toBe("음봉");
+        expect(kindLabel("breakout")).toBe("타점");
     });
 });

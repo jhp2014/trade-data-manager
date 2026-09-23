@@ -26,13 +26,12 @@
 // 전량 평가해 matched 를 끝까지 세고, 정렬(분↑ → 코드↑) 뒤 앞에서 자른다. 평가 중에 멈추면
 // "코드 오름차순 앞 종목만 남는" 편향이 생긴다. 평가를 실제로 멈추는 건 HARD_CAP 그물 하나뿐이다
 // (조건이 사실상 전부일 때 19만 셀 × 분 단면 = 프리즈를 막는 2차 방어선. 1차는 "조건 없음 = 안 보여줌").
-import { DAY_GRID_DETECT_OPTIONS, type PointGrid } from "../grid/grid.js";
-import { baselineBreakMinutes, levelRebreakMinutes } from "../grid/points.js";
 import { minuteOfDayOf, type MinuteDerived } from "../replay/dayReplay.js";
+import { baselinePctOf, breakoutChainsOf, type BreakoutLabel } from "./breakoutChain.js";
 import {
     CELL_VALUE_FIELDS,
+    breakoutKeyOf,
     costTierOf,
-    dayPointKeyOf,
     exprOfCellConditions,
     pruneCellExpr,
     unknownCellPredicate,
@@ -45,7 +44,10 @@ import {
 } from "./predicate.js";
 
 /** 입력 종목 — 쓰는 필드만 Pick(probe·rankSection 과 같은 수법: 와이어 ReplayStock 이 그대로 들어온다). */
-export type CellStock = Pick<MinuteDerived, "code" | "times" | "rate" | "cumAmount" | "minuteHigh" | "trailingHighs">;
+export type CellStock = Pick<
+    MinuteDerived,
+    "code" | "times" | "rate" | "cumAmount" | "minuteOpen" | "minuteHigh" | "minuteLow" | "trailingHighs" | "basePrice"
+>;
 
 /** 주입 재료 — 기존 단일 출처의 어댑터. 계산 규칙을 여기로 들이지 말 것(서수 출처 단일화 불변식). */
 export interface CellMaterials {
@@ -55,16 +57,21 @@ export interface CellMaterials {
      *  ⚠ 단락 뒤에만 불린다(비싼 재료). (클라: sectionSeries 캐시 + themeStrength.themeStatsOf) */
     zoneRankAt(code: string, min: number): { rank: number; theme: string } | null;
     /**
-     * 그날 날짜 격자(zigzag 1% 로 구운 것)를 zigzagPct 로 **접은** 격자 — 없으면 null(결손 = 거짓).
-     * 접기의 메모는 어댑터 몫이다(같은 격자·같은 %면 같은 참조). 하루 타점 술어가 쓸 때만 불린다.
-     * 옵셔널인 이유: 이 재료를 안 쓰는 호출자(probe 등가·기존 테스트)는 부재 = 결손으로 충분하다.
+     * 그 종목·그날의 확정 기준선(그 날 원주가 스케일) — 없으면 null(돌파 사슬의 기준선 밴드가 없다 →
+     * 이름표가 전부 「고가 돌파」). 옵셔널: 안 쓰는 호출자(probe 등가·기존 테스트)는 부재 = 없음.
      */
-    dayGridOf?(code: string, zigzagPct: number): PointGrid | null;
-    /** 그 종목·그날의 확정 기준선(그 날 원주가 스케일) — 없으면 null(① 기준선 돌파가 결손). */
     baselineOf?(code: string): number | null;
 }
 
-type DayPointPred = Extract<CellPredicate, { kind: "baselineBreak" | "levelRebreak" }>;
+type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
+/** 돌파 후보 한 셀의 표시값 — 목록이 「돌파」 줄을 그린다. */
+export interface CellBreakout {
+    label: BreakoutLabel;
+    /** 그날 사슬 번호. */
+    chain: number;
+    /** 사슬 안 순번(0 = 첫 사건). */
+    seq: number;
+}
 
 /** 발화 셀 하나 — 시각(자정기준 분) + 발화한 **조건 id** + 그 분의 표시값. 결손은 null(지어내지 않는다). */
 export interface CellHit {
@@ -77,6 +84,8 @@ export interface CellHit {
     /** 존 순위 술어가 든 조건이 발화했을 때의 순위/테마(다중 테마는 best=min). 아니면 null. */
     zoneRank: number | null;
     zoneTheme: string | null;
+    /** 돌파 생성기가 든 가지가 발화했을 때의 사슬 정보(여러 생성기면 먼저 참인 것). 아니면 null. */
+    breakout: CellBreakout | null;
 }
 
 export interface CellEvalResult {
@@ -153,20 +162,17 @@ function applyTransition(t: Transition | undefined, st: TransitionState, raw: bo
 interface StockPrecomputed {
     priorHighOf(days: number): number | null;
     gridMinutes: ReadonlySet<number> | null;
-    /** 하루 타점 판정 키 → 발화 분 집합. null = 재료 결손(격자·기준선 없음 — 거짓으로 평가). */
-    dayPoints: ReadonlyMap<string, ReadonlySet<number> | null>;
+    /** 돌파 판정 키 → (분 → 후보의 사슬 정보). */
+    breakouts: ReadonlyMap<string, ReadonlyMap<number, CellBreakout>>;
 }
 
-/** 하루 타점 술어 하나의 분 집합 — 재료가 없으면 null. ①은 피벗을 안 보므로 접지 않은 격자를 쓴다. */
-function dayPointMinutes(p: DayPointPred, code: string, mat: CellMaterials): ReadonlySet<number> | null {
-    if (p.kind === "baselineBreak") {
-        const base = mat.baselineOf?.(code) ?? null;
-        if (base === null) return null;
-        const g = mat.dayGridOf?.(code, DAY_GRID_DETECT_OPTIONS.zigzagPct) ?? null;
-        return g === null ? null : new Set(baselineBreakMinutes(g, base, p));
-    }
-    const g = mat.dayGridOf?.(code, p.zigzagPct) ?? null;
-    return g === null ? null : new Set(levelRebreakMinutes(g, p));
+/** 돌파 사슬 후보 — 분봉 한 번 순회(`breakoutChainsOf`). 기준선은 분봉과 같은 반올림의 % 로 옮긴다. */
+function breakoutMinutes(p: BreakoutPred, s: CellStock, mat: CellMaterials): ReadonlyMap<number, CellBreakout> {
+    const base = baselinePctOf(mat.baselineOf?.(s.code) ?? null, s.basePrice.un);
+    const r = breakoutChainsOf(s, base, { zigzagPct: p.zigzagPct, bandPct: p.bandPct });
+    const out = new Map<number, CellBreakout>();
+    for (const c of r.candidates) out.set(minuteOfDayOf(s.times[c.i]), { label: c.label, chain: c.chain, seq: c.seq });
+    return out;
 }
 
 function precompute(
@@ -174,7 +180,7 @@ function precompute(
     mat: CellMaterials,
     needDays: readonly number[],
     needGrid: boolean,
-    needDay: ReadonlyMap<string, DayPointPred>,
+    needBreakout: ReadonlyMap<string, BreakoutPred>,
 ): StockPrecomputed {
     const highs = new Map<number, number | null>();
     for (const days of needDays) {
@@ -182,12 +188,12 @@ function precompute(
         const w = s.trailingHighs.un.slice(1, Math.max(1, Math.floor(days)) + 1);
         highs.set(days, w.length > 0 ? Math.max(...w) : null); // 창이 비면 결손(신규 상장 등)
     }
-    const dayPoints = new Map<string, ReadonlySet<number> | null>();
-    for (const [key, p] of needDay) dayPoints.set(key, dayPointMinutes(p, s.code, mat));
+    const breakouts = new Map<string, ReadonlyMap<number, CellBreakout>>();
+    for (const [key, p] of needBreakout) breakouts.set(key, breakoutMinutes(p, s, mat));
     return {
         priorHighOf: (days) => highs.get(days) ?? null,
         gridMinutes: needGrid ? new Set(mat.gridMinutesOf(s.code)) : null,
-        dayPoints,
+        breakouts,
     };
 }
 
@@ -198,6 +204,8 @@ function valueOf(field: CellValueField, s: CellStock, i: number, zone: { rank: n
             return s.rate[i] ?? null;
         case "cumAmountEok":
             return (s.cumAmount[i] ?? 0) / KRW_PER_EOK;
+        case "minuteAmountEok":
+            return ((s.cumAmount[i] ?? 0) - (i > 0 ? (s.cumAmount[i - 1] ?? 0) : 0)) / KRW_PER_EOK;
         case "minuteHighPct":
             return s.minuteHigh[i] ?? null;
         case "zoneRank":
@@ -263,15 +271,15 @@ interface Compiled {
     tier: 0 | 1 | 2;
     /** 이 AND 노드의 **직속 값 잎**이 정확히 하나면 그 자식(improve 의 밑값 자리). 아니면 null. */
     soleValueChild: Compiled | null;
-    /** 하루 타점 잎의 판정 키 — 셀마다 문자열을 만들지 않게 컴파일 때 한 번. 그 밖은 null. */
-    dayKey: string | null;
+    /** 돌파 잎의 판정 키 — 셀마다 문자열을 만들지 않게 컴파일 때 한 번. 그 밖은 null. */
+    breakoutKey: string | null;
 }
 
 function compile(e: CellExpr, next: () => number): Compiled {
     const idx = next();
     if (e.kind === "pred") {
-        const dayKey = e.pred.kind === "baselineBreak" || e.pred.kind === "levelRebreak" ? dayPointKeyOf(e.pred) : null;
-        return { node: e, idx, children: [], tier: costTierOf(e.pred), soleValueChild: null, dayKey };
+        const breakoutKey = e.pred.kind === "breakout" ? breakoutKeyOf(e.pred) : null;
+        return { node: e, idx, children: [], tier: costTierOf(e.pred), soleValueChild: null, breakoutKey };
     }
     // 단락 순서 = 비용 오름차순. 가지의 비용은 그 안 **가장 비싼 잎**이다(싼 가지부터 봐야 비싼 재료가 늦게 불린다).
     const children = e.of.map((c) => compile(c, next)).sort((a, b) => a.tier - b.tier);
@@ -282,7 +290,7 @@ function compile(e: CellExpr, next: () => number): Compiled {
         children,
         tier: children.reduce<0 | 1 | 2>((t, c) => (c.tier > t ? c.tier : t), 0),
         soleValueChild: e.kind === "and" && valueLeaves.length === 1 ? valueLeaves[0]! : null,
-        dayKey: null,
+        breakoutKey: null,
     };
 }
 
@@ -305,6 +313,8 @@ interface CellCtx {
     zoneAsked: boolean;
     /** 이 가지가 존 순위를 물었나 — 발화한 가지만 hit 에 순위를 싣는다(옛 usedZone 과 같은 자). */
     usedZone: boolean;
+    /** 이 가지에서 참이 된 돌파 잎의 사슬 정보 — 발화한 가지만 hit 에 싣는다. */
+    breakout: CellBreakout | null;
 }
 
 function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
@@ -338,10 +348,19 @@ function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
             case "gridPoint":
                 raw = ctx.pre.gridMinutes !== null && ctx.pre.gridMinutes.has(ctx.min);
                 break;
-            case "baselineBreak":
-            case "levelRebreak":
-                raw = ctx.pre.dayPoints.get(c.dayKey!)?.has(ctx.min) === true;
+            case "breakout": {
+                const hit = ctx.pre.breakouts.get(c.breakoutKey!)?.get(ctx.min);
+                raw = hit !== undefined && (p.label === "all" || p.label === hit.label);
+                if (raw && ctx.breakout === null) ctx.breakout = hit!;
                 break;
+            }
+            case "candleShape": {
+                // 거래 없는 봉(시가 = 종가)은 어느 쪽도 아니다.
+                const o = ctx.s.minuteOpen[ctx.i];
+                const c = ctx.s.rate[ctx.i];
+                raw = o !== undefined && c !== undefined && (p.shape === "bull" ? c > o : c < o);
+                break;
+            }
             case "time":
                 raw = p.ranges.some((r) => {
                     const t = hm(ctx.min);
@@ -418,12 +437,12 @@ export function evaluateCellsExpr(
     // 재면 묶음 안의 격자·전고 술어를 못 보고, 그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**.
     const needDays: number[] = [];
     let needGrid = false;
-    const needDay = new Map<string, DayPointPred>();
+    const needBreakout = new Map<string, BreakoutPred>();
     const scan = (e: CellExpr): void => {
         if (e.kind === "pred") {
             if (e.pred.kind === "priorHighBreak" && !needDays.includes(e.pred.days)) needDays.push(e.pred.days);
             if (e.pred.kind === "gridPoint") needGrid = true;
-            if (e.pred.kind === "baselineBreak" || e.pred.kind === "levelRebreak") needDay.set(dayPointKeyOf(e.pred), e.pred);
+            if (e.pred.kind === "breakout") needBreakout.set(breakoutKeyOf(e.pred), e.pred);
             return;
         }
         for (const c of e.of) scan(c);
@@ -437,16 +456,17 @@ export function evaluateCellsExpr(
     outer: for (const s of stocks) {
         const n = s.times.length;
         if (n === 0) continue;
-        const pre = precompute(s, mat, needDays, needGrid, needDay);
+        const pre = precompute(s, mat, needDays, needGrid, needBreakout);
         // 전이 상태 — 노드마다 슬롯 하나. 종목이 바뀌면 새로 만든다(하루 경계 = 종목 타임라인).
         const st: TransitionState[] = Array.from({ length: slots }, newState);
 
         for (let i = 0; i < n; i++) {
             const min = minuteOfDayOf(s.times[i]);
-            const ctx: CellCtx = { s, i, min, pre, mat, zone: null, zoneAsked: false, usedZone: false };
+            const ctx: CellCtx = { s, i, min, pre, mat, zone: null, zoneAsked: false, usedZone: false, breakout: null };
 
             for (const b of branches) {
                 ctx.usedZone = false;
+                ctx.breakout = null;
                 if (!runNode(b, st, ctx)) continue;
 
                 byCondition.set(b.node.id, (byCondition.get(b.node.id) ?? 0) + 1);
@@ -462,10 +482,12 @@ export function evaluateCellsExpr(
                         cumAmount: s.cumAmount[i] ?? null,
                         zoneRank: null,
                         zoneTheme: null,
+                        breakout: null,
                     };
                     byKey.set(key, hit);
                 }
                 if (!hit.tags.includes(b.node.id)) hit.tags.push(b.node.id);
+                if (ctx.breakout !== null && hit.breakout === null) hit.breakout = ctx.breakout;
                 if (ctx.usedZone && ctx.zone && (hit.zoneRank === null || ctx.zone.rank < hit.zoneRank)) {
                     hit.zoneRank = ctx.zone.rank;
                     hit.zoneTheme = ctx.zone.theme;

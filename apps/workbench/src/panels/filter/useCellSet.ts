@@ -17,7 +17,6 @@
 import { useMemo } from "react";
 import {
     evaluateCellsExpr,
-    kstToday,
     minuteToHms,
     type CellEvalOptions,
     type CellEvalResult,
@@ -29,7 +28,6 @@ import {
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useAutoPoints, usePointGrids } from "../../lib/PointGridsContext.js";
-import { useDayGrid } from "../../lib/useDayGrid.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { useThemeKnobParams } from "./themeLink.js";
 import { cellMaterialsOf } from "./cellMaterials.js";
@@ -344,24 +342,10 @@ export function useCellSet(
         () => usesCellPred(narrowed.expr, (p) => p.kind === "cellValue" && p.field === "zoneRank"),
         [narrowed],
     );
-    // 하루 타점 — 날짜 격자(둘 다)와 기준선(① 만). 안 쓰면 재료를 안 당기고 게이트도 안 선다.
-    const needsDayGrid = useMemo(
-        () => usesCellPred(narrowed.expr, (p) => p.kind === "baselineBreak" || p.kind === "levelRebreak"),
-        [narrowed],
-    );
-    const needsBaseline = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "baselineBreak"), [narrowed]);
-    const dayGridQ = useDayGrid(needsDayGrid ? date : null);
+    // 돌파 생성기 — 기준선(/point-grids)을 이름표 재료로 쓴다. 안 쓰면 게이트도 안 선다.
+    // 오늘은 /point-grids 가 기준선을 안 굽는다 → 이름표가 전부 「고가 돌파」(복기만 쓴다 — decisions).
+    const needsBaseline = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "breakout"), [narrowed]);
     const pointGrids = usePointGrids();
-    // 재료가 **그 날짜의 것**일 때만 — 날짜를 넘기는 순간 옛 날짜 격자로 새 날짜 셀을 평가하면 조용히 틀린다.
-    const dayGrids = dayGridQ.data?.date === date ? dayGridQ.data.byCode : null;
-    // ⚠ /point-grids 는 **과거 날짜만** 굽는다 — 오늘의 기준선은 재료가 아예 없다. 그대로 평가하면
-    //   기준선 돌파가 "0건"으로 확정돼 "기준선을 넘은 종목이 없다"로 읽힌다. 모른다고 말한다(오류 채널).
-    const baselineUnavailable = useMemo(
-        () => (needsBaseline && date >= kstToday()
-            ? new Error("오늘은 기준선 돌파를 평가할 수 없습니다 — 기준선 재료(/point-grids)는 지난 날짜만 굽습니다")
-            : null),
-        [needsBaseline, date],
-    );
     const limit = opts?.limit;
     const hardCap = opts?.hardCap;
     const limitBy = opts?.limitBy;
@@ -369,9 +353,8 @@ export function useCellSet(
     const result = useMemo(() => {
         if (!stocks || snapQ.data?.date !== date) return null;
         // ⚠ 재료가 없는 동안은 **null**(값을 모른다)이지 빈 결과가 아니다 — 빈 결과는 "조건에 다 걸렸다"로
-        //   읽힌다(useBoundSet 의 UNRESOLVED 규칙). 기준선 재료(/point-grids)도 같다.
-        if (needsDayGrid && dayGrids === null) return null;
-        if (needsBaseline && (pointGrids.byDate === null || baselineUnavailable !== null)) return null;
+        //   읽힌다(useBoundSet 의 UNRESOLVED 규칙). 기준선 재료(/point-grids)가 오기 전 평가하면 이름표가 뒤집힌다.
+        if (needsBaseline && pointGrids.byDate === null) return null;
         // 메모 키 — 조건·노브·**재료 세대를 전부** 싣는다. 하나라도 빠지면 조용히 낡은 목록을 돌려준다.
         //  · 바깥 축(WeakMap) = `stocks` 배열 참조 = 하루 재료의 세대. 오늘 날짜는 60초마다 재조회되므로
         //    이걸 안 가르면 새로 채워진 분의 후보가 세션 내내 안 뜬다.
@@ -379,11 +362,11 @@ export function useCellSet(
         const key = JSON.stringify([
             date, narrowed.expr, zoneParams, limit ?? null, hardCap ?? null, limitBy ?? null,
             genOf(auto.points), genOf(themes.proj),
-            dayGrids ? genOf(dayGrids) : 0, needsBaseline && pointGrids.byDate ? genOf(pointGrids.byDate) : 0,
+            needsBaseline && pointGrids.byDate ? genOf(pointGrids.byDate) : 0,
         ]);
         return evaluateMemo(stocks, key, () => {
-            const mat = cellMaterialsOf(stocks, date, auto, themes.proj, zoneParams, needsDayGrid
-                ? { grids: dayGrids, baselineOf: (code) => pointGrids.gridOf(code, date)?.base ?? null }
+            const mat = cellMaterialsOf(stocks, date, auto, themes.proj, zoneParams, needsBaseline
+                ? (code) => pointGrids.gridOf(code, date)?.base ?? null
                 : undefined);
             return evaluateCellsExpr(stocks, mat, narrowed.expr, {
                 ...(limit !== undefined ? { limit } : {}),
@@ -392,7 +375,7 @@ export function useCellSet(
             });
         });
     }, [stocks, snapQ.data?.date, date, auto, themes.proj, zoneParams, narrowed, limit, hardCap, limitBy,
-        needsDayGrid, needsBaseline, dayGrids, pointGrids, baselineUnavailable]);
+        needsBaseline, pointGrids]);
 
     const items = useMemo<readonly FunnelItem[]>(
         () => (result ? result.hits.map((h) => cellHitToItem(h, date)) : EMPTY_ITEMS),
@@ -416,12 +399,10 @@ export function useCellSet(
         // 재료 게이트는 **그 재료를 쓰는 조건이 있을 때만** 선다 — 칸을 지웠는데 격자 실패가 화면을
         // 죽이면 "지웠다"가 거짓말이 된다.
         isLoading: snapQ.isLoading || (needsGrid && auto.isLoading)
-            || (needsDayGrid && dayGridQ.isLoading) || (needsBaseline && pointGrids.isLoading),
+            || (needsBaseline && pointGrids.isLoading),
         error: firstError([
             snapQ.error as Error | null,
-            needsDayGrid ? (dayGridQ.error as Error | null) : null,
             needsBaseline ? pointGrids.error : null,
-            baselineUnavailable,
             needsGrid ? auto.error : null,
         ]),
         themesReady: !needsZone || themes.ready,

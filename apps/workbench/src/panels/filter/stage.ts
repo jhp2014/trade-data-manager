@@ -102,9 +102,9 @@ export type FilterPredicate =
     | Extract<CellPredicate, { kind: "cellValue" }>
     | Extract<CellPredicate, { kind: "priorHighBreak" }>
     | Extract<CellPredicate, { kind: "gridPoint" }>
-    // 하루 타점 조건 둘(2026-09-23 — decisions 「하루 타점」). 판정 노브가 payload 에 산다(옛 「타점 정의」 판정 노브).
-    | Extract<CellPredicate, { kind: "baselineBreak" }>
-    | Extract<CellPredicate, { kind: "levelRebreak" }>;
+    // Daily 타점 생성기(돌파 사슬)와 캔들 모양 필터(2026-09-24 — decisions 「Daily 타점 생성 = 돌파 사슬」).
+    | Extract<CellPredicate, { kind: "breakout" }>
+    | Extract<CellPredicate, { kind: "candleShape" }>;
 
 export type PredicateKind = FilterPredicate["kind"];
 
@@ -156,8 +156,8 @@ export function isPredicateEmpty(p: FilterPredicate): boolean {
         case "cellValue": return p.ranges.every((r) => !r.from && !r.to);
         case "priorHighBreak": return false; // 창 하나라 항상 조건이다
         case "gridPoint": return false;
-        case "baselineBreak":
-        case "levelRebreak": return false; // 노브가 전부 기본값을 가져 항상 조건이다
+        case "breakout":
+        case "candleShape": return false; // 노브가 전부 기본값을 가져 항상 조건이다
         default: return unknownPredicate(p); // 자물쇠 — 빠뜨리면 그 종류가 "무제한 통과"로 샌다
     }
 }
@@ -213,8 +213,8 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
         case "cellValue":
         case "priorHighBreak":
         case "gridPoint":
-        case "baselineBreak":
-        case "levelRebreak": return "point";
+        case "breakout":
+        case "candleShape": return "point";
         default: return unknownPredicate(p); // 자물쇠: 빠뜨리면 그 조건이 보드에서 "(지워짐)"으로 보인다
     }
 }
@@ -496,8 +496,8 @@ function parsePredicate(o: unknown): FilterPredicate | null {
         case "cellValue":
         case "priorHighBreak":
         case "gridPoint":
-        case "baselineBreak":
-        case "levelRebreak":
+        case "breakout":
+        case "candleShape":
             return parseCellPredicate(o) as FilterPredicate | null;
         default:
             return null;

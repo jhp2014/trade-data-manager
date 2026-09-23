@@ -121,10 +121,10 @@ export function kindDeficiency(k: PredicateKind, u: Universe): string | null {
                 return "직전 거래일 고가(trailingHighs)는 하루 재료다";
             case "gridPoint":
                 return "종단 격자 번들은 있으나 이 우주의 판정기가 아직 없다";
-            case "baselineBreak":
-            case "levelRebreak":
-                // 원리적 결손이 아니다 — 라벨 좌표도 날짜 격자 안에 있다. 종단 판정기를 안 물렸을 뿐.
-                return "하루 타점 조건 — 종단에는 아직 판정기가 안 물렸다(하루 모드에서 쓴다)";
+            case "breakout":
+            case "candleShape":
+                // 원리적 결손이 아니다 — 라벨 좌표도 그날 분봉 안에 있다. 종단 판정기를 안 물렸을 뿐(종단 보류).
+                return "Daily 타점 조건 — 종단에는 아직 판정기가 안 물렸다";
             default:
                 return null;
         }
@@ -165,8 +165,8 @@ export function predicateDeficiency(p: FilterPredicate, u: Universe): string[] {
         case "cellValue":
         case "priorHighBreak":
         case "gridPoint":
-        case "baselineBreak":
-        case "levelRebreak":
+        case "breakout":
+        case "candleShape":
             if (p.transition && u === "longitudinal") out.push("전이 수식어는 시계열 위에서만 뜻이 있다 — 종단 행에는 '직전 분'이 없다");
             break;
         case "axisValue":

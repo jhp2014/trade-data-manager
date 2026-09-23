@@ -81,8 +81,8 @@ export function rowIdOfStage(s: FilterStage): string {
         case "cellValue":
         case "priorHighBreak":
         case "gridPoint":
-        case "baselineBreak":
-        case "levelRebreak": return `cell:${s.id}`;
+        case "breakout":
+        case "candleShape": return `cell:${s.id}`;
         case "date": return "date";
         case "time": return "time";
         case "themeStrength": return `theme:${s.id}`;

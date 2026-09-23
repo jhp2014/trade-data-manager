@@ -9,7 +9,7 @@ const cell = (code: string, min: number, over: Partial<DayCell> = {}): DayCell =
     code,
     min,
     time: hm(min),
-    hit: { code, min, tags: ["c"], ratePct: 1, cumAmount: 1, zoneRank: null, zoneTheme: null },
+    hit: { code, min, tags: ["c"], ratePct: 1, cumAmount: 1, zoneRank: null, zoneTheme: null, breakout: null },
     labeled: false,
     ...over,
 });

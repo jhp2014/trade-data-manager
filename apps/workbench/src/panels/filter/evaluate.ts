@@ -226,8 +226,8 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
         case "cellValue":
         case "priorHighBreak":
         case "gridPoint":
-        case "baselineBreak":
-        case "levelRebreak":
+        case "breakout":
+        case "candleShape":
             return undefined;
 
         // 자물쇠 — 빠뜨린 술어가 여기 오면 **전 항목이 미배치**로 세어져 조용히 필터가 죽는다(stage.ts).

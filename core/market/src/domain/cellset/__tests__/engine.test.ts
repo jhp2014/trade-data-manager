@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { evaluateCells, evaluateCellsExpr, type CellMaterials, type CellStock } from "../engine.js";
-import type { CellConditions, CellExpr, Transition } from "../predicate.js";
+import type { CellConditions, CellExpr, CellPredicate, Transition } from "../predicate.js";
 import { kstToUnix } from "../../kst.js";
 
 // 픽스처 — 09:00 부터 1분 간격 dense 타임라인(probe 테스트와 같은 모양).
@@ -17,7 +17,10 @@ function stock(code: string, over: Partial<CellStock> & { n?: number } = {}): Ce
         rate: seq(over.rate as number[] | undefined, 0),
         cumAmount: seq(over.cumAmount as number[] | undefined, 0),
         minuteHigh: seq(over.minuteHigh as number[] | undefined, 0),
+        minuteOpen: seq(over.minuteOpen as number[] | undefined, 0),
+        minuteLow: seq(over.minuteLow as number[] | undefined, 0),
         trailingHighs: over.trailingHighs ?? { krx: [], un: [] },
+        basePrice: over.basePrice ?? { krx: null, un: null },
     };
 }
 
@@ -291,39 +294,51 @@ describe("evaluateCellsExpr — 루트의 부정", () => {
     });
 });
 
-describe("하루 타점 술어 — 재료(날짜 격자·기준선)", () => {
-    const g = {
-        base: null, touch: null, prevBase: null, prevBaseKrx: null, sessionHigh: { min: MIN0 + 3, price: 10200 },
-        pivots: [],
-        newHighs: [
-            { min: MIN0 + 1, open: 9900, high: 10000, low: 9850, close: 10000, tv: String(60e8), cum: "0", maxBefore: 9950 },
-            { min: MIN0 + 3, open: 10000, high: 10200, low: 9950, close: 10200, tv: String(60e8), cum: "0", maxBefore: 10000 },
-        ],
-    };
-    const bb: CellExpr = { kind: "pred", id: "b", pred: { kind: "baselineBreak", gateEok: 50, bullOnly: true, approachPct: 0, onePerLevel: false } };
+describe("돌파 생성기 + 캔들·분봉 대금 필터", () => {
+    // 분 0~4: 고가 0 → −0.2 → 0.3 → 0.1 → 0.2(저가 −1.8 로 사슬 끝). 분 대금 20·50·40·60·70억.
+    const s = stock("A", {
+        minuteHigh: [0, -0.2, 0.3, 0.1, 0.2],
+        minuteLow: [-0.5, -0.8, 0, -0.3, -1.8],
+        minuteOpen: [-0.5, -0.1, 0, 0, 0.1],
+        rate: [0, -0.5, 0.2, 0.1, -1],
+        cumAmount: [20e8, 70e8, 110e8, 170e8, 240e8],
+        basePrice: { krx: null, un: 10_000 },
+    });
+    const bo = (over: Partial<Extract<CellPredicate, { kind: "breakout" }>> = {}): CellExpr =>
+        ({ kind: "pred", id: "b", pred: { kind: "breakout", zigzagPct: 2, bandPct: 1, label: "all", ...over } });
+    const and = (...of: CellExpr[]): CellExpr => ({ kind: "and", id: "a", of });
 
-    it("기준선 위 통과 봉에서 발화한다", () => {
-        const mat: CellMaterials = { ...NO_MAT, dayGridOf: () => g, baselineOf: () => 10000 };
-        expect(mins(evaluateCellsExpr([stock("A")], mat, bb))).toEqual([1, 3]);
+    it("사슬 후보(첫 사건 + 대금 사다리)에서 발화하고 사슬 정보를 싣는다", () => {
+        const r = evaluateCellsExpr([s], NO_MAT, bo());
+        expect(mins(r)).toEqual([0, 1, 3]);
+        expect(r.hits.map((h) => h.breakout)).toEqual([
+            { label: "high", chain: 0, seq: 0 }, { label: "high", chain: 0, seq: 1 }, { label: "high", chain: 0, seq: 2 },
+        ]);
     });
 
-    it("재료 결손(격자·기준선·재료 자체 부재)은 거짓 — 0건이지 예외가 아니다", () => {
-        expect(evaluateCellsExpr([stock("A")], { ...NO_MAT, dayGridOf: () => g, baselineOf: () => null }, bb).hits).toEqual([]);
-        expect(evaluateCellsExpr([stock("A")], { ...NO_MAT, dayGridOf: () => null, baselineOf: () => 10000 }, bb).hits).toEqual([]);
-        expect(evaluateCellsExpr([stock("A")], NO_MAT, bb).hits).toEqual([]);
+    it("양봉 필터는 후보만 거른다 — 음봉 50억(분 1)이 사다리를 올린 구조는 그대로(분 3 만 남음)", () => {
+        const bull: CellExpr = { kind: "pred", id: "c", pred: { kind: "candleShape", shape: "bull" } };
+        expect(mins(evaluateCellsExpr([s], NO_MAT, and(bo(), bull)))).toEqual([0, 3]);
     });
 
-    it("같은 판정 키는 종목당 한 번만 계산한다 — 전이만 다른 두 잎이 재료를 두 번 부르지 않는다", () => {
-        const dayGridOf = vi.fn(() => g);
-        const two: CellExpr = {
-            kind: "or", id: "r",
-            of: [
-                { kind: "pred", id: "x", pred: { kind: "levelRebreak", gateEok: 30, bullOnly: true, approachPct: 0.5, onePerLevel: true, zigzagPct: 2 } },
-                { kind: "pred", id: "y", pred: { kind: "levelRebreak", gateEok: 30, bullOnly: true, approachPct: 0.5, onePerLevel: true, zigzagPct: 2, transition: "firstTrue" } },
-            ],
-        };
-        evaluateCellsExpr([stock("A")], { ...NO_MAT, dayGridOf }, two);
-        expect(dayGridOf).toHaveBeenCalledTimes(1);
-        expect(dayGridOf).toHaveBeenCalledWith("A", 2);
+    it("분봉 대금 필터 — 돌파 대금 ≥ 55억", () => {
+        const amt: CellExpr = { kind: "pred", id: "m", pred: { kind: "cellValue", field: "minuteAmountEok", ranges: [{ from: { kind: "value", value: 55 } }] } };
+        expect(mins(evaluateCellsExpr([s], NO_MAT, and(bo(), amt)))).toEqual([3]);
+    });
+
+    it("기준선 재료가 있으면 이름표가 갈린다 — 기준선 0.1% 는 분 3(0.1)에서 뚫린다", () => {
+        // 기준선 가격 10,010 = 0.1% (분봉과 같은 반올림). 밴드 1% → 하단 ≈ −0.9 라 분 0(0) 부터 기준선 밴드 사건.
+        const mat: CellMaterials = { ...NO_MAT, baselineOf: () => 10_010 };
+        const r = evaluateCellsExpr([s], mat, bo({ label: "baseline" }));
+        expect(mins(r)).toEqual([0, 1, 3]);
+        expect(evaluateCellsExpr([s], mat, bo({ label: "high" })).hits).toEqual([]);
+        expect(evaluateCellsExpr([s], NO_MAT, bo({ label: "baseline" })).hits).toEqual([]); // 기준선 없음 = 전부 고가
+    });
+
+    it("같은 구조 키(zigzag·밴드)는 종목당 한 번 — 이름표·전이만 다른 두 잎이 재료를 두 번 부르지 않는다", () => {
+        const baselineOf = vi.fn(() => null);
+        const two: CellExpr = { kind: "or", id: "r", of: [bo(), { ...bo({ label: "high", transition: "firstTrue" }), id: "y" }] };
+        evaluateCellsExpr([s], { ...NO_MAT, baselineOf }, two);
+        expect(baselineOf).toHaveBeenCalledTimes(1);
     });
 });

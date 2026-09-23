@@ -19,8 +19,6 @@
 // 값의 기준은 UN 한 벌이다 — rate·minuteHigh·trailingHighs.un 이 전부 "전일 종가 대비 %" 라
 // 같은 공간에서 비교된다(probe 의 전례 그대로).
 
-import { DAY_GRID_DETECT_OPTIONS } from "../grid/grid.js";
-
 /**
  * 전이 수식어 — 시점 술어를 **엣지**로 바꾸는 한 겹. 어휘가 셋인 이유는 이주 등가성이다:
  *  · `firstTrue`   = `f(t) ∧ ¬f(t−1)` — 매 상승 엣지(하루에 여러 번).
@@ -44,7 +42,7 @@ export const TRANSITION_LABEL: Record<Transition, string> = {
 };
 
 /** 셀 값 필드 — 한 셀(종목·분)에서 읽히는 스칼라. `zoneRank` 만 분 단면이 필요해 비용 등급이 다르다. */
-export type CellValueField = "ratePct" | "cumAmountEok" | "minuteHighPct" | "zoneRank";
+export type CellValueField = "ratePct" | "cumAmountEok" | "minuteAmountEok" | "minuteHighPct" | "zoneRank";
 
 export interface CellValueFieldMeta {
     label: string;
@@ -56,6 +54,8 @@ export interface CellValueFieldMeta {
 export const CELL_VALUE_FIELDS: Record<CellValueField, CellValueFieldMeta> = {
     ratePct: { label: "등락률", suffix: "%", improve: "up" },
     cumAmountEok: { label: "누적대금", suffix: "억", improve: "up" },
+    // 그 분 봉 자신의 대금 — 돌파 후보의 「돌파 대금 ≥ n」 필터가 이것이다(생성기 밖 — 필터는 구조를 안 바꾼다).
+    minuteAmountEok: { label: "분봉 대금", suffix: "억", improve: "up" },
     minuteHighPct: { label: "분봉고가", suffix: "%", improve: "up" },
     zoneRank: { label: "존순위", suffix: "위", improve: "down" },
 };
@@ -80,26 +80,19 @@ export interface CellTimeRange {
 }
 
 /**
- * 하루 타점 노브(2026-09-23 — decisions 「하루 타점」). 옛 「타점 정의」 패널의 판정 노브가 **술어 payload**
- * 로 내려온 것이라 집합마다(같은 집합 안 가지마다) 달라도 된다 — 격자는 한 벌이고 판정은 읽기다.
- * 도메인: 게이트 ≥ 0 정수(억) · m' [0, 하루 굽기 밴드 3] · zigzag [하루 굽기 1, 5].
+ * 돌파 사슬 생성기 노브(2026-09-24 — decisions 「Daily 타점 생성 = 돌파 사슬」). 생성기 노브는 **zigzag · 밴드
+ * 둘뿐**이다 — 양봉·시간대·돌파 대금은 후보에 거는 AND 필터(필터는 구조를 안 바꾼다).
+ * `label` 은 구조가 아니라 후보 거르기라 판정 키에 안 들어간다(같은 사슬에서 이름표만 고른다).
  */
-export interface DayPointPayload {
-    gateEok: number;
-    bullOnly: boolean;
-    approachPct: number;
-    onePerLevel: boolean;
-}
+export type BreakoutLabelFilter = "all" | "baseline" | "high";
+export const BREAKOUT_ZIGZAG_MIN_PCT = 0.5;
+export const BREAKOUT_ZIGZAG_MAX_PCT = 10;
+export const BREAKOUT_BAND_MAX_PCT = 5;
+export const DEFAULT_BREAKOUT = { zigzagPct: 2, bandPct: 0.5, label: "all" as BreakoutLabelFilter };
 
-export const DAY_APPROACH_MAX_PCT = DAY_GRID_DETECT_OPTIONS.approachPct;
-export const DAY_ZIGZAG_MIN_PCT = DAY_GRID_DETECT_OPTIONS.zigzagPct;
-export const DAY_ZIGZAG_MAX_PCT = 5;
-
-/** 새 술어의 기본값 — ① 50억 · ② 30억·zigzag 2(종단 격자와 같은 해상도), 공통 양봉·m' 0.5·레벨당 하나. */
-export const DEFAULT_BASELINE_BREAK: DayPointPayload = { gateEok: 50, bullOnly: true, approachPct: 0.5, onePerLevel: true };
-export const DEFAULT_LEVEL_REBREAK: DayPointPayload & { zigzagPct: number } = {
-    gateEok: 30, bullOnly: true, approachPct: 0.5, onePerLevel: true, zigzagPct: 2,
-};
+/** 캔들 모양 — 봉 자체의 성질(돌파 후보에 AND 로 건다). 꼬리 등은 여기로 늘린다. */
+export type CandleShape = "bull" | "bear";
+export const CANDLE_SHAPE_LABEL: Record<CandleShape, string> = { bull: "양봉", bear: "음봉" };
 
 /**
  * 셀 술어 하나. 전이는 **술어 줄과 칸 양쪽**에 놓일 수 있다(CellCondition.transition) — UI 문법이
@@ -110,10 +103,9 @@ export type CellPredicate =
     | { kind: "cellValue"; field: CellValueField; ranges: CellValueRange[]; transition?: Transition }
     | { kind: "priorHighBreak"; days: number; transition?: Transition }
     | { kind: "gridPoint"; transition?: Transition }
-    /** ① 기준선 돌파 — 기준선은 `/point-grids` 의 확정 기준선(없는 날·종목은 결손 = 거짓). */
-    | ({ kind: "baselineBreak"; transition?: Transition } & DayPointPayload)
-    /** ② 마디 재돌파 — 날짜 격자를 zigzagPct 로 접어 기준선 없이 판정. */
-    | ({ kind: "levelRebreak"; zigzagPct: number; transition?: Transition } & DayPointPayload)
+    /** 돌파 사슬 후보(생성기) — 기준선은 `/point-grids` 의 확정 기준선(없으면 이름표가 전부 「고가 돌파」). */
+    | { kind: "breakout"; zigzagPct: number; bandPct: number; label: BreakoutLabelFilter; transition?: Transition }
+    | { kind: "candleShape"; shape: CandleShape; transition?: Transition }
     | { kind: "time"; ranges: CellTimeRange[]; transition?: Transition };
 
 export type CellPredicateKind = CellPredicate["kind"];
@@ -140,9 +132,10 @@ export function costTierOf(p: CellPredicate): 0 | 1 | 2 {
             return 0;
         case "priorHighBreak":
         case "gridPoint":
-        case "baselineBreak":
-        case "levelRebreak":
+        case "breakout":
             return 1;
+        case "candleShape":
+            return 0;
         default:
             return unknownCellPredicate(p);
     }
@@ -218,18 +211,17 @@ export function isCellPredicateEmpty(p: CellPredicate): boolean {
             return p.ranges.length === 0;
         case "priorHighBreak":
         case "gridPoint":
-        case "baselineBreak":
-        case "levelRebreak":
+        case "breakout":
+        case "candleShape":
             return false;
         default:
             return unknownCellPredicate(p);
     }
 }
 
-/** 하루 타점 술어의 판정 키 — 같은 키면 같은 분 집합이다(엔진 사전계산의 메모 단위). 전이는 판정 밖이라 뺀다. */
-export function dayPointKeyOf(p: Extract<CellPredicate, { kind: "baselineBreak" | "levelRebreak" }>): string {
-    const z = p.kind === "levelRebreak" ? `|z${p.zigzagPct}` : "";
-    return `${p.kind}|g${p.gateEok}|b${p.bullOnly ? 1 : 0}|m${p.approachPct}|o${p.onePerLevel ? 1 : 0}${z}`;
+/** 돌파 사슬의 판정 키 — 같은 키면 같은 사슬·후보다(엔진 사전계산의 메모 단위). 이름표·전이는 구조 밖이라 뺀다. */
+export function breakoutKeyOf(p: Extract<CellPredicate, { kind: "breakout" }>): string {
+    return `bo|z${p.zigzagPct}|b${p.bandPct}`;
 }
 
 /** 이 조건 묶음이 격자 재료를 쓰는가 — 패널의 로딩·오류 게이트가 본다(안 쓰면 격자 실패가 화면을 죽이면 안 된다). */
@@ -252,16 +244,6 @@ const isField = (v: unknown): v is CellValueField => typeof v === "string" && v 
 const HM = /^\d{2}:\d{2}$/;
 const clampNum = (v: unknown, lo: number, hi: number, fallback: number): number =>
     typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
-
-/** 하루 타점 payload — **폐기가 아니라 클램프**(범위 밖 값 하나로 술어를 버리지 않는다). 없는 필드는 기본값. */
-function parseDayPayload(raw: Record<string, unknown>, d: DayPointPayload): DayPointPayload {
-    return {
-        gateEok: Math.round(clampNum(raw.gateEok, 0, 100_000, d.gateEok)),
-        bullOnly: typeof raw.bullOnly === "boolean" ? raw.bullOnly : d.bullOnly,
-        approachPct: clampNum(raw.approachPct, 0, DAY_APPROACH_MAX_PCT, d.approachPct),
-        onePerLevel: typeof raw.onePerLevel === "boolean" ? raw.onePerLevel : d.onePerLevel,
-    };
-}
 
 function parseBound(raw: unknown): CellBound | undefined {
     if (!isObj(raw)) return undefined;
@@ -300,15 +282,17 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
         }
         case "gridPoint":
             return { kind: "gridPoint", ...transition };
-        case "baselineBreak":
-            return { kind: "baselineBreak", ...parseDayPayload(raw, DEFAULT_BASELINE_BREAK), ...transition };
-        case "levelRebreak":
+        // 노브는 **폐기가 아니라 클램프** — 범위 밖 값 하나로 술어(와 종단이면 저장본 통째)를 버리지 않는다.
+        case "breakout":
             return {
-                kind: "levelRebreak",
-                ...parseDayPayload(raw, DEFAULT_LEVEL_REBREAK),
-                zigzagPct: clampNum(raw.zigzagPct, DAY_ZIGZAG_MIN_PCT, DAY_ZIGZAG_MAX_PCT, DEFAULT_LEVEL_REBREAK.zigzagPct),
+                kind: "breakout",
+                zigzagPct: clampNum(raw.zigzagPct, BREAKOUT_ZIGZAG_MIN_PCT, BREAKOUT_ZIGZAG_MAX_PCT, DEFAULT_BREAKOUT.zigzagPct),
+                bandPct: clampNum(raw.bandPct, 0, BREAKOUT_BAND_MAX_PCT, DEFAULT_BREAKOUT.bandPct),
+                label: raw.label === "baseline" || raw.label === "high" ? raw.label : "all",
                 ...transition,
             };
+        case "candleShape":
+            return raw.shape === "bull" || raw.shape === "bear" ? { kind: "candleShape", shape: raw.shape, ...transition } : null;
         case "time": {
             if (!Array.isArray(raw.ranges)) return null;
             const ranges: CellTimeRange[] = [];

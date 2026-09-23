@@ -3,7 +3,7 @@
 // 죽은 참조를 이름 없이 id 로 흘리면(또는 조용히 건너뛰면) 화면에는 멀쩡한 조건처럼 보인다.
 // 그래서 이름을 못 찾은 자리는 `(지워짐)` 으로 **눈에 띄게** 남긴다 — 판정에서 그게 미배치를 만들고 있으니
 // 숫자와 화면이 같은 이야기를 해야 한다.
-import { CELL_VALUE_FIELDS, TRANSITION_LABEL } from "@trade-data-manager/market/domain";
+import { CANDLE_SHAPE_LABEL, CELL_VALUE_FIELDS, TRANSITION_LABEL } from "@trade-data-manager/market/domain";
 import { NONE_LABEL, isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { shortDate } from "../../lib/date.js";
 import { OUTCOME_METRIC_NAME } from "../../lib/outcomeMetric.js";
@@ -56,16 +56,10 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
         case "cellValue": return cellValueLabel(p);
         case "priorHighBreak": return `전고 돌파 (${p.days}일)`;
         case "gridPoint": return "격자 Point";
-        // 노브를 라벨에 싣는다 — 같은 종류가 게이트·zigzag 별로 여러 줄 설 수 있다(hotPoints 의 (W,r) 선례).
-        case "baselineBreak": return `기준선 돌파 ${dayKnobLabel(p)}`;
-        case "levelRebreak": return `마디 재돌파 ${p.zigzagPct}% ${dayKnobLabel(p)}`;
+        // 노브를 라벨에 싣는다 — 같은 생성기가 (zigzag, 밴드)별로 여러 줄 설 수 있다(hotPoints 의 (W,r) 선례).
+        case "breakout": return `돌파 ${p.zigzagPct}%/${p.bandPct}%${p.label === "all" ? "" : p.label === "baseline" ? " · 기준선" : " · 고가"}`;
+        case "candleShape": return CANDLE_SHAPE_LABEL[p.shape];
     }
-}
-
-/** 하루 타점 노브 꼬리 — `50억 · 양봉 · m'0.5 · 전부`. 기본(레벨당 하나)은 안 적는다. */
-function dayKnobLabel(p: Extract<FilterPredicate, { kind: "baselineBreak" | "levelRebreak" }>): string {
-    return [`${p.gateEok}억`, p.bullOnly ? "양봉" : null, `m'${p.approachPct}`, p.onePerLevel ? null : "전부"]
-        .filter((x): x is string => x !== null).join(" · ");
 }
 
 /** 셀 값 술어 한 줄 — `등락률 ≥ 5%` 처럼 경계까지 싣는다(같은 필드의 조건이 여럿 설 수 있다). */
@@ -112,8 +106,8 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         case "cellValue": return "셀 값";
         case "priorHighBreak": return "전고";
         case "gridPoint": return "격자";
-        case "baselineBreak":
-        case "levelRebreak": return "타점";
+        case "breakout": return "타점";
+        case "candleShape": return "캔들";
         default: {
             // 자물쇠 — 옛 `default: return ""` 는 종류를 빠뜨려도 컴파일이 통과하고 증상이 조용했다
             // (보드 줄의 종류 라벨만 빈칸). `never` 대입이 그 구멍을 컴파일 에러로 바꾼다.

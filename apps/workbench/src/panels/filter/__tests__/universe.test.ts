@@ -10,12 +10,12 @@ const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, 
 // 팔레트의 회색과 평가의 결손이 다른 이야기를 한다.
 const AVAILABLE: Record<Universe, PredicateKind[]> = {
     longitudinal: ["group", "axisBand", "axisValue", "date", "time", "themeStrength", "outcome", "outcomeRecovery", "hotPoints"],
-    daily: ["time", "cellValue", "priorHighBreak", "gridPoint", "baselineBreak", "levelRebreak"],
+    daily: ["time", "cellValue", "priorHighBreak", "gridPoint", "breakout", "candleShape"],
 };
 const ALL_KINDS: PredicateKind[] = [
     "group", "axisBand", "axisValue", "date", "time", "themeStrength",
     "outcome", "outcomeRecovery", "hotPoints", "cellValue", "priorHighBreak", "gridPoint",
-    "baselineBreak", "levelRebreak",
+    "breakout", "candleShape",
 ];
 
 describe("kindDeficiency — 종류 × 우주 전수", () => {

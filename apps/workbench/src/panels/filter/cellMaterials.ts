@@ -3,13 +3,11 @@
 //  · 서수/존 순위 = `sectionAtMinute`(테마 순위 패널과 같은 stocks 배열 참조 → WeakMap 단면 캐시 공유)
 //    + `themeStrength.themeStatsOf`(타점 정보 패널과 같은 판정식).
 //  · 격자 Point = `useAutoPoints`(defDerived 단일 파생 캐시)의 산출물.
-//  · 하루 타점(① 기준선 돌파 ② 마디 재돌파) = 날짜 격자(`useDayGrid`)를 `foldedGridOf` 로 접은 것 +
-//    기준선은 `/point-grids` 의 `grid.base`(서버 리졸버 산출 — 기준선 편집 시 이미 무효화된다).
+//  · 돌파 사슬의 기준선 = `/point-grids` 의 `grid.base`(서버 리졸버 산출 — 기준선 편집 시 이미 무효화된다).
 //
 // 순수 함수인 이유: 훅이 아니어야 dom 테스트 없이 잠글 수 있고, 호출부(useCellSet)의 memo 신원이
 // 재료 한 벌로 모인다(어댑터가 훅이면 의존 배열이 갈려 매 렌더 새 참조가 된다).
-import type { CellMaterials, PointGrid } from "@trade-data-manager/market/domain";
-import { foldedGridOf } from "../../lib/dayGridFold.js";
+import type { CellMaterials } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { autoPointsOfChart } from "../../lib/PointGridsContext.js";
 import type { AutoPointsView } from "../../lib/usePointGrids.js";
@@ -26,11 +24,8 @@ export function cellMaterialsOf(
     auto: AutoPointsView,
     proj: ThemeProjection,
     zoneParams: ThemeStrengthParams,
-    /** 하루 타점 재료 — 그 술어를 안 쓰면 생략(부재 = 결손 = 거짓). */
-    day?: {
-        grids: ReadonlyMap<string, PointGrid> | null;
-        baselineOf: (code: string) => number | null;
-    },
+    /** 돌파 사슬의 기준선(원주가) — 안 쓰면 생략(부재 = 기준선 없음 → 이름표가 전부 「고가 돌파」). */
+    baselineOf?: (code: string) => number | null,
 ): CellMaterials {
     const idx = new Map(stocks.map((s, i) => [s.code, i] as const));
     const ranksCache = new Map<number, SectionRanks>();
@@ -51,15 +46,7 @@ export function cellMaterialsOf(
     };
 
     return {
-        ...(day
-            ? {
-                dayGridOf: (code: string, zigzagPct: number): PointGrid | null => {
-                    const g = day.grids?.get(code);
-                    return g === undefined ? null : foldedGridOf(g, zigzagPct);
-                },
-                baselineOf: day.baselineOf,
-            }
-            : {}),
+        ...(baselineOf ? { baselineOf } : {}),
         gridMinutesOf: (code) => autoPointsOfChart(auto, code, date).map((p) => p.min),
         zoneRankAt: (code, min) => {
             const memberOf = proj.themesByCode.get(code);
