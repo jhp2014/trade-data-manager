@@ -156,6 +156,14 @@ export const DEFAULT_GRID_OPTIONS: Required<GridDetectOptions> = {
     approachPct: 0.5,
 };
 
+/**
+ * 하루 우주의 날짜 격자(날짜 × 전 종목)를 굽는 값 — **넓게 굽고 읽을 때 조인다**(decisions.md
+ * 「하루 타점 — 서버가 날짜 격자를 굽고 클라가 조건으로 뽑는다」). zigzag 는 `foldGrid` 로 p% 로 접고,
+ * 밴드는 m' ≤ 3 으로 조이며, 대금 floor 는 없다(게이트는 클라가 사건마다 실린 tv 로 건다).
+ * ⚠ floor 0 은 `foldGrid` 의 전제다 — 러닝 최고가 갱신 봉이 전부 사건에 실려야 접은 tie 규칙이 원본과 같다.
+ */
+export const DAY_GRID_DETECT_OPTIONS = { zigzagPct: 1, floorEok: 0, approachPct: 3 } as const satisfies GridDetectOptions;
+
 const KRW_PER_EOK = 100_000_000n;
 
 /**
