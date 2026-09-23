@@ -95,7 +95,7 @@ export function HotPointsPanel(): JSX.Element {
                     {" · "}2개+ {summary.many.toLocaleString()}
                 </span>
                 <span title="급타점 컷은 종단 조건이다 — 작업면이 하루로 고정된 지금은 그어도 조건이 되지 않는다(종단 보류)" style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>
-                    긋는 순간 조건
+                    종단 보류 — 조건 안 됨
                 </span>
             </PanelHeader>
 

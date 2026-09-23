@@ -49,6 +49,8 @@ export function useBreakoutView(code: string, date: string, knobs: BreakoutChain
 
     return useMemo<BreakoutView>(() => {
         if (snapQ.error) return { dayTotal, status: "empty", why: `분봉 재료 조회 실패: ${(snapQ.error as Error).message}` };
+        // 기준선 재료 실패 — 기다려도 안 온다. 로딩으로 두면 판이 영원히 "불러오는 중"이다.
+        if (pointGrids.error) return { dayTotal, status: "empty", why: `기준선 재료(/point-grids) 조회 실패: ${pointGrids.error.message}` };
         if (!date || !code) return { dayTotal, status: "empty", why: "포커스 종목이 없습니다 — 차트나 작업 대상에서 종목을 짚으세요" };
         if (!stocks || byDate === null) return { dayTotal, status: "loading" };
         const stock = stocks.find((s) => s.code === code);
@@ -56,5 +58,5 @@ export function useBreakoutView(code: string, date: string, knobs: BreakoutChain
         const res = breakoutOfStock(stock, pointGrids.gridOf(code, date)?.base ?? null, { zigzagPct, bandPct }, { trace: true });
         return { dayTotal, status: "ready", stock, res };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [code, date, stocks, byDate, dayTotal, snapQ.error, zigzagPct, bandPct]);
+    }, [code, date, stocks, byDate, dayTotal, snapQ.error, pointGrids.error, zigzagPct, bandPct]);
 }

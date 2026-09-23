@@ -136,7 +136,7 @@ export function OutcomePanel({ panelId = "outcome-rails" }: { panelId?: string }
                     </button>
                 </span>
                 <span title="결과 컷은 종단 조건이다 — 작업면이 하루로 고정된 지금은 그어도 조건이 되지 않는다(종단 보류)" style={{ fontSize: 10, color: "var(--text-tertiary)", flexShrink: 0 }}>
-                    긋는 순간 조건
+                    종단 보류 — 조건 안 됨
                 </span>
                 <HeaderControls controls={controls} storageKey="wb.headerPins.outcome" />
             </PanelHeader>

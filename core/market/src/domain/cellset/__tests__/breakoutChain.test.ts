@@ -2,6 +2,8 @@
 // 픽스처는 % (기준가 대비) — 가격 비 = 1 + %/100.
 import { describe, expect, it } from "vitest";
 import { baselinePctOf, breakoutChainsOf, type ChainSeries } from "../breakoutChain.js";
+import { deriveMinutes } from "../../replay/dayReplay.js";
+import type { DailyCandle } from "../../candle/model.js";
 
 /** [고가%, 저가%, 분 대금(억)] 열 → 시리즈. 대금 0 = 거래 없는 채움봉. */
 function series(bars: [number, number, number][]): ChainSeries {
@@ -130,11 +132,20 @@ describe("기준선 밴드 — 이름표는 사슬 단위, 도중 합류", () =>
 });
 
 describe("baselinePctOf — 분봉 % 와 같은 식·같은 반올림", () => {
-    it("같은 가격이면 분봉 % 와 같은 값 — 터치가 잡힌다", () => {
+    it("같은 가격이면 **deriveMinutes 가 낸 분봉 %** 와 같은 값 — 터치가 잡힌다", () => {
         const base = 12_340;
         const price = 12_710;
-        const minutePct = Math.round(((price - base) / base) * 100 * 100) / 100;
-        expect(baselinePctOf(price, base)).toBe(minutePct);
+        const bar = (date: string, close: string): DailyCandle => {
+            const b = { open: close, high: close, low: close, close, volume: "1", amount: "1" };
+            return { stockCode: "A", date, krx: b, un: b };
+        };
+        const daily = [bar("2026-06-16", String(base)), bar("2026-06-17", String(price))];
+        const m = deriveMinutes("A", [{
+            stockCode: "A", date: "2026-06-17", time: "09:00:00", krx: null,
+            un: { open: String(price), high: String(price), low: String(price), close: String(price), volume: "10" },
+        }], daily, daily, "2026-06-17")!;
+        expect(m.basePrice.un).toBe(base);
+        expect(baselinePctOf(price, m.basePrice.un)).toBe(m.minuteHigh[0]);
         expect(baselinePctOf(null, base)).toBeNull();
         expect(baselinePctOf(price, null)).toBeNull();
     });

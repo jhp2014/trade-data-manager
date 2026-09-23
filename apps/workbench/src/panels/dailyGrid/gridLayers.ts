@@ -7,7 +7,7 @@
 //   · ▼ 가 맨 위 — 주인공(후보)이 무엇에도 안 덮인다.
 // 밴드 궤적은 **봉 처리 뒤의 상태**(breakoutChainsOf trace)라 계단으로 그린다 — 선을 비스듬히 이으면
 // 없던 가격이 그려진다.
-import type { BreakoutChainResult, BreakoutLabel } from "@trade-data-manager/market/domain";
+import type { BreakoutChainResult, BreakoutLabel, BreakoutLabelFilter } from "@trade-data-manager/market/domain";
 import { compact, type DrawLayer, type DrawOp } from "../canvas/drawList.js";
 import { BREAKOUT_BASE, BREAKOUT_HIGH } from "../../styles/palette.js";
 
@@ -48,7 +48,14 @@ export function viewRangeOf(s: GridSeries, from: number, to: number, baselinePct
     return { lo: lo - pad, hi: hi + pad };
 }
 
-export function gridLayers(s: GridSeries, r: BreakoutChainResult & { baselinePct: number | null }, view: GridView, box: GridBox): DrawLayer[] {
+/** `label` = 이름표 거르기 — 걸러진 후보는 ▼ 대신 흐린 ▽ 로 남긴다(구조는 그대로라 사슬·밴드는 안 바뀐다). */
+export function gridLayers(
+    s: GridSeries,
+    r: BreakoutChainResult & { baselinePct: number | null },
+    view: GridView,
+    box: GridBox,
+    label: BreakoutLabelFilter = "all",
+): DrawLayer[] {
     const n = view.to - view.from + 1;
     if (n <= 0 || box.width <= 0 || box.height <= 0) return [];
     const bw = box.width / n;
@@ -63,7 +70,8 @@ export function gridLayers(s: GridSeries, r: BreakoutChainResult & { baselinePct
         const a = Math.max(c.start, view.from);
         const b = Math.min(c.end ?? view.to, view.to);
         if (b < a) continue;
-        const split = c.baselineFrom === null ? b + 1 : Math.max(c.baselineFrom, a);
+        // 합류가 보는 구간 뒤면 이 구간은 전부 고가 돌파다 — 자르지 않으면 띠가 상자 밖으로 넘친다.
+        const split = c.baselineFrom === null ? b + 1 : Math.min(Math.max(c.baselineFrom, a), b + 1);
         if (split > a) chainOps.push({ op: "rect", x: cx(a) - bw / 2, y: box.top, w: (split - a) * bw, h: box.height, fill: BREAKOUT_HIGH });
         if (split <= b) chainBaseOps.push({ op: "rect", x: cx(split) - bw / 2, y: box.top, w: (b - split + 1) * bw, h: box.height, fill: BREAKOUT_BASE });
     }
@@ -111,9 +119,10 @@ export function gridLayers(s: GridSeries, r: BreakoutChainResult & { baselinePct
     const markOps: DrawOp[] = [];
     for (const c of r.candidates) {
         if (!inView(c.i)) continue;
+        const kept = label === "all" || c.label === label;
         markOps.push({
-            op: "text", x: cx(c.i), y: y(s.minuteHigh[c.i]) - 3, text: c.seq === 0 ? "▼" : "▽", anchor: "middle",
-            fill: labelColor(c.label), size: 11, halo: { color: "var(--bg-primary)", width: 2 },
+            op: "text", x: cx(c.i), y: y(s.minuteHigh[c.i]) - 3, text: kept && c.seq === 0 ? "▼" : "▽", anchor: "middle",
+            fill: kept ? labelColor(c.label) : AXIS_TEXT, size: 11, halo: { color: "var(--bg-primary)", width: 2 },
         });
     }
 

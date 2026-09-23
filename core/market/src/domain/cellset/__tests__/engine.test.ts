@@ -308,12 +308,8 @@ describe("돌파 생성기 + 캔들·분봉 대금 필터", () => {
         ({ kind: "pred", id: "b", pred: { kind: "breakout", zigzagPct: 2, bandPct: 1, label: "all", ...over } });
     const and = (...of: CellExpr[]): CellExpr => ({ kind: "and", id: "a", of });
 
-    it("사슬 후보(첫 사건 + 대금 사다리)에서 발화하고 사슬 정보를 싣는다", () => {
-        const r = evaluateCellsExpr([s], NO_MAT, bo());
-        expect(mins(r)).toEqual([0, 1, 3]);
-        expect(r.hits.map((h) => h.breakout)).toEqual([
-            { label: "high", chain: 0, seq: 0 }, { label: "high", chain: 0, seq: 1 }, { label: "high", chain: 0, seq: 2 },
-        ]);
+    it("사슬 후보(첫 사건 + 대금 사다리)에서 발화한다", () => {
+        expect(mins(evaluateCellsExpr([s], NO_MAT, bo()))).toEqual([0, 1, 3]);
     });
 
     it("양봉 필터는 후보만 거른다 — 음봉 50억(분 1)이 사다리를 올린 구조는 그대로(분 3 만 남음)", () => {

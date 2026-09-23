@@ -64,8 +64,8 @@ export interface CellMaterials {
 }
 
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
-/** 돌파 후보 한 셀의 표시값 — 목록이 「돌파」 줄을 그린다. */
-export interface CellBreakout {
+/** 돌파 후보 한 셀의 사슬 정보(사전계산 메모의 값). */
+interface CellBreakout {
     label: BreakoutLabel;
     /** 그날 사슬 번호. */
     chain: number;
@@ -84,8 +84,6 @@ export interface CellHit {
     /** 존 순위 술어가 든 조건이 발화했을 때의 순위/테마(다중 테마는 best=min). 아니면 null. */
     zoneRank: number | null;
     zoneTheme: string | null;
-    /** 돌파 생성기가 든 가지가 발화했을 때의 사슬 정보(여러 생성기면 먼저 참인 것). 아니면 null. */
-    breakout: CellBreakout | null;
 }
 
 export interface CellEvalResult {
@@ -312,8 +310,6 @@ interface CellCtx {
     zoneAsked: boolean;
     /** 이 가지가 존 순위를 물었나 — 발화한 가지만 hit 에 순위를 싣는다(옛 usedZone 과 같은 자). */
     usedZone: boolean;
-    /** 이 가지에서 참이 된 돌파 잎의 사슬 정보 — 발화한 가지만 hit 에 싣는다. */
-    breakout: CellBreakout | null;
 }
 
 function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
@@ -350,7 +346,6 @@ function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
             case "breakout": {
                 const hit = ctx.pre.breakouts.get(c.breakoutKey!)?.get(ctx.min);
                 raw = hit !== undefined && (p.label === "all" || p.label === hit.label);
-                if (raw && ctx.breakout === null) ctx.breakout = hit!;
                 break;
             }
             case "candleShape": {
@@ -461,11 +456,10 @@ export function evaluateCellsExpr(
 
         for (let i = 0; i < n; i++) {
             const min = minuteOfDayOf(s.times[i]);
-            const ctx: CellCtx = { s, i, min, pre, mat, zone: null, zoneAsked: false, usedZone: false, breakout: null };
+            const ctx: CellCtx = { s, i, min, pre, mat, zone: null, zoneAsked: false, usedZone: false };
 
             for (const b of branches) {
                 ctx.usedZone = false;
-                ctx.breakout = null;
                 if (!runNode(b, st, ctx)) continue;
 
                 byCondition.set(b.node.id, (byCondition.get(b.node.id) ?? 0) + 1);
@@ -481,12 +475,10 @@ export function evaluateCellsExpr(
                         cumAmount: s.cumAmount[i] ?? null,
                         zoneRank: null,
                         zoneTheme: null,
-                        breakout: null,
                     };
                     byKey.set(key, hit);
                 }
                 if (!hit.tags.includes(b.node.id)) hit.tags.push(b.node.id);
-                if (ctx.breakout !== null && hit.breakout === null) hit.breakout = ctx.breakout;
                 if (ctx.usedZone && ctx.zone && (hit.zoneRank === null || ctx.zone.rank < hit.zoneRank)) {
                     hit.zoneRank = ctx.zone.rank;
                     hit.zoneTheme = ctx.zone.theme;

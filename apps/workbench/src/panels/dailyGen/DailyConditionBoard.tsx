@@ -13,7 +13,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { DEFAULT_BREAKOUT, type CellValueRange } from "@trade-data-manager/market/domain";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
 import { createPanelSlot, openPanelExact } from "../../lib/openPanel.js";
-import { selectEditingExpr, selectEditingStages, useWorkbench } from "../../store/workbench.js";
+import { allStagesOf, selectEditingExpr, selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { useDock } from "../../store/dock.js";
 import { slotTitleOf } from "../../shell/panelCatalog.js";
 import { parseSlotId } from "../../shell/panelSlots.js";
@@ -240,8 +240,10 @@ export function DailyConditionBoard(): JSX.Element {
                     candidates={dockSlots.filter((id) => {
                         if (parseSlotId(id)?.base !== DAILY_GRID_BASE) return false;
                         // 다른 **살아 있는 돌파 행**이 쓰는 판은 뺀다(1:1). 고아 바인딩은 판을 점유하지 않는다.
+                        // ⚠ "살아 있다"는 **모든 집합**에서 본다 — 편집 집합만 보면 묶음으로 드릴인한 동안 부모
+                        //   행의 판이 빈 판으로 떠서, 고르는 순간 부모 행의 연동이 조용히 지워진다(리뷰가 잡은 자리).
                         return !Object.entries(bindings).some(([sid, pid]) => pid === id && sid !== gridLink.stageId
-                            && stages.some((st) => st.id === sid && stageKind(st) === "breakout"));
+                            && allStagesOf(savedSets).some((st) => st.id === sid && stageKind(st) === "breakout"));
                     })}
                     onPick={(panelId) => { bindTheme(gridLink.stageId, panelId); openPanelExact(panelId); setGridLink(null); }}
                     onNew={() => { const id = createPanelSlot(DAILY_GRID_BASE); bindTheme(gridLink.stageId, id); openPanelExact(id); setGridLink(null); }}

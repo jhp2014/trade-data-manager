@@ -89,10 +89,14 @@ export function DailyGridPanel({ panelId, baseTitle }: { panelId: string; baseTi
         }
         const range = viewRangeOf(s, from, to, view.res.baselinePct);
         if (!range) return null;
-        return gridLayers(s, view.res, { from, to, ...range }, box);
+        return gridLayers(s, view.res, { from, to, ...range }, box, knobs.label);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [view, whole, box.width, box.height]);
+    }, [view, whole, box.width, box.height, knobs.label]);
 
+    // 집합 수 — 생성소 머리글과 **같은 규칙**(모르는 동안·오류·어긋남·그물은 수가 아니다).
+    const d = bound.day;
+    const setCount = d.unsupported !== null ? "—" : d.error !== null ? "오류" : d.isLoading ? "…"
+        : d.tooWide ? `${d.matched.toLocaleString("ko-KR")}+ 너무 넓음` : d.matched.toLocaleString("ko-KR");
     const shown = view.status === "ready"
         ? view.res.candidates.filter((c) => knobs.label === "all" || c.label === knobs.label)
         : [];
@@ -154,7 +158,7 @@ export function DailyGridPanel({ panelId, baseTitle }: { panelId: string; baseTi
                 <div className="tabular" style={{ fontSize: 10.5, color: "var(--text-secondary)", marginBottom: 2 }}
                     title="생성기 = 이 돌파 줄 단독(이름표 거르기만) · 집합 = 생성소의 조건 전부를 통과한 수(작업 대상 목록)">
                     그날 생성기 {view.dayTotal !== null ? view.dayTotal.toLocaleString("ko-KR") : "…"}
-                    {" · "}집합 {bound.day.isLoading ? "…" : bound.day.matched.toLocaleString("ko-KR")}
+                    {" · "}집합 {setCount}
                     {view.status === "ready" && ` · 이 종목 ${shown.length}`}
                 </div>
                 {view.status === "ready" && shown.map((c) => {
