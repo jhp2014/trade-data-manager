@@ -400,3 +400,21 @@ describe("renameGroupInStages — 그룹 개명 승계(리터럴 id = 이름)", 
         expect(out[0]!.predicates[0]).toMatchObject({ kind: "group", scope: "point" });
     });
 });
+
+describe("하루 타점 술어 — 저장물 왕복(savedSets·filterStages 영속)", () => {
+    it("두 종류가 payload 그대로 왕복한다 — 모양이 어긋나면 저장본이 통째로 사라지므로 골든으로 잠근다", () => {
+        const stages = [{
+            id: "a", name: undefined, enabled: true,
+            predicates: [
+                { kind: "baselineBreak", gateEok: 50, bullOnly: true, approachPct: 0.5, onePerLevel: true },
+                { kind: "levelRebreak", gateEok: 30, bullOnly: false, approachPct: 1, onePerLevel: false, zigzagPct: 3, transition: "firstTrue" },
+            ],
+        }];
+        expect(parseStages(JSON.parse(JSON.stringify(stages)))).toEqual(stages);
+    });
+
+    it("범위 밖 노브는 저장본을 버리지 않고 클램프된다", () => {
+        const parsed = parseStages([{ id: "a", predicates: [{ kind: "levelRebreak", zigzagPct: 99, approachPct: -1 }] }]);
+        expect(parsed?.[0]?.predicates[0]).toMatchObject({ kind: "levelRebreak", zigzagPct: 5, approachPct: 0 });
+    });
+});

@@ -245,7 +245,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     /** 그 날에 데이터가 있나 — 빈 화면이 "조건 탓"인지 "휴장"인지 가르는 재료(undefined = 아직 모름). */
     const hasData = useHasDataOn(focusDate);
     const heavyCondition = useMemo(
-        () => cellSet.stages.some((st) => st.counted) && stages.some((st) => st.predicates.some((p) => p.kind === "gridPoint" || (p.kind === "cellValue" && p.field === "zoneRank"))),
+        () => cellSet.stages.some((st) => st.counted) && stages.some((st) => st.predicates.some((p) => p.kind === "gridPoint" || p.kind === "baselineBreak" || p.kind === "levelRebreak" || (p.kind === "cellValue" && p.field === "zoneRank"))),
         [cellSet.stages, stages],
     );
     const landOn = useCallback((dir: 1 | -1) => {

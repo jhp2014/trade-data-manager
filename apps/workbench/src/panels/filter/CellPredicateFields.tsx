@@ -5,6 +5,9 @@
 // payload **모양에서** 편집칸을 고른다 — 시드 전용 분기를 만들지 않는다(사용자가 만든 조건도 같은 손).
 import {
     CELL_VALUE_FIELDS,
+    DAY_APPROACH_MAX_PCT,
+    DAY_ZIGZAG_MAX_PCT,
+    DAY_ZIGZAG_MIN_PCT,
     TRANSITIONS,
     TRANSITION_LABEL,
     type CellPredicate,
@@ -50,7 +53,52 @@ export function CellPredicateField({ p, onChange }: { p: CellPredicate; onChange
     if (p.kind === "priorHighBreak") {
         return <NumField label="창" suffix="일" value={p.days} min={1} onCommit={(v) => onChange({ ...p, days: Math.round(v) })} />;
     }
+    if (p.kind === "baselineBreak" || p.kind === "levelRebreak") return <DayPointFields p={p} onChange={onChange} />;
     return null;
+}
+
+/** 켬/끔 칩 — 전이 칩과 같은 모양(줄 안의 작은 토글). */
+function Toggle({ on, label, title, onClick }: { on: boolean; label: string; title: string; onClick: () => void }): JSX.Element {
+    return (
+        <button onClick={onClick} title={title}
+            style={{
+                fontSize: 9.5, padding: "0 5px", borderRadius: 8, cursor: "pointer", background: "transparent",
+                border: `1px solid ${on ? "var(--accent-primary)" : "var(--border-default)"}`,
+                color: on ? "var(--accent-primary)" : "var(--text-tertiary)",
+            }}>
+            {label}
+        </button>
+    );
+}
+
+/**
+ * 하루 타점 노브 — 옛 「타점 정의」 패널의 판정 노브가 술어 payload 로 내려온 것(decisions 「하루 타점」).
+ * 값 도메인은 core 파서와 같은 자로 클램프한다(m' ≤ 굽는 밴드 3 · zigzag [1, 5]).
+ */
+function DayPointFields({ p, onChange }: {
+    p: Extract<CellPredicate, { kind: "baselineBreak" | "levelRebreak" }>;
+    onChange: (next: CellPredicate) => void;
+}): JSX.Element {
+    const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+    return (
+        <>
+            {p.kind === "levelRebreak" && (
+                <NumField label="zigzag" suffix="%" value={p.zigzagPct} min={DAY_ZIGZAG_MIN_PCT}
+                    title={`마디 해상도 — 이 폭 이상의 눌림으로 확정된 고점만 마디가 된다(${DAY_ZIGZAG_MIN_PCT}~${DAY_ZIGZAG_MAX_PCT}%)`}
+                    normalize={(v) => clamp(v, DAY_ZIGZAG_MIN_PCT, DAY_ZIGZAG_MAX_PCT)}
+                    onCommit={(v) => onChange({ ...p, zigzagPct: v })} />
+            )}
+            <NumField label="대금≥" suffix="억" value={p.gateEok} min={0} title="그 봉 자신의 거래대금 하한"
+                normalize={(v) => Math.round(v)} onCommit={(v) => onChange({ ...p, gateEok: v })} />
+            <NumField label="m'" suffix="%" value={p.approachPct} min={0}
+                title={`밴드 마진 — 넘을 가격의 −m' 안에 닿은 봉부터 돌파 영역(0~${DAY_APPROACH_MAX_PCT}%)`}
+                normalize={(v) => clamp(v, 0, DAY_APPROACH_MAX_PCT)} onCommit={(v) => onChange({ ...p, approachPct: v })} />
+            <Toggle on={p.bullOnly} label="양봉" title="양봉(종가 > 시가)만" onClick={() => onChange({ ...p, bullOnly: !p.bullOnly })} />
+            <Toggle on={p.onePerLevel} label={p.onePerLevel ? "레벨당 하나" : "후보 전부"}
+                title="레벨당 하나 = 그 가격을 처음 통과한 봉(게이트 미달이면 다음 봉) / 후보 전부 = 통과 봉 모두"
+                onClick={() => onChange({ ...p, onePerLevel: !p.onePerLevel })} />
+        </>
+    );
 }
 
 const CELL_KINDS: ReadonlySet<string> = new Set(["cellValue", "priorHighBreak", "gridPoint", "baselineBreak", "levelRebreak"]);

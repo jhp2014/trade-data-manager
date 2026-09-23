@@ -125,3 +125,13 @@ describe("setDisplayName — 참조도 항이다", () => {
         expect(setDisplayName({ expr: mk("and", "root", []) }, look)).toBe("빈 집합");
     });
 });
+
+describe("하루 타점 라벨 — 노브가 인스턴스를 가른다", () => {
+    it("게이트·zigzag·후보 전부가 이름에 실린다", () => {
+        const a: FilterPredicate = { kind: "baselineBreak", gateEok: 50, bullOnly: true, approachPct: 0.5, onePerLevel: true };
+        const b: FilterPredicate = { kind: "levelRebreak", gateEok: 30, bullOnly: false, approachPct: 0, onePerLevel: false, zigzagPct: 3 };
+        expect(predicateLabel(a, look)).toBe("기준선 돌파 50억 · 양봉 · m'0.5");
+        expect(predicateLabel(b, look)).toBe("마디 재돌파 3% 30억 · m'0 · 전부");
+        expect(kindLabel("levelRebreak")).toBe("타점");
+    });
+});
