@@ -19,6 +19,8 @@
 // 값의 기준은 UN 한 벌이다 — rate·minuteHigh·trailingHighs.un 이 전부 "전일 종가 대비 %" 라
 // 같은 공간에서 비교된다(probe 의 전례 그대로).
 
+import { DAY_GRID_DETECT_OPTIONS } from "../grid/grid.js";
+
 /**
  * 전이 수식어 — 시점 술어를 **엣지**로 바꾸는 한 겹. 어휘가 셋인 이유는 이주 등가성이다:
  *  · `firstTrue`   = `f(t) ∧ ¬f(t−1)` — 매 상승 엣지(하루에 여러 번).
@@ -78,6 +80,28 @@ export interface CellTimeRange {
 }
 
 /**
+ * 하루 타점 노브(2026-09-23 — decisions 「하루 타점」). 옛 「타점 정의」 패널의 판정 노브가 **술어 payload**
+ * 로 내려온 것이라 집합마다(같은 집합 안 가지마다) 달라도 된다 — 격자는 한 벌이고 판정은 읽기다.
+ * 도메인: 게이트 ≥ 0 정수(억) · m' [0, 하루 굽기 밴드 3] · zigzag [하루 굽기 1, 5].
+ */
+export interface DayPointPayload {
+    gateEok: number;
+    bullOnly: boolean;
+    approachPct: number;
+    onePerLevel: boolean;
+}
+
+export const DAY_APPROACH_MAX_PCT = DAY_GRID_DETECT_OPTIONS.approachPct;
+export const DAY_ZIGZAG_MIN_PCT = DAY_GRID_DETECT_OPTIONS.zigzagPct;
+export const DAY_ZIGZAG_MAX_PCT = 5;
+
+/** 새 술어의 기본값 — ① 50억 · ② 30억·zigzag 2(종단 격자와 같은 해상도), 공통 양봉·m' 0.5·레벨당 하나. */
+export const DEFAULT_BASELINE_BREAK: DayPointPayload = { gateEok: 50, bullOnly: true, approachPct: 0.5, onePerLevel: true };
+export const DEFAULT_LEVEL_REBREAK: DayPointPayload & { zigzagPct: number } = {
+    gateEok: 30, bullOnly: true, approachPct: 0.5, onePerLevel: true, zigzagPct: 2,
+};
+
+/**
  * 셀 술어 하나. 전이는 **술어 줄과 칸 양쪽**에 놓일 수 있다(CellCondition.transition) — UI 문법이
  * "줄 토글"로 가든 "감싸는 블럭"으로 가든 저장물이 안 흔들리게 하는 장치다. 술어 하나짜리 칸에서
  * 두 자리는 **정확히 같은 결과**를 낸다(engine 테스트가 그 동치성을 잠근다).
@@ -86,6 +110,10 @@ export type CellPredicate =
     | { kind: "cellValue"; field: CellValueField; ranges: CellValueRange[]; transition?: Transition }
     | { kind: "priorHighBreak"; days: number; transition?: Transition }
     | { kind: "gridPoint"; transition?: Transition }
+    /** ① 기준선 돌파 — 기준선은 `/point-grids` 의 확정 기준선(없는 날·종목은 결손 = 거짓). */
+    | ({ kind: "baselineBreak"; transition?: Transition } & DayPointPayload)
+    /** ② 마디 재돌파 — 날짜 격자를 zigzagPct 로 접어 기준선 없이 판정. */
+    | ({ kind: "levelRebreak"; zigzagPct: number; transition?: Transition } & DayPointPayload)
     | { kind: "time"; ranges: CellTimeRange[]; transition?: Transition };
 
 export type CellPredicateKind = CellPredicate["kind"];
@@ -112,6 +140,8 @@ export function costTierOf(p: CellPredicate): 0 | 1 | 2 {
             return 0;
         case "priorHighBreak":
         case "gridPoint":
+        case "baselineBreak":
+        case "levelRebreak":
             return 1;
         default:
             return unknownCellPredicate(p);
@@ -188,10 +218,29 @@ export function isCellPredicateEmpty(p: CellPredicate): boolean {
             return p.ranges.length === 0;
         case "priorHighBreak":
         case "gridPoint":
+        case "baselineBreak":
+        case "levelRebreak":
             return false;
         default:
             return unknownCellPredicate(p);
     }
+}
+
+/** 식이 쓰는 술어 종류를 모은다 — 재료 게이트(날짜 격자·기준선)가 **트리를 걸어** 본다(평평한 루프는 묶음 안을 못 본다). */
+export function cellExprKinds(e: CellExpr | null): Set<CellPredicateKind> {
+    const out = new Set<CellPredicateKind>();
+    const walk = (x: CellExpr): void => {
+        if (x.kind === "pred") out.add(x.pred.kind);
+        else for (const c of x.of) walk(c);
+    };
+    if (e !== null) walk(e);
+    return out;
+}
+
+/** 하루 타점 술어의 판정 키 — 같은 키면 같은 분 집합이다(엔진 사전계산의 메모 단위). 전이는 판정 밖이라 뺀다. */
+export function dayPointKeyOf(p: Extract<CellPredicate, { kind: "baselineBreak" | "levelRebreak" }>): string {
+    const z = p.kind === "levelRebreak" ? `|z${p.zigzagPct}` : "";
+    return `${p.kind}|g${p.gateEok}|b${p.bullOnly ? 1 : 0}|m${p.approachPct}|o${p.onePerLevel ? 1 : 0}${z}`;
 }
 
 /** 이 조건 묶음이 격자 재료를 쓰는가 — 패널의 로딩·오류 게이트가 본다(안 쓰면 격자 실패가 화면을 죽이면 안 된다). */
@@ -212,6 +261,18 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 const isTransition = (v: unknown): v is Transition => typeof v === "string" && (TRANSITIONS as readonly string[]).includes(v);
 const isField = (v: unknown): v is CellValueField => typeof v === "string" && v in CELL_VALUE_FIELDS;
 const HM = /^\d{2}:\d{2}$/;
+const clampNum = (v: unknown, lo: number, hi: number, fallback: number): number =>
+    typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : fallback;
+
+/** 하루 타점 payload — **폐기가 아니라 클램프**(범위 밖 값 하나로 술어를 버리지 않는다). 없는 필드는 기본값. */
+function parseDayPayload(raw: Record<string, unknown>, d: DayPointPayload): DayPointPayload {
+    return {
+        gateEok: Math.round(clampNum(raw.gateEok, 0, 100_000, d.gateEok)),
+        bullOnly: typeof raw.bullOnly === "boolean" ? raw.bullOnly : d.bullOnly,
+        approachPct: clampNum(raw.approachPct, 0, DAY_APPROACH_MAX_PCT, d.approachPct),
+        onePerLevel: typeof raw.onePerLevel === "boolean" ? raw.onePerLevel : d.onePerLevel,
+    };
+}
 
 function parseBound(raw: unknown): CellBound | undefined {
     if (!isObj(raw)) return undefined;
@@ -250,6 +311,15 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
         }
         case "gridPoint":
             return { kind: "gridPoint", ...transition };
+        case "baselineBreak":
+            return { kind: "baselineBreak", ...parseDayPayload(raw, DEFAULT_BASELINE_BREAK), ...transition };
+        case "levelRebreak":
+            return {
+                kind: "levelRebreak",
+                ...parseDayPayload(raw, DEFAULT_LEVEL_REBREAK),
+                zigzagPct: clampNum(raw.zigzagPct, DAY_ZIGZAG_MIN_PCT, DAY_ZIGZAG_MAX_PCT, DEFAULT_LEVEL_REBREAK.zigzagPct),
+                ...transition,
+            };
         case "time": {
             if (!Array.isArray(raw.ranges)) return null;
             const ranges: CellTimeRange[] = [];

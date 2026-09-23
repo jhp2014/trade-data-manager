@@ -401,6 +401,60 @@ export function pointsOf(
     }));
 }
 
+// ── 하루 판정(2026-09-23 — decisions 「하루 타점」) ─────────────────────────────
+// 하루 우주의 타점은 **조건 둘**이다 — ① 기준선 돌파 ② 마디 재돌파. `kind` 는 없다(조건이 곧 종류).
+// 둘 다 **분 목록만** 낸다: 기준선 없는 Point 의 `levelIdx 0` 은 첫 마디라 windows·outcome 이 기준선으로
+// 오독한다(`pointsOf` 머리) — 분만 내보내면 그 경로가 원리적으로 없다.
+
+/** 하루 판정 노브 — 셀 술어 payload 가 그대로 넘긴다. 자격 시각 창은 없다(`time` 술어와 AND 로 건다). */
+export interface DayPointKnobs {
+    /** 그 봉 자신의 거래대금 하한(억, 정수). */
+    gateEok: number;
+    /** 양봉만. */
+    bullOnly: boolean;
+    /** 밴드 마진 m'(%, [0, 하루 굽기 밴드 3]). */
+    approachPct: number;
+    /** 레벨당 하나(첫 통과 봉 — 게이트 미달이면 다음 후보) / 끄면 통과 봉 전부. */
+    onePerLevel: boolean;
+}
+
+/**
+ * ① 기준선 돌파 — 사건 봉 중 자격(밴드 사건·양봉)을 통과하고 **고가 ≥ 기준선×(1−m')** 이며 게이트를
+ * 넘는 봉의 분. 레벨당 하나면 첫 봉 하나(종단 기준선 슬롯 1 과 같은 문법 — 게이트 미달 봉은 건너뛰고
+ * 다음 후보가 선다). **피벗을 안 본다** — zigzag 노브와 무관하다.
+ */
+export function baselineBreakMinutes(grid: PointGrid, base: number, k: DayPointKnobs): number[] {
+    const bandK = 1 - k.approachPct / 100;
+    const gate = BigInt(Math.max(0, Math.round(k.gateEok))) * KRW_PER_EOK;
+    const def: QualifyWindowDef = { qualifyWindows: [], bullOnly: k.bullOnly };
+    const out: number[] = [];
+    for (const e of grid.newHighs) {
+        if (!isQualifiedEvent(e, bandK, def)) continue;
+        if (!(e.high >= base * bandK)) continue;
+        if (BigInt(e.tv) < gate) continue;
+        out.push(e.min);
+        if (k.onePerLevel) break;
+    }
+    return out;
+}
+
+/**
+ * ② 마디 재돌파 — 기준선을 모르는 (접은) 격자의 `pointsOf` 그대로. 레벨당 하나면 슬롯 2(확정 고점
+ * 재돌파)까지 따라온다. 병합(mergeRisePct)은 0 고정 — 하루 노브 표에 없다.
+ */
+export function levelRebreakMinutes(grid: PointGrid, k: DayPointKnobs): number[] {
+    const gateEok = Math.max(0, Math.round(k.gateEok));
+    const judge: PointJudgeDef = {
+        baselineGateEok: gateEok,
+        renewalGateEok: gateEok,
+        qualifyWindows: [],
+        mergeRisePct: 0,
+        bullOnly: k.bullOnly,
+        approachPct: k.approachPct,
+    };
+    return pointsOf(grid.base === null ? grid : { ...grid, base: null }, judge, { onePerLevel: k.onePerLevel }).map((p) => p.min);
+}
+
 /** 레벨 하나의 게이트 통계 — 게이트 분포 스트립(정의층)의 낟알. */
 export interface LevelGateStat {
     levelIdx: number;

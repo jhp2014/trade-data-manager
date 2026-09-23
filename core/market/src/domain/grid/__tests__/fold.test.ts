@@ -4,7 +4,7 @@
 // 실데이터 대조(직접 p% 와의 사라짐·생김·확정 시각 차)는 apps/api/recon/06-day-fold.ts 가 맡는다.
 import { describe, expect, it } from "vitest";
 import type { MinuteCandle } from "../../candle/model.js";
-import { DAY_GRID_DETECT_OPTIONS, detectGrid, minuteToHms, type PointGrid } from "../grid.js";
+import { DAY_GRID_DETECT_OPTIONS, detectGrid, minuteToHms, type GridPivot, type PointGrid } from "../grid.js";
 import { foldGrid } from "../fold.js";
 import { checkGridInvariants } from "../invariants.js";
 import { levelViewOf } from "../levelView.js";
@@ -65,6 +65,33 @@ describe("foldGrid — 깨끗한 경로", () => {
         expect(grid.newHighs).toBe(g1.newHighs);
         expect(grid.sessionHigh).toEqual(g1.sessionHigh);
         expect(grid.prevBase).toBe(g1.prevBase);
+    });
+});
+
+describe("foldGrid — 사건 아닌 크로싱(대금 모름)", () => {
+    // 3% 밴드로 구운 실제 격자에선 원리상 거의 안 나는 갈래라(레벨 크로싱이 밴드 진입 사건이 된다)
+    // 격자를 손으로 짠다. 세션 최고가 100(540, 사건) 은 피벗이 못 되고(클래스 ①), 그 아래 레벨 96.8 이
+    // 사건 아닌 1% 고점 피벗(544) 자신에게서 96 을 넘는다.
+    const hi = (min: number, price: number, cum: string): GridPivot => ({ kind: "high", min, price, confirmedMin: min + 1, cum, cross: null });
+    const lo = (min: number, price: number, cum: string): GridPivot => ({ kind: "low", min, price, confirmedMin: min + 1, cum, cross: null });
+    const g: PointGrid = {
+        base: null,
+        touch: null,
+        pivots: [hi(541, 96, "20"), lo(542, 93, "30"), hi(544, 96.8, "50"), { ...lo(545, 94, "60"), confirmedMin: null }],
+        newHighs: [{ min: 540, open: 90, high: 100, low: 90, close: 95, tv: "10", cum: "10", maxBefore: 0 }],
+        prevBase: null,
+        prevBaseKrx: null,
+        sessionHigh: { min: 540, price: 100 },
+    };
+
+    it("대금은 직전 원소 뒤부터의 합으로 싣고, 불변식 ⑥(0 < renewal ≤ leg)을 지킨다", () => {
+        const { grid, crossTvUnknown } = foldGrid(g, 2);
+        expect(crossTvUnknown).toBe(1);
+        const level = grid.pivots.find((p) => p.min === 544)!;
+        expect(level.cross).toEqual({ min: 544, tv: "20", cum: "50" }); // 50 − 30(직전 원소 542)
+        const rep = checkGridInvariants(grid);
+        expect(rep.violations).toEqual([]);
+        expect(rep.sessionHighAbovePivots).toBe(true);
     });
 });
 

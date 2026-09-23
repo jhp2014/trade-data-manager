@@ -26,15 +26,19 @@
 // 전량 평가해 matched 를 끝까지 세고, 정렬(분↑ → 코드↑) 뒤 앞에서 자른다. 평가 중에 멈추면
 // "코드 오름차순 앞 종목만 남는" 편향이 생긴다. 평가를 실제로 멈추는 건 HARD_CAP 그물 하나뿐이다
 // (조건이 사실상 전부일 때 19만 셀 × 분 단면 = 프리즈를 막는 2차 방어선. 1차는 "조건 없음 = 안 보여줌").
+import { DAY_GRID_DETECT_OPTIONS, type PointGrid } from "../grid/grid.js";
+import { baselineBreakMinutes, levelRebreakMinutes } from "../grid/points.js";
 import { minuteOfDayOf, type MinuteDerived } from "../replay/dayReplay.js";
 import {
     CELL_VALUE_FIELDS,
     costTierOf,
+    dayPointKeyOf,
     exprOfCellConditions,
     pruneCellExpr,
     unknownCellPredicate,
     type CellConditions,
     type CellExpr,
+    type CellPredicate,
     type CellValueField,
     type CellValueRange,
     type Transition,
@@ -50,7 +54,17 @@ export interface CellMaterials {
     /** 그 분의 존 순위(소속 테마 중 best)와 승자 테마 — 존 밖·테마 없음·결손 = null.
      *  ⚠ 단락 뒤에만 불린다(비싼 재료). (클라: sectionSeries 캐시 + themeStrength.themeStatsOf) */
     zoneRankAt(code: string, min: number): { rank: number; theme: string } | null;
+    /**
+     * 그날 날짜 격자(zigzag 1% 로 구운 것)를 zigzagPct 로 **접은** 격자 — 없으면 null(결손 = 거짓).
+     * 접기의 메모는 어댑터 몫이다(같은 격자·같은 %면 같은 참조). 하루 타점 술어가 쓸 때만 불린다.
+     * 옵셔널인 이유: 이 재료를 안 쓰는 호출자(probe 등가·기존 테스트)는 부재 = 결손으로 충분하다.
+     */
+    dayGridOf?(code: string, zigzagPct: number): PointGrid | null;
+    /** 그 종목·그날의 확정 기준선(그 날 원주가 스케일) — 없으면 null(① 기준선 돌파가 결손). */
+    baselineOf?(code: string): number | null;
 }
+
+type DayPointPred = Extract<CellPredicate, { kind: "baselineBreak" | "levelRebreak" }>;
 
 /** 발화 셀 하나 — 시각(자정기준 분) + 발화한 **조건 id** + 그 분의 표시값. 결손은 null(지어내지 않는다). */
 export interface CellHit {
@@ -139,18 +153,41 @@ function applyTransition(t: Transition | undefined, st: TransitionState, raw: bo
 interface StockPrecomputed {
     priorHighOf(days: number): number | null;
     gridMinutes: ReadonlySet<number> | null;
+    /** 하루 타점 판정 키 → 발화 분 집합. null = 재료 결손(격자·기준선 없음 — 거짓으로 평가). */
+    dayPoints: ReadonlyMap<string, ReadonlySet<number> | null>;
 }
 
-function precompute(s: CellStock, mat: CellMaterials, needDays: readonly number[], needGrid: boolean): StockPrecomputed {
+/** 하루 타점 술어 하나의 분 집합 — 재료가 없으면 null. ①은 피벗을 안 보므로 접지 않은 격자를 쓴다. */
+function dayPointMinutes(p: DayPointPred, code: string, mat: CellMaterials): ReadonlySet<number> | null {
+    if (p.kind === "baselineBreak") {
+        const base = mat.baselineOf?.(code) ?? null;
+        if (base === null) return null;
+        const g = mat.dayGridOf?.(code, DAY_GRID_DETECT_OPTIONS.zigzagPct) ?? null;
+        return g === null ? null : new Set(baselineBreakMinutes(g, base, p));
+    }
+    const g = mat.dayGridOf?.(code, p.zigzagPct) ?? null;
+    return g === null ? null : new Set(levelRebreakMinutes(g, p));
+}
+
+function precompute(
+    s: CellStock,
+    mat: CellMaterials,
+    needDays: readonly number[],
+    needGrid: boolean,
+    needDay: ReadonlyMap<string, DayPointPred>,
+): StockPrecomputed {
     const highs = new Map<number, number | null>();
     for (const days of needDays) {
         // ⚠ index 0 = **당일** 전체 고가라 반드시 1부터 자른다(포함하면 영영 거짓 — probe 테스트가 지키던 규칙).
         const w = s.trailingHighs.un.slice(1, Math.max(1, Math.floor(days)) + 1);
         highs.set(days, w.length > 0 ? Math.max(...w) : null); // 창이 비면 결손(신규 상장 등)
     }
+    const dayPoints = new Map<string, ReadonlySet<number> | null>();
+    for (const [key, p] of needDay) dayPoints.set(key, dayPointMinutes(p, s.code, mat));
     return {
         priorHighOf: (days) => highs.get(days) ?? null,
         gridMinutes: needGrid ? new Set(mat.gridMinutesOf(s.code)) : null,
+        dayPoints,
     };
 }
 
@@ -297,6 +334,10 @@ function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
             case "gridPoint":
                 raw = ctx.pre.gridMinutes !== null && ctx.pre.gridMinutes.has(ctx.min);
                 break;
+            case "baselineBreak":
+            case "levelRebreak":
+                raw = ctx.pre.dayPoints.get(dayPointKeyOf(p))?.has(ctx.min) === true;
+                break;
             case "time":
                 raw = p.ranges.some((r) => {
                     const t = hm(ctx.min);
@@ -373,10 +414,12 @@ export function evaluateCellsExpr(
     // 재면 묶음 안의 격자·전고 술어를 못 보고, 그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**.
     const needDays: number[] = [];
     let needGrid = false;
+    const needDay = new Map<string, DayPointPred>();
     const scan = (e: CellExpr): void => {
         if (e.kind === "pred") {
             if (e.pred.kind === "priorHighBreak" && !needDays.includes(e.pred.days)) needDays.push(e.pred.days);
             if (e.pred.kind === "gridPoint") needGrid = true;
+            if (e.pred.kind === "baselineBreak" || e.pred.kind === "levelRebreak") needDay.set(dayPointKeyOf(e.pred), e.pred);
             return;
         }
         for (const c of e.of) scan(c);
@@ -390,7 +433,7 @@ export function evaluateCellsExpr(
     outer: for (const s of stocks) {
         const n = s.times.length;
         if (n === 0) continue;
-        const pre = precompute(s, mat, needDays, needGrid);
+        const pre = precompute(s, mat, needDays, needGrid, needDay);
         // 전이 상태 — 노드마다 슬롯 하나. 종목이 바뀌면 새로 만든다(하루 경계 = 종목 타임라인).
         const st: TransitionState[] = Array.from({ length: slots }, newState);
 

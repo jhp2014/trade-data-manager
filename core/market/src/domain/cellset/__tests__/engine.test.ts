@@ -290,3 +290,40 @@ describe("evaluateCellsExpr — 루트의 부정", () => {
         expect(mins(evaluateCellsExpr([s], NO_MAT, { ...and, neg: true }))).toEqual([0, 3]);
     });
 });
+
+describe("하루 타점 술어 — 재료(날짜 격자·기준선)", () => {
+    const g = {
+        base: null, touch: null, prevBase: null, prevBaseKrx: null, sessionHigh: { min: MIN0 + 3, price: 10200 },
+        pivots: [],
+        newHighs: [
+            { min: MIN0 + 1, open: 9900, high: 10000, low: 9850, close: 10000, tv: String(60e8), cum: "0", maxBefore: 9950 },
+            { min: MIN0 + 3, open: 10000, high: 10200, low: 9950, close: 10200, tv: String(60e8), cum: "0", maxBefore: 10000 },
+        ],
+    };
+    const bb: CellExpr = { kind: "pred", id: "b", pred: { kind: "baselineBreak", gateEok: 50, bullOnly: true, approachPct: 0, onePerLevel: false } };
+
+    it("기준선 위 통과 봉에서 발화한다", () => {
+        const mat: CellMaterials = { ...NO_MAT, dayGridOf: () => g, baselineOf: () => 10000 };
+        expect(mins(evaluateCellsExpr([stock("A")], mat, bb))).toEqual([1, 3]);
+    });
+
+    it("재료 결손(격자·기준선·재료 자체 부재)은 거짓 — 0건이지 예외가 아니다", () => {
+        expect(evaluateCellsExpr([stock("A")], { ...NO_MAT, dayGridOf: () => g, baselineOf: () => null }, bb).hits).toEqual([]);
+        expect(evaluateCellsExpr([stock("A")], { ...NO_MAT, dayGridOf: () => null, baselineOf: () => 10000 }, bb).hits).toEqual([]);
+        expect(evaluateCellsExpr([stock("A")], NO_MAT, bb).hits).toEqual([]);
+    });
+
+    it("같은 판정 키는 종목당 한 번만 계산한다 — 전이만 다른 두 잎이 재료를 두 번 부르지 않는다", () => {
+        const dayGridOf = vi.fn(() => g);
+        const two: CellExpr = {
+            kind: "or", id: "r",
+            of: [
+                { kind: "pred", id: "x", pred: { kind: "levelRebreak", gateEok: 30, bullOnly: true, approachPct: 0.5, onePerLevel: true, zigzagPct: 2 } },
+                { kind: "pred", id: "y", pred: { kind: "levelRebreak", gateEok: 30, bullOnly: true, approachPct: 0.5, onePerLevel: true, zigzagPct: 2, transition: "firstTrue" } },
+            ],
+        };
+        evaluateCellsExpr([stock("A")], { ...NO_MAT, dayGridOf }, two);
+        expect(dayGridOf).toHaveBeenCalledTimes(1);
+        expect(dayGridOf).toHaveBeenCalledWith("A", 2);
+    });
+});

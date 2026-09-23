@@ -101,3 +101,26 @@ describe("비용 등급·빈 판정·재료 사용 여부", () => {
         expect(() => unknownCellPredicate({ kind: "새것" } as never)).toThrow(/알 수 없는 셀 술어/);
     });
 });
+
+describe("하루 타점 술어(① 기준선 돌파 · ② 마디 재돌파)", () => {
+    it("왕복한다(전이 포함)", () => {
+        const preds = [
+            { kind: "baselineBreak", gateEok: 50, bullOnly: true, approachPct: 0.5, onePerLevel: true, transition: "firstTrue" },
+            { kind: "levelRebreak", gateEok: 30, bullOnly: false, approachPct: 2, onePerLevel: false, zigzagPct: 3 },
+        ];
+        for (const p of preds) expect(parseCellPredicate(JSON.parse(JSON.stringify(p)))).toEqual(p);
+    });
+
+    it("범위 밖은 **클램프**, 빠진 필드는 기본값 — 술어를 버리지 않는다", () => {
+        expect(parseCellPredicate({ kind: "levelRebreak", gateEok: -5, approachPct: 9, zigzagPct: 0.5 }))
+            .toEqual({ kind: "levelRebreak", gateEok: 0, bullOnly: true, approachPct: 3, onePerLevel: true, zigzagPct: 1 });
+        expect(parseCellPredicate({ kind: "baselineBreak", gateEok: 12.6, zigzagPct: 4 }))
+            .toEqual({ kind: "baselineBreak", gateEok: 13, bullOnly: true, approachPct: 0.5, onePerLevel: true });
+    });
+
+    it("비용 등급 1 · 비어 있지 않다", () => {
+        const p = parseCellPredicate({ kind: "baselineBreak" })!;
+        expect(costTierOf(p)).toBe(1);
+        expect(isCellPredicateEmpty(p)).toBe(false);
+    });
+});
