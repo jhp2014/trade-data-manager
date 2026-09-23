@@ -1,15 +1,15 @@
-// 집합 편성 패널 — **줄 0 = 열린 집합 하나**라는 배치 규약(2026-09-22).
+// Daily 타점 생성소 — **줄 0 = 열린 집합 하나**라는 배치 규약(옛 집합 편성에서 승계)과 하루 고정 머리글.
 //
 // 여기서 재는 건 조건 판정이 아니라 **자리**다: 줄 0 에 지금 열린 집합 하나가 서는가, 목록과
-// 관리(새 집합·열기·이름·삭제)가 그 칩의 판 **하나**에 사는가, 「집합 편성」 글자와 붙박이 칩이 없는가.
+// 관리(새 집합·열기·이름·삭제)가 그 칩의 판 **하나**에 사는가, 모드 토글·종단 정산이 없는가.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { exprOfStages, leavesOf, refNode, type SetExpr, type SetTerm } from "../expr.js";
+import { exprOfStages, leavesOf, refNode, type SetExpr, type SetTerm } from "../../filter/expr.js";
 import { fireEvent, render, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
-import { FilterFunnelPanel } from "../../FilterFunnelPanel.js";
+import { DailyGenPanel } from "../DailyGenPanel.js";
 
 /** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
 const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
@@ -25,7 +25,7 @@ const SEED: Seed = { candidateDays, points };
 
 const PANEL = "filter-funnel-1";
 const renderPanel = (): ReturnType<typeof render> =>
-    render(<FilterFunnelPanel panelId={PANEL} />, {
+    render(<DailyGenPanel panelId={PANEL} />, {
         wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers>,
     });
 
@@ -38,17 +38,18 @@ const btnByTitle = (c: HTMLElement, prefix: string): HTMLElement => {
 const chipByText = (c: HTMLElement, text: string): HTMLElement | undefined =>
     [...c.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(text));
 
-const RESET = { savedSets: [], panelUi: {}, filterMode: "longitudinal" as const };
+const RESET = { savedSets: [], panelUi: {}, filterMode: "daily" as const };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
 describe("줄 0 — 열린 집합 하나", () => {
-    it("붙박이 칩(전체·연동)은 없고, 머리글의 「집합 편성」 글자도 없다", () => {
+    it("붙박이 칩(전체·연동)도, 모드 토글(종단·하루)도 없다 — 작업면은 하루 고정", () => {
         const { container } = renderPanel();
         expect(chipByText(container, "전체")).toBeUndefined();
         expect(chipByText(container, "연동")).toBeUndefined();
-        expect(container.textContent).not.toContain("집합 편성"); // 패널 탭이 이미 이름을 말한다
-        expect(container.textContent).toContain("→"); // 전체 → 생존은 머리글이 상시로 말한다
+        expect(chipByText(container, "종단")).toBeUndefined();
+        expect(chipByText(container, "하루")).toBeUndefined();
+        expect(container.textContent, "종단 정산(전체 → 생존)은 안 쓴다").not.toContain("→");
     });
 
     it("줄 0 의 칩은 **테두리만 액센트**다 — 채움은 드릴다운 열림 전용", () => {
@@ -62,10 +63,10 @@ describe("줄 0 — 열린 집합 하나", () => {
 });
 
 describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·삭제)", () => {
-    const ONE = [{ id: "fs1", name: "돌파", expr: exprOfStages([]), universe: "longitudinal" as const }];
+    const ONE = [{ id: "fs1", name: "돌파", expr: exprOfStages([]), universe: "daily" as const }];
 
     it("판에서 고르면 **그 집합이 열리고**(뿌리가 된다) 판이 닫힌다", () => {
-        seedEditing(exprOfStages([]), ONE);
+        seedEditing(exprOfStages([]), ONE, "daily");
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
@@ -75,16 +76,16 @@ describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·
     });
 
     it("판은 **지금 모드의 집합만** 세운다", () => {
-        seedEditing(exprOfStages([]), [...ONE, { id: "fs-day", name: "오늘후보", expr: exprOfStages([]), universe: "daily" as const }]);
+        seedEditing(exprOfStages([]), [...ONE, { id: "fs-long", name: "종단묶음", expr: exprOfStages([]), universe: "longitudinal" as const }], "daily");
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
         expect(within(mgr).queryByText("돌파")).toBeTruthy();
-        expect(within(mgr).queryByText("오늘후보"), "하루 집합은 종단 모드 목록에 없다").toBeNull();
+        expect(within(mgr).queryByText("종단묶음"), "종단 집합은 숨는다(지우지 않는다)").toBeNull();
     });
 
     it("고정 칸이 없다 — 줄에 칩이 하나뿐이라 고정할 것이 없다", () => {
-        seedEditing(exprOfStages([]), ONE);
+        seedEditing(exprOfStages([]), ONE, "daily");
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
@@ -92,7 +93,7 @@ describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·
     });
 
     it("삭제는 2단계 — 한 번으로는 안 지워지고, 목록이 비지도 않는다", () => {
-        seedEditing(exprOfStages([]), ONE);
+        seedEditing(exprOfStages([]), ONE, "daily");
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
@@ -147,10 +148,10 @@ describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·
 //   (2026-09-19 기각분이 예고한 함정). 0 칸이 청소 창구고, 2+ 칸이 파급을 미리 말한다.
 describe("집합 관리 판 — 쓰는 곳으로 구획한다", () => {
     it("세 칸이 서고 아무도 안 쓰는 집합도 **보인다**", () => {
-        const shared: SavedSet = { id: "sh", name: "양념장", expr: exprOfStages([]), universe: "longitudinal" };
-        const a: SavedSet = { id: "a", name: "불고기", expr: mk("and", "root", [refNode("sh")]), universe: "longitudinal" };
-        const b: SavedSet = { id: "b", name: "제육", expr: mk("and", "root", [refNode("sh")]), universe: "longitudinal" };
-        const lone: SavedSet = { id: "lone", name: "혼자", expr: exprOfStages([]), universe: "longitudinal" };
+        const shared: SavedSet = { id: "sh", name: "양념장", expr: exprOfStages([]), universe: "daily" };
+        const a: SavedSet = { id: "a", name: "불고기", expr: mk("and", "root", [refNode("sh")]), universe: "daily" };
+        const b: SavedSet = { id: "b", name: "제육", expr: mk("and", "root", [refNode("sh")]), universe: "daily" };
+        const lone: SavedSet = { id: "lone", name: "혼자", expr: exprOfStages([]), universe: "daily" };
         useWorkbench.setState({ savedSets: [shared, a, b, lone], editingSetId: "a", editPath: ["a"] });
 
         const { container, baseElement } = renderPanel();
@@ -167,35 +168,25 @@ describe("집합 관리 판 — 쓰는 곳으로 구획한다", () => {
     });
 });
 
-// ⚠ 실측이 "하루 우주인데 건수가 늘 0" 으로 헷갈린 자리 — 저 정산은 **종단 기계**의 것이고
-//   셀 술어는 거기서 전부 결손이라 하루 집합이면 언제나 0 이다("조건에 다 걸렸다"로 읽힌다).
-//   2026-09-21 부터 그 자리에는 **「계산」 버튼**이 선다(하루 평가는 손으로 시작한다).
-describe("머리글 — 모드와 계산", () => {
+describe("머리글 — 하루 고정", () => {
     const cellStage = {
         id: "c1", enabled: true,
         predicates: [{ kind: "cellValue" as const, field: "ratePct" as const, ranges: [{ from: { kind: "value" as const, value: 5 } }] }],
     };
 
-    it("종단 모드는 `전체 → 생존` 을 적는다(재료가 구워져 있어 자동으로 따라온다)", () => {
-        seedEditing(exprOfStages([{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[1] }] }] }]));
-        useWorkbench.setState({ filterMode: "longitudinal" });
-        const long = renderPanel();
-        expect(long.container.textContent).toContain("→");
-    });
-
-    // 2026-09-22: 「계산」 관문은 철회됐다(실측 0.25~0.47초) — 하루도 종단처럼 자동이다.
-    it("하루 모드에는 「계산」도 「낡음」도 없고, 종단 정산도 안 쓴다", () => {
-        seedEditing(exprOfStages([cellStage]), [], "daily");
-        const daily = renderPanel();
-        expect(daily.container.textContent).not.toContain("계산");
-        expect(daily.container.textContent).not.toContain("낡음");
-        expect(daily.container.textContent, "종단 정산은 안 쓴다").not.toContain("→");
-    });
-
-    it("모드와 집합이 어긋나면 한 번 클릭으로 건너갈 손잡이가 선다", () => {
-        seedEditing(exprOfStages([cellStage])); // 하루 조건인데
-        useWorkbench.setState({ filterMode: "longitudinal" }); // 모드는 종단
+    // 조건을 **꺼 둔다** — 켜진 셀 조건이면 머리글의 수(useBoundSet)가 그날 분봉을 당겨 하네스가 네트워크를 막는다.
+    it("「계산」·「낡음」·모드 바꾸기 손잡이가 없고, 조건 수는 편집 집합의 잎이다(켠 것 / 전부)", () => {
+        seedEditing(exprOfStages([{ ...cellStage, enabled: false }]), [], "daily");
         const { container } = renderPanel();
-        expect(container.textContent).toContain("모드 바꾸기");
+        expect(container.textContent).not.toContain("계산");
+        expect(container.textContent).not.toContain("낡음");
+        expect(container.textContent).not.toContain("모드 바꾸기");
+        expect(container.textContent).toContain("조건 0 / 1");
+    });
+
+    it("종단 조건을 품은 옛 집합을 열면 **평가 안 함**을 말한다(건너갈 손은 없다 — 종단 보류)", () => {
+        seedEditing(exprOfStages([{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[1] }] }] }]), [], "daily");
+        const { container } = renderPanel();
+        expect(container.textContent).toContain("종단 집합 — 평가 안 함");
     });
 });

@@ -51,7 +51,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
                     )}>
                     {() => <AxisControls axes={axes} onChange={setAxesRaw} />}
                 </HeaderPopover>
-                <span style={{ ...label, color: "var(--text-tertiary)" }}>관찰 — 컷·판정 없음(조건은 조건판·편성 보드)</span>
+                <span style={{ ...label, color: "var(--text-tertiary)" }}>관찰 — 컷·판정 없음(조건은 조건판)</span>
                 {subject && (
                     <span style={{ ...label, color: "var(--text-tertiary)" }}>
                         {nameOf(subject.code)} · {subject.date}{plane.minute !== null && ` ${fmtMin(plane.minute)}`}

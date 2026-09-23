@@ -414,7 +414,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
             {/* ① 컨트롤 줄 — 좌측 상태 텍스트, 우측 레지스트리. */}
             <PanelHeader chrome={false} gap={6} style={{ borderBottom: "1px solid var(--border-default)" }}>
                 <button onClick={goToFunnelPanel}
-                    title={`지금 보는 집합: ${setLabel} — 집합 편성 패널이 정한다(클릭 = 그 패널로)`}
+                    title={`지금 보는 집합: ${setLabel} — Daily 타점 생성소가 정한다(클릭 = 그 패널로)`}
                     style={{
                         flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 700, padding: "0 7px",
                         borderRadius: 9, border: "0.5px solid transparent", background: PIN, color: "#fff", whiteSpace: "nowrap",
@@ -437,7 +437,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
                         </span>
                         {cellSet.tooWide && (
                             <span className="tabular" style={{ flexShrink: 0, fontSize: 10.5, color: "var(--fall)" }}
-                                title="그물(5만 셀)에 걸려 평가를 중단했다 — 중단 시점까지 모인 셀은 앞 종목에 쏠려 있어 목록에서 뺐다(라벨은 그대로). 집합 편성에서 조건을 조여 주세요">
+                                title="그물(5만 셀)에 걸려 평가를 중단했다 — 중단 시점까지 모인 셀은 앞 종목에 쏠려 있어 목록에서 뺐다(라벨은 그대로). 생성소에서 조건을 조여 주세요">
                                 조건이 너무 넓습니다 — {cellSet.matched.toLocaleString("ko-KR")}건 이상
                             </span>
                         )}
@@ -449,7 +449,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
                         )}
                         {deficientCount > 0 && (
                             <span style={{ flexShrink: 0, fontSize: 10.5, color: "var(--text-tertiary)" }}
-                                title="이 우주에서 평가할 수 없는 조건이 있습니다 — 그 칸은 세지 않습니다(집합 편성에서 이유를 봅니다)">
+                                title="이 우주에서 평가할 수 없는 조건이 있습니다 — 그 칸은 세지 않습니다(생성소에서 이유를 봅니다)">
                                 결손 칸 {deficientCount}
                             </span>
                         )}
@@ -501,7 +501,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
                         ? (cellSet.tooWide
                             // 머리글이 "너무 넓습니다"를 이미 말한다 — 같은 문장을 두 번 쓰지 않는다.
                             ? "조건 층을 뺐습니다(위 안내) — 이 날엔 라벨 좌표도 없습니다"
-                            : "이 날에 걸린 좌표가 없습니다 — 집합 편성에서 조건을 넓히거나 w/s 로 날짜를 넘기세요")
+                            : "이 날에 걸린 좌표가 없습니다 — 생성소에서 조건을 넓히거나 w/s 로 날짜를 넘기세요")
                         : hiddenCount > 0 ? `표시할 항목 없음 — 필터·좁히기로 ${hiddenCount}건 숨김` : "이 시선에 항목 없음"}
                 </div>
             ) : (
