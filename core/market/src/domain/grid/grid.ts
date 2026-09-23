@@ -198,58 +198,47 @@ export function gridSessionBars(rawMinutes: MinuteCandle[], options: GridDetectO
     );
 }
 
-export function detectGrid(
-    rawMinutes: MinuteCandle[],
-    prices: GridDayPrices,
-    options: GridDetectOptions = {},
-): PointGrid | null {
-    const { base, prevBase, prevBaseKrx } = prices;
-    const o = { ...DEFAULT_GRID_OPTIONS, ...options };
-    const bars = gridSessionBars(rawMinutes, options);
-    if (bars.length === 0) return null;
+/** zigzag 피벗 하나를 봉 인덱스로 — 극값 봉과 그걸 확정시킨 봉(null = 꼬리). */
+export interface ZigzagIdx {
+    kind: "high" | "low";
+    idx: number;
+    confirmIdx: number | null;
+}
 
-    const n = bars.length;
-    const mins = new Array<number>(n);
-    const highs = new Array<number>(n);
-    const lows = new Array<number>(n);
-    const tvs = new Array<bigint>(n);
-    // prefix[i] = tvs[0..i] 누적(BigInt 무손실) — 기록 봉마다 이 값을 그대로 싣는다(포함 관례).
-    const prefix = new Array<bigint>(n);
-    let acc = 0n;
-    for (let i = 0; i < n; i++) {
-        const m = bars[i];
-        mins[i] = toMin(m.time);
-        highs[i] = Number(m.un.high);
-        lows[i] = Number(m.un.low);
-        tvs[i] = BigInt(computeMinuteTradingAmount(m.un));
-        acc += tvs[i];
-        prefix[i] = acc;
-    }
-    const markOf = (i: number): GridBarMark => ({ min: mins[i], tv: tvs[i].toString(), cum: prefix[i].toString() });
-
-    // ── 피벗: 양방향 zigzag(경로 뷰, 2026-09-05 v9 — 명세 .claude/specs/2026-09-05-grid-swings-v9.md §2) ──
-    // 국소 고점·저점의 교대 열을 굽는다. 임계는 고·저 대칭 zigzagPct 하나(굽는 하한 — 상승 3% 축약 등은
-    // 읽기 층). 마디 뷰(레벨 쌍)는 levelViewOf(levelView.ts) 읽기 파생이다.
-    //
-    // **tie 규칙 하나(§2.3)**: 세션 최고가를 갱신한 봉(renew)에서만 고가가 이기고, 그 밖 모든 봉에서는
-    // 저가가 이긴다. 갱신 봉은 러닝 최고가라는 상태값의 사건이라 그 고가를 잃으면 마디가 사라지고(v8 도
-    // 이 봉을 저점 구간 밖에 뒀다), 그 밖의 봉은 눌림 깊이가 정보다(트레일링 스탑은 이미 선 최고가
-    // 기준이라 국소 갱신 여부와 무관하게 저가가 아래면 맞은 것) — 시뮬의 비관적 타이브레이크와 같은 말.
-    // 아래 분기 순서 넷이 이 규칙의 실현이다:
-    //   dir=up   + renew   → runHigh 갱신 후 continue(터치 검사 생략)         ← 고가 우선
-    //   dir=up   + 비갱신  → 터치 확정을 국소 runHigh 갱신보다 먼저           ← 저가 우선
-    //   dir=down + renew   → 저점 확정(그 봉의 더 낮은 저가는 버림)           ← 고가 우선
-    //   dir=down + 비갱신  → 저가 갱신을 저점 확정보다 먼저                   ← 저가 우선
-    // 자기 봉 확정 금지는 `!== i` 검사와 continue 가 내장 — 확정 시각은 항상 극값 봉보다 뒤다.
-    // 갱신 전 반대 극값 도달 없이 소멸한 후보는 안 싣고, 루프 끝의 미확정 후보 1개만 꼬리로 덧붙인다.
-    const up = 1 + o.zigzagPct / 100;
-    const down = 1 - o.zigzagPct / 100;
-    interface RawPivot {
-        kind: "high" | "low";
-        idx: number;
-        confirmIdx: number | null;
-    }
-    const raw: RawPivot[] = [];
+/**
+ * 봉 열 위의 양방향 zigzag(경로 뷰, 2026-09-05 v9 — 명세 .claude/specs/2026-09-05-grid-swings-v9.md §2).
+ * **`detectGrid` 와 `foldGrid` 가 같은 이 루프를 쓴다** — 접기가 tie 규칙·선행 국면을 사본으로 흉내 내면
+ * 언젠가 둘이 다른 극값을 고른다(2026-09-23 벤치의 순진한 접기가 6종목을 깨뜨린 자리).
+ *
+ * 국소 고점·저점의 교대 열을 낸다. 임계는 고·저 대칭 `zigzagPct` 하나. 마디 뷰(레벨 쌍)는 levelViewOf 파생.
+ *
+ * **모르는 값은 ±Infinity 로 넘길 수 있다**(foldGrid 의 성긴 봉 열): 저가 +∞ 인 원소는 어떤 확정도
+ * 먼저 일으키지 못하고, 고가 −∞ 인 원소는 갱신도 확정도 못 일으킨다 — 아는 쪽만 판정에 참여한다.
+ *
+ * **tie 규칙 하나(§2.3)**: 세션 최고가를 갱신한 봉(renew)에서만 고가가 이기고, 그 밖 모든 봉에서는
+ * 저가가 이긴다. 갱신 봉은 러닝 최고가라는 상태값의 사건이라 그 고가를 잃으면 마디가 사라지고(v8 도
+ * 이 봉을 저점 구간 밖에 뒀다), 그 밖의 봉은 눌림 깊이가 정보다(트레일링 스탑은 이미 선 최고가
+ * 기준이라 국소 갱신 여부와 무관하게 저가가 아래면 맞은 것) — 시뮬의 비관적 타이브레이크와 같은 말.
+ * 아래 분기 순서 넷이 이 규칙의 실현이다:
+ *   dir=up   + renew   → runHigh 갱신 후 continue(터치 검사 생략)         ← 고가 우선
+ *   dir=up   + 비갱신  → 터치 확정을 국소 runHigh 갱신보다 먼저           ← 저가 우선
+ *   dir=down + renew   → 저점 확정(그 봉의 더 낮은 저가는 버림)           ← 고가 우선
+ *   dir=down + 비갱신  → 저가 갱신을 저점 확정보다 먼저                   ← 저가 우선
+ * 자기 봉 확정 금지는 `!== i` 검사와 continue 가 내장 — 확정 시각은 항상 극값 봉보다 뒤다.
+ * 갱신 전 반대 극값 도달 없이 소멸한 후보는 안 싣고, 루프 끝의 미확정 후보 1개만 꼬리로 덧붙인다.
+ *
+ * `where` 는 오류 문구에 쓸 봉 이름(분)뿐이다.
+ */
+export function zigzagIdxOf(
+    highs: readonly number[],
+    lows: readonly number[],
+    zigzagPct: number,
+    where: (i: number) => number = (i) => i,
+): ZigzagIdx[] {
+    const n = highs.length;
+    const up = 1 + zigzagPct / 100;
+    const down = 1 - zigzagPct / 100;
+    const raw: ZigzagIdx[] = [];
     let dir: "none" | "up" | "down" = "none";
     let runHigh = 0; // 현재 상승 스윙(또는 dir=none 세션 전체)의 러닝 최고가 봉
     let runLow = 0; // 현재 하락 스윙(또는 dir=none 세션 전체)의 러닝 최저가 봉
@@ -294,7 +283,7 @@ export function detectGrid(
                 // 고가 우선 — 이 조건은 항상 참이다: lows[runLow] ≤ down×직전 확정 고점 ≤ down×sessMax
                 // < down×highs[i] 이고 up×down = 0.9996 < 1. 거짓이면 불변식 위반이므로 즉사.
                 if (!(highs[i] >= lows[runLow] * up)) {
-                    throw new Error(`detectGrid: dir=down 갱신 봉(min=${mins[i]})에서 저점 확정 불가 — §2.2 불변식 위반`);
+                    throw new Error(`detectGrid: dir=down 갱신 봉(min=${where(i)})에서 저점 확정 불가 — §2.2 불변식 위반`);
                 }
                 raw.push({ kind: "low", idx: runLow, confirmIdx: i });
                 dir = "up";
@@ -311,39 +300,87 @@ export function detectGrid(
     // 꼬리 — 미확정 극값 1개(있다면 항상 마지막). dir=none 이면 무사건(빈 배열).
     if (dir === "up") raw.push({ kind: "high", idx: runHigh, confirmIdx: null });
     else if (dir === "down") raw.push({ kind: "low", idx: runLow, confirmIdx: null });
+    return raw;
+}
 
-    // ── cross 스캔: 레벨(확정 고점 중 이전 모든 고점 피벗보다 가격이 큰 것, §2.5)에만 직전 레벨
-    //    가격을 처음 넘은 봉(strict >)을 붙인다 — v8 crossIdx 와 같은 값. 스캔 구간이 레벨 사이로
-    //    서로 겹치지 않아 전체 O(n). 미확정 꼬리 고점은 레벨이 아니다(넘을 대상 아님, v8 유지).
+/**
+ * 레벨 크로싱 스캔(§2.5) — 피벗마다 **직전 레벨 가격을 처음 넘은 봉**(strict >)의 인덱스.
+ * 레벨 = 확정 고점 중 이전 모든 고점 피벗보다 가격이 큰 것. 레벨이 아니거나 첫 레벨이면 null.
+ * 스캔 구간이 레벨 사이로 서로 겹치지 않아 전체 O(n). 미확정 꼬리 고점은 레벨이 아니다(v8 유지).
+ * `detectGrid` 와 `foldGrid` 가 같은 이 스캔을 쓴다.
+ */
+export function levelCrossIdxOf(
+    raw: readonly ZigzagIdx[],
+    highs: readonly number[],
+    where: (i: number) => number = (i) => i,
+): (number | null)[] {
+    const n = highs.length;
     let maxHighPrice = -Infinity; // 지금까지의 고점 피벗 가격 최대(레벨 판정 자)
     let prevLevelIdx = -1;
     let prevLevelPrice = 0;
-    const pivots: GridPivot[] = raw.map((r) => {
-        const price = r.kind === "high" ? highs[r.idx] : lows[r.idx];
-        let cross: GridBarMark | null = null;
-        if (r.kind === "high") {
-            if (r.confirmIdx !== null && price > maxHighPrice) {
-                if (prevLevelIdx >= 0) {
-                    let j = prevLevelIdx + 1;
-                    while (j < n && !(highs[j] > prevLevelPrice)) j++;
-                    // 이 레벨 봉 자신이 직전 레벨보다 높아 j ≤ r.idx 가 보장된다(도달 불가 가드).
-                    if (j >= n) throw new Error(`detectGrid: 레벨(min=${mins[r.idx]}) 크로싱 결손 — §2.5 불변식 위반`);
-                    cross = markOf(j);
-                }
-                prevLevelIdx = r.idx;
-                prevLevelPrice = price;
+    return raw.map((r) => {
+        if (r.kind !== "high") return null;
+        const price = highs[r.idx];
+        let cross: number | null = null;
+        if (r.confirmIdx !== null && price > maxHighPrice) {
+            if (prevLevelIdx >= 0) {
+                let j = prevLevelIdx + 1;
+                while (j < n && !(highs[j] > prevLevelPrice)) j++;
+                // 이 레벨 봉 자신이 직전 레벨보다 높아 j ≤ r.idx 가 보장된다(도달 불가 가드).
+                if (j >= n) throw new Error(`detectGrid: 레벨(min=${where(r.idx)}) 크로싱 결손 — §2.5 불변식 위반`);
+                cross = j;
             }
-            if (price > maxHighPrice) maxHighPrice = price;
+            prevLevelIdx = r.idx;
+            prevLevelPrice = price;
         }
-        return {
-            kind: r.kind,
-            min: mins[r.idx],
-            price,
-            confirmedMin: r.confirmIdx === null ? null : mins[r.confirmIdx],
-            cum: prefix[r.idx].toString(),
-            cross,
-        };
+        if (price > maxHighPrice) maxHighPrice = price;
+        return cross;
     });
+}
+
+export function detectGrid(
+    rawMinutes: MinuteCandle[],
+    prices: GridDayPrices,
+    options: GridDetectOptions = {},
+): PointGrid | null {
+    const { base, prevBase, prevBaseKrx } = prices;
+    const o = { ...DEFAULT_GRID_OPTIONS, ...options };
+    const bars = gridSessionBars(rawMinutes, options);
+    if (bars.length === 0) return null;
+
+    const n = bars.length;
+    const mins = new Array<number>(n);
+    const highs = new Array<number>(n);
+    const lows = new Array<number>(n);
+    const tvs = new Array<bigint>(n);
+    // prefix[i] = tvs[0..i] 누적(BigInt 무손실) — 기록 봉마다 이 값을 그대로 싣는다(포함 관례).
+    const prefix = new Array<bigint>(n);
+    let acc = 0n;
+    for (let i = 0; i < n; i++) {
+        const m = bars[i];
+        mins[i] = toMin(m.time);
+        highs[i] = Number(m.un.high);
+        lows[i] = Number(m.un.low);
+        tvs[i] = BigInt(computeMinuteTradingAmount(m.un));
+        acc += tvs[i];
+        prefix[i] = acc;
+    }
+    const markOf = (i: number): GridBarMark => ({ min: mins[i], tv: tvs[i].toString(), cum: prefix[i].toString() });
+
+    // ── 피벗: 양방향 zigzag — 규칙 본문은 `zigzagIdxOf`(foldGrid 와 공용).
+    const raw = zigzagIdxOf(highs, lows, o.zigzagPct, (i) => mins[i]);
+
+    // ── cross 스캔: 레벨(확정 고점 중 이전 모든 고점 피벗보다 가격이 큰 것, §2.5)에만 직전 레벨
+    //    가격을 처음 넘은 봉(strict >)을 붙인다 — v8 crossIdx 와 같은 값.
+    const crossIdx = levelCrossIdxOf(raw, highs, (i) => mins[i]);
+    const pivots: GridPivot[] = raw.map((r, k) => ({
+        kind: r.kind,
+        min: mins[r.idx],
+        price: r.kind === "high" ? highs[r.idx] : lows[r.idx],
+        confirmedMin: r.confirmIdx === null ? null : mins[r.confirmIdx],
+        cum: prefix[r.idx].toString(),
+        cross: crossIdx[k] === null ? null : markOf(crossIdx[k]!),
+    }));
 
     // ── 기준 밴드 사건 캔들 목록 + 기준선 첫 터치 + 세션 최고가 ──────────────
     // 러닝 밴드(§10.2): 상단 돌파(high > M)는 밴드를 갱신·리셋(bottom = M×(1−m)), 밴드 진입
