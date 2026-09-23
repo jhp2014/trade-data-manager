@@ -153,18 +153,20 @@ export interface PointLevel {
 /**
  * 레벨 산정: 기준선 + 마디 뷰(`levelViewOf`)의 레벨 고점 — 경로 뷰(pivots)를 직접 순회하지 않는다(v9).
  * 기준선 아래 레벨은 건너뛴다(maxKept 가 base 에서 시작 — Point 문법은 기준선 위에서만).
+ * **기준선이 없으면 레벨 0 없이 바닥도 없다**(2026-09-23 — 하루 우주, decisions 「하루 타점」): 마디 =
+ * 세션 신고가를 세운 확정 고점 전부. 기준선은 레벨 0 이자 **마디의 바닥**이라, 있으면 그 아래 지형을
+ * 통째로 버린다 — 하루는 격자가 기준선을 모르므로 그 버림이 없다.
  * 미확정 마지막 마디는 levelViewOf 가 이미 배제한다(아직 넘을 대상이 아님, 보수).
  * mergeRisePct > 0 이면 직전 레벨 쌍의 저점(lastLow — v8 의 "직전 저점 피벗"과 같은 값) 대비 상승폭
  * 미달 마디를 병합한다 — 병합된 마디는 maxKept 를 올리지 않으므로, 그 위 캔들의 Point 는 다음 유효
  * 레벨 몫으로 넘어간다(축약의 최소 형태 — 시간 조건 T 는 후속).
  *
  * `pointsOf` 밖으로 뺀 이유는 recon(point-diff)이 **같은 레벨 정의** 위에서 옛/새 규칙을 대조해야 해서다 —
- * 사본을 두면 레벨 규칙이 바뀔 때 양쪽이 함께 틀어져 diff 가 조용히 무의미해진다. 기준선 없으면 빈 배열.
+ * 사본을 두면 레벨 규칙이 바뀔 때 양쪽이 함께 틀어져 diff 가 조용히 무의미해진다.
  */
 export function levelsOf(grid: PointGrid, def: PointCandidateDef = DEFAULT_POINT_DEFINITION): PointLevel[] {
-    if (grid.base === null) return [];
-    const levels: PointLevel[] = [{ price: grid.base, renewal: false, min: null, confirmedMin: null }];
-    let maxKept = grid.base;
+    const levels: PointLevel[] = grid.base === null ? [] : [{ price: grid.base, renewal: false, min: null, confirmedMin: null }];
+    let maxKept = grid.base ?? -Infinity;
     let lastLow: number | null = null;
     for (const pair of levelViewOf(grid)) {
         const p = pair.high;
@@ -269,7 +271,13 @@ function confirmedHighSince(pivots: readonly GridPivot[], anchorMin: number, anc
 }
 
 /**
- * 격자 → Point 목록(시간 오름차순). 기준선이 없으면 빈 배열.
+ * 격자 → Point 목록(시간 오름차순). **기준선이 없으면 마디만 있는 Point**(2026-09-23 — 레벨 0 이 없어
+ * `levelIdx 0` 이 **첫 마디**다. ⚠ `windows.ts`(`legStartOf`)는 0 을 기준선으로 읽으므로 기준선 없는
+ * Point 를 창·결과·특징으로 흘리지 말 것 — 하루 판정은 분만 쓴다). 종단 소비자는 기준선 없는 격자를
+ * 호출 전에 거른다(라벨만 있는 차트의 ◇ 0 유지).
+ *
+ * `opts.onePerLevel`(기본 true) — false 면 **레벨당 하나 커서(claimedLevel)를 끄고** 게이트를 통과한
+ * 자격 사건을 전부 낸다(슬롯 2 개념이 없어진다 — 전부 나오므로). 하루 우주의 "후보 전부" 노브다.
  * ⚠ touch 게이트는 폐지됐다(2026-09-05 저녁 — 미래 누출): "그날 한 번이라도 닿았나"는 하루 전체의
  * 사실이라, 밴드 접근 Point(m'>0)의 존재가 오후의 터치 여부로 갈렸다(같은 아침 캔들이 미래에 의해
  * 시그널이 되거나 안 되거나). 접근 캔들이 있으면 터치가 끝내 없어도 Point 다 — 실패한 시도가 결과
@@ -302,9 +310,13 @@ function confirmedHighSince(pivots: readonly GridPivot[], anchorMin: number, anc
  * 불가능하지만, 기준선은 터치 귀속(≥)이라 high == base 슬롯 1 이 서고 슬롯 2 가 열린다.
  * ⚠ "kind = levelIdx===0 파생" 정리는 폐기 유지 — 기준선 슬롯 2 는 levelIdx 0 인데 kind renewal 이다.
  */
-export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEFINITION): DerivedPoint[] {
-    if (grid.base === null) return [];
+export function pointsOf(
+    grid: PointGrid,
+    def: PointJudgeDef = DEFAULT_POINT_DEFINITION,
+    opts: { onePerLevel?: boolean } = {},
+): DerivedPoint[] {
     const levels = levelsOf(grid, def);
+    const onePerLevel = opts.onePerLevel !== false;
 
     // 캔들 중심 판정 — 자격 캔들마다 **최고 레벨**에 귀속시키고 그 레벨의 게이트로 거른다.
     // 게이트 비대칭(기준선 50 > 재돌파 30) 탓에 breakout Point 없이 renewal 만 서는 날이 있을 수 있다 —
@@ -328,6 +340,13 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
         if (!isQualifiedEvent(e, bandK, def)) continue;
         const li = attributedLevelIdx(levels, e, bandK);
         if (li < 0) continue;
+        if (!onePerLevel) {
+            // 후보 전부 — 귀속 레벨의 게이트만 본다(커서·슬롯 없음).
+            const lv = levels[li];
+            if (BigInt(e.tv) < (lv.renewal ? gateRenewal : gateBase)) continue;
+            chosen.push({ kind: lv.renewal ? "renewal" : "breakout", levelIdx: li, levelPrice: lv.price, levelMin: lv.min, e });
+            continue;
+        }
         if (li > claimedLevel) {
             // ── 슬롯 1: 그 레벨의 첫 자격 캔들. 게이트 미달이면 낮은 레벨로 **내려가지 않고**(그 캔들은
             // Point 아님) 같은 레벨의 다음 자격 캔들이 계속 후보다(게이트 상향 = Point 이동 의미론 보존).
@@ -341,7 +360,9 @@ export function pointsOf(grid: PointGrid, def: PointJudgeDef = DEFAULT_POINT_DEF
             // 새는 경계 구멍이 된다(2026-09-10 대한광통신 09:18, decisions.md).
             const crossedTop = e.high > lv.price;
             slot2 = crossedTop ? null : { level: li, anchorMin: e.min, anchorHigh: e.high };
-            chosen.push({ kind: li === 0 ? "breakout" : "renewal", levelIdx: li, levelPrice: lv.price, levelMin: lv.min, e });
+            // kind 는 **자리(li===0)가 아니라 레벨의 성질**이다 — 기준선 없는 격자는 levels[0] 이 첫 마디라
+            // 자리로 붙이면 '돌파'가 된다. 기준선 있는 격자는 levels[0] 만 renewal=false 라 비트 동일.
+            chosen.push({ kind: lv.renewal ? "renewal" : "breakout", levelIdx: li, levelPrice: lv.price, levelMin: lv.min, e });
             continue;
         }
         if (li === claimedLevel && slot2 !== null && slot2.level === li) {

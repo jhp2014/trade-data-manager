@@ -32,7 +32,8 @@ const touch = (min: number) => ({ min, tv: "0", cum: "0" });
 const grid = (partial: Partial<PointGrid>): PointGrid => ({ base: 10000, touch: touch(550), pivots: [], newHighs: [], prevBase: null, prevBaseKrx: null, sessionHigh: { min: 550, price: 10000 }, ...partial });
 
 describe("pointsOf", () => {
-    it("기준선 없음 → Point 없음. 미터치는 더는 게이트가 아니다(touch 게이트 폐지 — 미래 누출)", () => {
+    it("기준선도 마디도 없음 → Point 없음. 미터치는 더는 게이트가 아니다(touch 게이트 폐지 — 미래 누출)", () => {
+        // 기준선이 없으면 레벨 0 이 없다 — 확정 마디도 없으면 넘을 것이 없다(2026-09-23 전엔 기준선 없음 = 무조건 []).
         expect(pointsOf(grid({ base: null, newHighs: [nh(560, 10050, 60)] }), DEF0)).toEqual([]);
         // m'=0 에선 기준선 미달 캔들이 레벨을 못 넘어 여전히 [] — 게이트 폐지가 v8 동작을 안 바꾼다.
         expect(pointsOf(grid({ touch: null, newHighs: [nh(560, 9940, 60)] }), DEF0)).toEqual([]);
@@ -536,5 +537,55 @@ describe("bandDepthsOf — 근접 레일의 모수", () => {
         expect(bandDepthsOf(g, W).depths).toHaveLength(1);
         expect(bandDepthsOf(g, { ...W, bullOnly: false }).depths).toHaveLength(2);
         expect(bandDepthsOf(g, { ...W, qualifyWindows: [{ from: 460, to: 1200 }] }).depths).toHaveLength(2);
+    });
+});
+
+// ── 기준선 없는 격자 — 하루 우주(2026-09-23, decisions 「하루 타점」) ─────────────────────
+// 격자가 기준선을 모르면 레벨 0 이 없고 **마디의 바닥도 없다**. 종단은 호출 전에 기준선 없는 격자를
+// 거르므로(defDerived 가드) 이 절의 동작은 하루 판정만의 것이다.
+describe("pointsOf — 기준선 없는 격자", () => {
+    // 마디 9,800 은 기준선(10,000) **아래**다 — 기준선이 있으면 그 아래 지형은 통째로 버려진다.
+    const pivots = [hi(575, 9800, 585), lo(585, 9600)];
+    const newHighs = [nh(600, 9850, 35)];
+
+    it("기준선 아래 마디도 레벨이 된다 — 기준선이 곧 마디의 바닥이었다", () => {
+        expect(pointsOf(grid({ pivots, newHighs }), DEF0)).toEqual([]); // 기준선 있음: 9,800 마디는 바닥 아래라 버림
+        expect(pointsOf(grid({ base: null, pivots, newHighs }), DEF0).map((p) => [p.min, p.kind, p.levelIdx, p.levelPrice]))
+            .toEqual([[600, "renewal", 0, 9800]]);
+    });
+
+    it("첫 마디(levelIdx 0)는 '돌파'가 아니라 '재돌파'다 — kind 는 자리가 아니라 레벨의 성질", () => {
+        const [p] = pointsOf(grid({ base: null, pivots, newHighs }), DEF0);
+        expect(p!.levelIdx).toBe(0); // ⚠ 기준선 없는 격자에서 0 은 첫 마디 — windows.legStartOf 에 넣으면 안 된다
+        expect(p!.kind).toBe("renewal");
+    });
+
+    it("마디 게이트(30억)를 쓴다 — 기준선 게이트(50억)가 아니다", () => {
+        expect(pointsOf(grid({ base: null, pivots, newHighs: [nh(600, 9850, 29)] }), DEF0)).toEqual([]);
+        expect(pointsOf(grid({ base: null, pivots, newHighs: [nh(600, 9850, 30)] }), DEF0)).toHaveLength(1);
+    });
+});
+
+describe("pointsOf — onePerLevel(레벨당 하나 커서 끄기)", () => {
+    // 같은 레벨(기준선)을 넘은 자격 캔들 셋 — 둘은 게이트 통과, 하나는 미달.
+    const g = grid({ newHighs: [nh(560, 10050, 60), nh(565, 10080, 40), nh(570, 10090, 70)] });
+
+    it("기본(on) — 레벨당 첫 통과 하나(지금 동작 그대로)", () => {
+        expect(pointsOf(g, DEF0).map((p) => p.min)).toEqual([560]);
+        expect(pointsOf(g, DEF0, { onePerLevel: true })).toEqual(pointsOf(g, DEF0));
+    });
+
+    it("off — 게이트를 통과한 자격 캔들 **전부**(미달은 여전히 빠진다)", () => {
+        expect(pointsOf(g, DEF0, { onePerLevel: false }).map((p) => [p.min, p.kind])).toEqual([[560, "breakout"], [570, "breakout"]]);
+    });
+
+    it("off 여도 귀속은 최고 레벨이다 — 기준선을 지난 뒤 마디를 넘은 캔들은 마디 몫", () => {
+        const g2 = grid({
+            pivots: [hi(575, 10300, 585), lo(585, 10100)],
+            newHighs: [nh(560, 10050, 60), nh(600, 10350, 35), nh(610, 10360, 35)],
+        });
+        expect(pointsOf(g2, DEF0, { onePerLevel: false }).map((p) => [p.min, p.kind, p.levelIdx])).toEqual([
+            [560, "breakout", 0], [600, "renewal", 1], [610, "renewal", 1],
+        ]);
     });
 });

@@ -101,6 +101,9 @@ function buildAutoView(byDate: ByDate, def: PointJudgeDef): AutoPointsView {
     const byChart = new Map<string, DerivedPoint[]>();
     for (const [date, byCode] of byDate) {
         for (const [stockCode, grid] of byCode) {
+            // ⚠ 기준선 없는 격자(라벨만 있는 차트)는 종단에서 Point 0 — pointsOf 는 이제 그 격자에서 마디
+            //   Point 를 낸다(하루 우주용, 2026-09-23). 종단 ◇·gridPoint·게이트 분포가 조용히 움직이지 않게 여기서 거른다.
+            if (grid.base === null) continue;
             const derived = pointsOf(grid, def);
             if (derived.length === 0) continue;
             byChart.set(chartKeyOf({ stockCode, date }), derived);

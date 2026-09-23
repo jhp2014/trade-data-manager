@@ -62,3 +62,25 @@ describe("defDerivedFor — 신원 계약", () => {
         expect(d.hotPairs()).toBe(d.hotPairs());
     });
 });
+
+// 파생 값 자체는 이 파일의 몫이 아니지만, **"기준선 없는 격자 = 종단 Point 0"** 은 이 캐시의 결정이라 여기서 잠근다.
+// pointsOf 는 2026-09-23 부터 기준선 없는 격자에서 마디 Point 를 낸다(하루 우주용) — 종단 ◇·gridPoint·
+// 게이트 분포가 조용히 움직이지 않게 buildAutoView 가 거른다.
+describe("defDerivedFor — 기준선 없는 격자(라벨만 있는 차트)는 자동 Point 0", () => {
+    it("확정 마디가 있어도 Point 를 안 낸다", () => {
+        const g: PointGrid = {
+            base: null,
+            touch: null,
+            pivots: [
+                { kind: "high", min: 575, price: 10300, confirmedMin: 585, cum: "0", cross: null },
+                { kind: "low", min: 585, price: 10100, confirmedMin: null, cum: "0", cross: null },
+            ],
+            newHighs: [{ min: 600, open: 10250, high: 10350, low: 10200, close: 10350, tv: String(35 * 100_000_000), cum: "0", maxBefore: 0 }],
+            prevBase: null,
+            prevBaseKrx: null,
+            sessionHigh: { min: 600, price: 10350 },
+        };
+        const b: ByDate = new Map([["2026-09-01", new Map([["005930", g]])]]);
+        expect(defDerivedFor(b, def(50)).auto.points).toEqual([]);
+    });
+});

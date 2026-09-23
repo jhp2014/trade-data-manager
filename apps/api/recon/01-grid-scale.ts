@@ -64,7 +64,7 @@ async function main(): Promise<void> {
             chartBytes.push(JSON.stringify(entry.grid).length);
             pivotCounts.push(entry.grid.pivots.length);
             newHighCounts.push(entry.grid.newHighs.length);
-            const pts = pointsOf(entry.grid, def);
+            const pts = entry.grid.base === null ? [] : pointsOf(entry.grid, def); // 종단 모수 — 기준선 없는 격자는 Point 0
             pointCounts.push(pts.length);
             afterHoursNewHighs += entry.grid.newHighs.filter((e) => e.min > 930).length;
             afterHoursPoints += pts.filter((p) => p.min > 930).length;

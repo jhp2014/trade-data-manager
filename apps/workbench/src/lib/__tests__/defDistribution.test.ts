@@ -65,3 +65,18 @@ describe("buildApproachDist", () => {
         expect(buildApproachDist(data, { qualifyWindows: [{ from: 600, to: 1200 }], bullOnly: true }).depths).toHaveLength(1);
     });
 });
+
+describe("buildSignalMinuteDist — 기준선 없는 격자는 종단 모수가 아니다", () => {
+    it("확정 마디가 있어 pointsOf 는 Point 를 내지만(하루 우주용) 레일 모수에는 안 들어간다", () => {
+        const g: PointGrid = {
+            ...grid([nh(600, 10350, 35)]),
+            base: null,
+            touch: null,
+            pivots: [
+                { kind: "high", min: 575, price: 10300, confirmedMin: 585, cum: "0", cross: null },
+                { kind: "low", min: 585, price: 10100, confirmedMin: null, cum: "0", cross: null },
+            ],
+        };
+        expect(buildSignalMinuteDist(byDate(g), DEF)).toEqual([]);
+    });
+});

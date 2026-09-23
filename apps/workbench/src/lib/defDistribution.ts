@@ -19,7 +19,10 @@ type ByDate = ReadonlyMap<string, ReadonlyMap<string, PointGrid>>;
 export function buildSignalMinuteDist(byDate: ByDate, def: PointJudgeDef): number[] {
     const open: PointJudgeDef = { ...def, qualifyWindows: [] }; // 빈 목록 = 전부 통과(이 필드의 어휘)
     const out: number[] = [];
-    for (const byCode of byDate.values()) for (const grid of byCode.values()) for (const p of pointsOf(grid, open)) out.push(p.min);
+    for (const byCode of byDate.values()) for (const grid of byCode.values()) {
+        if (grid.base === null) continue; // 종단 모수 — 기준선 없는 격자는 Point 0(defDerived 와 같은 가드)
+        for (const p of pointsOf(grid, open)) out.push(p.min);
+    }
     return out;
 }
 

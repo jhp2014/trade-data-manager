@@ -244,7 +244,7 @@ async function main(): Promise<void> {
             const class1 = firstLevelDiffers(gOld, entry.grid);
             if (class1) counts.class1Charts++;
             const old = pointsOfV8(gOld, def);
-            const now = pointsOf(entry.grid, def);
+            const now = entry.grid.base === null ? [] : pointsOf(entry.grid, def); // 종단 모수 — 기준선 없는 격자는 Point 0
             if (old.length > 0 || now.length > 0) counts.gridsWithPoints++;
             for (const p of old) (p.kind === "breakout" ? kinds.oldBreakout++ : kinds.oldRenewal++);
             for (const p of now) (p.kind === "breakout" ? kinds.nowBreakout++ : kinds.nowRenewal++);
