@@ -156,14 +156,6 @@ export const DEFAULT_GRID_OPTIONS: Required<GridDetectOptions> = {
     approachPct: 0.5,
 };
 
-/**
- * 하루 우주의 날짜 격자(날짜 × 전 종목)를 굽는 값 — **넓게 굽고 읽을 때 조인다**(decisions.md
- * 「하루 타점 — 서버가 날짜 격자를 굽고 클라가 조건으로 뽑는다」). zigzag 는 `foldGrid` 로 p% 로 접고,
- * 밴드는 m' ≤ 3 으로 조이며, 대금 floor 는 없다(게이트는 클라가 사건마다 실린 tv 로 건다).
- * ⚠ floor 0 은 `foldGrid` 의 전제다 — 러닝 최고가 갱신 봉이 전부 사건에 실려야 접은 tie 규칙이 원본과 같다.
- */
-export const DAY_GRID_DETECT_OPTIONS = { zigzagPct: 1, floorEok: 0, approachPct: 3 } as const satisfies GridDetectOptions;
-
 const KRW_PER_EOK = 100_000_000n;
 
 /**
@@ -215,13 +207,12 @@ export interface ZigzagIdx {
 
 /**
  * 봉 열 위의 양방향 zigzag(경로 뷰, 2026-09-05 v9 — 명세 .claude/specs/2026-09-05-grid-swings-v9.md §2).
- * **`detectGrid` 와 `foldGrid` 가 같은 이 루프를 쓴다** — 접기가 tie 규칙·선행 국면을 사본으로 흉내 내면
- * 언젠가 둘이 다른 극값을 고른다(2026-09-23 벤치의 순진한 접기가 6종목을 깨뜨린 자리).
+ * `detectGrid` 에서 떼어 낸 순수 루프다(입력은 봉 배열 셋 — 테스트·recon 이 봉 모델 없이 부를 수 있다).
  *
  * 국소 고점·저점의 교대 열을 낸다. 임계는 고·저 대칭 `zigzagPct` 하나. 마디 뷰(레벨 쌍)는 levelViewOf 파생.
  *
- * **모르는 값은 ±Infinity 로 넘길 수 있다**(foldGrid 의 성긴 봉 열): 저가 +∞ 인 원소는 어떤 확정도
- * 먼저 일으키지 못하고, 고가 −∞ 인 원소는 갱신도 확정도 못 일으킨다 — 아는 쪽만 판정에 참여한다.
+ * 모르는 값은 ±Infinity 로 넘길 수 있다: 저가 +∞ 인 원소는 어떤 확정도 먼저 일으키지 못하고, 고가 −∞ 인
+ * 원소는 갱신도 확정도 못 일으킨다 — 아는 쪽만 판정에 참여한다.
  *
  * **tie 규칙 하나(§2.3)**: 세션 최고가를 갱신한 봉(renew)에서만 고가가 이기고, 그 밖 모든 봉에서는
  * 저가가 이긴다. 갱신 봉은 러닝 최고가라는 상태값의 사건이라 그 고가를 잃으면 마디가 사라지고(v8 도
@@ -315,7 +306,6 @@ export function zigzagIdxOf(
  * 레벨 크로싱 스캔(§2.5) — 피벗마다 **직전 레벨 가격을 처음 넘은 봉**(strict >)의 인덱스.
  * 레벨 = 확정 고점 중 이전 모든 고점 피벗보다 가격이 큰 것. 레벨이 아니거나 첫 레벨이면 null.
  * 스캔 구간이 레벨 사이로 서로 겹치지 않아 전체 O(n). 미확정 꼬리 고점은 레벨이 아니다(v8 유지).
- * `detectGrid` 와 `foldGrid` 가 같은 이 스캔을 쓴다.
  */
 export function levelCrossIdxOf(
     raw: readonly ZigzagIdx[],
@@ -375,7 +365,7 @@ export function detectGrid(
     }
     const markOf = (i: number): GridBarMark => ({ min: mins[i], tv: tvs[i].toString(), cum: prefix[i].toString() });
 
-    // ── 피벗: 양방향 zigzag — 규칙 본문은 `zigzagIdxOf`(foldGrid 와 공용).
+    // ── 피벗: 양방향 zigzag — 규칙 본문은 `zigzagIdxOf`.
     const raw = zigzagIdxOf(highs, lows, o.zigzagPct, (i) => mins[i]);
 
     // ── cross 스캔: 레벨(확정 고점 중 이전 모든 고점 피벗보다 가격이 큰 것, §2.5)에만 직전 레벨

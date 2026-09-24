@@ -16,7 +16,6 @@ export const COMPUTED_AXES = Symbol("ComputedAxes");      // 계산 축 값(타�
 export const DERIVED_CACHE = Symbol("DerivedCache");      // 날짜별 day 스냅샷 캐시 — DayBoards·RankSections 가 한 인스턴스를 나눠 쓴다(in-flight dedup 공유)
 export const RANK_SECTIONS = Symbol("RankSections");      // 순위 단면(후보 있는 날짜·분의 전 종목 서수) 읽기모델 + 파일 캐시
 export const POINT_GRIDS = Symbol("PointGrids");          // 자동 타점 격자(앵커∪라벨 차트당 zigzag+신고가 목록) 읽기모델 + 파일 캐시
-export const DAY_GRIDS = Symbol("DayGrids");              // 하루 우주 날짜 격자(그날 유니버스 전 종목, zigzag 1%·floor 0·밴드 3%) 빌더 + gzip 파일 캐시
 export const LABELED_POINT_FACTS = Symbol("LabeledPointFacts"); // 좌표 봉 사실(라벨=타점의 종가·고가) — 즉석 계산 + 상주 메모
 export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const NEWS_SEARCHER = Symbol("NewsSearcher");

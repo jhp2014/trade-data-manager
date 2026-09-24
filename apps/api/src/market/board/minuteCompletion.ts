@@ -1,5 +1,5 @@
-// 분봉 수집 완료 판정 — 날짜 파일을 **굳힐지** 가르는 게이트. 스냅샷(DerivedCache)과 날짜 격자(DayGrids)가
-// 같은 이 한 벌을 쓴다(두 벌이면 한쪽만 반쪽 날을 굳힌다).
+// 분봉 수집 완료 판정 — 날짜 파일을 **굳힐지** 가르는 게이트(스냅샷 DerivedCache). 날짜 단위 파일 캐시를
+// 새로 만들면 이 한 벌을 같이 쓸 것(두 벌이면 한쪽만 반쪽 날을 굳힌다).
 // collect 파이프라인(MinuteCollector)의 모델: 완료 = 기대집합(일봉에서 결정적으로 재계산한 분봉 후보)
 // ⊆ 저장집합(그 날 분봉 있는 종목 = universe).
 import { selectDailyCandidates, type DailyScanRepository } from "@trade-data-manager/market";

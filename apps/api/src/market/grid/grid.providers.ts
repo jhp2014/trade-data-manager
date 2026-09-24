@@ -3,25 +3,15 @@
 // deps 는 axisDepsOf 재사용(계산 축·recon 과 같은 한 벌 — curation 읽기는 로컬 미러 경로).
 // groups(좌표 라벨)도 **로컬 미러**다(DrizzleGroupRepository(marketPool) — ComputedAxes 배선과 같은 관용구).
 import type { Provider } from "@nestjs/common";
-import {
-    createDb,
-    DrizzleDailyCandleRepository,
-    DrizzleDailyUniverseProvider,
-    DrizzleGroupRepository,
-    DrizzleMinuteCandleRepository,
-    DrizzleRawDailyCandleRepository,
-} from "@trade-data-manager/persistence";
+import { createDb, DrizzleGroupRepository } from "@trade-data-manager/persistence";
 import { axisDepsOf } from "../rank/axisDeps.js";
-import { DAY_GRIDS, LABELED_POINT_FACTS, MARKET_POOL, POINT_GRIDS } from "../tokens.js";
+import { LABELED_POINT_FACTS, MARKET_POOL, POINT_GRIDS } from "../tokens.js";
 import type { Pool } from "../pool.js";
 import { fileGridStore } from "./gridStore.js";
 import { PointGrids } from "./pointGrids.js";
 import { PointGridController } from "./pointGrid.controller.js";
 import { LabeledPointFacts } from "./labeledPointFacts.js";
 import { LabeledPointFactController } from "./labeledPointFact.controller.js";
-import { DayGrids } from "./dayGrids.js";
-import { fileDayGridStore } from "./dayGridStore.js";
-import { DayGridController } from "./dayGrid.controller.js";
 
 export const gridProviders: Provider[] = [
     {
@@ -44,23 +34,6 @@ export const gridProviders: Provider[] = [
             }),
         inject: [MARKET_POOL],
     },
-    {
-        // 하루 우주 날짜 격자 — 단일 인스턴스(in-flight dedup·메모가 갈리면 같은 날짜를 둘이 굽는다).
-        provide: DAY_GRIDS,
-        useFactory: (marketPool: Pool): DayGrids => {
-            const db = createDb(marketPool);
-            const dailyRepo = new DrizzleDailyCandleRepository(db); // 완료 판정(scan) + 수정주가 창 겸용
-            return new DayGrids({
-                universe: new DrizzleDailyUniverseProvider(db),
-                scan: dailyRepo,
-                minute: new DrizzleMinuteCandleRepository(db),
-                rawDaily: new DrizzleRawDailyCandleRepository(db),
-                adjDaily: dailyRepo,
-                store: fileDayGridStore(),
-            });
-        },
-        inject: [MARKET_POOL],
-    },
 ];
 
-export const gridControllers = [PointGridController, LabeledPointFactController, DayGridController];
+export const gridControllers = [PointGridController, LabeledPointFactController];
