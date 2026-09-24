@@ -4,12 +4,8 @@
 //
 // payload **모양에서** 편집칸을 고른다 — 시드 전용 분기를 만들지 않는다(사용자가 만든 조건도 같은 손).
 import {
-    BREAKOUT_BAND_MAX_PCT,
-    BREAKOUT_ZIGZAG_MAX_PCT,
-    BREAKOUT_ZIGZAG_MIN_PCT,
     CANDLE_SHAPE_LABEL,
     CELL_VALUE_FIELDS,
-    type BreakoutLabelFilter,
     TRANSITIONS,
     TRANSITION_LABEL,
     type CellPredicate,
@@ -55,8 +51,8 @@ export function CellPredicateField({ p, onChange }: { p: CellPredicate; onChange
     if (p.kind === "priorHighBreak") {
         return <NumField label="창" suffix="일" value={p.days} min={1} onCommit={(v) => onChange({ ...p, days: Math.round(v) })} />;
     }
-    // 돌파의 노브(zigzag·밴드·이름표)는 **격자판 한 곳**에서 만진다(편집면은 한 곳 — 줄 이름 클릭 = 연동 격자판).
-    if (p.kind === "breakout") return <span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>zigzag·밴드는 격자판에서</span>;
+    // 돌파의 노브(밴드·zigzag·사슬 필터)는 **격자판 한 곳**에서 만진다(편집면은 한 곳 — 줄 이름 클릭 = 연동 격자판).
+    if (p.kind === "breakout") return <span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>밴드·zigzag·사슬 필터는 격자판에서</span>;
     if (p.kind === "candleShape") {
         return <Toggle on label={CANDLE_SHAPE_LABEL[p.shape]} title="클릭 = 양봉 ↔ 음봉"
             onClick={() => onChange({ ...p, shape: p.shape === "bull" ? "bear" : "bull" })} />;
@@ -75,33 +71,6 @@ function Toggle({ on, label, title, onClick }: { on: boolean; label: string; tit
             }}>
             {label}
         </button>
-    );
-}
-
-const LABEL_CYCLE: readonly BreakoutLabelFilter[] = ["all", "baseline", "high"];
-const LABEL_TEXT: Record<BreakoutLabelFilter, string> = { all: "이름표 전부", baseline: "기준선 돌파만", high: "고가 돌파만" };
-
-/**
- * 돌파 생성기 노브 — **zigzag · 밴드 둘뿐**(decisions 「Daily 타점 생성 = 돌파 사슬」). 양봉·대금은 따로 거는
- * 필터 줄이다. 이름표는 구조가 아니라 후보 거르기라 여기서 순환 칩으로 고른다.
- */
-export function BreakoutFields({ p, onChange }: {
-    p: Extract<CellPredicate, { kind: "breakout" }>;
-    onChange: (next: CellPredicate) => void;
-}): JSX.Element {
-    const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
-    return (
-        <>
-            <NumField label="zigzag" suffix="%" value={p.zigzagPct} min={BREAKOUT_ZIGZAG_MIN_PCT}
-                title={`사슬 끝 — 사슬 고점에서 이만큼 눌리면 끝(${BREAKOUT_ZIGZAG_MIN_PCT}~${BREAKOUT_ZIGZAG_MAX_PCT}%)`}
-                normalize={(v) => clamp(v, BREAKOUT_ZIGZAG_MIN_PCT, BREAKOUT_ZIGZAG_MAX_PCT)}
-                onCommit={(v) => onChange({ ...p, zigzagPct: v })} />
-            <NumField label="밴드" suffix="%" value={p.bandPct} min={0}
-                title={`고가(와 기준선) 아래 이 폭 안에 닿으면 사건(0~${BREAKOUT_BAND_MAX_PCT}%)`}
-                normalize={(v) => clamp(v, 0, BREAKOUT_BAND_MAX_PCT)} onCommit={(v) => onChange({ ...p, bandPct: v })} />
-            <Toggle on={p.label !== "all"} label={LABEL_TEXT[p.label]} title="클릭 = 이름표 순환(전부 → 기준선 돌파 → 고가 돌파)"
-                onClick={() => onChange({ ...p, label: LABEL_CYCLE[(LABEL_CYCLE.indexOf(p.label) + 1) % LABEL_CYCLE.length]! })} />
-        </>
     );
 }
 

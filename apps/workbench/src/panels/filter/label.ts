@@ -4,6 +4,7 @@
 // 그래서 이름을 못 찾은 자리는 `(지워짐)` 으로 **눈에 띄게** 남긴다 — 판정에서 그게 미배치를 만들고 있으니
 // 숫자와 화면이 같은 이야기를 해야 한다.
 import { CANDLE_SHAPE_LABEL, CELL_VALUE_FIELDS, TRANSITION_LABEL } from "@trade-data-manager/market/domain";
+import { chainSummary } from "../dailyGrid/chainChecks.js";
 import { NONE_LABEL, isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { shortDate } from "../../lib/date.js";
 import { OUTCOME_METRIC_NAME } from "../../lib/outcomeMetric.js";
@@ -56,8 +57,8 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
         case "cellValue": return cellValueLabel(p);
         case "priorHighBreak": return `전고 돌파 (${p.days}일)`;
         case "gridPoint": return "격자 Point";
-        // 노브를 라벨에 싣는다 — 같은 생성기가 (zigzag, 밴드)별로 여러 줄 설 수 있다(hotPoints 의 (W,r) 선례).
-        case "breakout": return `돌파 ${p.zigzagPct}%/${p.bandPct}%${p.label === "all" ? "" : p.label === "baseline" ? " · 기준선" : " · 고가"}`;
+        // 노브를 라벨에 싣는다 — 같은 생성기가 (zigzag, 밴드, 사슬 필터)별로 여러 줄 설 수 있다(hotPoints 의 (W,r) 선례).
+        case "breakout": return `돌파 ${p.zigzagPct}%/${p.bandPct}% · ${chainSummary(p)}`;
         case "candleShape": return CANDLE_SHAPE_LABEL[p.shape];
     }
 }

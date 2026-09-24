@@ -406,7 +406,8 @@ describe("돌파 생성기·캔들 모양 — 저장물 왕복(savedSets·filter
         const stages = [{
             id: "a", name: undefined, enabled: true,
             predicates: [
-                { kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all" },
+                { kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", chain: { amountEok: 50, openClose: { min: 0 }, firstK: 2 } },
+                { kind: "breakout", zigzagPct: 3, bandPct: 1, label: "high", chain: { pos: { max: 10 }, sessionHigh: "no", firstK: null } },
                 { kind: "candleShape", shape: "bull", transition: "firstTrue" },
                 { kind: "cellValue", field: "minuteAmountEok", ranges: [{ from: { kind: "value", value: 30 } }] },
             ],
@@ -417,5 +418,10 @@ describe("돌파 생성기·캔들 모양 — 저장물 왕복(savedSets·filter
     it("범위 밖 노브는 저장본을 버리지 않고 클램프된다", () => {
         const parsed = parseStages([{ id: "a", predicates: [{ kind: "breakout", zigzagPct: 99, bandPct: -1 }] }]);
         expect(parsed?.[0]?.predicates[0]).toMatchObject({ kind: "breakout", zigzagPct: 10, bandPct: 0, label: "all" });
+    });
+
+    it("사슬 필터가 없는 옛 저장 「돌파」는 처음 1개로 읽는다(저장본을 버리지 않는다)", () => {
+        const parsed = parseStages([{ id: "a", predicates: [{ kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all" }] }]);
+        expect(parsed?.[0]?.predicates[0]).toEqual({ kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", chain: { firstK: 1 } });
     });
 });

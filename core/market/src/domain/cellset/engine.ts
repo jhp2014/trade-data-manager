@@ -27,10 +27,11 @@
 // "코드 오름차순 앞 종목만 남는" 편향이 생긴다. 평가를 실제로 멈추는 건 HARD_CAP 그물 하나뿐이다
 // (조건이 사실상 전부일 때 19만 셀 × 분 단면 = 프리즈를 막는 2차 방어선. 1차는 "조건 없음 = 안 보여줌").
 import { minuteOfDayOf, type MinuteDerived } from "../replay/dayReplay.js";
-import { breakoutOfStock, type BreakoutLabel } from "./breakoutChain.js";
+import { breakoutOfStock, chainCandidatesOf, type BreakoutChainResult } from "./breakoutChain.js";
 import {
     CELL_VALUE_FIELDS,
     breakoutKeyOf,
+    breakoutStructKeyOf,
     costTierOf,
     exprOfCellConditions,
     pruneCellExpr,
@@ -64,14 +65,6 @@ export interface CellMaterials {
 }
 
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
-/** 돌파 후보 한 셀의 사슬 정보(사전계산 메모의 값). */
-interface CellBreakout {
-    label: BreakoutLabel;
-    /** 그날 사슬 번호. */
-    chain: number;
-    /** 사슬 안 순번(0 = 첫 사건). */
-    seq: number;
-}
 
 /** 발화 셀 하나 — 시각(자정기준 분) + 발화한 **조건 id** + 그 분의 표시값. 결손은 null(지어내지 않는다). */
 export interface CellHit {
@@ -160,15 +153,28 @@ function applyTransition(t: Transition | undefined, st: TransitionState, raw: bo
 interface StockPrecomputed {
     priorHighOf(days: number): number | null;
     gridMinutes: ReadonlySet<number> | null;
-    /** 돌파 판정 키 → (분 → 후보의 사슬 정보). */
-    breakouts: ReadonlyMap<string, ReadonlyMap<number, CellBreakout>>;
+    /** 돌파 후보 키 → 후보 분(자정기준). */
+    breakouts: ReadonlyMap<string, ReadonlySet<number>>;
 }
 
-/** 돌파 사슬 후보 — 분봉 한 번 순회(`breakoutChainsOf`). 기준선은 분봉과 같은 반올림의 % 로 옮긴다. */
-function breakoutMinutes(p: BreakoutPred, s: CellStock, mat: CellMaterials): ReadonlyMap<number, CellBreakout> {
-    const r = breakoutOfStock(s, mat.baselineOf?.(s.code) ?? null, { zigzagPct: p.zigzagPct, bandPct: p.bandPct });
-    const out = new Map<number, CellBreakout>();
-    for (const c of r.candidates) out.set(minuteOfDayOf(s.times[c.i]), { label: c.label, chain: c.chain, seq: c.seq });
+/**
+ * 돌파 후보 분 — 사슬은 구조 키(zigzag·밴드)마다 종목당 한 번만 세우고(`chains` 메모), 사슬 필터는 그 위에서
+ * 고른다. 기준선은 분봉과 같은 반올림의 % 로 옮긴다(`breakoutOfStock` 안).
+ */
+function breakoutMinutes(
+    p: BreakoutPred,
+    s: CellStock,
+    mat: CellMaterials,
+    chains: Map<string, BreakoutChainResult>,
+): ReadonlySet<number> {
+    const sk = breakoutStructKeyOf(p);
+    let r = chains.get(sk);
+    if (r === undefined) {
+        r = breakoutOfStock(s, mat.baselineOf?.(s.code) ?? null, { zigzagPct: p.zigzagPct, bandPct: p.bandPct });
+        chains.set(sk, r);
+    }
+    const out = new Set<number>();
+    for (const b of chainCandidatesOf(r.bars, s, p.chain, p.label)) out.add(minuteOfDayOf(s.times[b.i]));
     return out;
 }
 
@@ -185,8 +191,9 @@ function precompute(
         const w = s.trailingHighs.un.slice(1, Math.max(1, Math.floor(days)) + 1);
         highs.set(days, w.length > 0 ? Math.max(...w) : null); // 창이 비면 결손(신규 상장 등)
     }
-    const breakouts = new Map<string, ReadonlyMap<number, CellBreakout>>();
-    for (const [key, p] of needBreakout) breakouts.set(key, breakoutMinutes(p, s, mat));
+    const breakouts = new Map<string, ReadonlySet<number>>();
+    const chains = new Map<string, BreakoutChainResult>();
+    for (const [key, p] of needBreakout) breakouts.set(key, breakoutMinutes(p, s, mat, chains));
     return {
         priorHighOf: (days) => highs.get(days) ?? null,
         gridMinutes: needGrid ? new Set(mat.gridMinutesOf(s.code)) : null,
@@ -344,8 +351,7 @@ function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
                 raw = ctx.pre.gridMinutes !== null && ctx.pre.gridMinutes.has(ctx.min);
                 break;
             case "breakout": {
-                const hit = ctx.pre.breakouts.get(c.breakoutKey!)?.get(ctx.min);
-                raw = hit !== undefined && (p.label === "all" || p.label === hit.label);
+                raw = ctx.pre.breakouts.get(c.breakoutKey!)?.has(ctx.min) === true;
                 break;
             }
             case "candleShape": {

@@ -27,7 +27,7 @@ describe("모드 문지기(하루)", () => {
 
     it("하루·중립 조건은 그대로 된다 — 추가·갈아 끼우기·끄기·삭제", () => {
         const st = useWorkbench.getState();
-        st.addFilterStage([{ kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all" }]);
+        st.addFilterStage([{ kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", chain: { firstK: 1 } }]);
         st.addFilterStage([{ kind: "time", ranges: [{ from: "09:00", to: "10:00" }] }]);
         expect(stages()).toHaveLength(3);
         useWorkbench.getState().toggleFilterStage("r1");

@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+    breakoutKeyOf,
+    breakoutStructKeyOf,
     costTierOf,
     isCellPredicateEmpty,
     parseCellConditions,
@@ -8,6 +10,7 @@ import {
     usesGridPoint,
     usesZoneRank,
     type CellConditions,
+    type CellPredicate,
 } from "../predicate.js";
 
 // 파서는 panelUi(무검증 JSON 가방)의 유일한 문지기다 — 여기가 뚫리면 깨진 blob 이 평가기까지 간다.
@@ -105,8 +108,11 @@ describe("비용 등급·빈 판정·재료 사용 여부", () => {
 describe("돌파 생성기 · 캔들 모양", () => {
     it("왕복한다(전이 포함)", () => {
         const preds = [
-            { kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", transition: "firstTrue" },
-            { kind: "breakout", zigzagPct: 3, bandPct: 1, label: "baseline" },
+            { kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", chain: { firstK: 1 }, transition: "firstTrue" },
+            {
+                kind: "breakout", zigzagPct: 3, bandPct: 1, label: "baseline",
+                chain: { pos: { min: 1, max: 30 }, amountEok: 50, openHigh: { min: 0.5 }, openClose: { max: 0 }, sessionHigh: "yes", firstK: null },
+            },
             { kind: "candleShape", shape: "bull" },
             { kind: "cellValue", field: "minuteAmountEok", ranges: [{ from: { kind: "value", value: 30 } }] },
         ];
@@ -115,8 +121,24 @@ describe("돌파 생성기 · 캔들 모양", () => {
 
     it("노브 범위 밖은 **클램프**, 빠진 필드는 기본값 — 술어를 버리지 않는다", () => {
         expect(parseCellPredicate({ kind: "breakout", zigzagPct: 99, bandPct: -1, label: "?" }))
-            .toEqual({ kind: "breakout", zigzagPct: 10, bandPct: 0, label: "all" });
-        expect(parseCellPredicate({ kind: "breakout" })).toEqual({ kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all" });
+            .toEqual({ kind: "breakout", zigzagPct: 10, bandPct: 0, label: "all", chain: { firstK: 1 } });
+        expect(parseCellPredicate({ kind: "breakout" })).toEqual({ kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", chain: { firstK: 1 } });
+    });
+
+    it("사슬 필터 — 없는 옛 저장물은 처음 1개, 깨진 조건은 그 조건만 없음", () => {
+        const chainOf = (chain: unknown) => (parseCellPredicate({ kind: "breakout", chain }) as Extract<CellPredicate, { kind: "breakout" }>).chain;
+        expect(chainOf(undefined)).toEqual({ firstK: 1 });
+        expect(chainOf({ firstK: null })).toEqual({ firstK: null });
+        expect(chainOf({ firstK: 0 })).toEqual({ firstK: 1 });
+        expect(chainOf({ firstK: 2.7 })).toEqual({ firstK: 2 });
+        expect(chainOf({ pos: { min: -3.5 }, amountEok: -1, openHigh: {}, sessionHigh: "maybe", firstK: "x" })).toEqual({ pos: { min: 0 }, firstK: 1 });
+    });
+
+    it("후보 키는 사슬 필터마다, 구조 키는 zigzag·밴드마다", () => {
+        const a = parseCellPredicate({ kind: "breakout" }) as Extract<CellPredicate, { kind: "breakout" }>;
+        const b = { ...a, chain: { amountEok: 50, firstK: 1 } };
+        expect(breakoutKeyOf(a)).not.toBe(breakoutKeyOf(b));
+        expect(breakoutStructKeyOf(a)).toBe(breakoutStructKeyOf(b));
     });
 
     it("모르는 캔들 모양은 null(그 술어만 건너뛴다)", () => {

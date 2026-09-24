@@ -127,12 +127,12 @@ describe("setDisplayName — 참조도 항이다", () => {
 });
 
 describe("돌파 생성기 라벨 — 노브가 인스턴스를 가른다", () => {
-    it("zigzag/밴드와 이름표 거르기가 이름에 실린다", () => {
-        const a: FilterPredicate = { kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all" };
-        const b: FilterPredicate = { kind: "breakout", zigzagPct: 3, bandPct: 1, label: "baseline" };
+    it("zigzag/밴드와 사슬 필터(봉 조건 + 순번)가 이름에 실린다", () => {
+        const a: FilterPredicate = { kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", chain: { firstK: 1 } };
+        const b: FilterPredicate = { kind: "breakout", zigzagPct: 3, bandPct: 1, label: "baseline", chain: { amountEok: 50, sessionHigh: "yes", firstK: null } };
         const c: FilterPredicate = { kind: "candleShape", shape: "bear" };
-        expect(predicateLabel(a, look)).toBe("돌파 2%/0.5%");
-        expect(predicateLabel(b, look)).toBe("돌파 3%/1% · 기준선");
+        expect(predicateLabel(a, look)).toBe("돌파 2%/0.5% · 처음 1개");
+        expect(predicateLabel(b, look)).toBe("돌파 3%/1% · 50억↑ · 세션고가 · 기준선 · 전부");
         expect(predicateLabel(c, look)).toBe("음봉");
         expect(kindLabel("breakout")).toBe("타점");
     });

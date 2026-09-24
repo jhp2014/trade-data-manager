@@ -147,3 +147,6 @@ export const KIND_THEME = "#7f77dd"; // 테마 — 그 분의 무리 안 자리
 // 기준선 보라는 GUIDE(+30% 가이드)와 가까운 값이지만 뜻이 다르다(머리 규칙: 이름을 가른다).
 export const BREAKOUT_HIGH = "#16796f";
 export const BREAKOUT_BASE = "#7f77dd";
+// 사슬 필터 레인 칸 — 봉 조건 통과/탈락. STRONG·FAIL 과 같은 값이지만 뜻이 다르다(머리 규칙: 이름을 가른다).
+export const CHAIN_PASS = "#1baf7a";
+export const CHAIN_FAIL = "#e24b4a";

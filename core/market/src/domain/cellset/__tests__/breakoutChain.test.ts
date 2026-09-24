@@ -1,44 +1,107 @@
 // 돌파 사슬 — decisions 「Daily 타점 생성 = 돌파 사슬」의 규칙을 봉 단위로 못 박는다.
 // 픽스처는 % (기준가 대비) — 가격 비 = 1 + %/100.
 import { describe, expect, it } from "vitest";
-import { baselinePctOf, breakoutChainsOf, type ChainSeries } from "../breakoutChain.js";
+import { baselinePctOf, breakoutChainsOf, chainCandidatesOf, chainVerdicts, type ChainFilter, type ChainSeries } from "../breakoutChain.js";
 import { deriveMinutes } from "../../replay/dayReplay.js";
 import type { DailyCandle } from "../../candle/model.js";
 
-/** [고가%, 저가%, 분 대금(억)] 열 → 시리즈. 대금 0 = 거래 없는 채움봉. */
-function series(bars: [number, number, number][]): ChainSeries {
+/**
+ * [고가%, 저가%, 분 대금(억), 시가%?, 종가%?] 열 → 시리즈. 대금 0 = 거래 없는 채움봉.
+ * 시가·종가를 안 주면 시가 = 저가, 종가 = 고가(양봉).
+ */
+function series(bars: ([number, number, number] | [number, number, number, number, number])[]): ChainSeries {
     let cum = 0;
     return {
+        minuteOpen: bars.map((b) => b[3] ?? b[1]),
         minuteHigh: bars.map((b) => b[0]),
         minuteLow: bars.map((b) => b[1]),
+        rate: bars.map((b) => b[4] ?? b[0]),
         cumAmount: bars.map((b) => (cum += b[2] * 1e8)),
     };
 }
 const K = { zigzagPct: 2, bandPct: 1 };
-const idx = (r: ReturnType<typeof breakoutChainsOf>) => r.candidates.map((c) => c.i);
+const idx = (r: ReturnType<typeof breakoutChainsOf>) => r.bars.map((c) => c.i);
 
-describe("대금 사다리 — 사슬 안에선 새 고가가 필요 없다", () => {
+describe("사슬 봉 — 사슬 안 거래 봉 전부", () => {
     const s = series([
         [0, -0.5, 20], // 0 첫 봉 = 사건 → 사슬 0 시작
-        [-0.2, -0.8, 50], // 1 새 고가 아님 · 50 ≥ 20 → 후보
-        [0.3, 0, 40], // 2 새 고가지만 40 < 50 → 아님
-        [0.1, -0.3, 60], // 3 60 ≥ 50 → 후보
-        [0.2, -1.8, 70], // 4 저가 ≤ 고점(0.3)×0.98 → 사슬 끝(대금이 커도 후보 아님)
+        [-0.2, -0.8, 50], // 1 새 고가 아님 — 그래도 사슬 봉
+        [0.3, 0, 40], // 2 새 고가
+        [0.1, -0.3, 60], // 3
+        [0.2, -1.8, 70], // 4 저가 ≤ 고점(0.3)×0.98 → 사슬 끝(사슬 봉 아님)
     ]);
     const r = breakoutChainsOf(s, null, K);
 
-    it("후보 = 첫 사건 + 사다리 통과 봉", () => {
-        expect(idx(r)).toEqual([0, 1, 3]);
-        expect(r.candidates.map((c) => c.seq)).toEqual([0, 1, 2]);
+    it("사슬 봉 = 시작 봉부터 끝 봉 직전까지, 순번은 봉 수", () => {
+        expect(idx(r)).toEqual([0, 1, 2, 3]);
+        expect(r.bars.map((c) => c.pos)).toEqual([0, 1, 2, 3]);
+    });
+
+    it("세션 고가 돌파 = 직전까지 세션 최고가 이상(첫 봉 참)", () => {
+        expect(r.bars.map((c) => c.sessionHigh)).toEqual([true, false, true, false]);
+        const tie = breakoutChainsOf(series([[0, -0.5, 20], [0, -0.3, 10]]), null, K);
+        expect(tie.bars[1]!.sessionHigh).toBe(true); // 터치 포함
     });
 
     it("사슬 끝 = zigzag 만큼 눌린 봉, 고점은 사슬 최고가", () => {
         expect(r.chains).toEqual([{ start: 0, end: 4, high: expect.closeTo(0.3, 9), baselineFrom: null }]);
     });
+});
 
-    it("같은 대금은 통과(≥)", () => {
-        const eq = breakoutChainsOf(series([[0, -0.5, 20], [0.1, 0, 20]]), null, K);
-        expect(idx(eq)).toEqual([0, 1]);
+describe("사슬 필터 — 봉 조건 → 순번", () => {
+    // 사슬 하나: [고가, 저가, 대금억, 시가, 종가]
+    const s = series([
+        [0, -0.5, 20, -0.5, -0.2], // 0 양봉 · 20억 · 세션고가
+        [-0.2, -0.8, 50, -0.3, -0.7], // 1 음봉 · 50억
+        [0.3, 0, 40, 0, 0.3], // 2 양봉 · 40억 · 세션고가
+        [0.4, 0.1, 60, 0.1, 0.35], // 3 양봉 · 60억 · 세션고가
+        [0.35, 0.1, 80, 0.3, 0.2], // 4 음봉 · 80억
+    ]);
+    const r = breakoutChainsOf(s, null, K);
+    const pick = (f: ChainFilter) => chainCandidatesOf(r.bars, s, f, "all").map((b) => b.i);
+
+    it("기본(처음 1개) = 사슬 첫 봉, 전부 = 사슬 봉 전부", () => {
+        expect(pick({ firstK: 1 })).toEqual([0]);
+        expect(pick({ firstK: null })).toEqual([0, 1, 2, 3, 4]);
+    });
+
+    it("N억 처음 만족 = 대금 ≥ N + 처음 1개", () => {
+        expect(pick({ amountEok: 50, firstK: 1 })).toEqual([1]);
+        expect(pick({ amountEok: 50, firstK: 2 })).toEqual([1, 3]);
+    });
+
+    it("순번은 봉 조건을 **통과한 봉끼리** 센다", () => {
+        const v = chainVerdicts(r.bars, s, { openClose: { min: 0.0001 }, firstK: 2 }, "all");
+        expect(v.map((x) => x.rank)).toEqual([0, null, 1, 2, null]);
+        expect(v.filter((x) => x.picked).map((x) => x.bar.i)).toEqual([0, 2]);
+        expect(v[1]!.failed).toEqual(["openClose"]);
+    });
+
+    it("봉 순번 범위 · 세션 고가 · 시가→고가", () => {
+        expect(pick({ pos: { min: 2 }, firstK: null })).toEqual([2, 3, 4]);
+        expect(pick({ pos: { max: 1 }, firstK: null })).toEqual([0, 1]);
+        expect(pick({ sessionHigh: "yes", firstK: null })).toEqual([0, 2, 3]);
+        expect(pick({ sessionHigh: "no", firstK: null })).toEqual([1, 4]);
+        // 시가→고가는 가격 비: 시가 −0.5% → 고가 0% = +0.5025…%
+        expect(pick({ openHigh: { min: 0.5 }, firstK: null })).toEqual([0]);
+    });
+
+    it("떨어진 조건은 전부 적힌다(설명·레인)", () => {
+        const v = chainVerdicts(r.bars, s, { amountEok: 50, sessionHigh: "yes", firstK: 1 }, "baseline");
+        expect(v[0]!.failed).toEqual(["amount", "label"]);
+        expect(v[1]!.failed).toEqual(["sessionHigh", "label"]);
+    });
+
+    it("순번은 사슬마다 새로 센다", () => {
+        const t = series([
+            [0, -0.5, 20], // 사슬 0
+            [0.1, 0, 20],
+            [-0.5, -3, 10], // 끝
+            [-0.5, -1, 10], // 좁아진 하단 터치 → 사슬 1
+            [-0.4, -0.6, 10],
+        ]);
+        const rr = breakoutChainsOf(t, null, K);
+        expect(chainCandidatesOf(rr.bars, t, { firstK: 1 }, "all").map((b) => b.i)).toEqual([0, 3]);
     });
 });
 
@@ -51,7 +114,7 @@ describe("러닝 최고가 밴드", () => {
             [-0.5, -1, 10], // 3 같은 가격 터치 → 사건 → 사슬 1
         ]);
         const r = breakoutChainsOf(s, null, K, { trace: true });
-        expect(idx(r)).toEqual([0, 3]);
+        expect(r.chains.map((c) => c.start)).toEqual([0, 3]);
         expect(r.trace!.bottom[1]).toBeCloseTo(-0.5, 9);
     });
 
@@ -79,14 +142,15 @@ describe("러닝 최고가 밴드", () => {
         const s = series([[0, -0.5, 20], [0.5, -3, 10], [0.4, 0.2, 30]]);
         const r = breakoutChainsOf(s, null, K);
         expect(r.chains[0]!.end).toBeNull();
-        expect(idx(r)).toEqual([0, 2]);
+        expect(idx(r)).toEqual([0, 1, 2]);
     });
 
-    it("거래 없는 봉(분 대금 0)은 아무것도 아니다 — 사슬 끝도 후보도 아니다", () => {
+    it("거래 없는 봉(분 대금 0)은 아무것도 아니다 — 사슬 끝도 사슬 봉도 아니다(순번도 안 센다)", () => {
         const s = series([[0, -0.5, 20], [-5, -5, 0], [0.1, 0, 30]]);
         const r = breakoutChainsOf(s, null, K);
         expect(r.chains[0]!.end).toBeNull();
         expect(idx(r)).toEqual([0, 2]);
+        expect(r.bars.map((b) => b.pos)).toEqual([0, 1]);
     });
 });
 
@@ -103,7 +167,7 @@ describe("기준선 밴드 — 이름표는 사슬 단위, 도중 합류", () =>
     const r = breakoutChainsOf(s, 3, K);
 
     it("합류 전은 고가, 합류 봉부터 끝까지 기준선, 소멸 뒤 사슬은 고가", () => {
-        expect(r.candidates.map((c) => [c.i, c.label])).toEqual([
+        expect(r.bars.map((c) => [c.i, c.label])).toEqual([
             [0, "high"], [1, "high"], [2, "baseline"], [3, "baseline"], [5, "high"],
         ]);
         expect(r.chains[0]!.baselineFrom).toBe(2);
@@ -117,17 +181,22 @@ describe("기준선 밴드 — 이름표는 사슬 단위, 도중 합류", () =>
             [2.5, 0, 20], // 러닝 상단 돌파 ∧ 기준선 밴드 하단 돌파 → 둘 다 사건 → 기준선이 이긴다
         ]);
         const r2 = breakoutChainsOf(t, 3, K);
-        expect(r2.candidates.at(-1)).toMatchObject({ i: 2, label: "baseline", seq: 0 });
+        expect(r2.bars.at(-1)).toMatchObject({ i: 2, label: "baseline", pos: 0 });
     });
 
     it("첫 봉이 통째로 기준선 위(갭)면 사건 없이 소멸", () => {
         const r3 = breakoutChainsOf(series([[3, 2, 10], [3.5, 3, 20]]), 1, K, { trace: true });
-        expect(r3.candidates.every((c) => c.label === "high")).toBe(true);
+        expect(r3.bars.every((c) => c.label === "high")).toBe(true);
         expect(r3.trace!.baseBottom).toEqual([null, null]);
     });
 
     it("기준선 없음 = 전부 고가 돌파", () => {
-        expect(breakoutChainsOf(s, null, K).candidates.every((c) => c.label === "high")).toBe(true);
+        expect(breakoutChainsOf(s, null, K).bars.every((c) => c.label === "high")).toBe(true);
+    });
+
+    it("이름표 거르기는 봉 조건 — 순번은 걸러진 뒤에 센다", () => {
+        expect(chainCandidatesOf(r.bars, s, { firstK: 1 }, "baseline").map((b) => b.i)).toEqual([2]);
+        expect(chainCandidatesOf(r.bars, s, { firstK: 1 }, "high").map((b) => b.i)).toEqual([0, 5]);
     });
 });
 

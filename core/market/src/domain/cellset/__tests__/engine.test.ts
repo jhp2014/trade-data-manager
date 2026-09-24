@@ -305,35 +305,54 @@ describe("돌파 생성기 + 캔들·분봉 대금 필터", () => {
         basePrice: { krx: null, un: 10_000 },
     });
     const bo = (over: Partial<Extract<CellPredicate, { kind: "breakout" }>> = {}): CellExpr =>
-        ({ kind: "pred", id: "b", pred: { kind: "breakout", zigzagPct: 2, bandPct: 1, label: "all", ...over } });
+        ({ kind: "pred", id: "b", pred: { kind: "breakout", zigzagPct: 2, bandPct: 1, label: "all", chain: { firstK: 1 }, ...over } });
+    const all = { firstK: null };
     const and = (...of: CellExpr[]): CellExpr => ({ kind: "and", id: "a", of });
+    const bull: CellExpr = { kind: "pred", id: "c", pred: { kind: "candleShape", shape: "bull" } };
 
-    it("사슬 후보(첫 사건 + 대금 사다리)에서 발화한다", () => {
-        expect(mins(evaluateCellsExpr([s], NO_MAT, bo()))).toEqual([0, 1, 3]);
+    it("기본(처음 1개) = 사슬 첫 봉, 전부 = 사슬 봉 전부", () => {
+        expect(mins(evaluateCellsExpr([s], NO_MAT, bo()))).toEqual([0]);
+        expect(mins(evaluateCellsExpr([s], NO_MAT, bo({ chain: all })))).toEqual([0, 1, 2, 3]);
     });
 
-    it("양봉 필터는 후보만 거른다 — 음봉 50억(분 1)이 사다리를 올린 구조는 그대로(분 3 만 남음)", () => {
-        const bull: CellExpr = { kind: "pred", id: "c", pred: { kind: "candleShape", shape: "bull" } };
-        expect(mins(evaluateCellsExpr([s], NO_MAT, and(bo(), bull)))).toEqual([0, 3]);
+    it("사슬 필터 N억 처음 만족 = 대금 ≥ N + 처음 1개", () => {
+        expect(mins(evaluateCellsExpr([s], NO_MAT, bo({ chain: { amountEok: 45, firstK: 1 } })))).toEqual([1]);
     });
 
-    it("분봉 대금 필터 — 돌파 대금 ≥ 55억", () => {
+    it("생성소의 양봉 필터는 순번 셈에 안 든다 — 45억 처음 만족 봉(분 1)이 음봉이면 다음 봉으로 안 넘어간다", () => {
+        expect(mins(evaluateCellsExpr([s], NO_MAT, and(bo({ chain: { amountEok: 45, firstK: 1 } }), bull)))).toEqual([]);
+        expect(mins(evaluateCellsExpr([s], NO_MAT, and(bo({ chain: all }), bull)))).toEqual([0, 2, 3]);
+    });
+
+    it("분봉 대금 필터 — 사슬 봉 전부 중 대금 ≥ 55억", () => {
         const amt: CellExpr = { kind: "pred", id: "m", pred: { kind: "cellValue", field: "minuteAmountEok", ranges: [{ from: { kind: "value", value: 55 } }] } };
-        expect(mins(evaluateCellsExpr([s], NO_MAT, and(bo(), amt)))).toEqual([3]);
+        expect(mins(evaluateCellsExpr([s], NO_MAT, and(bo({ chain: all }), amt)))).toEqual([3]);
     });
 
     it("기준선 재료가 있으면 이름표가 갈린다 — 기준선 0.1% 밴드에서 사슬이 시작해 끝까지 기준선", () => {
         // 기준선 가격 10,010 = 0.1% (분봉과 같은 반올림). 밴드 1% → 하단 ≈ −0.9 라 분 0(0) 부터 기준선 밴드 사건.
         const mat: CellMaterials = { ...NO_MAT, baselineOf: () => 10_010 };
-        const r = evaluateCellsExpr([s], mat, bo({ label: "baseline" }));
-        expect(mins(r)).toEqual([0, 1, 3]);
-        expect(evaluateCellsExpr([s], mat, bo({ label: "high" })).hits).toEqual([]);
+        const r = evaluateCellsExpr([s], mat, bo({ label: "baseline", chain: all }));
+        expect(mins(r)).toEqual([0, 1, 2, 3]);
+        expect(evaluateCellsExpr([s], mat, bo({ label: "high", chain: all })).hits).toEqual([]);
         expect(evaluateCellsExpr([s], NO_MAT, bo({ label: "baseline" })).hits).toEqual([]); // 기준선 없음 = 전부 고가
     });
 
-    it("같은 구조 키(zigzag·밴드)는 종목당 한 번 — 이름표·전이만 다른 두 잎이 재료를 두 번 부르지 않는다", () => {
+    it("이름표만 다른 두 잎은 다른 후보다 — 이름표 분리는 후보 키에 달려 있다", () => {
+        const mat: CellMaterials = { ...NO_MAT, baselineOf: () => 10_010 };
+        const both: CellExpr = { kind: "and", id: "a", of: [bo({ label: "baseline", chain: all }), { ...bo({ label: "high", chain: all }), id: "h" }] };
+        expect(evaluateCellsExpr([s], mat, both).hits).toEqual([]);
+        const either: CellExpr = { kind: "or", id: "r", of: [bo({ label: "high", chain: all }), { ...bo({ label: "baseline", chain: all }), id: "h" }] };
+        expect(mins(evaluateCellsExpr([s], mat, either))).toEqual([0, 1, 2, 3]);
+    });
+
+    it("같은 구조 키(zigzag·밴드)는 종목당 한 번 — 이름표·사슬 필터·전이만 다른 잎들이 사슬을 두 번 세우지 않는다", () => {
         const baselineOf = vi.fn(() => null);
-        const two: CellExpr = { kind: "or", id: "r", of: [bo(), { ...bo({ label: "high", transition: "firstTrue" }), id: "y" }] };
+        const two: CellExpr = {
+            kind: "or",
+            id: "r",
+            of: [bo(), { ...bo({ label: "high", transition: "firstTrue" }), id: "y" }, { ...bo({ chain: all }), id: "z" }],
+        };
         evaluateCellsExpr([s], { ...NO_MAT, baselineOf }, two);
         expect(baselineOf).toHaveBeenCalledTimes(1);
     });

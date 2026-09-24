@@ -53,7 +53,7 @@ const pickItem = (c: HTMLElement, text: string): void => {
 };
 
 const RATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "cellValue" as const, field: "ratePct" as const, ranges: [{ from: { kind: "value" as const, value: 5 } }] }] };
-const BO_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "breakout" as const, zigzagPct: 2, bandPct: 0.5, label: "all" as const }] };
+const BO_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "breakout" as const, zigzagPct: 2, bandPct: 0.5, label: "all" as const, chain: { firstK: 1 } }] };
 const TIME_STAGE = { id: "tm", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: "09:00", to: "10:30" }] }] };
 const RESET = { funnelSelection: null, savedSets: [], editingSetId: "edit", editPath: ["edit"], sessionUi: {}, themeBindings: {}, filterMode: "daily" as const };
 beforeEach(() => { useWorkbench.setState(RESET); });
