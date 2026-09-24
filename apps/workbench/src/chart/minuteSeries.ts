@@ -18,6 +18,7 @@ import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/marke
 import { type VertLines } from "./vertLine.js";
 import { type DropLines } from "./dropLine.js";
 import { asLegPrimitive, LegMarks } from "./legMark.js";
+import { asChainPrimitive, ChainLayer } from "./chainLayer.js";
 import { type MinutePoint } from "../lib/derive.js";
 
 export interface MinuteSeries {
@@ -30,6 +31,8 @@ export interface MinuteSeries {
     dropRef: MutableRefObject<DropLines | null>;
     /** 고점 렌즈 다리 표식(드롭 캡 + 띠) primitive — useLegMarks 가 spec 을 민다. 분봉 전용(일봉 공용 골조 밖). */
     legRef: MutableRefObject<LegMarks | null>;
+    /** 사슬 층(돌파 사슬 띠·▼·밴드 계단) primitive — useChainLayer 가 spec 을 민다. 분봉 전용. */
+    chainRef: MutableRefObject<ChainLayer | null>;
     /** 오버레이(타점 아이콘·정보 박스) 위치 재계산 트리거 — pan/zoom·리사이즈·데이터 변경 시 bump. */
     overlayTick: number;
     bumpOverlay: () => void;
@@ -46,6 +49,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
     const amountVertsRef = useRef<VertLines | null>(null);
     const dropRef = useRef<DropLines | null>(null);
     const legRef = useRef<LegMarks | null>(null);
+    const chainRef = useRef<ChainLayer | null>(null);
     const [overlayTick, setOverlayTick] = useState(0);
     const bumpOverlay = (): void => setOverlayTick((v) => v + 1);
     const [gen, setGen] = useState(0);
@@ -86,6 +90,8 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
         // 다리 표식은 분봉만의 것 — 공용 골조(buildCandleAmountSeries)에 넣지 않고 여기서 직접 붙인다.
         const legs = new LegMarks();
         s.candle.attachPrimitive(asLegPrimitive(legs));
+        const chains = new ChainLayer();
+        s.candle.attachPrimitive(asChainPrimitive(chains));
         candleRef.current = s.candle;
         amountRef.current = s.amount;
         markersRef.current = s.markers;
@@ -93,6 +99,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
         amountVertsRef.current = s.amountVerts;
         dropRef.current = s.drops;
         legRef.current = legs;
+        chainRef.current = chains;
         setGen((g) => g + 1); // 새 시리즈가 났다 — 데이터·마커 effect 를 다시 태운다
         // pan/zoom 시 오버레이 아이콘 위치 갱신.
         const ts = chart.timeScale();
@@ -106,6 +113,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
             if (chartRef.current !== null) {
                 ts.unsubscribeVisibleLogicalRangeChange(bumpOverlay);
                 s.candle.detachPrimitive(asLegPrimitive(legs));
+                s.candle.detachPrimitive(asChainPrimitive(chains));
                 s.dispose();
             }
             candleRef.current = null;
@@ -115,11 +123,12 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
             amountVertsRef.current = null;
             dropRef.current = null;
             legRef.current = null;
+            chainRef.current = null;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return { candleRef, amountRef, markersRef, candleVertsRef, amountVertsRef, dropRef, legRef, overlayTick, bumpOverlay, gen };
+    return { candleRef, amountRef, markersRef, candleVertsRef, amountVertsRef, dropRef, legRef, chainRef, overlayTick, bumpOverlay, gen };
 }
 
 export interface MinuteLookups {

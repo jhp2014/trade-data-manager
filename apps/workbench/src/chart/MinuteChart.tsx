@@ -8,10 +8,12 @@ import { AnchorMarkLayer } from "./AnchorMarkLayer.js";
 import { CHIP_TOP_PAD_MINUTE, useAnchorMarkOverlay } from "./anchorMarkOverlay.js";
 import { useMinuteAnchorMarkArgs } from "./anchorMarkArgs.js";
 import type { AnchorMark } from "../lib/anchorMarks.js";
+import type { ChainOverlayInput } from "./chainLayer.js";
 import { useMinuteSeries, useMinuteSeriesData } from "./minuteSeries.js";
 import { useMinuteVisibleRange } from "./minuteFraming.js";
 import {
     snapPoints,
+    useChainLayer,
     useLegMarks,
     useMarkerOverlay,
     useMarkerVertLines,
@@ -126,6 +128,7 @@ export function MinuteChart({
     onPickPrice,
     capturePriceArmed = false,
     anchorMarks,
+    chainOverlay = null,
 }: {
     points: MinutePoint[];
     frameKey: string; // 데이터셋 정체성(code:date) — 이게 바뀔 때만 표시범위 리프레임(라이브 틱엔 뷰 보존).
@@ -159,6 +162,8 @@ export function MinuteChart({
      * **도메인 ChartAnchor 가 아니라 뷰모델**이다 — 새 param 이 늘어도 이 컴포넌트는 안 바뀐다.
      */
     anchorMarks?: readonly AnchorMark[];
+    /** 사슬 층(돌파 사슬 띠·▼·밴드 계단) — null/생략 = 없음(실시간 차트·층 꺼짐). */
+    chainOverlay?: ChainOverlayInput | null;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -183,6 +188,7 @@ export function MinuteChart({
     const { amountMapRef, cumMapRef, pointMapRef } = useMinuteSeriesData(series, points, showAmountMarkers);
     const { currentSnapped, autoSnapped } = useMarkerVertLines(series, points, markerTime, autoPoints);
     useLegMarks(series, points, legHighTimes, legBand, showAmountMarkers);
+    useChainLayer(series, points, chainOverlay, showAmountMarkers);
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });
     usePercentPriceLines(series.candleRef, lines, base, pctBase);

@@ -12,7 +12,9 @@ import { autoPointsOfChart, useAutoPoints, usePointGrids } from "../lib/PointGri
 import { useDisplayT } from "./outcome/outcomeLink.js";
 import { minuteToHms, sliceOutcome, walkOutcome } from "@trade-data-manager/market/domain";
 import type { AutoPointInput, LabelPointInput } from "../chart/minuteOverlays.js";
-import { groupColor } from "../styles/palette.js";
+import { BREAKOUT_HIGH, groupColor } from "../styles/palette.js";
+import { useChainOverlay } from "./dailyGrid/useChainOverlay.js";
+import { ChainLayerMenu } from "./dailyGrid/ChainLayerMenu.js";
 
 /** 집합 평가를 끄는 상수 — 빈 배열 리터럴이면 매 렌더 새 참조라 memo 가 헛돈다. */
 
@@ -74,6 +76,11 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 우클릭 메뉴의 기준 시장 — 선 줄이 따른다. 패널에 남겨(sticky) 오염 회피로 KRX 를 보는 중에
     // 봉마다 다시 누르지 않게 한다. 분봉·KRX 부재 봉에서는 메뉴가 UN 으로 되돌린다(없는 시장은 못 지목).
     const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
+    // 사슬 층(돌파 사슬 띠·▼, 선택으로 ① 밴드 선) — 출처 = 보는 집합의 「돌파」 줄(패널에 고른 것 → 격자판 연동 줄 → 첫 줄).
+    const [showChain, setShowChain] = usePanelUi(panelId, "showChain", true);
+    const [chainBands, setChainBands] = usePanelUi(panelId, "chainBands", false);
+    const [chainSource, setChainSource] = usePanelUi(panelId, "chainSource", "");
+    const [chainMenuAt, setChainMenuAt] = useState<{ x: number; y: number } | null>(null);
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
     const { chartGroupsOf, pathLabel, pointLabelsOf } = useGroups();
@@ -159,6 +166,11 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         return high === undefined ? null : { from: sig, to: high };
     }, [time, viewDate, legHighBySignal]);
 
+    const chain = useChainOverlay({
+        on: showChain, showBands: chainBands, sourceId: chainSource, code, date: anchorDate,
+        onSetDate: !drifted, ownBars: ownBundle(minuteQ.data, code) !== undefined, chartBase: minuteView?.base ?? null,
+    });
+
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
     const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
 
@@ -216,6 +228,16 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         anchorMarkControl(showAnchorMarks, () => setShowAnchorMarks((v) => !v)),
         legMarkControl(showLegMarks, () => setShowLegMarks((v) => !v)),
         {
+            kind: "toggle", id: "chainLayer", name: "사슬", group: "마커", activeColor: BREAKOUT_HIGH,
+            help: `돌파 사슬 띠 · 후보 ▼ — 「돌파」 줄 단독의 후보(다른 조건·전이는 ◇)${chain.source ? ` · ${chain.source.text}` : ""}${chain.why ? ` — ${chain.why}` : ""}`,
+            on: showChain, set: () => setShowChain((v) => !v),
+        },
+        {
+            kind: "action", id: "chainMenu", label: "▾", name: "사슬 설정", group: "마커",
+            help: "사슬 층 — 출처(돌파 줄) 고르기 · ① 밴드 선 · 격자판으로",
+            run: (at) => setChainMenuAt({ x: at.clientX, y: at.clientY }),
+        },
+        {
             kind: "action", id: "clearLines", name: "선 지우기", group: "지우기",
             help: "가격선 전체 지우기", run: lines.clear, disabled: !lines.hasLines,
         },
@@ -223,6 +245,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     ], [view, setView, pinMinute, setPinMinute, lockScale, setLockScale, showPointInfo, setShowPointInfo,
         showMarkers, setShowMarkers, showLine, setShowLine, showGuide, setShowGuide,
         showAnchorMarks, setShowAnchorMarks, showLegMarks, setShowLegMarks,
+        showChain, setShowChain, chain.source, chain.why,
         lines.clear, lines.hasLines, mode, setMode]);
 
     return (
@@ -311,12 +334,26 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     onRemoveLine={(l) => lines.removeLineById(l.id)}
                                     onLineContext={(l, at) => openMenu(at, { nearLine: l })}
                                     anchorMarks={minuteMarks}
+                                    chainOverlay={chain.input}
                                 />
                             ) : null
                         }
                     />
                 )}
             </div>
+
+            {chainMenuAt && (
+                <ChainLayerMenu
+                    anchor={chainMenuAt}
+                    overlay={chain}
+                    on={showChain}
+                    onToggle={() => setShowChain((v) => !v)}
+                    showBands={chainBands}
+                    onToggleBands={() => setChainBands((v) => !v)}
+                    onPickSource={setChainSource}
+                    onClose={() => setChainMenuAt(null)}
+                />
+            )}
 
             {candleMenu && (
                 <CandleMenu

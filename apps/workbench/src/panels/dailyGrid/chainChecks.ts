@@ -69,6 +69,9 @@ export function checkValueText(c: ChainCheck, b: ChainBar, s: ChainSeries): stri
 
 export const rankText = (f: ChainFilter): string => (f.firstK === null ? "전부" : `처음 ${f.firstK}개`);
 
+/** 「돌파」 술어의 표시 이름 — 생성소 줄 이름표·차트 사슬 층 출처 목록이 같은 한 벌. */
+export const breakoutText = (p: BreakoutPred): string => `돌파 ${p.zigzagPct}%/${p.bandPct}% · ${chainSummary(p)}`;
+
 /** 생성소 줄 이름표용 한 줄 요약 — 걸린 봉 조건 + 순번. */
 export function chainSummary(p: BreakoutPred): string {
     const f = p.chain;

@@ -29,6 +29,7 @@ import { setDisplayName, stageLabel } from "../filter/label.js";
 import { stageKind, type FilterPredicate, type FilterStage } from "../filter/stage.js";
 import { stageDeficiency } from "../filter/universe.js";
 import { DAILY_GRID_BASE } from "./dailyPanelIds.js";
+import { liveGridPanelOf } from "./gridLink.js";
 
 const UNIVERSE = "daily" as const;
 
@@ -55,11 +56,8 @@ export function DailyConditionBoard(): JSX.Element {
     const unbindTheme = useWorkbench((s) => s.unbindTheme);
     const dockSlots = useDock((s) => s.slots);
     const [gridLink, setGridLink] = useState<{ stageId: string; x: number; y: number } | null>(null);
-    // 바인딩이 가리키는 판이 **슬롯 대장에 살아 있을 때만** 연동(고아 = 미연동 — 테마 보드와 같은 규칙).
-    const livePanelOf = useCallback((stageId: string): string | undefined => {
-        const pid = bindings[stageId];
-        return pid !== undefined && dockSlots.includes(pid) && parseSlotId(pid)?.base === DAILY_GRID_BASE ? pid : undefined;
-    }, [bindings, dockSlots]);
+    // 바인딩이 가리키는 판이 **슬롯 대장에 살아 있을 때만** 연동 — 판정 한 벌(gridLink, 차트 사슬 층도 같은 것).
+    const livePanelOf = useCallback((stageId: string): string | undefined => liveGridPanelOf(bindings, dockSlots, stageId), [bindings, dockSlots]);
 
     const [railEditor, setRailEditor] = useState<RailEditor | null>(null);
     const [picked, setPicked] = useState<string | null>(null);
