@@ -31,7 +31,7 @@ export interface MinuteSeries {
     dropRef: MutableRefObject<DropLines | null>;
     /** 고점 렌즈 다리 표식(드롭 캡 + 띠) primitive — useLegMarks 가 spec 을 민다. 분봉 전용(일봉 공용 골조 밖). */
     legRef: MutableRefObject<LegMarks | null>;
-    /** 사슬 층(돌파 사슬 띠·▼·밴드 계단) primitive — useChainLayer 가 spec 을 민다. 분봉 전용. */
+    /** 사슬 층(돌파 사슬 띠·후보 세로 줄·밴드 면) primitive — useChainLayer 가 spec 을 민다. 분봉 전용. */
     chainRef: MutableRefObject<ChainLayer | null>;
     /** 오버레이(타점 아이콘·정보 박스) 위치 재계산 트리거 — pan/zoom·리사이즈·데이터 변경 시 bump. */
     overlayTick: number;

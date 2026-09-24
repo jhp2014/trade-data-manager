@@ -23,6 +23,18 @@ export function ControlValue({ spec }: { spec: ControlSpec }): JSX.Element {
 
 /** 지우기·새로고침 류 — 켜짐이 없으니 늘 같은 무게다(폭도 자연히 안 변한다). */
 function ActionControl({ spec }: { spec: ActionSpec }): JSX.Element {
+    if (spec.on !== undefined) {
+        // 판을 여는 켜짐 칩 — 토글과 같은 얼굴(켜지면 굵고 색), 누르면 판이 열린다.
+        const label = spec.label ?? spec.name;
+        return (
+            <WidthLock alts={[<b key="b" style={{ fontWeight: 700 }}>{label}</b>]}>
+                <TextToggle active={spec.on} disabled={spec.disabled ?? false} onClick={(e) => spec.run(e)}
+                    color={toneColor(spec)} activeColor={spec.activeColor} title={spec.help ?? spec.name}>
+                    {label}
+                </TextToggle>
+            </WidthLock>
+        );
+    }
     return (
         <button onClick={(e) => spec.run(e)} disabled={spec.disabled} title={spec.help ?? spec.name}
             style={{

@@ -1,15 +1,14 @@
-// 기본 차트 「사슬 ▾」 판 — 사슬 층의 **출처 고르기**(보는 집합의 「돌파」 줄) · ① 밴드 선 켜기 · 격자판으로 가기.
-// 고치는 곳은 격자판 하나다(여긴 노브가 없다 — 편집면이 둘이면 같은 값을 두 손이 만진다).
+// 기본 차트 「사슬」 판 — 세 가지만: **사슬 ON/OFF · 밴드 ON/OFF · 적용할 격자 고르기**(2026-09-24).
+// 설명은 전부 hover(title)로 — 판에 글이 많으면 지저분하다. 고치는 곳은 격자판 하나(여긴 노브가 없다).
+// 격자 줄의 ▣(격자판 연동 표시)를 누르면 그 격자판이 열린다.
 import { AnchoredPopover } from "../../ui/Dialog.js";
-import { openAndFocus, openPanelExact } from "../../lib/openPanel.js";
+import { openPanelExact } from "../../lib/openPanel.js";
 import { BREAKOUT_HIGH } from "../../styles/palette.js";
-import { DAILY_GRID_BASE } from "../dailyGen/dailyPanelIds.js";
 import type { ChainOverlay } from "./useChainOverlay.js";
 
-const head = { fontSize: 10.5, color: "var(--text-tertiary)", padding: "6px 10px 3px" } as const;
-const item = {
-    display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left", border: "none", background: "transparent",
-    cursor: "pointer", font: "inherit", fontSize: 11.5, padding: "3px 10px", color: "var(--text-primary)",
+const row = {
+    display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left", border: "none", background: "transparent",
+    cursor: "pointer", font: "inherit", fontSize: 12, padding: "5px 12px", color: "var(--text-primary)",
 } as const;
 
 export function ChainLayerMenu({ anchor, overlay, on, onToggle, showBands, onToggleBands, onPickSource, onClose }: {
@@ -24,43 +23,58 @@ export function ChainLayerMenu({ anchor, overlay, on, onToggle, showBands, onTog
 }): JSX.Element {
     const src = overlay.source;
     return (
-        <AnchoredPopover anchor={anchor} onClose={onClose} width={300} padding={0} placement="beside" offset={6}>
-            <div style={{ padding: "2px 0 6px" }}>
-                <button onClick={onToggle} style={{ ...item, fontWeight: 600 }} title="사슬 층 켜기/끄기(헤더 「사슬」 칩과 같다)">
-                    <span style={{ color: on ? BREAKOUT_HIGH : "var(--text-tertiary)" }}>{on ? "■" : "□"}</span> 사슬 층 — ② 사슬 띠 · ③ 후보 ▼
+        <AnchoredPopover anchor={anchor} onClose={onClose} width={240} padding={0} placement="beside" offset={6}>
+            <div style={{ padding: "4px 0" }}>
+                <button onClick={onToggle} style={row}
+                    title={`② 사슬 띠(배경) · 후보 봉 세로 줄 — 사슬 필터 통과는 살짝, ◇ 로 남은 봉은 조금 더 진하게${overlay.why ? `\n지금 안 그리는 이유: ${overlay.why}` : ""}`}>
+                    <span style={{ flex: 1 }}>사슬</span>
+                    {on && overlay.why !== null && <span style={{ fontSize: 11, color: "var(--warning)" }}>ⓘ</span>}
+                    <Switch on={on} />
                 </button>
-                {overlay.why !== null && (
-                    <div style={{ fontSize: 10.5, color: "var(--warning)", padding: "0 10px 3px 28px" }}>{overlay.why}</div>
+                <button onClick={onToggleBands} style={row} title="① 러닝 고가 밴드(청록)·기준선 밴드(보라)를 테두리 없는 옅은 면으로">
+                    <span style={{ flex: 1 }}>밴드</span>
+                    <Switch on={showBands} />
+                </button>
+                <div style={{ fontSize: 11, color: "var(--text-tertiary)", padding: "6px 12px 2px" }}
+                    title="보는 집합의 켜진 「돌파」 줄 — 세로 줄은 그 줄 단독의 후보(다른 조건·전이는 ◇ 가 말한다)">
+                    격자
+                </div>
+                {overlay.rows.length === 0 && (
+                    <div style={{ ...row, cursor: "default", color: "var(--text-tertiary)" }} title="생성소에서 「돌파」 줄을 만든다">없음</div>
                 )}
-
-                <div style={head}>출처 — 보는 집합의 「돌파」 줄 · ▼ = 그 줄 단독의 후보(다른 조건·전이는 ◇)</div>
-                {overlay.rows.length === 0 && <div style={{ ...item, cursor: "default", color: "var(--text-tertiary)" }}>없음 — 생성소에서 「돌파」 줄을 만든다</div>}
                 {overlay.rows.map((r) => {
                     const cur = src?.stageId === r.stageId;
                     return (
-                        <button key={r.stageId} onClick={() => onPickSource(r.stageId)} style={item} title="이 줄의 노브로 그린다">
-                            <span style={{ color: cur ? BREAKOUT_HIGH : "var(--text-tertiary)" }}>{cur ? "●" : "○"}</span>
-                            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.text}</span>
-                            {r.gridPanel !== null && <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>▣ 격자판</span>}
-                        </button>
+                        <div key={r.stageId} style={{ display: "flex", alignItems: "center" }}>
+                            <button onClick={() => onPickSource(r.stageId)} style={{ ...row, flex: 1, minWidth: 0 }} title={`${r.full}\n클릭 = 이 격자로 그린다`}>
+                                <span style={{ color: cur ? BREAKOUT_HIGH : "var(--text-tertiary)" }}>{cur ? "●" : "○"}</span>
+                                <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.text}</span>
+                            </button>
+                            {r.gridPanel !== null && (
+                                <button onClick={() => { openPanelExact(r.gridPanel!); onClose(); }}
+                                    title="이 줄에 연동된 격자판 열기 — 격자 정의·사슬 필터는 거기서 고친다"
+                                    style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 11, color: "var(--text-tertiary)", padding: "0 12px 0 4px" }}>
+                                    ▣
+                                </button>
+                            )}
+                        </div>
                     );
                 })}
-
-                <div style={{ borderTop: "1px solid var(--border-subtle)", margin: "4px 0" }} />
-                <button onClick={onToggleBands} style={item} title="① 러닝 고가 밴드 상단(실선)·하단(점선), 기준선 밴드 하단(보라 점선)">
-                    <span style={{ color: showBands ? BREAKOUT_HIGH : "var(--text-tertiary)" }}>{showBands ? "■" : "□"}</span> ① 밴드 선도 보기
-                </button>
-                <button
-                    onClick={() => {
-                        if (src?.gridPanel) openPanelExact(src.gridPanel);
-                        else openAndFocus(`${DAILY_GRID_BASE}-1`);
-                        onClose();
-                    }}
-                    style={{ ...item, color: "var(--accent-primary)" }}
-                    title={src?.gridPanel ? "이 줄에 연동된 격자판을 연다 — 노브·사슬 필터는 거기서 고친다" : "격자판을 연다 — 연동은 생성소의 「돌파」 줄에서 건다"}>
-                    격자판에서 고치기 ▸
-                </button>
             </div>
         </AnchoredPopover>
+    );
+}
+
+function Switch({ on }: { on: boolean }): JSX.Element {
+    return (
+        <span aria-hidden style={{
+            width: 26, height: 14, borderRadius: 7, position: "relative", flexShrink: 0,
+            background: on ? BREAKOUT_HIGH : "var(--border-strong)", transition: "background 0.12s",
+        }}>
+            <span style={{
+                position: "absolute", top: 2, left: on ? 14 : 2, width: 10, height: 10, borderRadius: 5, background: "#fff",
+                transition: "left 0.12s",
+            }} />
+        </span>
     );
 }

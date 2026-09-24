@@ -102,9 +102,9 @@ export const PANEL_TYPES: PanelType[] = [
     // 옛 「집합 편성」(2026-09-24 은퇴)의 idBase·component 를 **승계**한다 — 저장 배치·프리셋의 자리가 그대로
     // 새 패널이 되고(테마 [조건]판 선례), 두 패널 공존이 원리적으로 불가능하다. 옛 제목은 패널이 정규화한다.
     { idBase: "filter-funnel", component: "filterFunnel", title: "Daily 타점 생성소", plane: "eod", render: (id) => <DailyGenPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
-    // Daily 타점 조건 - 격자 — 생성소 「돌파」 줄의 편집면(zigzag·밴드)이자 포커스 종목 위 그림 도움말.
+    // Daily 타점 조건 [격자] — 생성소 「돌파」 줄의 편집면(① 격자 정의 · ② 사슬 필터 식). 그림은 기본 차트 사슬 층.
     // 연동은 생성소 줄에서(pull·1:1·영속 — 테마 조건판과 같은 맵). duplicable 은 처음엔 끈다(나란히 비교가 필요해지면).
-    { idBase: "daily-grid", component: "dailyGrid", title: "Daily 타점 조건 - 격자", plane: "eod", render: (id) => <DailyGridPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
+    { idBase: "daily-grid", component: "dailyGrid", title: "Daily 타점 조건 [격자]", plane: "eod", render: (id) => <DailyGridPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
     // (필터 레일 패널은 2026-09-19 철거 — 1차원 조건의 편집면이 편성 보드의 팝오버 하나가 됐다.
     //  저장 레이아웃·프리셋에 남은 "filterRails" 는 sanitizeLayout 자가치유가 걷어낸다.)
     // 시그널 결과 — 시그널 **이후**(미래) 값의 분포·조건(과거/미래 패널 경계).

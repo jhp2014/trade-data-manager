@@ -34,7 +34,7 @@ export function TextToggle({
 }: {
     active: boolean;
     disabled?: boolean;
-    onClick: () => void;
+    onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
     title: string;
     /**
      * 켜짐과 **무관하게** 이 색으로 — 경고 물들임(HeaderControls 의 `tone`)이 쓴다.

@@ -37,9 +37,12 @@ export * from "./review/funnel.js";
 
 // cellset — **하루·셀 우주**(그날 전 (종목,분))의 조건 어휘·평가 엔진·시드.
 // "후보 로직"이라는 개념이 없다: 조건 묶음 한 칸이 곧 로직이고, 로직 추가는 조건 저장이다.
+// expr — 평평한 식(한 겹 괄호·숨은 우선순위 없음)의 구조 규칙 한 벌. 생성소 집합 식·사슬 필터 식이 같이 쓴다.
+export * from "./expr/flatExpr.js";
 export * from "./cellset/predicate.js";
 export * from "./cellset/engine.js";
 export * from "./cellset/breakoutChain.js";
+export * from "./cellset/chainFilter.js";
 export * from "./cellset/seed.js";
 
 // grid — 자동 타점 격자(순수 검출): 확정 고점·구간 저점 피벗 + 신고가 캔들 목록 + 기준선 첫 터치. Point 판정은 읽기 층(points).

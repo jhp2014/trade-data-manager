@@ -94,6 +94,12 @@ export interface ActionSpec extends ControlBase {
     /** 누른 자리를 받는다 — 메뉴를 그 자리에 띄우는 손짓(+ 축 등)이 있어서다. 안 쓰면 무시하면 된다. */
     run: (at: { clientX: number; clientY: number }) => void;
     disabled?: boolean;
+    /**
+     * 켜짐 상태 — **누르면 판이 열리는데 그 판이 켜고 끄는 것을 들고 있을 때**(기본 차트 「사슬」: 판 안에 켜기·밴드·
+     * 격자 고르기). 있으면 토글처럼 켜짐 색·굵기로 그린다(폭은 WidthLock 이 잡는다). 없으면 평소 동작.
+     */
+    on?: boolean;
+    activeColor?: string;
 }
 
 export type ControlSpec = ToggleSpec | ChoiceSpec | ActionSpec;

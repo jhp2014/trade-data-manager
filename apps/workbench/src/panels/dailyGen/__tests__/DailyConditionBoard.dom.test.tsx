@@ -53,7 +53,7 @@ const pickItem = (c: HTMLElement, text: string): void => {
 };
 
 const RATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "cellValue" as const, field: "ratePct" as const, ranges: [{ from: { kind: "value" as const, value: 5 } }] }] };
-const BO_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "breakout" as const, zigzagPct: 2, bandPct: 0.5, label: "all" as const, chain: { firstK: 1 } }] };
+const BO_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "breakout" as const, zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 } }] };
 const TIME_STAGE = { id: "tm", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: "09:00", to: "10:30" }] }] };
 const RESET = { funnelSelection: null, savedSets: [], editingSetId: "edit", editPath: ["edit"], sessionUi: {}, themeBindings: {}, filterMode: "daily" as const };
 beforeEach(() => { useWorkbench.setState(RESET); });
@@ -112,8 +112,8 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         // 자동 연동 폐지 — 세션 포인터 대신 메뉴가 뜬다(미연동 조건판 목록 + 새 조건판).
         expect(baseElement.textContent).toContain("연동할 격자판");
         expect(baseElement.textContent).toContain("＋ 새 격자판");
-        // 상비 슬롯 1(Daily 타점 조건 - 격자)이 후보로 선다 — 고르면 영속 바인딩이 생긴다.
-        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "○ Daily 타점 조건 - 격자")!); });
+        // 상비 슬롯 1(Daily 타점 조건 [격자])이 후보로 선다 — 고르면 영속 바인딩이 생긴다.
+        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "○ Daily 타점 조건 [격자]")!); });
         expect(useWorkbench.getState().themeBindings["t1"]).toBe("daily-grid-1");
     });
 
@@ -123,7 +123,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         act(() => { useWorkbench.getState().bindTheme("t1", "daily-grid-9"); });
         const { container } = renderBoard();
         openChip(container, "돌파 2%");
-        expect(container.textContent).not.toContain("Daily 타점 조건 - 격자 9");
+        expect(container.textContent).not.toContain("Daily 타점 조건 [격자] 9");
         expect(container.textContent).toContain("○ 미연동");
     });
 
@@ -134,7 +134,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         const { container, baseElement } = renderBoard();
         openChip(container, "돌파 2%");
         act(() => { fireEvent.click(byText(container, "돌파 2%")!); });
-        expect(byText(baseElement as HTMLElement, "○ Daily 타점 조건 - 격자")).toBeTruthy();
+        expect(byText(baseElement as HTMLElement, "○ Daily 타점 조건 [격자]")).toBeTruthy();
     });
 
     it("연동된 돌파 행 — 배지가 판 이름을 말하고, 배지 클릭 = 변경/해제 메뉴", () => {
@@ -142,8 +142,8 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         act(() => { useWorkbench.getState().bindTheme("t1", "daily-grid-1"); });
         const { container, baseElement } = renderBoard();
         openChip(container, "돌파 2%");
-        expect(container.textContent).toContain("◆ Daily 타점 조건 - 격자");
-        act(() => { fireEvent.click(byText(container, "◆ Daily 타점 조건 - 격자")!); });
+        expect(container.textContent).toContain("◆ Daily 타점 조건 [격자]");
+        act(() => { fireEvent.click(byText(container, "◆ Daily 타점 조건 [격자]")!); });
         expect(baseElement.textContent).toContain("연동 해제");
         act(() => { fireEvent.click(byText(baseElement as HTMLElement, "연동 해제")!); });
         expect(useWorkbench.getState().themeBindings["t1"]).toBeUndefined();
@@ -168,7 +168,7 @@ describe("＋ 조건 — 생성 입구 하나", () => {
         openMenu(container);
         act(() => { fireEvent.click(byText(baseElement, "돌파")!); });
         expect(stages()).toHaveLength(1);
-        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all" });
+        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "breakout", zigzagPct: 2, bandPct: 0.5, chain: { firstK: 1 } });
         expect(baseElement.textContent).toContain("연동할 격자판");
     });
 

@@ -5,8 +5,9 @@
 // ## 출처 — 보는 집합의 「돌파」 줄
 // 차트 ◇ 가 그리는 **같은 식**(깔때기의 늦은 한 벌 `slowExpr` — 박자가 갈리면 ▼ 가 ◇ 보다 먼저 바뀐다)의 잎에서
 // 고른다. 줄이 여럿이면: 패널에 저장한 선택 → 격자판에 (살아서) 연동된 줄 → 첫 줄. 켜진 줄만 후보다.
-// ⚠ ▼ 는 **그 「돌파」 줄 단독**의 후보다(격자판의 "그날 후보"와 같은 수) — 같은 줄의 다른 AND 조건·전이·
-// 목록 상한은 모른다. 그건 ◇(집합 평가)가 말한다. 그래서 ◇ 없는 ▼ 는 정상이다(▼ ⊇ ◇ 쪽).
+// ⚠ 세로 줄은 **그 「돌파」 줄 단독**의 후보다(격자판의 "그날 후보"와 같은 수) — 같은 줄의 다른 AND 조건·전이·
+// 목록 상한은 모른다. 그건 ◇(집합 평가)가 말하고, 세로 줄은 ◇ 로 남았는지(`keptTimes`)를 진하기로 가른다.
+// ◇ 가 아직 계산 중이면 전부 "통과"(연한 쪽)로 칠한다 — 먼저 진하게 칠하면 결과가 오며 거꾸로 옅어진다.
 //
 // ## 재료 가드(◇ 와 같은 규칙)
 // · 하루 스냅샷은 **집합의 날짜**에서만 당긴다 — 다른 날짜 차트가 15MB 재료를 또 부르지 않게(useCellSet 과 같은
@@ -14,12 +15,12 @@
 // · 기준선 재료(/point-grids)가 오기 전엔 모른다 — 먼저 그리면 이름표가 뒤집힌다.
 //
 // ## KRX/UN
-// 분봉 캔들은 **늘 UN 봉**이고 시장 토글은 % 분모만 바꾼다(deriveMinuteView). 그래서 띠·▼(시각·그 봉 고가)는
-// 두 시장에서 같다. ① 밴드 계단만 값이 % 라 UN 분모(스냅샷 basePrice.un) → 가격 → 차트 분모로 옮긴다(정확 환산).
+// 분봉 캔들은 **늘 UN 봉**이고 시장 토글은 % 분모만 바꾼다(deriveMinuteView). 그래서 띠·세로 줄(시각)은 두 시장에서
+// 같다. 밴드 면만 값이 % 라 UN 분모(스냅샷 basePrice.un) → 가격 → 차트 분모로 옮긴다(정확 환산).
 import { useMemo } from "react";
 import type { Time } from "lightweight-charts";
 import { breakoutOfStock, chainVerdicts, type BreakoutChainResult, type CellPredicate, type ChainVerdict } from "@trade-data-manager/market/domain";
-import type { ChainOverlayInput, ChainStepSpec } from "../../chart/chainLayer.js";
+import type { ChainFillSpec, ChainOverlayInput } from "../../chart/chainLayer.js";
 import { usePointGrids } from "../../lib/PointGridsContext.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useWorkbench } from "../../store/workbench.js";
@@ -27,7 +28,7 @@ import { useDock } from "../../store/dock.js";
 import { BREAKOUT_BASE, BREAKOUT_HIGH } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { leavesOf } from "../filter/expr.js";
-import { breakoutText } from "./chainChecks.js";
+import { breakoutText, gridText } from "./chainChecks.js";
 import { liveGridPanelOf } from "../dailyGen/gridLink.js";
 
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
@@ -35,7 +36,9 @@ type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
 export interface ChainSourceRow {
     stageId: string;
     pred: BreakoutPred;
+    /** 짧은 이름(판 목록) — 식 전체는 `full`(hover). */
     text: string;
+    full: string;
     /** 이 줄에 연동된 격자판(없으면 null). */
     gridPanel: string | null;
 }
@@ -59,10 +62,12 @@ export function useChainOverlay(args: {
     onSetDate: boolean;
     /** 차트 봉이 이 종목의 것인가(전환 과도기 가드 — ownBundle). */
     ownBars: boolean;
-    /** 차트 % 분모(minuteView.base) — ① 계단 환산. */
+    /** 차트 % 분모(minuteView.base) — 밴드 면 환산. */
     chartBase: number | null;
+    /** ◇ 로 남은 봉 시각(unix초) — null = 아직 모름(집합 평가 중). */
+    keptTimes: ReadonlySet<number> | null;
 }): ChainOverlay {
-    const { on, showBands, sourceId, code, date, onSetDate, ownBars, chartBase } = args;
+    const { on, showBands, sourceId, code, date, onSetDate, ownBars, chartBase, keptTimes } = args;
     const stages = leavesOf(useFunnel().slowExpr);
     const bindings = useWorkbench((s) => s.themeBindings);
     const slots = useDock((s) => s.slots);
@@ -74,7 +79,7 @@ export function useChainOverlay(args: {
             if (!st.enabled) continue;
             const p = st.predicates.find((x): x is BreakoutPred => x.kind === "breakout");
             if (!p) continue;
-            out.push({ stageId: st.id, pred: p, text: breakoutText(p), gridPanel: liveGridPanelOf(bindings, slots, st.id) ?? null });
+            out.push({ stageId: st.id, pred: p, text: gridText(p), full: breakoutText(p), gridPanel: liveGridPanelOf(bindings, slots, st.id) ?? null });
         }
         return out;
     }, [stages, bindings, slots]);
@@ -91,7 +96,7 @@ export function useChainOverlay(args: {
         if (!stock) return { stock: null } as const;
         const p = source.pred;
         const res = breakoutOfStock(stock, pointGrids.gridOf(code, date)?.base ?? null, { zigzagPct: p.zigzagPct, bandPct: p.bandPct }, { trace: showBands });
-        const verdicts = chainVerdicts(res.bars, stock, p.chain, p.label);
+        const verdicts = chainVerdicts(res.bars, stock, p.chain);
         return { stock, res, verdicts } as const;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [active, source, stocks, pointGrids.byDate, code, date, showBands]);
@@ -99,8 +104,8 @@ export function useChainOverlay(args: {
     const input = useMemo<ChainOverlayInput | null>(() => {
         if (!ownBars || computed === null || computed.stock === null) return null;
         const { stock, res, verdicts } = computed;
-        return chainOverlayInputOf(stock.times, res, verdicts, showBands ? { unBase: stock.basePrice.un, chartBase } : null);
-    }, [ownBars, computed, showBands, chartBase]);
+        return chainOverlayInputOf(stock.times, res, verdicts, keptTimes, showBands ? { unBase: stock.basePrice.un, chartBase } : null);
+    }, [ownBars, computed, showBands, chartBase, keptTimes]);
 
     let why: string | null = null;
     if (on) {
@@ -117,12 +122,14 @@ export function useChainOverlay(args: {
 /**
  * 사슬·판정 → 차트 층 입력(순수). 시각은 `/day-replay` 봉 시각(unix초).
  * · 사슬 끝 = 그 사슬의 **마지막 거래 봉** — 차트엔 채움봉이 없어 인덱스 끝(끝 봉 − 1)으로는 못 잡는다.
- * · ① 계단(`bands` 가 있을 때만): UN % → 가격 → 차트 % — 시장 토글이 분모만 바꾸므로 정확 환산. 분모가 없으면 안 그린다.
+ * · 후보 = 최종 통과 봉, kept = ◇ 로 남았나(`kept` null = 모름 → 전부 통과로).
+ * · 밴드 면(`bands` 가 있을 때만): 러닝 밴드 = 하단~상단, 기준선 밴드 = 기준선 하단~기준선. UN % → 가격 → 차트 %.
  */
 export function chainOverlayInputOf(
     times: readonly number[],
-    res: BreakoutChainResult,
+    res: BreakoutChainResult & { baselinePct?: number | null },
     verdicts: readonly ChainVerdict[],
+    kept: ReadonlySet<number> | null,
     bands: { unBase: number | null; chartBase: number | null } | null,
 ): ChainOverlayInput {
     const lastBar = new Map<number, number>();
@@ -132,16 +139,29 @@ export function chainOverlayInputOf(
         to: times[lastBar.get(k) ?? c.start],
         baselineFrom: c.baselineFrom === null ? null : times[c.baselineFrom],
     }));
-    const picks = verdicts.filter((v) => v.picked).map((v) => ({ time: times[v.bar.i], label: v.bar.label }));
-    const steps: ChainStepSpec[] = [];
+    const candidates = verdicts.filter((v) => v.picked).map((v) => ({
+        time: times[v.bar.i], label: v.bar.label, kept: kept !== null && kept.has(times[v.bar.i]),
+    }));
+    const fills: ChainFillSpec[] = [];
     const unBase = bands?.unBase ?? null;
     const chartBase = bands?.chartBase ?? null;
     if (bands !== null && res.trace && unBase !== null && chartBase !== null && chartBase > 0) {
         const toChart = (v: number | null): number | null => (v === null ? null : ((unBase * (1 + v / 100) - chartBase) / chartBase) * 100);
-        const line = (vals: readonly (number | null)[], color: string, dash: number[]): ChainStepSpec => ({
-            color, dash, pts: vals.map((v, i) => ({ time: times[i] as Time, value: toChart(v) })),
+        const tr = res.trace;
+        const B = res.baselinePct ?? null;
+        fills.push({
+            color: BREAKOUT_HIGH,
+            pts: times.map((t, i) => ({ time: t as Time, lo: toChart(tr.bottom[i] ?? null), hi: toChart(tr.top[i] ?? null) })),
         });
-        steps.push(line(res.trace.top, BREAKOUT_HIGH, []), line(res.trace.bottom, BREAKOUT_HIGH, [3, 3]), line(res.trace.baseBottom, BREAKOUT_BASE, [2, 3]));
+        if (B !== null) {
+            fills.push({
+                color: BREAKOUT_BASE,
+                pts: times.map((t, i) => {
+                    const lo = tr.baseBottom[i] ?? null;
+                    return { time: t as Time, lo: toChart(lo), hi: lo === null ? null : toChart(B) };
+                }),
+            });
+        }
     }
-    return { chains, picks, steps };
+    return { chains, candidates, fills };
 }

@@ -108,10 +108,23 @@ describe("비용 등급·빈 판정·재료 사용 여부", () => {
 describe("돌파 생성기 · 캔들 모양", () => {
     it("왕복한다(전이 포함)", () => {
         const preds = [
-            { kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", chain: { firstK: 1 }, transition: "firstTrue" },
+            { kind: "breakout", zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 }, transition: "firstTrue" },
             {
-                kind: "breakout", zigzagPct: 3, bandPct: 1, label: "baseline",
-                chain: { pos: { min: 1, max: 30 }, amountEok: 50, openHigh: { min: 0.5 }, openClose: { max: 0 }, sessionHigh: "yes", firstK: null },
+                kind: "breakout", zigzagPct: 3, bandPct: 1,
+                chain: {
+                    expr: {
+                        id: "chain",
+                        of: [
+                            { kind: "check", id: "a", cond: { kind: "amount", minEok: 50 }, firstK: 1 },
+                            { kind: "check", id: "b", cond: { kind: "sessionHigh" } },
+                            { kind: "check", id: "c", cond: { kind: "openHigh", min: 1 } },
+                            { kind: "check", id: "d", cond: { kind: "label", label: "baseline" }, neg: true },
+                        ],
+                        ops: ["and", "or", "and"],
+                        groups: [{ from: 1, to: 2, firstK: 2 }],
+                    },
+                    firstK: null,
+                },
             },
             { kind: "candleShape", shape: "bull" },
             { kind: "cellValue", field: "minuteAmountEok", ranges: [{ from: { kind: "value", value: 30 } }] },
@@ -120,24 +133,33 @@ describe("돌파 생성기 · 캔들 모양", () => {
     });
 
     it("노브 범위 밖은 **클램프**, 빠진 필드는 기본값 — 술어를 버리지 않는다", () => {
-        expect(parseCellPredicate({ kind: "breakout", zigzagPct: 99, bandPct: -1, label: "?" }))
-            .toEqual({ kind: "breakout", zigzagPct: 10, bandPct: 0, label: "all", chain: { firstK: 1 } });
-        expect(parseCellPredicate({ kind: "breakout" })).toEqual({ kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", chain: { firstK: 1 } });
+        const empty = { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 };
+        expect(parseCellPredicate({ kind: "breakout", zigzagPct: 99, bandPct: -1 }))
+            .toEqual({ kind: "breakout", zigzagPct: 10, bandPct: 0, chain: empty });
+        expect(parseCellPredicate({ kind: "breakout" })).toEqual({ kind: "breakout", zigzagPct: 2, bandPct: 0.5, chain: empty });
     });
 
-    it("사슬 필터 — 없는 옛 저장물은 처음 1개, 깨진 조건은 그 조건만 없음", () => {
-        const chainOf = (chain: unknown) => (parseCellPredicate({ kind: "breakout", chain }) as Extract<CellPredicate, { kind: "breakout" }>).chain;
-        expect(chainOf(undefined)).toEqual({ firstK: 1 });
-        expect(chainOf({ firstK: null })).toEqual({ firstK: null });
-        expect(chainOf({ firstK: 0 })).toEqual({ firstK: 1 });
-        expect(chainOf({ firstK: 2.7 })).toEqual({ firstK: 2 });
-        expect(chainOf({ pos: { min: -3.5 }, amountEok: -1, openHigh: {}, sessionHigh: "maybe", firstK: "x" })).toEqual({ pos: { min: 0 }, firstK: 1 });
+    it("식 이전 저장물(봉 조건 필드 + 술어 이름표)은 AND 로 이은 식으로 옮긴다", () => {
+        const p = parseCellPredicate({
+            kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "baseline",
+            chain: { amountEok: 50, sessionHigh: "no", firstK: 2 },
+        }) as Extract<CellPredicate, { kind: "breakout" }>;
+        expect(p.chain.firstK).toBe(2);
+        expect(p.chain.expr.of.map((t) => [t.cond, t.neg === true])).toEqual([
+            [{ kind: "amount", minEok: 50 }, false],
+            [{ kind: "sessionHigh" }, true],
+            [{ kind: "label", label: "baseline" }, false],
+        ]);
+        expect(p.chain.expr.ops).toEqual(["and", "and"]);
     });
 
-    it("후보 키는 사슬 필터마다, 구조 키는 zigzag·밴드마다", () => {
+    it("후보 키는 사슬 필터 식마다(항 id 는 무관), 구조 키는 zigzag·밴드마다", () => {
         const a = parseCellPredicate({ kind: "breakout" }) as Extract<CellPredicate, { kind: "breakout" }>;
-        const b = { ...a, chain: { amountEok: 50, firstK: 1 } };
+        const term = (id: string) => ({ kind: "check" as const, id, cond: { kind: "amount" as const, minEok: 50 } });
+        const b = { ...a, chain: { expr: { id: "chain", of: [term("x")], ops: [], groups: [] }, firstK: 1 } };
+        const b2 = { ...a, chain: { expr: { id: "chain", of: [term("y")], ops: [], groups: [] }, firstK: 1 } };
         expect(breakoutKeyOf(a)).not.toBe(breakoutKeyOf(b));
+        expect(breakoutKeyOf(b)).toBe(breakoutKeyOf(b2));
         expect(breakoutStructKeyOf(a)).toBe(breakoutStructKeyOf(b));
     });
 

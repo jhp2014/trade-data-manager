@@ -19,7 +19,7 @@
 // 값의 기준은 UN 한 벌이다 — rate·minuteHigh·trailingHighs.un 이 전부 "전일 종가 대비 %" 라
 // 같은 공간에서 비교된다(probe 의 전례 그대로).
 
-import { CHAIN_FIRST_K_MAX, DEFAULT_CHAIN_FILTER, type BreakoutLabelFilter, type ChainFilter, type ChainRange } from "./breakoutChain.js";
+import { DEFAULT_CHAIN_FILTER, chainFilterKey, parseChainFilter, type ChainFilter } from "./chainFilter.js";
 
 /**
  * 전이 수식어 — 시점 술어를 **엣지**로 바꾸는 한 겹. 어휘가 셋인 이유는 이주 등가성이다:
@@ -82,17 +82,16 @@ export interface CellTimeRange {
 }
 
 /**
- * 돌파 사슬 생성기(2026-09-24 — decisions 「Daily 타점 생성 = 돌파 사슬」). 구조 노브는 **zigzag · 밴드 둘**,
- * 후보 고르기는 **사슬 필터**(`chain` — 봉 조건 + 순번)와 이름표(`label`, 봉 조건의 하나)다.
+ * 돌파 사슬 생성기(2026-09-24 — decisions 「Daily 타점 생성 = 돌파 사슬」). ① 격자 = **zigzag · 밴드 둘**,
+ * ② 사슬 필터 = 봉 조건 식(AND/OR/NOT) + 칩·괄호·식 전체 순번(`chain` — chainFilter.ts). 이름표도 식의 조건이다.
  * 생성소의 일반 필터(양봉·시간대 …)는 그 뒤의 AND 라 순번 셈에 안 든다.
  */
 export const BREAKOUT_ZIGZAG_MIN_PCT = 0.5;
 export const BREAKOUT_ZIGZAG_MAX_PCT = 10;
 export const BREAKOUT_BAND_MAX_PCT = 5;
-export const DEFAULT_BREAKOUT: { zigzagPct: number; bandPct: number; label: BreakoutLabelFilter; chain: ChainFilter } = {
+export const DEFAULT_BREAKOUT: { zigzagPct: number; bandPct: number; chain: ChainFilter } = {
     zigzagPct: 2,
     bandPct: 0.5,
-    label: "all",
     chain: DEFAULT_CHAIN_FILTER,
 };
 
@@ -110,7 +109,7 @@ export type CellPredicate =
     | { kind: "priorHighBreak"; days: number; transition?: Transition }
     | { kind: "gridPoint"; transition?: Transition }
     /** 돌파 사슬 후보(생성기) — 기준선은 `/point-grids` 의 확정 기준선(없으면 이름표가 전부 「고가 돌파」). */
-    | { kind: "breakout"; zigzagPct: number; bandPct: number; label: BreakoutLabelFilter; chain: ChainFilter; transition?: Transition }
+    | { kind: "breakout"; zigzagPct: number; bandPct: number; chain: ChainFilter; transition?: Transition }
     | { kind: "candleShape"; shape: CandleShape; transition?: Transition }
     | { kind: "time"; ranges: CellTimeRange[]; transition?: Transition };
 
@@ -230,21 +229,9 @@ export function breakoutStructKeyOf(p: Pick<Extract<CellPredicate, { kind: "brea
     return `bo|z${p.zigzagPct}|b${p.bandPct}`;
 }
 
-const rangeKey = (r: ChainRange | undefined): string => (r === undefined ? "-" : `${r.min ?? ""}~${r.max ?? ""}`);
-
-/** 돌파 **후보** 키 — 구조 + 이름표 + 사슬 필터(엔진 후보 메모의 단위). 전이는 뺀다. */
+/** 돌파 **후보** 키 — 구조 + 사슬 필터 식(엔진 후보 메모의 단위). 전이는 뺀다. */
 export function breakoutKeyOf(p: Extract<CellPredicate, { kind: "breakout" }>): string {
-    const f = p.chain;
-    return [
-        breakoutStructKeyOf(p),
-        p.label,
-        `p${rangeKey(f.pos)}`,
-        `a${f.amountEok ?? "-"}`,
-        `oh${rangeKey(f.openHigh)}`,
-        `oc${rangeKey(f.openClose)}`,
-        `s${f.sessionHigh ?? "-"}`,
-        `k${f.firstK ?? "all"}`,
-    ].join("|");
+    return `${breakoutStructKeyOf(p)}|${chainFilterKey(p.chain)}`;
 }
 
 /** 이 조건 묶음이 격자 재료를 쓰는가 — 패널의 로딩·오류 게이트가 본다(안 쓰면 격자 실패가 화면을 죽이면 안 된다). */
@@ -273,38 +260,6 @@ function parseBound(raw: unknown): CellBound | undefined {
     if (raw.kind === "value" && typeof raw.value === "number" && Number.isFinite(raw.value)) return { kind: "value", value: raw.value };
     if (raw.kind === "point" && typeof raw.point === "string") return { kind: "point", point: raw.point };
     return undefined;
-}
-
-const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
-
-/** 사슬 필터 구간 — 양끝이 다 없으면 조건 없음(undefined). `int` 면 0 이상 정수(봉 순번). */
-function parseChainRange(raw: unknown, int = false): ChainRange | undefined {
-    if (!isObj(raw)) return undefined;
-    const fix = (v: unknown): number | undefined => (finite(v) ? (int ? Math.max(0, Math.floor(v)) : v) : undefined);
-    const min = fix(raw.min);
-    const max = fix(raw.max);
-    if (min === undefined && max === undefined) return undefined;
-    return { ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}) };
-}
-
-/** 사슬 필터 — 없거나 깨졌으면 기본(처음 1개). 조건 하나가 깨지면 그 조건만 없음. */
-export function parseChainFilter(raw: unknown): ChainFilter {
-    if (!isObj(raw)) return DEFAULT_CHAIN_FILTER;
-    const pos = parseChainRange(raw.pos, true);
-    const openHigh = parseChainRange(raw.openHigh);
-    const openClose = parseChainRange(raw.openClose);
-    const amountEok = finite(raw.amountEok) && raw.amountEok > 0 ? raw.amountEok : undefined;
-    const sessionHigh = raw.sessionHigh === "yes" || raw.sessionHigh === "no" ? raw.sessionHigh : undefined;
-    const firstK =
-        raw.firstK === null ? null : finite(raw.firstK) ? Math.min(CHAIN_FIRST_K_MAX, Math.max(1, Math.floor(raw.firstK))) : 1;
-    return {
-        ...(pos ? { pos } : {}),
-        ...(amountEok !== undefined ? { amountEok } : {}),
-        ...(openHigh ? { openHigh } : {}),
-        ...(openClose ? { openClose } : {}),
-        ...(sessionHigh ? { sessionHigh } : {}),
-        firstK,
-    };
 }
 
 function parseRanges(raw: unknown): CellValueRange[] | null {
@@ -343,9 +298,9 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
                 kind: "breakout",
                 zigzagPct: clampNum(raw.zigzagPct, BREAKOUT_ZIGZAG_MIN_PCT, BREAKOUT_ZIGZAG_MAX_PCT, DEFAULT_BREAKOUT.zigzagPct),
                 bandPct: clampNum(raw.bandPct, 0, BREAKOUT_BAND_MAX_PCT, DEFAULT_BREAKOUT.bandPct),
-                label: raw.label === "baseline" || raw.label === "high" ? raw.label : "all",
-                // 사슬 필터가 없는 옛 저장물 = 처음 1개(전부로 읽으면 하루 수만 봉이 쏟아진다).
-                chain: parseChainFilter(raw.chain),
+                // 식 이전 저장물(봉 조건 필드 + 술어 이름표)은 전부 AND 로 이은 식으로 옮긴다. 사슬 필터가
+                // 아예 없으면 처음 1개(전부로 읽으면 하루 수만 봉이 쏟아진다).
+                chain: parseChainFilter(raw.chain, raw.label),
                 ...transition,
             };
         case "candleShape":

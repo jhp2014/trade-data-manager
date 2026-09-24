@@ -1,8 +1,8 @@
 // 돌파 사슬 — Daily 타점 생성기(2026-09-24). 규칙 전문은 .claude/decisions.md 「Daily 타점 생성 = 돌파 사슬」.
 //
 // 한 종목·하루의 dense 분봉을 한 번 훑어 **두 밴드 상태기계**(러닝 최고가 밴드·기준선 밴드)와 **돌파 사슬**을
-// 세우고, 사슬 안의 거래 봉을 **전부** 기록한다(`bars`). 후보는 그 위에 거는 **사슬 필터**(봉 조건 → 순번)가
-// 고른다(`chainVerdicts`). 격자·접기를 쓰지 않는다 — 사슬 안 봉은 사건 봉이 아니어도 후보가 될 수 있으므로
+// 세우고, 사슬 안의 거래 봉을 **전부** 기록한다(`bars`). 후보는 그 위에 거는 **사슬 필터**(봉 조건 식 + 순번 —
+// chainFilter.ts)가 고른다. 격자·접기를 쓰지 않는다 — 사슬 안 봉은 사건 봉이 아니어도 후보가 될 수 있으므로
 // 모든 분봉이 필요하고, 그건 분봉 순회에만 있다.
 //
 // ## 값 공간 — % 를 가격 비로
@@ -38,8 +38,6 @@ export interface BreakoutChainKnobs {
 
 /** 사슬 이름표 — 사슬 단위, 도중 합류(「고가 돌파」 사슬이 기준선 밴드 사건을 만나면 그 봉부터 「기준선 돌파」). */
 export type BreakoutLabel = "baseline" | "high";
-/** 이름표 거르기 — 봉 조건의 하나(순번 셈 앞). */
-export type BreakoutLabelFilter = "all" | BreakoutLabel;
 
 /** 사슬 안 거래 봉 하나 — 사슬 필터가 보는 값은 전부 **그 봉까지의 값**이다(미래 누출 없음). */
 export interface ChainBar {
@@ -206,115 +204,4 @@ export function breakoutOfStock(
 ): BreakoutChainResult & { baselinePct: number | null } {
     const baselinePct = baselinePctOf(baseline, s.basePrice.un);
     return { ...breakoutChainsOf(s, baselinePct, k, opts), baselinePct };
-}
-
-// ── 사슬 필터 ───────────────────────────────────────────────────────────────
-
-/** 양끝 포함 구간 — 한쪽이 없으면 반열림. */
-export interface ChainRange {
-    min?: number;
-    max?: number;
-}
-
-/**
- * 사슬 필터 = 봉 조건 + 순번(decisions 「Daily 타점 생성 = 돌파 사슬」). 없는 봉 조건은 무관. 이름표는
- * 술어의 `label` 이 들고 여기선 봉 조건으로 함께 건다(순번 셈 앞).
- */
-export interface ChainFilter {
-    /** 사슬 안 봉 순번 범위(봉 수, 첫 봉 = 0). */
-    pos?: ChainRange;
-    /** 봉 대금 ≥ N억. */
-    amountEok?: number;
-    /** 시가→고가 % 범위(가격 비). */
-    openHigh?: ChainRange;
-    /** 시가→종가 % 범위(가격 비 — 양봉 = 0 초과). */
-    openClose?: ChainRange;
-    /** 세션 고가 돌파 — 없으면 무관. */
-    sessionHigh?: "yes" | "no";
-    /** 봉 조건 통과 봉 중 사슬 안 처음 K개 — null = 전부. */
-    firstK: number | null;
-}
-
-/** 기본 = 사슬마다 첫 봉(옛 저장물도 이 값으로 읽는다 — 전부로 읽으면 하루 수만 봉이 쏟아진다). */
-export const DEFAULT_CHAIN_FILTER: ChainFilter = { firstK: 1 };
-export const CHAIN_FIRST_K_MAX = 999;
-
-/** 봉 조건 하나의 이름 — 레인 한 줄 = 조건 하나. 순서 = 판정·표시 순. */
-export const CHAIN_CHECKS = ["pos", "amount", "openHigh", "openClose", "sessionHigh", "label"] as const;
-export type ChainCheck = (typeof CHAIN_CHECKS)[number];
-
-/** 이 필터에 걸린 봉 조건들(이름표는 "all" 이 아닐 때) — 레인 줄 목록. */
-export function activeChecksOf(f: ChainFilter, label: BreakoutLabelFilter): ChainCheck[] {
-    return CHAIN_CHECKS.filter((c) => {
-        switch (c) {
-            case "pos":
-                return f.pos !== undefined;
-            case "amount":
-                return f.amountEok !== undefined;
-            case "openHigh":
-                return f.openHigh !== undefined;
-            case "openClose":
-                return f.openClose !== undefined;
-            case "sessionHigh":
-                return f.sessionHigh !== undefined;
-            case "label":
-                return label !== "all";
-        }
-    });
-}
-
-/** 사슬 봉 하나의 판정 — 떨어진 봉 조건들 · 순번(통과 봉만) · 최종 후보 여부. */
-export interface ChainVerdict {
-    bar: ChainBar;
-    failed: ChainCheck[];
-    /** 봉 조건을 다 통과한 봉 중 사슬 안 순서(0부터) — 떨어졌으면 null. */
-    rank: number | null;
-    picked: boolean;
-}
-
-const inRange = (v: number, r: ChainRange | undefined): boolean =>
-    r === undefined || ((r.min === undefined || v >= r.min - 1e-9) && (r.max === undefined || v <= r.max + 1e-9));
-/** a% → b% 의 가격 비 변화(%) — 둘 다 기준가 대비 % 라 차가 아니라 비로 잰다. */
-export const movePct = (a: number, b: number): number => (lv(b) / lv(a) - 1) * 100;
-
-/** 봉 하나가 떨어진 봉 조건들(순서 = `CHAIN_CHECKS`). */
-export function failedChecksOf(b: ChainBar, s: ChainSeries, f: ChainFilter, label: BreakoutLabelFilter): ChainCheck[] {
-    const out: ChainCheck[] = [];
-    if (!inRange(b.pos, f.pos)) out.push("pos");
-    if (f.amountEok !== undefined && b.tv < f.amountEok * 1e8) out.push("amount");
-    const o = s.minuteOpen[b.i];
-    if (f.openHigh !== undefined && !inRange(movePct(o, s.minuteHigh[b.i]), f.openHigh)) out.push("openHigh");
-    if (f.openClose !== undefined && !inRange(movePct(o, s.rate[b.i]), f.openClose)) out.push("openClose");
-    if (f.sessionHigh !== undefined && b.sessionHigh !== (f.sessionHigh === "yes")) out.push("sessionHigh");
-    if (label !== "all" && b.label !== label) out.push("label");
-    return out;
-}
-
-/** 사슬 봉 전부의 판정 — 순번은 사슬마다 새로 센다. 격자판(레인·설명)과 셀 엔진(picked)이 같은 이 함수를 쓴다. */
-export function chainVerdicts(
-    bars: readonly ChainBar[],
-    s: ChainSeries,
-    f: ChainFilter,
-    label: BreakoutLabelFilter,
-): ChainVerdict[] {
-    const out: ChainVerdict[] = [];
-    let chain = -1;
-    let rank = 0;
-    for (const bar of bars) {
-        if (bar.chain !== chain) {
-            chain = bar.chain;
-            rank = 0;
-        }
-        const failed = failedChecksOf(bar, s, f, label);
-        const r = failed.length === 0 ? rank++ : null;
-        out.push({ bar, failed, rank: r, picked: r !== null && (f.firstK === null || r < f.firstK) });
-    }
-    return out;
-}
-
-/** 후보(최종 통과 봉)만. */
-export function chainCandidatesOf(bars: readonly ChainBar[], s: ChainSeries, f: ChainFilter, label: BreakoutLabelFilter): ChainBar[] {
-    const out: ChainBar[] = [];
-    for (const v of chainVerdicts(bars, s, f, label)) if (v.picked) out.push(v.bar);
-    return out;
 }

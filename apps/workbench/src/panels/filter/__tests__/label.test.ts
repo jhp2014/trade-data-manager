@@ -127,12 +127,27 @@ describe("setDisplayName — 참조도 항이다", () => {
 });
 
 describe("돌파 생성기 라벨 — 노브가 인스턴스를 가른다", () => {
-    it("zigzag/밴드와 사슬 필터(봉 조건 + 순번)가 이름에 실린다", () => {
-        const a: FilterPredicate = { kind: "breakout", zigzagPct: 2, bandPct: 0.5, label: "all", chain: { firstK: 1 } };
-        const b: FilterPredicate = { kind: "breakout", zigzagPct: 3, bandPct: 1, label: "baseline", chain: { amountEok: 50, sessionHigh: "yes", firstK: null } };
+    it("zigzag/밴드와 사슬 필터 식(칩·괄호·식 전체 순번)이 이름에 실린다", () => {
+        const a: FilterPredicate = { kind: "breakout", zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 } };
+        const b: FilterPredicate = {
+            kind: "breakout", zigzagPct: 3, bandPct: 1,
+            chain: {
+                expr: {
+                    id: "chain",
+                    of: [
+                        { kind: "check", id: "a", cond: { kind: "amount", minEok: 50 }, firstK: 1 },
+                        { kind: "check", id: "b", cond: { kind: "sessionHigh" } },
+                        { kind: "check", id: "c", cond: { kind: "label", label: "baseline" }, neg: true },
+                    ],
+                    ops: ["and", "or"],
+                    groups: [{ from: 1, to: 2, firstK: 2 }],
+                },
+                firstK: null,
+            },
+        };
         const c: FilterPredicate = { kind: "candleShape", shape: "bear" };
         expect(predicateLabel(a, look)).toBe("돌파 2%/0.5% · 처음 1개");
-        expect(predicateLabel(b, look)).toBe("돌파 3%/1% · 50억↑ · 세션고가 · 기준선 · 전부");
+        expect(predicateLabel(b, look)).toBe("돌파 3%/1% · 봉 대금 ≥ 50억 · 처음 1 AND (세션 고가 돌파 OR NOT 기준선 돌파) · 처음 2 · 전부");
         expect(predicateLabel(c, look)).toBe("음봉");
         expect(kindLabel("breakout")).toBe("타점");
     });

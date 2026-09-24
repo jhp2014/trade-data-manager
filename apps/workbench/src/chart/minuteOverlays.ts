@@ -6,8 +6,6 @@ import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { type VertLineSpec } from "./vertLine.js";
 import { buildLegSpecs } from "./legMark.js";
 import { buildChainLayerSpec, EMPTY_CHAIN_LAYER, type ChainOverlayInput } from "./chainLayer.js";
-import { HIGH_GAP } from "../lib/anchorMarks.js";
-import { MARKER_RESERVE } from "./anchorMarkOverlay.js";
 import { amountBucketIndex } from "@trade-data-manager/market/domain";
 import { type MinutePoint } from "../lib/derive.js";
 import { linePct, snapToBar, type RenderLine } from "../lib/chartFrame.js";
@@ -99,23 +97,12 @@ export function useLegMarks(
     }, [points, highTimes, band, showAmountMarkers, series.gen]);
 }
 
-/**
- * 사슬 층 — 돌파 사슬 띠·후보 ▼·밴드 계단(chainLayer). 입력이 null 이면 비운다(층 꺼짐·재료 없음).
- * ▼ 의 고가 위 예약 공간은 다리 캡·드롭선과 **같은 계약**(HIGH_GAP + 거래대금 마커 예약분).
- */
-export function useChainLayer(
-    series: MinuteSeries,
-    points: MinutePoint[],
-    input: ChainOverlayInput | null,
-    showAmountMarkers = false,
-): void {
+/** 사슬 층 — 돌파 사슬 띠·후보 봉 세로 줄·밴드 면(chainLayer). 입력이 null 이면 비운다(층 꺼짐·재료 없음). */
+export function useChainLayer(series: MinuteSeries, points: MinutePoint[], input: ChainOverlayInput | null): void {
     useEffect(() => {
-        const spec = input === null
-            ? EMPTY_CHAIN_LAYER
-            : buildChainLayerSpec(points, input, (p) => HIGH_GAP + (showAmountMarkers && amountBucketIndex(p.amount) >= 0 ? MARKER_RESERVE : 0));
-        series.chainRef.current?.set(spec);
+        series.chainRef.current?.set(input === null ? EMPTY_CHAIN_LAYER : buildChainLayerSpec(points, input));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, input, showAmountMarkers, series.gen]);
+    }, [points, input, series.gen]);
 }
 
 // 선의 % 좌표(linePct)는 lib/chartFrame 으로 — RenderLine 의 집이 거기고, 렌더와 우클릭 판정이 같은 함수를 탄다.

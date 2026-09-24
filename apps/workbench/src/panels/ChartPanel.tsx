@@ -166,9 +166,15 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         return high === undefined ? null : { from: sig, to: high };
     }, [time, viewDate, legHighBySignal]);
 
+    // ◇ 로 남은 봉 — 사슬 층이 후보 세로 줄의 진하기를 가른다. 평가 중이면 모름(null — 전부 연하게).
+    const keptTimes = useMemo<ReadonlySet<number> | null>(
+        () => (cellExpr === null || cellSet.isLoading ? null : new Set(autoPoints.map((a) => a.time))),
+        [cellExpr, cellSet.isLoading, autoPoints],
+    );
     const chain = useChainOverlay({
         on: showChain, showBands: chainBands, sourceId: chainSource, code, date: anchorDate,
         onSetDate: !drifted, ownBars: ownBundle(minuteQ.data, code) !== undefined, chartBase: minuteView?.base ?? null,
+        keptTimes,
     });
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
@@ -228,13 +234,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         anchorMarkControl(showAnchorMarks, () => setShowAnchorMarks((v) => !v)),
         legMarkControl(showLegMarks, () => setShowLegMarks((v) => !v)),
         {
-            kind: "toggle", id: "chainLayer", name: "사슬", group: "마커", activeColor: BREAKOUT_HIGH,
-            help: `돌파 사슬 띠 · 후보 ▼ — 「돌파」 줄 단독의 후보(다른 조건·전이는 ◇)${chain.source ? ` · ${chain.source.text}` : ""}${chain.why ? ` — ${chain.why}` : ""}`,
-            on: showChain, set: () => setShowChain((v) => !v),
-        },
-        {
-            kind: "action", id: "chainMenu", label: "▾", name: "사슬 설정", group: "마커",
-            help: "사슬 층 — 출처(돌파 줄) 고르기 · ① 밴드 선 · 격자판으로",
+            kind: "action", id: "chainLayer", name: "사슬", group: "마커", activeColor: BREAKOUT_HIGH, on: showChain,
+            help: `돌파 사슬 — 누르면 판(사슬·밴드 켜기, 격자 고르기)${chain.source ? ` · ${chain.source.full}` : ""}${chain.why ? ` — ${chain.why}` : ""}`,
             run: (at) => setChainMenuAt({ x: at.clientX, y: at.clientY }),
         },
         {

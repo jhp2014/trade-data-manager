@@ -143,10 +143,7 @@ export const KIND_AXIS = "#1d9e75"; // 축 — 시그널 시점까지의 과거
 export const KIND_OUTCOME = "#ba7517"; // 결과 — 시그널 이후(걷기·시뮬)
 export const KIND_THEME = "#7f77dd"; // 테마 — 그 분의 무리 안 자리
 
-// 돌파 사슬 이름표(Daily 타점 조건 - 격자 그림·목록) — 「고가 돌파」 teal, 「기준선 돌파」 보라.
+// 돌파 사슬 이름표(기본 차트 사슬 층·격자판 목록) — 「고가 돌파」 teal, 「기준선 돌파」 보라.
 // 기준선 보라는 GUIDE(+30% 가이드)와 가까운 값이지만 뜻이 다르다(머리 규칙: 이름을 가른다).
 export const BREAKOUT_HIGH = "#16796f";
 export const BREAKOUT_BASE = "#7f77dd";
-// 사슬 필터 레인 칸 — 봉 조건 통과/탈락. STRONG·FAIL 과 같은 값이지만 뜻이 다르다(머리 규칙: 이름을 가른다).
-export const CHAIN_PASS = "#1baf7a";
-export const CHAIN_FAIL = "#e24b4a";

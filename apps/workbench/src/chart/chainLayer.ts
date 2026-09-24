@@ -1,14 +1,11 @@
-// 분봉 차트의 **사슬 층** — 돌파 사슬(Daily 타점 생성기)을 기본 차트 위에 얹는다(2026-09-24 A안).
-//   ② 사슬 띠(배경, 캔들 뒤) · ③ 후보 ▼(고가 위) · ① 밴드 계단(선택 — 러닝 고가 밴드 상단·하단, 기준선 밴드 하단)
-// 격자판(「Daily 타점 조건 - 격자」)의 그림과 **같은 계산**(breakoutOfStock + chainVerdicts)의 결과를 받아
-// 그리기만 한다 — 판정은 여기 없다. 레인·떨어진 조건 설명은 격자판에만 산다(여긴 보는 곳, 거긴 고치는 곳).
+// 분봉 차트의 **사슬 층** — 돌파 사슬(Daily 타점 생성기)을 기본 차트의 **배경**으로 얹는다(2026-09-24 재편).
+//   · 사슬 띠 — 옅게(기준선 합류 뒤는 보라)
+//   · 후보 봉 세로 줄 — 사슬 필터 통과·다른 조건 탈락 = 살짝 진하게 / ◇ 로 남음 = 조금 더 진하게
+//   · 밴드(선택) — 러닝 고가 밴드·기준선 밴드를 **테두리 없는 옅은 면**으로(봉마다 그 봉 폭 — 비스듬히 안 잇는다)
+// ▼ 표식은 없다 — 남은 타점은 상단 ◇ 가 말하고, 사슬 필터 통과 자리는 세로 줄이 조용히 받는다.
+// 격자판(「Daily 타점 조건 [격자]」)과 **같은 계산**(breakoutOfStock + chainVerdicts)의 결과를 그리기만 한다.
 //
-// 프리미티브인 이유·draw() 에서 좌표를 푸는 이유는 dropLine.ts·legMark.ts 와 같다(가격축까지 따라야 하고,
-// 가격축만 바뀌는 조작에 updateAllViews 보장이 없다). 띠는 zOrder "bottom"(캔들 뒤), ▼·계단은 "top".
-//
-// ▼ 를 마커 플러그인에 넣지 않는 이유: 마커 칸(aboveBar)은 통째 교체이고 거래대금 ● 가 이미 쓴다 — ▼ 가
-// 그 줄에 끼면 서로 밀린다. 여기서 그리면 기존 마커를 안 건드리고, 고가 위 예약 공간 계약(HIGH_GAP +
-// 마커 예약분 — anchorMarkOverlay·legMark 와 같은 것)으로 ● 를 비켜 선다.
+// 프리미티브인 이유·draw() 에서 좌표를 푸는 이유는 dropLine.ts·legMark.ts 와 같다. 전부 zOrder "bottom"(캔들 뒤).
 import type { IChartApi, ISeriesApi, ISeriesPrimitive, Time } from "lightweight-charts";
 import type { BreakoutLabel } from "@trade-data-manager/market/domain";
 import { BREAKOUT_BASE, BREAKOUT_HIGH } from "../styles/palette.js";
@@ -25,104 +22,62 @@ interface DrawTarget {
     useBitmapCoordinateSpace(f: (scope: BitmapScope) => void): void;
 }
 
-/** 사슬 띠 한 토막 — 양끝 봉 포함. */
-export interface ChainBandSpec {
+/** 진하기(겹친 뒤의 **최종** 불투명도) — 사슬 < 통과 < ◇. 통과는 "연하지만 구분되는 정도". */
+export const CHAIN_ALPHA = { chain: 0.07, pass: 0.11, kept: 0.2, band: 0.13 } as const;
+/** 사슬 띠 위에 얹을 때의 알파 — 겹친 결과가 목표 진하기가 되게(a = (T − b) / (1 − b)). */
+const over = (target: number): number => (target - CHAIN_ALPHA.chain) / (1 - CHAIN_ALPHA.chain);
+
+/** 한 봉 이상의 세로 띠 — 양끝 봉 포함. */
+export interface ChainStripSpec {
     from: Time;
     to: Time;
     color: string;
+    alpha: number;
 }
-/** 후보 ▼ — 그 봉의 고가(차트 % 축)에서 gap(px) 위. */
-export interface ChainMarkSpec {
-    time: Time;
-    value: number;
-    gap: number;
+/** 밴드 면 한 줄 — 봉마다 lo~hi(차트 % 축). null = 끊김(밴드 없음·소멸). */
+export interface ChainFillSpec {
     color: string;
-}
-/** ① 계단 한 줄 — 봉마다 그 봉 폭만큼의 가로선. null = 끊김(밴드 없음·소멸). */
-export interface ChainStepSpec {
-    color: string;
-    dash: number[];
-    pts: { time: Time; value: number | null }[];
+    pts: { time: Time; lo: number | null; hi: number | null }[];
 }
 export interface ChainLayerSpec {
-    bands: ChainBandSpec[];
-    marks: ChainMarkSpec[];
-    steps: ChainStepSpec[];
+    strips: ChainStripSpec[];
+    fills: ChainFillSpec[];
 }
-export const EMPTY_CHAIN_LAYER: ChainLayerSpec = { bands: [], marks: [], steps: [] };
+export const EMPTY_CHAIN_LAYER: ChainLayerSpec = { strips: [], fills: [] };
 
-const BAND_ALPHA = 0.1;
-const MARK_PX = 11;
-
-class ChainBandRenderer {
-    constructor(private readonly _src: ChainLayer) {}
-    draw(target: DrawTarget): void {
-        const { chart } = this._src;
-        const bands = this._src.spec.bands;
-        if (!chart || bands.length === 0) return;
-        const ts = chart.timeScale();
-        target.useBitmapCoordinateSpace((scope) => {
-            const hr = scope.horizontalPixelRatio;
-            const half = (ts.options().barSpacing / 2) * hr;
-            const ctx = scope.context;
-            ctx.save();
-            ctx.globalAlpha = BAND_ALPHA;
-            for (const b of bands) {
-                const x1 = ts.timeToCoordinate(b.from);
-                const x2 = ts.timeToCoordinate(b.to);
-                if (x1 === null || x2 === null) continue; // 창 계산 밖이면 지어내지 않는다
-                ctx.fillStyle = b.color;
-                const left = (x1 as number) * hr - half;
-                ctx.fillRect(left, 0, (x2 as number) * hr + half - left, scope.bitmapSize.height);
-            }
-            ctx.restore();
-        });
-    }
-}
-
-class ChainTopRenderer {
+class ChainRenderer {
     constructor(private readonly _src: ChainLayer) {}
     draw(target: DrawTarget): void {
         const { chart, series, spec } = this._src;
-        if (!chart || !series || (spec.marks.length === 0 && spec.steps.length === 0)) return;
+        if (!chart || !series || (spec.strips.length === 0 && spec.fills.length === 0)) return;
         const ts = chart.timeScale();
         target.useBitmapCoordinateSpace((scope) => {
-            const ctx = scope.context;
             const hr = scope.horizontalPixelRatio;
             const vr = scope.verticalPixelRatio;
             const half = (ts.options().barSpacing / 2) * hr;
+            const ctx = scope.context;
             ctx.save();
-            // ① 계단 — 봉 폭만큼의 가로선을 이어 긋는다(비스듬히 잇지 않는다 — 없던 가격이 그려진다).
-            ctx.lineWidth = Math.max(1, Math.round(1.2 * hr));
-            for (const st of spec.steps) {
-                ctx.strokeStyle = st.color;
-                ctx.setLineDash(st.dash.map((d) => d * hr));
-                ctx.beginPath();
-                let open = false;
-                for (const p of st.pts) {
-                    const x = p.value === null ? null : ts.timeToCoordinate(p.time);
-                    const y = p.value === null ? null : series.priceToCoordinate(p.value);
-                    if (x === null || y === null) { open = false; continue; }
-                    const px = (x as number) * hr;
-                    const py = Math.round((y as number) * vr) + 0.5;
-                    if (open) ctx.lineTo(px - half, py);
-                    else ctx.moveTo(px - half, py);
-                    ctx.lineTo(px + half, py);
-                    open = true;
-                }
-                ctx.stroke();
+            for (const s of spec.strips) {
+                const x1 = ts.timeToCoordinate(s.from);
+                const x2 = ts.timeToCoordinate(s.to);
+                if (x1 === null || x2 === null) continue; // 창 계산 밖이면 지어내지 않는다
+                ctx.globalAlpha = s.alpha;
+                ctx.fillStyle = s.color;
+                const left = (x1 as number) * hr - half;
+                ctx.fillRect(left, 0, (x2 as number) * hr + half - left, scope.bitmapSize.height);
             }
-            ctx.setLineDash([]);
-            // ③ ▼ — 고가 위 gap 만큼.
-            ctx.font = `${Math.round(MARK_PX * vr)}px sans-serif`;
-            ctx.textAlign = "center";
-            ctx.textBaseline = "bottom";
-            for (const m of spec.marks) {
-                const x = ts.timeToCoordinate(m.time);
-                const y = series.priceToCoordinate(m.value);
-                if (x === null || y === null) continue;
-                ctx.fillStyle = m.color;
-                ctx.fillText("▼", (x as number) * hr, ((y as number) - m.gap) * vr);
+            ctx.globalAlpha = CHAIN_ALPHA.band;
+            for (const f of spec.fills) {
+                ctx.fillStyle = f.color;
+                for (const p of f.pts) {
+                    if (p.lo === null || p.hi === null) continue;
+                    const x = ts.timeToCoordinate(p.time);
+                    const yHi = series.priceToCoordinate(p.hi);
+                    const yLo = series.priceToCoordinate(p.lo);
+                    if (x === null || yHi === null || yLo === null) continue;
+                    const top = (yHi as number) * vr;
+                    ctx.fillRect((x as number) * hr - half, top, half * 2, Math.max(1, (yLo as number) * vr - top));
+                }
             }
             ctx.restore();
         });
@@ -130,16 +85,13 @@ class ChainTopRenderer {
 }
 
 class ChainPaneView {
-    constructor(
-        private readonly _renderer: ChainBandRenderer | ChainTopRenderer,
-        private readonly _z: "bottom" | "top",
-    ) {}
+    constructor(private readonly _renderer: ChainRenderer) {}
     update(): void {} // 해소는 draw 로 미뤘다(dropLine 과 같은 계약)
-    renderer(): ChainBandRenderer | ChainTopRenderer {
+    renderer(): ChainRenderer {
         return this._renderer;
     }
-    zOrder(): "bottom" | "top" {
-        return this._z;
+    zOrder(): "bottom" {
+        return "bottom";
     }
 }
 
@@ -151,7 +103,7 @@ export class ChainLayer {
     private _requestUpdate?: () => void;
 
     constructor() {
-        this._paneViews = [new ChainPaneView(new ChainBandRenderer(this), "bottom"), new ChainPaneView(new ChainTopRenderer(this), "top")];
+        this._paneViews = [new ChainPaneView(new ChainRenderer(this))];
     }
     attached(param: { chart: IChartApi; series: ISeriesApi<"Candlestick">; requestUpdate: () => void }): void {
         this.chart = param.chart;
@@ -182,51 +134,45 @@ export function asChainPrimitive(v: ChainLayer): ISeriesPrimitive<Time> {
 
 // ── 스펙 조립(순수) ────────────────────────────────────────────────────────
 
-/** 사슬 층 입력 — 시각은 전부 unix초(`/day-replay` 봉 시각), 계단 값은 **이미 차트 % 축으로 옮긴 값**. */
+/** 사슬 층 입력 — 시각은 전부 unix초(`/day-replay` 봉 시각), 밴드 값은 **이미 차트 % 축으로 옮긴 값**. */
 export interface ChainOverlayInput {
-    /** 사슬 — 첫 봉~사슬 안 마지막 봉(끝 봉 = 눌림 봉은 사슬 밖). baselineFrom = 기준선 합류 봉(없으면 null). */
+    /** 사슬 — 첫 봉~사슬 안 마지막 봉. baselineFrom = 기준선 합류 봉(없으면 null). */
     chains: { from: number; to: number; baselineFrom: number | null }[];
-    /** 최종 후보 봉. */
-    picks: { time: number; label: BreakoutLabel }[];
-    /** ① 계단(켰을 때만). */
-    steps: ChainStepSpec[];
+    /** 사슬 필터 후보 봉 — kept = ◇ 로 남았나(모르면 false — 결과가 오며 거꾸로 옅어지지 않게). */
+    candidates: { time: number; label: BreakoutLabel; kept: boolean }[];
+    /** 밴드 면(켰을 때만). */
+    fills: ChainFillSpec[];
 }
 
 const colorOf = (l: BreakoutLabel): string => (l === "baseline" ? BREAKOUT_BASE : BREAKOUT_HIGH);
 
-/**
- * 입력 → 스펙. 차트 봉에 없는 시각은 버린다(지어내지 않는다). 띠는 기준선 합류 봉에서 두 토막으로 갈린다.
- * `gapOf` = 그 봉의 고가 위 예약 공간(HIGH_GAP + 거래대금 마커 예약분 — 호출부가 차트의 마커 규칙으로 준다).
- */
-export function buildChainLayerSpec(
-    points: readonly MinutePoint[],
-    input: ChainOverlayInput,
-    gapOf: (p: MinutePoint) => number,
-): ChainLayerSpec {
-    const byTime = new Map(points.map((p) => [p.time, p]));
+/** 입력 → 스펙. 차트 봉에 없는 시각은 버린다(지어내지 않는다). 사슬 띠는 기준선 합류 봉에서 두 토막으로 갈린다. */
+export function buildChainLayerSpec(points: readonly MinutePoint[], input: ChainOverlayInput): ChainLayerSpec {
+    const byTime = new Set(points.map((p) => p.time));
     const idxOf = new Map(points.map((p, i) => [p.time, i]));
-    const bands: ChainBandSpec[] = [];
+    const strips: ChainStripSpec[] = [];
+    const strip = (from: number, to: number, color: string, alpha: number): void => {
+        strips.push({ from: from as Time, to: to as Time, color, alpha });
+    };
     for (const c of input.chains) {
         if (!byTime.has(c.from) || !byTime.has(c.to)) continue;
         const split = c.baselineFrom !== null && byTime.has(c.baselineFrom) ? c.baselineFrom : null;
         if (split === null) {
-            bands.push({ from: c.from as Time, to: c.to as Time, color: BREAKOUT_HIGH });
+            strip(c.from, c.to, BREAKOUT_HIGH, CHAIN_ALPHA.chain);
             continue;
         }
         if (split > c.from) {
             // 합류 직전 봉까지 고가 띠 — 차트 봉 순서로 한 칸 앞.
             const prev = points[(idxOf.get(split) ?? 0) - 1];
-            if (prev && prev.time >= c.from) bands.push({ from: c.from as Time, to: prev.time as Time, color: BREAKOUT_HIGH });
+            if (prev && prev.time >= c.from) strip(c.from, prev.time, BREAKOUT_HIGH, CHAIN_ALPHA.chain);
         }
-        bands.push({ from: split as Time, to: c.to as Time, color: BREAKOUT_BASE });
+        strip(split, c.to, BREAKOUT_BASE, CHAIN_ALPHA.chain);
     }
-    const marks: ChainMarkSpec[] = [];
-    for (const k of input.picks) {
-        const p = byTime.get(k.time);
-        if (!p) continue;
-        marks.push({ time: p.time as Time, value: p.high, gap: gapOf(p), color: colorOf(k.label) });
+    for (const k of input.candidates) {
+        if (!byTime.has(k.time)) continue;
+        strip(k.time, k.time, colorOf(k.label), over(k.kept ? CHAIN_ALPHA.kept : CHAIN_ALPHA.pass));
     }
-    // 계단 점도 차트 봉만 — 차트엔 채움봉(거래 없는 분)이 없어, 남기면 그 자리마다 선이 끊긴다.
-    const steps = input.steps.map((st) => ({ ...st, pts: st.pts.filter((p) => byTime.has(p.time as number)) }));
-    return { bands, marks, steps };
+    // 밴드 점도 차트 봉만 — 차트엔 채움봉(거래 없는 분)이 없다.
+    const fills = input.fills.map((f) => ({ ...f, pts: f.pts.filter((p) => byTime.has(p.time as number)) }));
+    return { strips, fills };
 }

@@ -10,7 +10,7 @@ import {
     activeExpr, appendLeaf, appendTerm, emptyExpr, exprOfStages, filterLeaves, findTerm, foldExpr,
     hasCycle, isFoldedNode, leafCount, leavesOf, mapLeaves, negOf, negateTerm, opAt, parseExpr,
     refNode, refsOf, removeGroupAt, removeTerm, replaceTerm, setAllOps, setOpAt,
-    toggleBoundaryGroup, topOpOf, canSetOpAt, canToggleBoundary, negateGroupAt,
+    toggleBoundaryGroup, topOpOf, canSetOpAt, canToggleBoundary, negateGroupAt, normalizeExpr,
     type Op, type SetExpr, type SetTerm,
 } from "../expr.js";
 import { parseStages, type FilterStage } from "../stage.js";
@@ -86,6 +86,11 @@ describe("편집 — 안 바뀐 항은 객체가 유지된다", () => {
         const mixed = setOpAt(expr("and", [cond("a"), cond("b"), cond("c")]), 1, "or");
         expect(mixed.groups).toHaveLength(1);
         expect(setAllOps(mixed, "and").groups, "섞임이 없으면 괄호도 없다").toEqual([]);
+    });
+
+    it("setAllOps — NOT 괄호가 있으면 거절한다(괄호째 사라지면 NOT 이 조용히 증발한다)", () => {
+        const e = normalizeExpr({ ...exprOfStages([st("a"), st("b"), st("c")]), ops: ["or", "and"], groups: [{ from: 0, to: 1, neg: true }] });
+        expect(setAllOps(e, "and")).toBe(e);
     });
 });
 

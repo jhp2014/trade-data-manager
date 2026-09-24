@@ -27,7 +27,8 @@
 // "코드 오름차순 앞 종목만 남는" 편향이 생긴다. 평가를 실제로 멈추는 건 HARD_CAP 그물 하나뿐이다
 // (조건이 사실상 전부일 때 19만 셀 × 분 단면 = 프리즈를 막는 2차 방어선. 1차는 "조건 없음 = 안 보여줌").
 import { minuteOfDayOf, type MinuteDerived } from "../replay/dayReplay.js";
-import { breakoutOfStock, chainCandidatesOf, type BreakoutChainResult } from "./breakoutChain.js";
+import { breakoutOfStock, type BreakoutChainResult } from "./breakoutChain.js";
+import { chainCandidatesOf } from "./chainFilter.js";
 import {
     CELL_VALUE_FIELDS,
     breakoutKeyOf,
@@ -174,7 +175,7 @@ function breakoutMinutes(
         chains.set(sk, r);
     }
     const out = new Set<number>();
-    for (const b of chainCandidatesOf(r.bars, s, p.chain, p.label)) out.add(minuteOfDayOf(s.times[b.i]));
+    for (const b of chainCandidatesOf(r.bars, s, p.chain)) out.add(minuteOfDayOf(s.times[b.i]));
     return out;
 }
 

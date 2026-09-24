@@ -283,7 +283,7 @@ export function ExprRow({ setId, expr, h, open, tail }: {
  * 떠 있는 판 하나 — 좌클릭 연산자 판과 우클릭 판이 **같은 껍데기**를 쓴다(해제 규칙이 갈리지 않게).
  * `position: fixed` 인 이유: 줄이 가로 스크롤 컨테이너라 안쪽 absolute 는 잘린다.
  */
-function Panel({ at, onClose, children }: {
+export function Panel({ at, onClose, children }: {
     at: { x: number; y: number };
     onClose: () => void;
     children: React.ReactNode;
@@ -306,7 +306,7 @@ function Panel({ at, onClose, children }: {
  * ⚠ **못 누르는 항목은 숨기지 않고 회색 + 이유**로 세운다 — 결손 지도와 같은 규칙이다
  * (숨기면 "그런 기능이 없다"가 되어, 왜 안 되는지 알 길이 없다).
  */
-function Item({ label, onPick, disabled = false, why, title, check = false, danger = false, armed = false }: {
+export function Item({ label, onPick, disabled = false, why, title, check = false, danger = false, armed = false }: {
     label: string;
     onPick: () => void;
     disabled?: boolean;
@@ -337,7 +337,7 @@ function Item({ label, onPick, disabled = false, why, title, check = false, dang
 }
 
 /** 항목 사이 가름줄 — 되돌릴 수 없는 손을 나머지와 떼어 놓는 자리. */
-const Sep = (): JSX.Element => <div style={{ borderTop: "0.5px solid var(--border-subtle)", margin: "3px 0" }} />;
+export const Sep = (): JSX.Element => <div style={{ borderTop: "0.5px solid var(--border-subtle)", margin: "3px 0" }} />;
 
 /**
  * 묶음 이름 — 판 안에서 바로 고친다. **비우면 자동 이름으로 되돌아간다**(부재 = 점선 칩).
