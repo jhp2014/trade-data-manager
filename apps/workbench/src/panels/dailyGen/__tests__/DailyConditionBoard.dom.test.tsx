@@ -10,7 +10,7 @@ import { act, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { selectEditingExpr, selectEditingStages, useWorkbench } from "../../../store/workbench.js";
-import { DailyConditionBoard } from "../DailyConditionBoard.js";
+import { DailyConditionBoard, setPickerOf } from "../DailyConditionBoard.js";
 import { openPanelExact } from "../../../lib/openPanel.js";
 
 // 판 열기는 dock 이 없어 조용히 no-op 이다 — 불렸는지만 잰다(나머지는 진짜 구현).
@@ -409,5 +409,86 @@ describe("묶음 우클릭 — 이름·빼기·지우기", () => {
         expect(useWorkbench.getState().savedSets.some((x) => x.id === inner), "첫 누름은 무장만").toBe(true);
         pickItem(container, "정말 지우기");
         expect(useWorkbench.getState().savedSets.some((x) => x.id === inner)).toBe(false);
+    });
+});
+
+// ── ＋ 집합 판 (2026-09-25) ────────────────────────────────────────────────
+//
+// 버튼은 늘 눌리고 판은 늘 열린다 — 붙일 게 없어도 **왜 없는지**를 판이 말한다(못 누르는 것은 회색 + 이유).
+// 세 칸: 이 식에 올라와 있음(✓ — 누르면 그 묶음을 연다, 빼기는 칩 우클릭) · 붙일 수 있음 · 붙일 수 없음.
+describe("＋ 집합 — 세 칸 판", () => {
+    const set = (id: string, expr = exprOfStages([]), universe: "daily" | "longitudinal" = "daily") => ({ id, expr, universe });
+    const ref = (setId: string) => ({ kind: "ref" as const, id: `r-${setId}`, setId });
+
+    it("setPickerOf — 올라와 있음 · 붙일 수 있음 · 붙일 수 없음(종단·순환), 자기 자신은 어디에도 없다", () => {
+        const edit = { id: "edit", expr: { id: "root", of: [ref("a")], ops: [], groups: [] }, universe: "daily" as const };
+        const sets = [
+            edit,
+            set("a"),
+            set("b"),
+            set("lon", exprOfStages([]), "longitudinal"),
+            set("cyc", { id: "root", of: [ref("edit")], ops: [], groups: [] }),
+        ];
+        const r = setPickerOf(sets, "edit", edit.expr);
+        expect(r.attached.map((x) => x.id)).toEqual(["a"]);
+        expect(r.attachable.map((x) => x.id)).toEqual(["b"]);
+        expect(r.blocked.map((x) => [x.set.id, x.why])).toEqual([["lon", "longitudinal"], ["cyc", "cycle"]]);
+    });
+
+    it("setPickerOf — 올라와 있음은 식 순서 · 지워진 참조는 broken · 종단이 순환보다 먼저 · 드릴인 중 부모는 순환", () => {
+        const expr = { id: "root", of: [ref("b"), ref("gone"), ref("a")], ops: ["and" as const, "and" as const], groups: [] };
+        const both = set("both", { id: "root", of: [ref("edit")], ops: [], groups: [] }, "longitudinal");
+        const r = setPickerOf([set("a"), set("b"), both, { id: "edit", expr, universe: "daily" as const }], "edit", expr);
+        expect(r.attached.map((x) => x.id)).toEqual(["b", "a"]);
+        expect(r.broken).toEqual(["gone"]);
+        expect(r.blocked.map((x) => [x.set.id, x.why])).toEqual([["both", "longitudinal"]]);
+        // 드릴인: 편집 = inner, 부모 outer 가 inner 를 품는다 → outer 는 순환.
+        const inner = { id: "inner", expr: exprOfStages([]), universe: "daily" as const };
+        const outer = set("outer", { id: "root", of: [ref("inner")], ops: [], groups: [] });
+        expect(setPickerOf([outer, inner], "inner", inner.expr).blocked).toEqual([{ set: outer, why: "cycle" }]);
+    });
+
+    it("버튼 순서 = ＋ 조건 · ＋ 묶음 · ＋ 집합", () => {
+        const { container } = renderBoard();
+        const labels = buttons(container).map((b) => (b.textContent ?? "").trim()).filter((t) => t.startsWith("＋"));
+        expect(labels.map((t) => t.split(" ")[1])).toEqual(["조건", "묶음", "집합"]);
+    });
+
+    it("붙일 집합이 없어도 판이 열리고 이유를 말한다", () => {
+        seedEditing(exprOfStages([RATE_STAGE])); // 편집 집합 자신만 있다 — 자기는 고를 거리가 아니다
+        const { container, baseElement } = renderBoard();
+        const btn = byText(container, "＋ 집합")!;
+        expect(btn.disabled).toBe(false);
+        act(() => { fireEvent.click(btn); });
+        expect(baseElement.textContent).toContain("저장된 다른 집합이 없습니다");
+    });
+
+    it("못 붙이는 집합은 숨기지 않고 회색 + 이유로 선다", () => {
+        seedEditing(exprOfStages([RATE_STAGE]));
+        act(() => { useWorkbench.setState((s) => ({ savedSets: [...s.savedSets, { id: "lon", name: "종단 후보", expr: exprOfStages([]), universe: "longitudinal" }] })); });
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 집합")!); });
+        expect(baseElement.textContent).toContain("붙일 수 없음");
+        const item = [...baseElement.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("종단 후보"))!;
+        expect(item.disabled).toBe(true);
+        expect(item.textContent).toContain("종단 집합");
+    });
+
+    it("올라와 있는 집합(✓)을 누르면 그 묶음으로 내려간다 — 붙이기가 두 번 되지 않는다", () => {
+        seedEditing(exprOfStages([RATE_STAGE]));
+        const outer = useWorkbench.getState().editingSetId;
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 묶음")!); });
+        const inner = useWorkbench.getState().editingSetId;
+        openChip(container, "등락률"); // 뿌리로 올라온다
+        expect(useWorkbench.getState().editingSetId).toBe(outer);
+
+        act(() => { fireEvent.click(byText(container, "＋ 집합")!); });
+        expect(baseElement.textContent).toContain("이 식에 올라와 있음");
+        const item = [...baseElement.querySelectorAll('[role="menuitem"]')].find((b) => (b.textContent ?? "").startsWith("✓"))!;
+        act(() => { fireEvent.click(item); });
+        const st = useWorkbench.getState();
+        expect(st.editingSetId).toBe(inner);
+        expect(refsOf(st.savedSets.find((x) => x.id === outer)!.expr)).toEqual([inner]);
     });
 });

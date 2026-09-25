@@ -33,6 +33,7 @@ import { stageKind, type FilterPredicate, type FilterStage } from "../filter/sta
 import { stageDeficiency } from "../filter/universe.js";
 import { DAILY_GRID_BASE } from "./dailyPanelIds.js";
 import { gridShortName, liveGridPanelOf } from "./gridLink.js";
+import { FAIL, PIN } from "../../styles/palette.js";
 import { breakoutText } from "../dailyGrid/chainChecks.js";
 
 const UNIVERSE = "daily" as const;
@@ -103,13 +104,8 @@ export function DailyConditionBoard(): JSX.Element {
         };
     }, [savedSets, v.labelLook]);
 
-    /** 붙일 수 있는 집합 — 같은 모드(하루)만·자기·이미 붙은 것·순환 제외(거절은 스토어가 한 번 더). */
-    const attachable = useMemo(() => {
-        const exprOfSet = (id: string): SetExpr | undefined => savedSets.find((x) => x.id === id)?.expr;
-        const mine = refsOf(expr);
-        return savedSets.filter((f) => f.id !== editingSetId && !mine.includes(f.id)
-            && f.universe === UNIVERSE && !hasCycle(editingSetId, f.expr, exprOfSet));
-    }, [savedSets, expr, editingSetId]);
+    /** ＋ 집합 판의 세 칸 — 올라와 있음 · 붙일 수 있음 · 붙일 수 없음(이유). 거절은 스토어가 한 번 더. */
+    const setPicker = useMemo(() => setPickerOf(savedSets, editingSetId, expr), [savedSets, expr, editingSetId]);
 
     const rows = editPath.length > 0 ? editPath : [editingSetId];
     const exprOfSet = useCallback((sid: string): SetExpr => savedSets.find((x) => x.id === sid)?.expr ?? expr, [savedSets, expr]);
@@ -231,28 +227,69 @@ export function DailyConditionBoard(): JSX.Element {
                                 if (made) setGridLink({ stageId: made, x: e.clientX, y: e.clientY });
                             }}
                         />
-                        <HeaderPopover width={240} align="start" closeOnOutside
+                        {/* 새로 만드는 손(조건·묶음)이 앞, 있는 것을 가져오는 손(집합)이 뒤다. */}
+                        <button onClick={() => addGroupTerm()} title="새 묶음 — 빈 집합을 만들어 이 식에 붙이고 그 안으로 내려갑니다" style={addBtn}>
+                            ＋ 묶음
+                        </button>
+                        {/* ⚠ 늘 열린다 — 붙일 게 없어도 **왜 없는지**를 판이 말한다(못 누르는 것은 숨기지 않고 회색 + 이유 —
+                            식 칩 우클릭 판 Item 과 같은 **규칙**. 줄 모양은 이름·꼬리 칸이 있어 따로 그린다). */}
+                        <HeaderPopover width={260} align="start" closeOnOutside
                             trigger={(open, toggle) => (
-                                <button onClick={toggle} disabled={attachable.length === 0}
-                                    title={attachable.length === 0 ? "붙일 다른 집합이 없습니다" : "이미 있는 집합을 이 식에 한 항으로 붙입니다 — 고치면 그 집합을 쓰는 곳이 전부 같이 바뀝니다"}
-                                    style={addBtn(attachable.length === 0)}>
+                                <button onClick={toggle}
+                                    title="이미 있는 집합을 이 식에 한 항으로 붙입니다 — 고치면 그 집합을 쓰는 곳이 전부 같이 바뀝니다"
+                                    style={addBtn}>
                                     ＋ 집합 {open ? "▴" : "▾"}
                                 </button>
                             )}>
-                            {(close) => (
-                                <div style={{ maxHeight: 240, overflowY: "auto", padding: "3px 0" }}>
-                                    {attachable.map((f) => (
-                                        <button key={f.id} onClick={() => { addSetRef(f.id); close(); }} title={`${refInfo(f.id).name} — 이 식에 한 항으로 붙입니다`} style={menuItem}>
-                                            {refInfo(f.id).name}
-                                            {refInfo(f.id).usedBy >= 1 && <span style={{ marginLeft: 5, fontSize: 9.5, color: "var(--text-tertiary)" }}>쓰는 곳 {refInfo(f.id).usedBy}</span>}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
+                            {(close) => {
+                                const { attached, broken, attachable, blocked } = setPicker;
+                                const head = (text: string, first: boolean): JSX.Element => (
+                                    <div style={{ padding: "4px 10px 1px", fontSize: 10, color: "var(--text-tertiary)", ...(first ? {} : { borderTop: "0.5px solid var(--border-subtle)", marginTop: 3, paddingTop: 5 }) }}>{text}</div>
+                                );
+                                const used = (id: string): JSX.Element | null => (refInfo(id).usedBy >= 1
+                                    ? <span style={{ marginLeft: "auto", paddingLeft: 8, fontSize: 9.5, color: "var(--text-tertiary)" }}>쓰는 곳 {refInfo(id).usedBy}</span>
+                                    : null);
+                                const row = { ...menuItem, display: "flex", alignItems: "center", gap: 6 } as const;
+                                const check = (on: boolean): JSX.Element => <span style={{ width: 10, flexShrink: 0, color: "var(--accent-primary)", fontSize: 11 }}>{on ? "✓" : ""}</span>;
+                                if (attached.length + broken.length + attachable.length + blocked.length === 0) {
+                                    return <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-tertiary)" }}>저장된 다른 집합이 없습니다 — ＋ 묶음으로 만들 수 있습니다</div>;
+                                }
+                                let first = true;
+                                const section = (text: string): JSX.Element => { const h = head(text, first); first = false; return h; };
+                                return (
+                                    <div style={{ maxHeight: 280, overflowY: "auto", padding: "3px 0" }}>
+                                        {attached.length + broken.length > 0 && section("이 식에 올라와 있음")}
+                                        {attached.map((f) => (
+                                            // 칩 클릭과 같은 손짓 — 그 묶음을 연다. 빼기는 칩 우클릭(구조 손은 우클릭).
+                                            <button key={f.id} role="menuitem" onClick={() => { rowHandlers.onDrill(editingSetId, f.id); close(); }}
+                                                title={`${refInfo(f.id).name} — 이미 이 식에 붙어 있습니다. 누르면 그 묶음을 엽니다(빼기는 칩 우클릭)`} style={row}>
+                                                {check(true)}<span style={{ color: PIN }}>{refInfo(f.id).name}</span>{used(f.id)}
+                                            </button>
+                                        ))}
+                                        {broken.map((id) => (
+                                            <button key={id} role="menuitem" disabled title="가리키는 집합이 지워졌습니다 — 칩 우클릭으로 이 자리를 뺄 수 있습니다"
+                                                style={{ ...row, cursor: "default", color: FAIL }}>
+                                                {check(true)}<span>(지워진 집합)</span>
+                                            </button>
+                                        ))}
+                                        {attachable.length > 0 && section("붙일 수 있음")}
+                                        {attachable.map((f) => (
+                                            <button key={f.id} role="menuitem" onClick={() => { addSetRef(f.id); close(); }} title={`${refInfo(f.id).name} — 이 식에 한 항으로 붙입니다`} style={row}>
+                                                {check(false)}<span style={{ color: PIN }}>{refInfo(f.id).name}</span>{used(f.id)}
+                                            </button>
+                                        ))}
+                                        {blocked.length > 0 && section("붙일 수 없음")}
+                                        {blocked.map(({ set: f, why }) => (
+                                            <button key={f.id} role="menuitem" disabled title={BLOCK_HINT[why]}
+                                                style={{ ...row, cursor: "default", color: "var(--text-tertiary)" }}>
+                                                {check(false)}<span>{refInfo(f.id).name}</span>
+                                                <span style={{ marginLeft: "auto", paddingLeft: 8, fontSize: 9.5 }}>{BLOCK_TEXT[why]}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                );
+                            }}
                         </HeaderPopover>
-                        <button onClick={() => addGroupTerm()} title="새 묶음 — 빈 집합을 만들어 이 식에 붙이고 그 안으로 내려갑니다" style={addBtn(false)}>
-                            ＋ 묶음
-                        </button>
                     </div>
                 )}
                 <div style={{ height: 8 }} />
@@ -283,10 +320,47 @@ export function DailyConditionBoard(): JSX.Element {
     );
 }
 
-const addBtn = (disabled: boolean): React.CSSProperties => ({
+type PickerSet = { id: string; expr: SetExpr; universe: string };
+type BlockWhy = "longitudinal" | "cycle";
+const BLOCK_TEXT: Record<BlockWhy, string> = { longitudinal: "종단 집합", cycle: "순환" };
+const BLOCK_HINT: Record<BlockWhy, string> = {
+    longitudinal: "종단 집합 — 하루 식에는 붙일 수 없습니다(멤버십을 물을 키가 다릅니다)",
+    cycle: "순환 — 그 집합이 이미 이 집합을 품고 있습니다",
+};
+
+/**
+ * ＋ 집합 판의 세 칸 — 순수부(테스트 표면). 올라와 있음 = 이 식에 이미 붙은 참조(식 순서) · 붙일 수 있음 ·
+ * 붙일 수 없음(종단 → 순환 순으로 첫 이유 하나). 거절 규칙은 스토어 `addSetRef` 와 같다(자기·이미 붙음·순환).
+ * 지워진 집합을 가리키는 참조는 `broken` 으로 따로 낸다 — 칩 줄이 「(지워진 집합)」으로 세우는 것을 판이 숨기면 둘이 엇갈린다.
+ * 편집 중인 집합 자신은 **어느 칸에도 안 선다** — 늘 거기 있어 고를 거리가 아니다(있으면 빈 판 안내가 영영 안 뜬다).
+ */
+export function setPickerOf<T extends PickerSet>(savedSets: readonly T[], editingSetId: string, expr: SetExpr): {
+    attached: T[];
+    broken: string[];
+    attachable: T[];
+    blocked: { set: T; why: BlockWhy }[];
+} {
+    const exprOfSet = (id: string): SetExpr | undefined => savedSets.find((x) => x.id === id)?.expr;
+    const mine = refsOf(expr);
+    const attached = mine.map((id) => savedSets.find((x) => x.id === id)).filter((x): x is T => x !== undefined);
+    const broken = mine.filter((id) => !savedSets.some((x) => x.id === id));
+    const attachable: T[] = [];
+    const blocked: { set: T; why: BlockWhy }[] = [];
+    for (const f of savedSets) {
+        if (mine.includes(f.id) || f.id === editingSetId) continue;
+        const why: BlockWhy | null = f.universe !== UNIVERSE ? "longitudinal"
+            : hasCycle(editingSetId, f.expr, exprOfSet) ? "cycle"
+            : null;
+        if (why === null) attachable.push(f);
+        else blocked.push({ set: f, why });
+    }
+    return { attached, broken, attachable, blocked };
+}
+
+const addBtn: React.CSSProperties = {
     fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent",
-    color: "var(--text-secondary)", cursor: disabled ? "default" : "pointer",
-});
+    color: "var(--text-secondary)", cursor: "pointer",
+};
 const menuItem: React.CSSProperties = {
     display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)",
     cursor: "pointer", font: "inherit", fontSize: 11.5, padding: "5px 10px",
@@ -311,7 +385,7 @@ function AddCondition({ onCell, onBreakout }: {
         <div style={{ padding: "6px 2px 2px" }}>
             <HeaderPopover width={230} align="start" closeOnOutside
                 trigger={(open, toggle) => (
-                    <button onClick={toggle} title="조건 만들기 — 생성기(돌파)와 후보 필터" style={addBtn(false)}>
+                    <button onClick={toggle} title="조건 만들기 — 생성기(돌파)와 후보 필터" style={addBtn}>
                         ＋ 조건 {open ? "▴" : "▾"}
                     </button>
                 )}>
