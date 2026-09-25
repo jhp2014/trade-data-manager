@@ -20,6 +20,7 @@
 //
 // ## 좌클릭은 열고/바꾸고, 우클릭은 **구조를 손본다** (2026-09-22)
 //   · 칩 좌클릭 = 아랫줄에 연다   · 칩 우클릭 = NOT · 끄기 · 빼기
+//   · 연동 칩(돌파 ↔ 격자판) 좌클릭 = 판을 연다(미연동이면 연동 메뉴) · 우클릭 판 맨 위 = 연동 바꾸기·해제
 //   · 연산자 좌클릭 = AND ↔ OR    · 연산자 우클릭 = **이 경계 괄호 안/밖**
 //   · 괄호 우클릭 = NOT · 괄호 풀기
 // 아랫줄은 **값만** 맡는다 — 같은 일이 두 자리에 있지 않게 종류로 가른다(옛 "편집면이 두 곳"과 다르다).
@@ -43,12 +44,27 @@ export interface RefChipInfo {
     usedBy: number;
 }
 
+/** 판에 연동되는 조건(돌파 ↔ 격자판)의 상태 — **칩이 곧 연동 표시**다. */
+export interface LeafLink {
+    /** 연동된 판의 짧은 이름. null = 미연동(미완성 — 계산하지 않는다). */
+    panel: string | null;
+    /** 값 상세 — hover 로만(값의 편집면은 판이다). */
+    hint: string;
+}
+
 export interface RowHandlers {
     /** 조건 칩의 이름 — 한 곳에서 짓는다(두 곳이면 같은 조건이 두 이름으로 선다). */
     labelOf: (id: string) => string;
     refInfo: (setId: string) => RefChipInfo;
-    /** 조건 칩 클릭 — 그 조건의 값 편집면을 **아랫줄에** 연다(다시 누르면 닫힌다). */
-    onPickLeaf: (setId: string, leafId: string) => void;
+    /**
+     * 조건 칩 클릭 — 그 조건의 값 편집면을 **아랫줄에** 연다(다시 누르면 닫힌다). 연동 칩은 판을 연다
+     * (미연동이면 연동 메뉴 — 그 자리에 뜨도록 `at` 을 준다).
+     */
+    onPickLeaf: (setId: string, leafId: string, at: { x: number; y: number }) => void;
+    /** 판에 연동되는 조건이면 그 상태(없으면 보통 칩). */
+    linkOf?: (leafId: string) => LeafLink | undefined;
+    /** 연동 바꾸기·해제 메뉴 — 연동 칩 우클릭 판의 첫 항목이 연다. */
+    onLinkMenu?: (setId: string, leafId: string, at: { x: number; y: number }) => void;
     /**
      * 참조 칩 클릭 — 그 집합으로 내려간다(줄이 하나 더 쌓인다. 다시 누르면 닫힌다).
      * `rowSetId` 는 **누른 줄**, `targetSetId` 는 내려갈 집합이다 — 윗줄을 누르면 거기까지
@@ -164,18 +180,34 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                 }
                 if (p.kind === "leaf") {
                     const isOpen = open === p.id;
+                    const link = h.linkOf?.(p.id);
+                    const unlinked = link !== undefined && link.panel === null;
                     return (
-                        <button key={p.id} data-chip="leaf" onClick={() => h.onPickLeaf(setId, p.id)}
+                        <button key={p.id} data-chip="leaf" onClick={(e) => h.onPickLeaf(setId, p.id, { x: e.clientX, y: e.clientY })}
                             onContextMenu={rc((e) => ({ kind: "cond", termId: p.id, enabled: p.enabled, neg: p.neg, x: e.clientX, y: e.clientY }))}
-                            title={`${p.label}${p.enabled ? "" : " (꺼짐)"} — 눌러서 아랫줄에서 값을 고칩니다. 우클릭 = NOT·끄기·빼기`}
+                            title={link === undefined
+                                ? `${p.label}${p.enabled ? "" : " (꺼짐)"} — 눌러서 아랫줄에서 값을 고칩니다. 우클릭 = NOT·끄기·빼기`
+                                : link.panel === null
+                                    ? `${p.label} — 격자판 미연동: 계산하지 않습니다(값은 줄에 남아 있습니다). 눌러서 격자판을 연결합니다
+${link.hint}`
+                                    : `${p.label}${p.enabled ? "" : " (꺼짐)"} ▣ ${link.panel} — 눌러서 격자판을 엽니다. 우클릭 = 연동 바꾸기·NOT·끄기·빼기
+${link.hint}`}
                             style={{
-                                ...(isOpen ? openChip : { ...chipBase, background: "var(--bg-tertiary)", border: "1px solid transparent" }),
+                                ...(isOpen ? openChip
+                                    // 미연동 = 미완성 — 경고색 점선(연동된 줄과 한눈에 갈린다).
+                                    : unlinked ? { ...chipBase, background: "var(--warning-soft)", border: "1px dashed var(--warning)" }
+                                    : { ...chipBase, background: "var(--bg-tertiary)", border: "1px solid transparent" }),
                                 ...(p.enabled ? {} : { textDecoration: "line-through", opacity: 0.65 }),
                             }}>
                             {/* ⚠ 조건에는 `▼` 를 안 단다 — 펼쳐진 내용이 있는 게 아니라 값을 고치는 중이다.
                                 `▼` 의 뜻은 **"층이 하나 늘었다"** 하나로 남는다(묶음 전용). */}
                             {p.neg && <span style={{ color: isOpen ? "#fff" : FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
                             {p.label}
+                            {link !== undefined && (
+                                <span style={{ marginLeft: 5, color: unlinked ? "var(--warning)" : "var(--accent-primary)" }}>
+                                    {link.panel === null ? "○ 미연동" : `▣ ${link.panel}`}
+                                </span>
+                            )}
                         </button>
                     );
                 }
@@ -223,6 +255,13 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                 <Panel at={ctx} onClose={() => setCtx(null)}>
                     {ctx.kind === "cond" && (
                         <>
+                            {h.linkOf?.(ctx.termId) !== undefined && h.onLinkMenu !== undefined && (
+                                <>
+                                    <Item label="격자판 연동…" title="연동할 격자판 바꾸기·해제"
+                                        onPick={() => { h.onLinkMenu!(setId, ctx.termId, { x: ctx.x, y: ctx.y }); setCtx(null); }} />
+                                    <Sep />
+                                </>
+                            )}
                             <Item label="NOT" check={ctx.neg} title="이 항을 부정합니다"
                                 onPick={() => { h.onNegateTerm(setId, ctx.termId); setCtx(null); }} />
                             <Item label="끄기" check={!ctx.enabled} title="평가에서 뺍니다 — 지우지 않고 빼보는 손짓"

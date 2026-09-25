@@ -4,7 +4,8 @@
 //
 // ## 출처 — 보는 집합의 「돌파」 줄
 // 차트 ◇ 가 그리는 **같은 식**(깔때기의 늦은 한 벌 `slowExpr` — 박자가 갈리면 ▼ 가 ◇ 보다 먼저 바뀐다)의 잎에서
-// 고른다. 줄이 여럿이면: 패널에 저장한 선택 → 격자판에 (살아서) 연동된 줄 → 첫 줄. 켜진 줄만 후보다.
+// 고른다. 줄이 여럿이면: 패널에 저장한 선택 → 첫 줄. **켜지고 격자판에 (살아서) 연동된 줄만** 후보다 — 미연동 줄은
+// 집합 평가에서도 미완성이라(gridLink) 차트만 그 줄로 그리면 "보이는 것 ≠ 도는 것"이 된다. 목록 이름 = 판 이름.
 // ⚠ 세로 줄은 **그 「돌파」 줄 단독**의 후보다(격자판의 "그날 후보"와 같은 수) — 같은 줄의 다른 AND 조건·전이·
 // 목록 상한은 모른다. 그건 ◇(집합 평가)가 말하고, 세로 줄은 ◇ 로 남았는지(`keptTimes`)를 진하기로 가른다.
 // ◇ 가 아직 계산 중이면 전부 "통과"(연한 쪽)로 칠한다 — 먼저 진하게 칠하면 결과가 오며 거꾸로 옅어진다.
@@ -28,19 +29,20 @@ import { useDock } from "../../store/dock.js";
 import { BREAKOUT_BASE, BREAKOUT_HIGH } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { leavesOf } from "../filter/expr.js";
-import { breakoutText, gridText } from "./chainChecks.js";
-import { liveGridPanelOf } from "../dailyGen/gridLink.js";
+import type { FilterStage } from "../filter/stage.js";
+import { breakoutText } from "./chainChecks.js";
+import { gridShortName, liveGridPanelOf } from "../dailyGen/gridLink.js";
 
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
 
 export interface ChainSourceRow {
     stageId: string;
     pred: BreakoutPred;
-    /** 짧은 이름(판 목록) — 식 전체는 `full`(hover). */
+    /** 판 이름(「격자 2」) — 상세는 `full`(hover). */
     text: string;
     full: string;
-    /** 이 줄에 연동된 격자판(없으면 null). */
-    gridPanel: string | null;
+    /** 이 줄에 연동된 격자판 — 연동된 줄만 목록에 선다. */
+    gridPanel: string;
 }
 
 export interface ChainOverlay {
@@ -49,6 +51,23 @@ export interface ChainOverlay {
     input: ChainOverlayInput | null;
     /** 안 그리는 이유(켜져 있는데 못 그릴 때) — 칩 설명·메뉴 머리가 말한다. null = 그리는 중이거나 꺼짐. */
     why: string | null;
+}
+
+/** 출처 목록 — **켜지고 격자판에 (살아서) 연동된** 돌파 줄만, 이름 = 판 이름(순수부 — 테스트 표면). */
+export function chainSourceRowsOf(
+    stages: readonly FilterStage[],
+    bindings: Readonly<Record<string, string>>,
+    slots: readonly string[],
+): ChainSourceRow[] {
+    const out: ChainSourceRow[] = [];
+    for (const st of stages) {
+        if (!st.enabled) continue;
+        const p = st.predicates.find((x): x is BreakoutPred => x.kind === "breakout");
+        const panel = p ? liveGridPanelOf(bindings, slots, st.id) : undefined;
+        if (!p || panel === undefined) continue;
+        out.push({ stageId: st.id, pred: p, text: gridShortName(panel), full: breakoutText(p), gridPanel: panel });
+    }
+    return out;
 }
 
 export function useChainOverlay(args: {
@@ -73,17 +92,8 @@ export function useChainOverlay(args: {
     const slots = useDock((s) => s.slots);
     const mode = useWorkbench((s) => s.filterMode);
 
-    const rows = useMemo<ChainSourceRow[]>(() => {
-        const out: ChainSourceRow[] = [];
-        for (const st of stages) {
-            if (!st.enabled) continue;
-            const p = st.predicates.find((x): x is BreakoutPred => x.kind === "breakout");
-            if (!p) continue;
-            out.push({ stageId: st.id, pred: p, text: gridText(p), full: breakoutText(p), gridPanel: liveGridPanelOf(bindings, slots, st.id) ?? null });
-        }
-        return out;
-    }, [stages, bindings, slots]);
-    const source = rows.find((r) => r.stageId === sourceId) ?? rows.find((r) => r.gridPanel !== null) ?? rows[0] ?? null;
+    const rows = useMemo(() => chainSourceRowsOf(stages, bindings, slots), [stages, bindings, slots]);
+    const source = rows.find((r) => r.stageId === sourceId) ?? rows[0] ?? null;
 
     const active = on && mode === "daily" && source !== null && onSetDate;
     const snapQ = useDaySnapshot(active ? date : null);

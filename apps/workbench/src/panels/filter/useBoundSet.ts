@@ -25,6 +25,7 @@ import { selectObservedSetId, useWorkbench } from "../../store/workbench.js";
 import { useFunnel } from "./FunnelContext.js";
 import { setDisplayName } from "./label.js";
 import { DAY_SET_OPTS, useCellSet } from "./useCellSet.js";
+import { UNLINKED_GRID } from "../dailyGen/gridLink.js";
 import { UNIVERSE_LABEL, type Universe } from "./universe.js";
 import type { ViewedSet } from "./useSetViews.js";
 
@@ -43,6 +44,11 @@ export interface DaySetState {
     themesReady: boolean;
     /** 이 우주에서 이 집합을 못 푸는 이유(풀 수 있으면 null). */
     unsupported: string | null;
+    /**
+     * 미연동 돌파 줄 수 — **평가가 본 것**(참조 안쪽까지)에서 센다. 머리글 배지가 따로 세면 수가 안 서는
+     * 이유와 배지가 다른 집합을 말한다(드릴인·묶음 안 줄).
+     */
+    unlinked: number;
 }
 
 export interface BoundSet {
@@ -93,6 +99,8 @@ export function useBoundSet(_panelId: string): BoundSet {
     // 미조회). 훅은 조건부로 못 부르므로 이 형태가 유일한 길이다.
     const cellSet = useCellSet(daily && mismatch === null ? funnel.slowExpr : null, funnel.slowSets, focusDate, DAY_SET_OPTS);
 
+    const unlinked = daily ? cellSet.stages.filter((x) => x.reasons.includes(UNLINKED_GRID)).length : 0;
+
     const dayView = useMemo<ViewedSet>(() => {
         if (!daily) return EMPTY_VIEW;
         // 조건이 없거나 재료가 아직 없다 = **값을 모른다**(0건이 아니다). 빈 결과를 그대로 흘리면
@@ -135,7 +143,8 @@ export function useBoundSet(_panelId: string): BoundSet {
             matched: daily ? cellSet.matched : 0,
             error: daily ? cellSet.error : null,
             themesReady: !daily || cellSet.themesReady,
-            unsupported: mismatch ?? (daily && !cellSet.evaluable ? NO_CONDITION : null),
+            unsupported: mismatch ?? (daily && !cellSet.evaluable ? (unlinked > 0 ? UNLINKED_GRID : NO_CONDITION) : null),
+            unlinked,
         },
     };
 }

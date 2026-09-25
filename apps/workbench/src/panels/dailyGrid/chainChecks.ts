@@ -1,4 +1,4 @@
-// 사슬 필터 식의 **말** — 조건 이름·칩 글자·식 한 줄 요약. 격자판의 칩·「＋ 조건」 메뉴와 생성소 줄 이름표·
+// 사슬 필터 식의 **말** — 조건 이름·칩 글자·식 한 줄 요약. 격자판의 칩·「＋ 조건」 메뉴와 생성소 칩 hover·
 // 기본 차트 사슬 층 출처 목록이 같은 이 한 벌을 쓴다(말이 두 벌이면 같은 조건을 두 이름으로 부른다).
 import {
     foldFlat,
@@ -19,7 +19,7 @@ export const COND_NAME: Record<ChainCondKind, string> = {
     openHigh: "시가→고가",
     openClose: "시가→종가",
     sessionHigh: "세션 고가 돌파",
-    label: "이름표",
+    label: "돌파 타입",
 };
 
 export const COND_HINT: Record<ChainCondKind, string> = {
@@ -28,7 +28,7 @@ export const COND_HINT: Record<ChainCondKind, string> = {
     openHigh: "그 봉 시가 대비 고가 상승폭(%) 범위",
     openClose: "그 봉 시가 대비 종가(%) 범위 — 양봉 = 0 초과, 음봉 = 0 미만",
     sessionHigh: "그 봉 고가 ≥ 직전까지 세션 최고가(터치 포함) — 아님은 NOT",
-    label: "그 봉 시점 이름표 — 기준선 돌파 / 고가 돌파",
+    label: "그 봉이 어떤 돌파인가 — 기준선 돌파 / 고가 돌파",
 };
 
 /** 조건을 새로 걸 때의 첫 값 — 걸자마자 무언가를 거르도록. */
@@ -81,14 +81,11 @@ export function chainExprText(f: ChainFilter): string {
     return f.expr.of.length === 0 ? "" : item(foldFlat(f.expr), true);
 }
 
-/** 생성소 줄 이름표용 요약 — 식 + 식 전체 순번. */
+/** 식 + 식 전체 순번 요약 — 생성소 돌파 칩·차트 격자 목록의 hover. */
 export function chainSummary(p: BreakoutPred): string {
     const e = chainExprText(p.chain);
     return e === "" ? rankText(p.chain.firstK) : `${e} · ${rankText(p.chain.firstK)}`;
 }
 
-/** 「돌파」 술어의 표시 이름 — 생성소 줄 이름표·차트 사슬 층 출처 목록이 같은 한 벌. */
+/** 「돌파」 술어의 상세 한 줄 — 생성소 돌파 칩·차트 사슬 층 격자 목록의 hover 가 같은 한 벌(칩 글자는 판 이름). */
 export const breakoutText = (p: BreakoutPred): string => `돌파 ${p.zigzagPct}%/${p.bandPct}% · ${chainSummary(p)}`;
-
-/** 짧은 격자 이름 — 차트 사슬 층 출처 목록(좁은 판)용. 식은 hover 로. */
-export const gridText = (p: BreakoutPred): string => `${p.zigzagPct}% / ${p.bandPct}% · ${rankText(p.chain.firstK)}`;

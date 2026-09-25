@@ -1,6 +1,6 @@
 // 기본 차트 「사슬」 판 — 세 가지만: **사슬 ON/OFF · 밴드 ON/OFF · 적용할 격자 고르기**(2026-09-24).
 // 설명은 전부 hover(title)로 — 판에 글이 많으면 지저분하다. 고치는 곳은 격자판 하나(여긴 노브가 없다).
-// 격자 줄의 ▣(격자판 연동 표시)를 누르면 그 격자판이 열린다.
+// 격자 목록 = 연동된 판 이름(「격자 2」) — ▣ 를 누르면 그 격자판이 열린다.
 import { AnchoredPopover } from "../../ui/Dialog.js";
 import { openPanelExact } from "../../lib/openPanel.js";
 import { BREAKOUT_HIGH } from "../../styles/palette.js";
@@ -36,11 +36,11 @@ export function ChainLayerMenu({ anchor, overlay, on, onToggle, showBands, onTog
                     <Switch on={showBands} />
                 </button>
                 <div style={{ fontSize: 11, color: "var(--text-tertiary)", padding: "6px 12px 2px" }}
-                    title="보는 집합의 켜진 「돌파」 줄 — 세로 줄은 그 줄 단독의 후보(다른 조건·전이는 ◇ 가 말한다)">
+                    title="보는 집합의 켜진 「돌파」 줄 중 격자판에 연동된 것(판 이름) — 세로 줄은 그 줄 단독의 후보(다른 조건·전이는 ◇ 가 말한다)">
                     격자
                 </div>
                 {overlay.rows.length === 0 && (
-                    <div style={{ ...row, cursor: "default", color: "var(--text-tertiary)" }} title="생성소에서 「돌파」 줄을 만든다">없음</div>
+                    <div style={{ ...row, cursor: "default", color: "var(--text-tertiary)" }} title="생성소에서 「돌파」 줄을 만들고 격자판을 연결한다 — 미연동 줄은 계산하지 않는다">없음</div>
                 )}
                 {overlay.rows.map((r) => {
                     const cur = src?.stageId === r.stageId;
@@ -50,13 +50,11 @@ export function ChainLayerMenu({ anchor, overlay, on, onToggle, showBands, onTog
                                 <span style={{ color: cur ? BREAKOUT_HIGH : "var(--text-tertiary)" }}>{cur ? "●" : "○"}</span>
                                 <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.text}</span>
                             </button>
-                            {r.gridPanel !== null && (
-                                <button onClick={() => { openPanelExact(r.gridPanel!); onClose(); }}
-                                    title="이 줄에 연동된 격자판 열기 — 격자 정의·사슬 필터는 거기서 고친다"
-                                    style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 11, color: "var(--text-tertiary)", padding: "0 12px 0 4px" }}>
-                                    ▣
-                                </button>
-                            )}
+                            <button onClick={() => { openPanelExact(r.gridPanel); onClose(); }}
+                                title="이 격자판 열기 — 격자 정의·사슬 필터는 거기서 고친다"
+                                style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 11, color: "var(--text-tertiary)", padding: "0 12px 0 4px" }}>
+                                ▣
+                            </button>
                         </div>
                     );
                 })}

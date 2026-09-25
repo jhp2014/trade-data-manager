@@ -3,6 +3,9 @@ import { groupExprLabel, kindLabel, predicateLabel, setDisplayName, stageLabel, 
 import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
 import { exprOfStages, type SetExpr, type SetTerm } from "../expr.js";
+import { breakoutText } from "../../dailyGrid/chainChecks.js";
+
+type BreakoutPred = Parameters<typeof breakoutText>[0];
 
 /** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
 const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
@@ -126,8 +129,8 @@ describe("setDisplayName — 참조도 항이다", () => {
     });
 });
 
-describe("돌파 생성기 라벨 — 노브가 인스턴스를 가른다", () => {
-    it("zigzag/밴드와 사슬 필터 식(칩·괄호·식 전체 순번)이 이름에 실린다", () => {
+describe("돌파 생성기 라벨 — 이름은 「돌파」, 상세는 hover(breakoutText) — 줄은 연동된 판 이름으로 갈린다", () => {
+    it("라벨엔 노브가 안 실리고, 상세 한 줄엔 zigzag/밴드와 사슬 필터 식(칩·괄호·식 전체 순번)이 실린다", () => {
         const a: FilterPredicate = { kind: "breakout", zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 } };
         const b: FilterPredicate = {
             kind: "breakout", zigzagPct: 3, bandPct: 1,
@@ -146,8 +149,10 @@ describe("돌파 생성기 라벨 — 노브가 인스턴스를 가른다", () =
             },
         };
         const c: FilterPredicate = { kind: "candleShape", shape: "bear" };
-        expect(predicateLabel(a, look)).toBe("돌파 2%/0.5% · 처음 1개");
-        expect(predicateLabel(b, look)).toBe("돌파 3%/1% · 봉 대금 ≥ 50억 · 처음 1 AND (세션 고가 돌파 OR NOT 기준선 돌파) · 처음 2 · 전부");
+        expect(predicateLabel(a, look)).toBe("돌파");
+        expect(predicateLabel(b, look)).toBe("돌파");
+        expect(breakoutText(a as BreakoutPred)).toBe("돌파 2%/0.5% · 처음 1개");
+        expect(breakoutText(b as BreakoutPred)).toBe("돌파 3%/1% · 봉 대금 ≥ 50억 · 처음 1 AND (세션 고가 돌파 OR NOT 기준선 돌파) · 처음 2 · 전부");
         expect(predicateLabel(c, look)).toBe("음봉");
         expect(kindLabel("breakout")).toBe("타점");
     });

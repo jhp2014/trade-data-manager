@@ -34,6 +34,9 @@ import { cellMaterialsOf } from "./cellMaterials.js";
 import type { FilterStage } from "./stage.js";
 import { activeExpr, foldExpr, isFoldedNode, type FoldedNode, type SetExpr, type SetTerm } from "./expr.js";
 import { stageDeficiency, type Universe } from "./universe.js";
+import { useWorkbench } from "../../store/workbench.js";
+import { useDock } from "../../store/dock.js";
+import { gridLinkDeficiency } from "../dailyGen/gridLink.js";
 
 /**
  * 하루 집합의 평가 옵션 — **소비자가 전부 이 상수를 쓴다**(목록·차트).
@@ -115,6 +118,10 @@ export function toCellExpr(
      * 안 주면 참조는 전부 결손이다(순수 함수의 기본값 — 테스트가 옛 동작을 그대로 잰다).
      */
     setOf: DaySetLookup = () => undefined,
+    /**
+     * 우주 밖의 결손 — 술어만 봐선 모르는 이유(미연동 돌파 줄 = 미완성, gridLink). 같은 결손 규칙으로 걷는다.
+     */
+    extraDeficiency: (s: FilterStage) => readonly string[] = () => [],
 ): { expr: CellExpr | null; stages: CellStageStatus[] } {
     const status: CellStageStatus[] = [];
     /** 전개 중인 참조들 — 순환(A→B→A)을 결손으로 끊는다(resolveSet.resolving 과 같은 수법). */
@@ -144,7 +151,7 @@ export function toCellExpr(
     const condOf = (t: Extract<SetTerm, { kind: "cond" }>, mine: string[]): CellExpr | null => {
         const s = t.stage;
         mine.push(s.id);
-        const reasons = stageDeficiency(s, "daily");
+        const reasons = [...stageDeficiency(s, "daily"), ...extraDeficiency(s)];
         // 같은 집합을 두 번 참조하면 같은 조건이 두 번 지난다 — 줄은 하나이므로 status 도 하나다.
         if (!status.some((x) => x.stageId === s.id)) {
             status.push(reasons.length > 0
@@ -317,13 +324,15 @@ export function useCellSet(
     date: string,
     opts?: CellEvalOptions,
 ): CellSetView {
+    const bindings = useWorkbench((s) => s.themeBindings);
+    const slots = useDock((s) => s.slots);
     // ⚠ 늦추는 일은 **호출부가 한다** — 2026-09-22 에 「계산」 관문이 걷히면서 박자의 주인이
     //   깔때기 한 곳(`slowExpr`/`slowSets`)으로 모였다. 여기서 또 늦추면 관문이 두 곳이 된다.
     const narrowedEarly = useMemo(
         () => (expr === null
             ? { expr: null, stages: [] as CellStageStatus[] }
-            : toCellExpr(expr, (id) => savedSets.find((f) => f.id === id))),
-        [expr, savedSets],
+            : toCellExpr(expr, (id) => savedSets.find((f) => f.id === id), gridLinkDeficiency(bindings, slots))),
+        [expr, savedSets, bindings, slots],
     );
     // 평가할 조건이 없으면 **하루 재료를 안 당긴다** — /day-replay 는 한 날 13MB 다(실측).
     // (라벨 층은 이 재료가 없어도 선다 — 멤버십에서 오므로. 조건 없음 = 안 보여줌 규칙과 같은 결.)

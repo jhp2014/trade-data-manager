@@ -166,10 +166,11 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         return high === undefined ? null : { from: sig, to: high };
     }, [time, viewDate, legHighBySignal]);
 
-    // ◇ 로 남은 봉 — 사슬 층이 후보 세로 줄의 진하기를 가른다. 평가 중이면 모름(null — 전부 연하게).
+    // ◇ 로 남은 봉 — 사슬 층이 후보 세로 줄의 진하기를 가른다. 평가 중이거나 **평가 못 하면**(결손 — 미연동 돌파
+    // 줄이 AND 를 오염시킨 집합 등) 모름(null — 전부 연하게). 빈 Set 으로 두면 전부 "탈락"으로 칠한다.
     const keptTimes = useMemo<ReadonlySet<number> | null>(
-        () => (cellExpr === null || cellSet.isLoading ? null : new Set(autoPoints.map((a) => a.time))),
-        [cellExpr, cellSet.isLoading, autoPoints],
+        () => (cellExpr === null || cellSet.isLoading || !cellSet.evaluable || !cellSet.ready ? null : new Set(autoPoints.map((a) => a.time))),
+        [cellExpr, cellSet.isLoading, cellSet.evaluable, cellSet.ready, autoPoints],
     );
     const chain = useChainOverlay({
         on: showChain, showBands: chainBands, sourceId: chainSource, code, date: anchorDate,

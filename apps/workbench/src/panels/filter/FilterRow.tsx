@@ -13,7 +13,7 @@ import { stageKind, type FilterStage } from "./stage.js";
 import { iconBtn } from "./ui.js";
 
 export function FilterRow({
-    no, stage, label, dead, deficiency, cellFields, neg, linked, linkedLabel, onLinkedClick,
+    no, stage, label, dead, deficiency, cellFields, neg,
     onOpen, onToggle, onNegate, onRemove,
 }: {
     no: number;
@@ -30,11 +30,6 @@ export function FilterRow({
     deficiency?: string[];
     /** 셀 술어의 그 자리 편집 줄(하루 우주) — 전용 편집 판이 없는 종류라 줄 안에서 만진다. */
     cellFields?: React.ReactNode;
-    /** 전용 패널이 지금 이 행을 비추는 중(테마) — 어디를 만지면 이 줄이 바뀌는지 알린다. */
-    linked?: boolean;
-    /** 테마 행 전용 — 연동된 조건판 라벨(미연동이면 "미연동"). 클릭 = 연동 메뉴(pull 의 유일한 손잡이). */
-    linkedLabel?: string;
-    onLinkedClick?: (e: React.MouseEvent) => void;
     /** 이름 클릭 — 그 종류의 편집면으로(좌표는 그 자리에 여는 팝오버가 쓴다). */
     onOpen: (e: React.MouseEvent) => void;
     /** 없으면 그 손잡이를 안 그린다 — 집합 편성의 아랫줄은 **값만** 맡으므로 안 넘긴다. */
@@ -70,16 +65,6 @@ export function FilterRow({
                     </span>
                 )}
                 <span style={{ marginLeft: "auto", flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
-                    {linkedLabel !== undefined ? (
-                        <button onClick={onLinkedClick}
-                            title={linkedLabel === "미연동" ? "연동할 조건판 고르기 — 연동해야 컷선·카운트가 선다" : "연동된 조건판 — 클릭하면 연동 변경/해제 메뉴"}
-                            style={{ fontSize: 9.5, color: linkedLabel === "미연동" ? "var(--text-tertiary)" : "var(--accent-primary)", border: "none", background: "transparent", cursor: "pointer", padding: 0 }}>
-                            {linkedLabel === "미연동" ? "○ 미연동" : `◆ ${linkedLabel}`}
-                        </button>
-                    ) : linked === true && (
-                        <span title="전용 패널이 이 행을 비추는 중 — 거기서 만지면 이 줄이 바뀝니다"
-                            style={{ fontSize: 9.5, color: "var(--accent-primary)" }}>◆ 연동</span>
-                    )}
                     {/* ⚠ 끄기·부정·지우기는 **여기 없다**(2026-09-22) — 칩 우클릭 전용이다. 아랫줄은
                         **값**만 맡는다: 같은 일이 두 자리에 있으면 옛 "필터 UI 가 두 곳" 함정이다.
                         (손잡이를 옵셔널로 받아 두는 이유는 다른 소비자가 아직 있을 수 있어서다.) */}

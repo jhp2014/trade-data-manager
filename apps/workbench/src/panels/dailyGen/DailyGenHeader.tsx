@@ -1,4 +1,4 @@
-// Daily 타점 생성소 머리글 — 날짜·수·상태(어긋남·죽은 참조)와 손잡이 줄.
+// Daily 타점 생성소 머리글 — 날짜·수·상태(어긋남·미연동 돌파·죽은 참조)와 손잡이 줄.
 // 모드 토글은 없다 — 작업면은 하루로 고정이다(main.tsx 가 부팅 때 한 번 고정, decisions).
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
@@ -8,6 +8,7 @@ import { FAIL } from "../../styles/palette.js";
 import { leafCount, leavesOf, refsOf } from "../filter/expr.js";
 import type { FunnelView } from "../filter/useFilterFunnel.js";
 import { useBoundSet } from "../filter/useBoundSet.js";
+import { UNLINKED_GRID } from "./gridLink.js";
 
 export function DailyGenHeader({ v, panelId }: { v: FunnelView; panelId: string }): JSX.Element {
     const clearStages = useWorkbench((s) => s.clearFilterStages);
@@ -19,6 +20,9 @@ export function DailyGenHeader({ v, panelId }: { v: FunnelView; panelId: string 
     const leaves = leavesOf(expr);
     const all = leaves.length;
     const on = leaves.filter((x) => x.enabled).length;
+    // 미연동 돌파 줄 = 미완성(계산 안 함) — 수가 안 서는 이유를 머리글이 말한다(칩은 「○ 미연동」).
+    // 평가가 센 수를 쓴다(참조 안쪽·드릴인 중 윗집합까지 — 수와 같은 집합을 말하게).
+    const unlinked = bound.day.unlinked;
 
     const controls = useMemo<ControlSpec[]>(() => [
         {
@@ -56,6 +60,11 @@ export function DailyGenHeader({ v, panelId }: { v: FunnelView; panelId: string 
                 <span title={d.unsupported ?? "이 집합에는 종단 조건이 있어 하루에서 평가하지 않습니다"}
                     style={{ fontSize: 10.5, color: FAIL, flexShrink: 0 }}>
                     종단 집합 — 평가 안 함
+                </span>
+            )}
+            {unlinked > 0 && (
+                <span style={{ fontSize: 10.5, color: "var(--warning)", flexShrink: 0 }} title={UNLINKED_GRID}>
+                    미연동 돌파 {unlinked}
                 </span>
             )}
             {v.deadStageIds.length > 0 && (

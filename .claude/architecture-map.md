@@ -30,7 +30,7 @@
 
 ## apps/workbench/src
 
-`api/`(wire 소비 fetch 래퍼) · `store/`(zustand: board/chart/live/rank/filterFunnel(편집 집합 쓰기 — 모드 문지기)/panelUi/dock) · `panels/`(LiveBoard/ThemeBoard/ReplayBoard/Chart/RankSheet/News/Watchlist/Workset, 서브폴더 canvas/dailyGen(Daily 타점 생성소 — 하루 조건 묶음·집합, 옛 집합 편성 자리 승계)/dailyGrid(Daily 타점 조건 [격자] — ① 격자 정의 · ② 사슬 필터 식 줄 편집면(그림 없음) + 기본 차트 사슬 층 재료 useChainOverlay·「사슬」 판)/filter(식·술어 어휘·보는 집합 — 두 Daily 패널이 쓰는 데이터 층)/group/liveTape/norm/outcome(시그널 결과 패널 — 시그널 이후(미래) 값, filter 와 과거/미래 경계. 결과 시트 패널은 폐지 — 결과 열은 rank 시트의 시트 전용 열)/pointdef(타점 정의 판 — 판정 노브를 분포 보며 긋는 정의 레일 4줄, 모수 선언층)/rank) · `chart/`(캔들 렌더링 — 분봉 primitive 층: 세로선·드롭선·다리 표식·**사슬 층**(chainLayer — 돌파 사슬 띠·후보 봉 세로 줄·밴드 면, 재료는 panels/dailyGrid/useChainOverlay)) · `lib/`(hooks+순수 파생로직) · `shell/`(WorkbenchShell, 패널 카탈로그) · `components/`,`ui/`,`keymap/`,`styles/`
+`api/`(wire 소비 fetch 래퍼) · `store/`(zustand: board/chart/live/rank/filterFunnel(편집 집합 쓰기 — 모드 문지기)/panelUi/dock) · `panels/`(LiveBoard/ThemeBoard/ReplayBoard/Chart/RankSheet/News/Watchlist/Workset, 서브폴더 canvas/dailyGen(Daily 타점 생성소 — 하루 조건 묶음·집합, 옛 집합 편성 자리 승계 · gridLink = 돌파 줄↔격자판 연동 판정 한 벌(칩·머리글·평가 결손·차트 출처))/dailyGrid(Daily 타점 조건 [격자] — ① 격자 정의 · ② 사슬 필터 식 줄 편집면(그림·수 없음 — 연동 줄을 비추는 창) + 기본 차트 사슬 층 재료 useChainOverlay·「사슬」 판)/filter(식·술어 어휘·보는 집합 — 두 Daily 패널이 쓰는 데이터 층)/group/liveTape/norm/outcome(시그널 결과 패널 — 시그널 이후(미래) 값, filter 와 과거/미래 경계. 결과 시트 패널은 폐지 — 결과 열은 rank 시트의 시트 전용 열)/pointdef(타점 정의 판 — 판정 노브를 분포 보며 긋는 정의 레일 4줄, 모수 선언층)/rank) · `chart/`(캔들 렌더링 — 분봉 primitive 층: 세로선·드롭선·다리 표식·**사슬 층**(chainLayer — 돌파 사슬 띠·후보 봉 세로 줄·밴드 면, 재료는 panels/dailyGrid/useChainOverlay)) · `lib/`(hooks+순수 파생로직) · `shell/`(WorkbenchShell, 패널 카탈로그) · `components/`,`ui/`,`keymap/`,`styles/`
 
 ## apps/live/src
 
