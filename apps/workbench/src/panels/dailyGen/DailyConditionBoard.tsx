@@ -27,13 +27,14 @@ import { ExprRow, type RowHandlers } from "../filter/ExprRow.js";
 import { FilterRow } from "../filter/FilterRow.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { Note } from "../filter/grain.js";
-import { hasCycle, idOf, leavesOf, mapLeaves, negateGroupAt, negateTerm, refsOf, removeGroupAt, removeTerm, setOpAt, toggleBoundaryGroup, type SetExpr, type SetTerm } from "../filter/expr.js";
+import { activeExpr, hasCycle, idOf, leavesOf, mapLeaves, negateGroupAt, negateTerm, refsOf, removeGroupAt, removeTerm, setOpAt, toggleBoundaryGroup, type SetExpr, type SetTerm } from "../filter/expr.js";
 import { setDisplayName, stageLabel } from "../filter/label.js";
 import { stageKind, type FilterPredicate, type FilterStage } from "../filter/stage.js";
 import { stageDeficiency } from "../filter/universe.js";
 import { DAILY_GRID_BASE } from "./dailyPanelIds.js";
 import { gridShortName, liveGridPanelOf } from "./gridLink.js";
 import { FAIL, PIN } from "../../styles/palette.js";
+import { LinkIcon } from "../../components/icons.js";
 import { breakoutText } from "../dailyGrid/chainChecks.js";
 
 const UNIVERSE = "daily" as const;
@@ -105,7 +106,11 @@ export function DailyConditionBoard(): JSX.Element {
     }, [savedSets, v.labelLook]);
 
     /** ＋ 집합 판의 세 칸 — 올라와 있음 · 붙일 수 있음 · 붙일 수 없음(이유). 거절은 스토어가 한 번 더. */
-    const setPicker = useMemo(() => setPickerOf(savedSets, editingSetId, expr), [savedSets, expr, editingSetId]);
+    const setPicker = useMemo(() => setPickerOf(savedSets, editingSetId, expr, editPath), [savedSets, expr, editingSetId, editPath]);
+    /** 이름 없는 집합을 붙이려는 중 — 그 줄에 이름 칸이 열린다(두 곳에서 쓰는 순간 "개념"이라 이름을 받는다). */
+    const [namingSet, setNamingSet] = useState<string | null>(null);
+    /** Esc 로 이름 칸을 걷은 줄 — 포커스를 그 줄로 되돌린다(안 돌리면 몸통으로 떨어져 다음 Esc 가 판을 닫는다). */
+    const [refocusSet, setRefocusSet] = useState<string | null>(null);
 
     const rows = editPath.length > 0 ? editPath : [editingSetId];
     const exprOfSet = useCallback((sid: string): SetExpr => savedSets.find((x) => x.id === sid)?.expr ?? expr, [savedSets, expr]);
@@ -231,11 +236,12 @@ export function DailyConditionBoard(): JSX.Element {
                         <button onClick={() => addGroupTerm()} title="새 묶음 — 빈 집합을 만들어 이 식에 붙이고 그 안으로 내려갑니다" style={addBtn}>
                             ＋ 묶음
                         </button>
-                        {/* ⚠ 늘 열린다 — 붙일 게 없어도 **왜 없는지**를 판이 말한다(못 누르는 것은 숨기지 않고 회색 + 이유 —
-                            식 칩 우클릭 판 Item 과 같은 **규칙**. 줄 모양은 이름·꼬리 칸이 있어 따로 그린다). */}
+                        {/* ⚠ 늘 열린다 — 붙일 게 없어도 **왜 없는지**를 판이 말한다. 규칙(2026-09-25): **절대 안 되는 것은
+                            안 보이고**(열린 집합·경로 위 조상·종단 — 이 판은 Daily 전용), **상황 때문에 안 되는 것만** 회색 +
+                            이유(나를 쓰는 집합 · 빈 집합). 식 칩 우클릭 판 Item 의 "숨기지 않고 회색 + 이유"는 후자에만 걸린다. */}
                         <HeaderPopover width={260} align="start" closeOnOutside
                             trigger={(open, toggle) => (
-                                <button onClick={toggle}
+                                <button onClick={() => { setNamingSet(null); setRefocusSet(null); toggle(); }}
                                     title="이미 있는 집합을 이 식에 한 항으로 붙입니다 — 고치면 그 집합을 쓰는 곳이 전부 같이 바뀝니다"
                                     style={addBtn}>
                                     ＋ 집합 {open ? "▴" : "▾"}
@@ -246,8 +252,12 @@ export function DailyConditionBoard(): JSX.Element {
                                 const head = (text: string, first: boolean): JSX.Element => (
                                     <div style={{ padding: "4px 10px 1px", fontSize: 10, color: "var(--text-tertiary)", ...(first ? {} : { borderTop: "0.5px solid var(--border-subtle)", marginTop: 3, paddingTop: 5 }) }}>{text}</div>
                                 );
+                                // 쓰는 곳 = 🔗N — 집합 목록 판과 같은 표기(비어 있음 = 아무도 안 씀).
                                 const used = (id: string): JSX.Element | null => (refInfo(id).usedBy >= 1
-                                    ? <span style={{ marginLeft: "auto", paddingLeft: 8, fontSize: 9.5, color: "var(--text-tertiary)" }}>쓰는 곳 {refInfo(id).usedBy}</span>
+                                    ? <span title={`이 집합을 쓰는 집합 ${refInfo(id).usedBy}개 — 고치면 같이 바뀝니다`}
+                                        style={{ marginLeft: "auto", paddingLeft: 8, display: "inline-flex", alignItems: "center", gap: 2, fontSize: 9.5, color: "var(--text-tertiary)" }}>
+                                        <LinkIcon />{refInfo(id).usedBy}
+                                    </span>
                                     : null);
                                 const row = { ...menuItem, display: "flex", alignItems: "center", gap: 6 } as const;
                                 const check = (on: boolean): JSX.Element => <span style={{ width: 10, flexShrink: 0, color: "var(--accent-primary)", fontSize: 11 }}>{on ? "✓" : ""}</span>;
@@ -273,11 +283,31 @@ export function DailyConditionBoard(): JSX.Element {
                                             </button>
                                         ))}
                                         {attachable.length > 0 && section("붙일 수 있음")}
-                                        {attachable.map((f) => (
-                                            <button key={f.id} role="menuitem" onClick={() => { addSetRef(f.id); close(); }} title={`${refInfo(f.id).name} — 이 식에 한 항으로 붙입니다`} style={row}>
-                                                {check(false)}<span style={{ color: PIN }}>{refInfo(f.id).name}</span>{used(f.id)}
-                                            </button>
-                                        ))}
+                                        {attachable.map((f) => {
+                                            const unnamed = f.name === undefined;
+                                            if (namingSet === f.id) {
+                                                return (
+                                                    <NameAndAttach key={f.id} autoName={refInfo(f.id).name}
+                                                        taken={(n) => savedSets.some((x) => x.id !== f.id && x.name === n)}
+                                                        onAttach={(n) => { if (n !== "") renameSet(f.id, n); addSetRef(f.id); setNamingSet(null); close(); }}
+                                                        onCancel={() => { setNamingSet(null); setRefocusSet(f.id); }} />
+                                                );
+                                            }
+                                            return (
+                                                // 이름 없는 집합 = 누르면 그 자리에 이름 칸(강제 아님 — 비우고 Enter 면 그대로 붙는다).
+                                                <button key={f.id} role="menuitem" autoFocus={refocusSet === f.id}
+                                                    onClick={() => { if (unnamed) setNamingSet(f.id); else { addSetRef(f.id); close(); } }}
+                                                    title={unnamed
+                                                        ? `${refInfo(f.id).name} — 이름이 없는 집합입니다. 누르면 이름을 짓고 붙입니다(비우면 그대로)`
+                                                        : `${refInfo(f.id).name} — 이 식에 한 항으로 붙입니다`}
+                                                    style={row}>
+                                                    {check(false)}
+                                                    <span style={unnamed ? { color: PIN, opacity: 0.65, borderBottom: `1px dashed ${PIN}` } : { color: PIN }}>{refInfo(f.id).name}</span>
+                                                    {unnamed && <span style={{ fontSize: 9.5, color: "var(--text-tertiary)" }}>이름 없음</span>}
+                                                    {used(f.id)}
+                                                </button>
+                                            );
+                                        })}
                                         {blocked.length > 0 && section("붙일 수 없음")}
                                         {blocked.map(({ set: f, why }) => (
                                             <button key={f.id} role="menuitem" disabled title={BLOCK_HINT[why]}
@@ -320,21 +350,24 @@ export function DailyConditionBoard(): JSX.Element {
     );
 }
 
-type PickerSet = { id: string; expr: SetExpr; universe: string };
-type BlockWhy = "longitudinal" | "cycle";
-const BLOCK_TEXT: Record<BlockWhy, string> = { longitudinal: "종단 집합", cycle: "순환" };
+type PickerSet = { id: string; name?: string; expr: SetExpr; universe: string };
+/** 상황 때문에 못 붙이는 이유 — 회색 칸에 선다(절대 안 되는 것은 아예 안 선다). */
+type BlockWhy = "usesMe" | "empty";
+const BLOCK_TEXT: Record<BlockWhy, string> = { usesMe: "이 집합을 쓰고 있음", empty: "비어 있음" };
 const BLOCK_HINT: Record<BlockWhy, string> = {
-    longitudinal: "종단 집합 — 하루 식에는 붙일 수 없습니다(멤버십을 물을 키가 다릅니다)",
-    cycle: "순환 — 그 집합이 이미 이 집합을 품고 있습니다",
+    usesMe: "그 집합이 이미 지금 집합을 쓰고 있습니다 — 붙이면 서로를 품게 됩니다(순환)",
+    empty: "조건이 없는 집합입니다 — 붙여도 제한이 없습니다. 조건을 채우면 붙일 수 있습니다",
 };
 
 /**
  * ＋ 집합 판의 세 칸 — 순수부(테스트 표면). 올라와 있음 = 이 식에 이미 붙은 참조(식 순서) · 붙일 수 있음 ·
- * 붙일 수 없음(종단 → 순환 순으로 첫 이유 하나). 거절 규칙은 스토어 `addSetRef` 와 같다(자기·이미 붙음·순환).
+ * 붙일 수 없음(나를 쓰는 집합 → 빈 집합 순으로 첫 이유 하나).
+ * **아예 안 서는 것**(무조건 불가 — 2026-09-25 사용자): 편집 중인 집합 자신 · 경로 위 조상(`path` — 묶음 안에서 볼 때
+ * 위 집합들, 나를 품는다) · 종단 집합(이 판은 Daily 전용 — 하루 모드는 부팅 때 고정이라 스토어의 `filterMode` 검사와
+ * 같은 답이다). 스토어 `addSetRef` 보다 **한 가지 더 엄격**하다: 빈 집합은 스토어가 받지만(부재 = 제한 없음) 판은 회색으로 세운다.
  * 지워진 집합을 가리키는 참조는 `broken` 으로 따로 낸다 — 칩 줄이 「(지워진 집합)」으로 세우는 것을 판이 숨기면 둘이 엇갈린다.
- * 편집 중인 집합 자신은 **어느 칸에도 안 선다** — 늘 거기 있어 고를 거리가 아니다(있으면 빈 판 안내가 영영 안 뜬다).
  */
-export function setPickerOf<T extends PickerSet>(savedSets: readonly T[], editingSetId: string, expr: SetExpr): {
+export function setPickerOf<T extends PickerSet>(savedSets: readonly T[], editingSetId: string, expr: SetExpr, path: readonly string[] = []): {
     attached: T[];
     broken: string[];
     attachable: T[];
@@ -347,14 +380,49 @@ export function setPickerOf<T extends PickerSet>(savedSets: readonly T[], editin
     const attachable: T[] = [];
     const blocked: { set: T; why: BlockWhy }[] = [];
     for (const f of savedSets) {
-        if (mine.includes(f.id) || f.id === editingSetId) continue;
-        const why: BlockWhy | null = f.universe !== UNIVERSE ? "longitudinal"
-            : hasCycle(editingSetId, f.expr, exprOfSet) ? "cycle"
+        if (mine.includes(f.id) || f.id === editingSetId || path.includes(f.id) || f.universe !== UNIVERSE) continue;
+        const why: BlockWhy | null = hasCycle(editingSetId, f.expr, exprOfSet) ? "usesMe"
+            // 빈 집합(꺼진 조건뿐인 것 포함 — 평가에선 부재)은 붙여도 제한이 없다.
+            : activeExpr(f.expr).of.length === 0 ? "empty"
             : null;
         if (why === null) attachable.push(f);
         else blocked.push({ set: f, why });
     }
     return { attached, broken, attachable, blocked };
+}
+
+/** 이름 없는 집합 붙이기 — 이름 칸 + 붙이기. Enter = 붙이기(비우면 이름 없이) · Esc = 취소 · 이름 충돌이면 안 붙인다. */
+function NameAndAttach({ autoName, taken, onAttach, onCancel }: {
+    autoName: string;
+    taken: (name: string) => boolean;
+    onAttach: (name: string) => void;
+    onCancel: () => void;
+}): JSX.Element {
+    const [draft, setDraft] = useState("");
+    const clash = draft.trim() !== "" && taken(draft.trim());
+    const submit = (): void => { if (!clash) onAttach(draft.trim()); };
+    return (
+        <div style={{ padding: "3px 10px 5px" }}>
+            <div style={{ fontSize: 10.5, color: PIN, opacity: 0.65, marginBottom: 3 }}>{autoName}</div>
+            <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                <input autoFocus value={draft} placeholder="이름 (비우면 그대로)" aria-label="붙일 집합 이름"
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); submit(); }
+                        else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onCancel(); }
+                    }}
+                    style={{
+                        flex: 1, minWidth: 0, fontSize: 11.5, padding: "2px 6px", borderRadius: 4, font: "inherit",
+                        border: `1px solid ${clash ? FAIL : "var(--border-default)"}`, background: "var(--bg-primary)", color: "var(--text-primary)",
+                    }} />
+                <button onClick={submit} disabled={clash}
+                    style={{ fontSize: 10.5, padding: "1px 8px", borderRadius: 4, cursor: clash ? "default" : "pointer", border: "1px solid var(--accent-primary)", background: "transparent", color: "var(--accent-primary)" }}>
+                    붙이기
+                </button>
+            </div>
+            {clash && <div style={{ fontSize: 10, color: FAIL, marginTop: 2 }}>같은 이름의 집합이 있습니다</div>}
+        </div>
+    );
 }
 
 const addBtn: React.CSSProperties = {

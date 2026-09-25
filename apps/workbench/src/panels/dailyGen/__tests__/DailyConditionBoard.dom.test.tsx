@@ -414,38 +414,45 @@ describe("묶음 우클릭 — 이름·빼기·지우기", () => {
 
 // ── ＋ 집합 판 (2026-09-25) ────────────────────────────────────────────────
 //
-// 버튼은 늘 눌리고 판은 늘 열린다 — 붙일 게 없어도 **왜 없는지**를 판이 말한다(못 누르는 것은 회색 + 이유).
-// 세 칸: 이 식에 올라와 있음(✓ — 누르면 그 묶음을 연다, 빼기는 칩 우클릭) · 붙일 수 있음 · 붙일 수 없음.
+// 버튼은 늘 눌리고 판은 늘 열린다. **절대 안 되는 것은 안 보이고**(열린 집합·경로 위 조상·종단 — Daily 전용 판),
+// **상황 때문에 안 되는 것만** 회색 + 이유(나를 쓰는 집합 · 빈 집합). 이름 없는 집합은 누르면 이름 칸이 열린다.
 describe("＋ 집합 — 세 칸 판", () => {
-    const set = (id: string, expr = exprOfStages([]), universe: "daily" | "longitudinal" = "daily") => ({ id, expr, universe });
+    const leaf = { kind: "cond" as const, stage: RATE_STAGE };
+    const set = (id: string, expr = exprOfStages([RATE_STAGE]), universe: "daily" | "longitudinal" = "daily", name: string | undefined = id) =>
+        ({ id, expr, universe, ...(name !== undefined ? { name } : {}) });
     const ref = (setId: string) => ({ kind: "ref" as const, id: `r-${setId}`, setId });
 
-    it("setPickerOf — 올라와 있음 · 붙일 수 있음 · 붙일 수 없음(종단·순환), 자기 자신은 어디에도 없다", () => {
+    it("setPickerOf — 자기·종단은 안 보이고, 나를 쓰는 집합·빈 집합만 회색", () => {
         const edit = { id: "edit", expr: { id: "root", of: [ref("a")], ops: [], groups: [] }, universe: "daily" as const };
         const sets = [
             edit,
             set("a"),
             set("b"),
-            set("lon", exprOfStages([]), "longitudinal"),
+            set("lon", exprOfStages([RATE_STAGE]), "longitudinal"),
             set("cyc", { id: "root", of: [ref("edit")], ops: [], groups: [] }),
+            set("empty", exprOfStages([])),
         ];
         const r = setPickerOf(sets, "edit", edit.expr);
         expect(r.attached.map((x) => x.id)).toEqual(["a"]);
         expect(r.attachable.map((x) => x.id)).toEqual(["b"]);
-        expect(r.blocked.map((x) => [x.set.id, x.why])).toEqual([["lon", "longitudinal"], ["cyc", "cycle"]]);
+        expect(r.blocked.map((x) => [x.set.id, x.why])).toEqual([["cyc", "usesMe"], ["empty", "empty"]]);
+        // 꺼진 조건뿐인 집합도 비어 있다(평가에선 부재).
+        const off = set("off", exprOfStages([{ ...RATE_STAGE, enabled: false }]));
+        expect(setPickerOf([edit, off], "edit", edit.expr).blocked).toEqual([{ set: off, why: "empty" }]);
     });
 
-    it("setPickerOf — 올라와 있음은 식 순서 · 지워진 참조는 broken · 종단이 순환보다 먼저 · 드릴인 중 부모는 순환", () => {
+    it("setPickerOf — 올라와 있음은 식 순서 · 지워진 참조는 broken · 드릴인 중 경로 위 조상은 안 보인다", () => {
         const expr = { id: "root", of: [ref("b"), ref("gone"), ref("a")], ops: ["and" as const, "and" as const], groups: [] };
-        const both = set("both", { id: "root", of: [ref("edit")], ops: [], groups: [] }, "longitudinal");
-        const r = setPickerOf([set("a"), set("b"), both, { id: "edit", expr, universe: "daily" as const }], "edit", expr);
+        const r = setPickerOf([set("a"), set("b"), { id: "edit", expr, universe: "daily" as const }], "edit", expr);
         expect(r.attached.map((x) => x.id)).toEqual(["b", "a"]);
         expect(r.broken).toEqual(["gone"]);
-        expect(r.blocked.map((x) => [x.set.id, x.why])).toEqual([["both", "longitudinal"]]);
-        // 드릴인: 편집 = inner, 부모 outer 가 inner 를 품는다 → outer 는 순환.
+        // 드릴인: 편집 = inner, 경로 = [outer, inner] — outer 는 무조건 불가라 **어느 칸에도 없다**.
         const inner = { id: "inner", expr: exprOfStages([]), universe: "daily" as const };
-        const outer = set("outer", { id: "root", of: [ref("inner")], ops: [], groups: [] });
-        expect(setPickerOf([outer, inner], "inner", inner.expr).blocked).toEqual([{ set: outer, why: "cycle" }]);
+        const outer = set("outer", { id: "root", of: [leaf, ref("inner")], ops: ["and" as const], groups: [] });
+        const drilled = setPickerOf([outer, inner], "inner", inner.expr, ["outer", "inner"]);
+        expect([...drilled.attached, ...drilled.attachable, ...drilled.blocked.map((x) => x.set)]).toEqual([]);
+        // 경로 밖에서 나를 품은 집합은 회색 「이 집합을 쓰고 있음」.
+        expect(setPickerOf([outer, inner], "inner", inner.expr, ["inner"]).blocked).toEqual([{ set: outer, why: "usesMe" }]);
     });
 
     it("버튼 순서 = ＋ 조건 · ＋ 묶음 · ＋ 집합", () => {
@@ -463,15 +470,76 @@ describe("＋ 집합 — 세 칸 판", () => {
         expect(baseElement.textContent).toContain("저장된 다른 집합이 없습니다");
     });
 
-    it("못 붙이는 집합은 숨기지 않고 회색 + 이유로 선다", () => {
+    it("종단 집합은 안 보이고, 빈 집합은 회색 + 「비어 있음」", () => {
         seedEditing(exprOfStages([RATE_STAGE]));
-        act(() => { useWorkbench.setState((s) => ({ savedSets: [...s.savedSets, { id: "lon", name: "종단 후보", expr: exprOfStages([]), universe: "longitudinal" }] })); });
+        act(() => { useWorkbench.setState((s) => ({ savedSets: [...s.savedSets,
+            { id: "lon", name: "종단 후보", expr: exprOfStages([RATE_STAGE]), universe: "longitudinal" },
+            { id: "emp", name: "빈 것", expr: exprOfStages([]), universe: "daily" }] })); });
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(byText(container, "＋ 집합")!); });
-        expect(baseElement.textContent).toContain("붙일 수 없음");
-        const item = [...baseElement.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("종단 후보"))!;
+        expect(baseElement.textContent).not.toContain("종단 후보");
+        const item = [...baseElement.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("빈 것"))!;
         expect(item.disabled).toBe(true);
-        expect(item.textContent).toContain("종단 집합");
+        expect(item.textContent).toContain("비어 있음");
+    });
+
+    it("이름 없는 집합 — 누르면 이름 칸, 이름을 넣고 Enter = 이름 짓고 붙인다 · 충돌 이름은 안 붙인다", () => {
+        seedEditing(exprOfStages([RATE_STAGE]));
+        const outer = useWorkbench.getState().editingSetId;
+        act(() => { useWorkbench.setState((s) => ({ savedSets: [...s.savedSets,
+            { id: "anon", expr: exprOfStages([RATE_STAGE]), universe: "daily" },
+            { id: "named", name: "아침 돌파", expr: exprOfStages([RATE_STAGE]), universe: "daily" }] })); });
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 집합")!); });
+        const anon = [...baseElement.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("이름 없음"))!;
+        act(() => { fireEvent.click(anon); });
+        const input = baseElement.querySelector<HTMLInputElement>('input[aria-label="붙일 집합 이름"]')!;
+        expect(refsOf(useWorkbench.getState().savedSets.find((x) => x.id === outer)!.expr), "누르기만으론 안 붙는다").toEqual([]);
+        act(() => { fireEvent.change(input, { target: { value: "아침 돌파" } }); });
+        expect(baseElement.textContent).toContain("같은 이름의 집합이 있습니다");
+        act(() => { fireEvent.keyDown(input, { key: "Enter" }); });
+        expect(refsOf(useWorkbench.getState().savedSets.find((x) => x.id === outer)!.expr), "충돌이면 안 붙는다").toEqual([]);
+        act(() => { fireEvent.change(input, { target: { value: "거래대금" } }); });
+        act(() => { fireEvent.keyDown(input, { key: "Enter" }); });
+        const st = useWorkbench.getState();
+        expect(st.savedSets.find((x) => x.id === "anon")!.name).toBe("거래대금");
+        expect(refsOf(st.savedSets.find((x) => x.id === outer)!.expr)).toEqual(["anon"]);
+    });
+
+    it("이름 없는 집합 — Esc 는 이름 칸만 걷는다(판은 열린 채, 포커스는 그 줄로)", () => {
+        seedEditing(exprOfStages([RATE_STAGE]));
+        act(() => { useWorkbench.setState((s) => ({ savedSets: [...s.savedSets, { id: "anon", expr: exprOfStages([RATE_STAGE]), universe: "daily" }] })); });
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 집합")!); });
+        const anonBtn = (): HTMLButtonElement | undefined => [...baseElement.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("이름 없음"));
+        act(() => { fireEvent.click(anonBtn()!); });
+        act(() => { fireEvent.keyDown(baseElement.querySelector('input[aria-label="붙일 집합 이름"]')!, { key: "Escape" }); });
+        expect(baseElement.querySelector('input[aria-label="붙일 집합 이름"]')).toBeNull();
+        expect(anonBtn(), "판은 열린 채 줄이 돌아온다").toBeDefined();
+        expect(document.activeElement).toBe(anonBtn());
+    });
+
+    it("이름 있는 집합은 누르면 바로 붙는다", () => {
+        seedEditing(exprOfStages([RATE_STAGE]));
+        const outer = useWorkbench.getState().editingSetId;
+        act(() => { useWorkbench.setState((s) => ({ savedSets: [...s.savedSets, { id: "named", name: "아침 돌파", expr: exprOfStages([RATE_STAGE]), universe: "daily" }] })); });
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 집합")!); });
+        act(() => { fireEvent.click([...baseElement.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("아침 돌파"))!); });
+        expect(refsOf(useWorkbench.getState().savedSets.find((x) => x.id === outer)!.expr)).toEqual(["named"]);
+    });
+
+    it("이름 없는 집합 — 비우고 Enter 면 이름 없이 그대로 붙는다(강제 아님)", () => {
+        seedEditing(exprOfStages([RATE_STAGE]));
+        const outer = useWorkbench.getState().editingSetId;
+        act(() => { useWorkbench.setState((s) => ({ savedSets: [...s.savedSets, { id: "anon", expr: exprOfStages([RATE_STAGE]), universe: "daily" }] })); });
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 집합")!); });
+        act(() => { fireEvent.click([...baseElement.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("이름 없음"))!); });
+        act(() => { fireEvent.keyDown(baseElement.querySelector('input[aria-label="붙일 집합 이름"]')!, { key: "Enter" }); });
+        const st = useWorkbench.getState();
+        expect(st.savedSets.find((x) => x.id === "anon")!.name).toBeUndefined();
+        expect(refsOf(st.savedSets.find((x) => x.id === outer)!.expr)).toEqual(["anon"]);
     });
 
     it("올라와 있는 집합(✓)을 누르면 그 묶음으로 내려간다 — 붙이기가 두 번 되지 않는다", () => {
