@@ -55,7 +55,7 @@ export function SheetHeaderRow({ displayCols, cols, sort, onSort, onHeaderCtx }:
                             {active && <span style={{ flexShrink: 0 }}>{sort[step - 1].dir === 1 ? "▲" : "▼"}</span>}
                             {/* 단 번호는 체인이 2단 이상일 때만 — 기본 화면(1단)은 지금과 똑같이 보인다. */}
                             {active && sort.length > 1 && <span style={{ flexShrink: 0, fontSize: 8.5, opacity: 0.8, marginRight: 1 }}>{step}</span>}
-                            {/* 부품 열 색점 — 라벨의 부품 이름과 함께 "어느 정의의 값인가"를 말한다(SetManager 색점과 같은 출처). */}
+                            {/* 부품 열 색점 — 라벨의 부품 이름과 함께 "어느 정의의 값인가"를 말한다. */}
                             {colPart(c) && <span style={{ flexShrink: 0, width: 6, height: 6, borderRadius: "50%", background: colPart(c)!.color }} />}
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{colLabel(c)}</span>
                         </span>

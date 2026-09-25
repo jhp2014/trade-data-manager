@@ -22,6 +22,7 @@ import { HeaderPopover } from "../../components/HeaderPopover.js";
 import { selectObservedSetId, useWorkbench } from "../../store/workbench.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { FAIL } from "../../styles/palette.js";
+import { LinkIcon, PencilIcon, TrashIcon } from "../../components/icons.js";
 import { useFunnel } from "./FunnelContext.js";
 import type { ResolvedSet } from "./resolveSet.js";
 import { UNIVERSE_LABEL } from "./universe.js";
@@ -36,8 +37,6 @@ import { textInput } from "./ui.js";
  */
 const countLabel = (r: ResolvedSet): string =>
     r.otherUniverse ? "하루 · 셀" : r.broken ? "—" : `${r.items.length.toLocaleString("ko-KR")}건`;
-
-const sectionHead: React.CSSProperties = { padding: "4px 10px 3px", fontSize: 9.5, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)" };
 
 const smallBtn = (tone: "normal" | "accent" | "danger" = "normal", on = false): React.CSSProperties => ({
     flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 9.5, padding: "0 5px", borderRadius: 3, lineHeight: 1.6,
@@ -82,18 +81,24 @@ export function SetRow(): JSX.Element {
 }
 
 /**
- * 목록의 구획 — **쓰는 곳**으로 가른다(2026-09-20). 숨기는 게 아니라 나누기만 한다.
- * 0 칸이 청소 창구고, 2+ 칸이 "고치면 여럿이 같이 바뀐다"를 미리 말한다.
+ * 목록 정렬 — **한 목록**(2026-09-25, 옛 "쓰는 곳 0/1/2+ 구획"을 개정): 열린 집합 → 손 이름 → 자동 이름(묶음).
+ * 쓰는 곳은 구획이 아니라 줄 끝 **정보**(🔗N — 비어 있음 = 아무도 안 씀)다. 구획 머리 두 줄이 서너 개짜리 목록만큼
+ * 자리를 먹었다(사용자). 자동 이름 묶음이 불어나도 손 이름 집합이 위에 선다(옛 "전용 부품 기본 접힘"의 몫).
+ * "열린" = **뿌리**(관측 집합)다 — 드릴인 중 편집 대상인 묶음은 뿌리가 아니라 자동 이름 무리에 선다(의도: 이 판은
+ * 뿌리를 고르는 곳이고, 묶음 안으로는 식 줄이 데려간다).
  */
-const SECTIONS: readonly { key: string; title: string; has: (n: number) => boolean; foldByDefault: boolean }[] = [
-    { key: "shared", title: "여럿이 쓰는 집합 — 고치면 같이 바뀝니다 ·", has: (n) => n >= 2, foldByDefault: false },
-    // ⚠ **전용 부품은 기본 접힘**(2026-09-21) — `＋ 묶음` 이 조건 추가의 주 입구가 되면 이 칸이
-    //   빠르게 불어난다. 접기는 **숨기기가 아니다**: 머리에 수가 서고 한 번 누르면 펴진다.
-    { key: "one", title: "한 곳에서만 쓰는 전용 부품 ·", has: (n) => n === 1, foldByDefault: true },
-    { key: "free", title: "아무도 안 쓰는 집합 — 지워도 안전합니다 ·", has: (n) => n === 0, foldByDefault: false },
-];
+export function orderSets<T extends { id: string; name?: string }>(sets: readonly T[], openedId: string): T[] {
+    const rank = (f: T): number => (f.id === openedId ? 0 : f.name !== undefined ? 1 : 2);
+    return sets.map((f, i) => ({ f, i })).sort((a, b) => rank(a.f) - rank(b.f) || a.i - b.i).map((x) => x.f);
+}
 
-/** 집합 관리 판 — 위는 ＋ 새 집합, 아래는 **지금 모드의** 집합 목록(쓰는 곳으로 구획, 행마다 열기·이름·삭제). */
+const iconBtn = (danger = false): React.CSSProperties => ({
+    flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 20, height: 18,
+    border: "none", borderRadius: 3, background: "transparent", cursor: "pointer", padding: 0,
+    color: danger ? FAIL : "var(--text-tertiary)",
+});
+
+/** 집합 관리 판 — 위는 ＋ 새 집합, 아래는 **지금 모드의** 집합 한 목록(행 = 열기 · 🔗쓰는 곳 · hover 에 ✎·🗑). */
 function SetManager({ onClose }: { onClose: () => void }): JSX.Element {
     const v = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
@@ -111,53 +116,50 @@ function SetManager({ onClose }: { onClose: () => void }): JSX.Element {
      *   편집 중인 집합의 우주가 뒤집히면 **목록에서 증발**한다. 자리만은 보이는 편이 정직하다.
      */
     const mine = useMemo(
-        () => savedSets.filter((f) => f.universe === mode || f.id === observedId || f.id === editingSetId),
+        () => orderSets(savedSets.filter((f) => f.universe === mode || f.id === observedId || f.id === editingSetId), observedId),
         [savedSets, mode, observedId, editingSetId],
     );
 
-    /** 쓰는 곳 — 이 집합을 참조하는 저장 집합 수. 구획과 배지가 같은 자를 쓴다. */
+    /** 쓰는 곳 — 이 집합을 참조하는 저장 집합 수. 줄 끝 🔗 와 삭제 확인이 같은 자를 쓴다. */
     const usedByOf = (id: string): number => savedSets.filter((x) => refsOf(x.expr).includes(id)).length;
     const [renaming, setRenaming] = useState<string | null>(null); // 이름 편집 중인 집합 id — draft 는 InlineRename 이 든다
     const [armedDelete, setArmedDelete] = useState<string | null>(null);
-    /** 구획 펼침(세션) — 기본값은 구획이 들고, 손이 닿은 것만 여기 남는다. */
-    const [folded, setFolded] = useState<Record<string, boolean>>({});
+    /**
+     * 손잡이(✎·🗑)가 서는 줄 — hover 또는 포커스가 안에 있는 줄에만(늘 떠 있으면 눈이 분산된다). 버튼은 DOM 에 늘
+     * 있고 흐리기만 한다. ⚠ 둘을 **따로** 든다 — 한 값으로 합치면 마우스가 떠난 줄에 키보드 포커스가 투명한 버튼
+     * 위에 남는다.
+     */
+    const [hovered, setHovered] = useState<string | null>(null);
+    const [focused, setFocused] = useState<string | null>(null);
 
     return (
         <div style={{ maxHeight: 360, overflowY: "auto", padding: "2px 0" }}>
             {/* 「저장」 버튼이 없다 — **편집이 곧 저장**이다(2026-09-20). 새 집합을 만드는 손만 남는다. */}
-            <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 10px" }}>
+            <div style={{ display: "flex", gap: 5, alignItems: "center", padding: "5px 10px", borderBottom: "1px solid var(--border-subtle)" }}>
                 <button onClick={() => { createSet(); onClose(); }} style={{ ...smallBtn("accent"), fontSize: 10.5, padding: "2px 8px" }}
                     title={`${UNIVERSE_LABEL[mode]} 빈 집합을 만들고 그걸 엽니다 — 이름은 나중에 붙여도 됩니다(그때까지 자동 이름)`}>＋ 새 집합</button>
                 <span style={{ fontSize: 9.5, color: "var(--text-tertiary)" }}>{UNIVERSE_LABEL[mode]} 집합만</span>
             </div>
 
-            {/* ⚠ **구획만 나눈다 — 숨기지 않는다.** 안 보이는 내부 집합을 두면 익명 묶음이 이름만 바꿔
-                돌아온다(2026-09-19 기각분이 예고한 함정). 쓰는 곳 0 칸이 자연스러운 청소 창구다. */}
-            {SECTIONS.map(({ key, title, has, foldByDefault }) => {
-                const rows = mine.filter((f) => has(usedByOf(f.id)));
-                if (rows.length === 0) return null;
-                const open = folded[key] ?? !foldByDefault;
-                return (
-                    <div key={key}>
-                        <button onClick={() => setFolded((f) => ({ ...f, [key]: !open }))}
-                            title={open ? "접기" : "펴기"}
-                            style={{ ...sectionHead, display: "flex", width: "100%", textAlign: "left", border: "none", cursor: "pointer", gap: 4 }}>
-                            <span style={{ width: 8 }}>{open ? "▾" : "▸"}</span>{title} {rows.length}개
-                        </button>
-                        {open && rows.map(renderRow)}
-                    </div>
-                );
-            })}
+            {/* ⚠ **숨기지 않는다.** 안 보이는 내부 집합을 두면 익명 묶음이 이름만 바꿔 돌아온다
+                (2026-09-19 기각분이 예고한 함정). 🔗 가 없는 줄이 자연스러운 청소 창구다. */}
+            {mine.map(renderRow)}
         </div>
     );
 
     function renderRow(f: SavedSet): JSX.Element {
         const opened = observedId === f.id;
         const editing = renaming === f.id;
+        const armed = armedDelete === f.id;
+        const usedBy = usedByOf(f.id);
+        const showTools = hovered === f.id || focused === f.id;
         const nm = setDisplayName(f, v.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)");
         const other = f.universe !== mode; // 완충으로 낀 자리 — 숨기지 않고 뱃지로 말한다
         return (
-            <div key={f.id} style={{ display: "flex", alignItems: "center", gap: 3, padding: "2px 6px 2px 4px", background: opened ? "var(--accent-soft)" : "transparent" }}>
+            <div key={f.id} onMouseEnter={() => setHovered(f.id)} onMouseLeave={() => setHovered((h) => (h === f.id ? null : h))}
+                onFocus={() => setFocused(f.id)}
+                onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused((x) => (x === f.id ? null : x)); }}
+                style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 6px 2px 4px", background: opened ? "var(--accent-soft)" : "transparent" }}>
                 {editing ? (
                     <InlineRename initial={f.name ?? ""}
                         onCommit={(next) => { renameSet(f.id, next); setRenaming(null); }}
@@ -172,7 +174,8 @@ function SetManager({ onClose }: { onClose: () => void }): JSX.Element {
                                 : `${nm} — 조건 ${leafCount(f.expr)}개 · ${countLabel(v.resolveSet(f.id))}\n클릭 = 이 집합 열기`}
                         style={{
                             flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent",
-                            color: other ? "var(--text-tertiary)" : "var(--text-primary)",
+                            // 자동 이름(묶음)은 흐리게 — 손 이름 집합이 먼저 눈에 걸린다.
+                            color: other || f.name === undefined ? "var(--text-tertiary)" : "var(--text-primary)",
                             padding: "3px 4px", cursor: opened ? "default" : "pointer",
                             font: "inherit", fontSize: 11.5, fontWeight: opened ? 700 : 400,
                             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
@@ -182,12 +185,28 @@ function SetManager({ onClose }: { onClose: () => void }): JSX.Element {
                         {other ? <span style={{ marginLeft: 5, fontSize: 9.5, color: FAIL }}>{UNIVERSE_LABEL[f.universe]}</span> : null}
                     </button>
                 )}
-                <button onClick={() => setRenaming(f.id)} style={smallBtn()} title="이름 바꾸기">이름</button>
-                {armedDelete === f.id ? (
-                    <button onClick={() => { deleteSet(f.id); setArmedDelete(null); }} style={smallBtn("danger", true)}
-                        title="정말 삭제 — 이 집합을 참조하던 식에는 깨진 참조가 표식을 달고 남습니다">정말 삭제</button>
+                {/* 쓰는 곳 = 🔗N — 비어 있음이 곧 "아무도 안 씀"(낱말을 안 쓴다). */}
+                {usedBy > 0 && !armed && (
+                    <span title={`이 집합을 쓰는 집합 ${usedBy}개 — 고치면 같이 바뀝니다`}
+                        style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10, color: "var(--text-tertiary)", padding: "0 3px" }}>
+                        <LinkIcon />{usedBy}
+                    </span>
+                )}
+                {armed ? (
+                    // ⚠ 삭제는 **늘 두 번**이다 — 🔗 가 없는(= 아무도 안 쓰는) 집합이 곧 맨 위 집합들이라 한 번에 지우면
+                    //   작업 중인 집합이 한 손에 사라진다. 쓰는 곳이 있으면 확인이 깨지는 수를 말한다.
+                    <>
+                        <button onClick={() => { deleteSet(f.id); setArmedDelete(null); }} style={smallBtn("danger", true)}
+                            title="정말 삭제 — 이 집합을 참조하던 식에는 깨진 참조가 표식을 달고 남습니다">
+                            {usedBy > 0 ? `${usedBy}곳이 깨집니다 · 삭제` : "정말 삭제"}
+                        </button>
+                        <button onClick={() => setArmedDelete(null)} style={smallBtn()} title="취소">취소</button>
+                    </>
                 ) : (
-                    <button onClick={() => setArmedDelete(f.id)} style={smallBtn("danger")} title="삭제(한 번 더 눌러 확정)">삭제</button>
+                    <span style={{ display: "inline-flex", opacity: showTools ? 1 : 0, transition: "opacity 0.1s" }}>
+                        <button onClick={() => setRenaming(f.id)} style={iconBtn()} title="이름 바꾸기" aria-label="이름 바꾸기"><PencilIcon /></button>
+                        <button onClick={() => setArmedDelete(f.id)} style={iconBtn(true)} title="삭제(한 번 더 눌러 확정)" aria-label="삭제"><TrashIcon /></button>
+                    </span>
                 )}
             </div>
         );

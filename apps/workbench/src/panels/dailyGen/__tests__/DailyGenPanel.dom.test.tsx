@@ -10,6 +10,7 @@ import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from 
 import { useWorkbench } from "../../../store/workbench.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import { DailyGenPanel } from "../DailyGenPanel.js";
+import { orderSets } from "../../filter/SetRow.js";
 
 /** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
 const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
@@ -142,29 +143,83 @@ describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·
     });
 });
 
-// ── 목록 구획 — 쓰는 곳 0 / 1 / 2+ (2026-09-20) ────────────────────────────
+// ── 한 목록 — 쓰는 곳은 구획이 아니라 줄 끝 정보(🔗N) (2026-09-25) ────────────
 //
-// ⚠ **숨기는 게 아니라 나누기만 한다.** 안 보이는 내부 집합을 두면 익명 묶음이 이름만 바꿔 돌아온다
-//   (2026-09-19 기각분이 예고한 함정). 0 칸이 청소 창구고, 2+ 칸이 파급을 미리 말한다.
-describe("집합 관리 판 — 쓰는 곳으로 구획한다", () => {
-    it("세 칸이 서고 아무도 안 쓰는 집합도 **보인다**", () => {
-        const shared: SavedSet = { id: "sh", name: "양념장", expr: exprOfStages([]), universe: "daily" };
-        const a: SavedSet = { id: "a", name: "불고기", expr: mk("and", "root", [refNode("sh")]), universe: "daily" };
-        const b: SavedSet = { id: "b", name: "제육", expr: mk("and", "root", [refNode("sh")]), universe: "daily" };
-        const lone: SavedSet = { id: "lone", name: "혼자", expr: exprOfStages([]), universe: "daily" };
-        useWorkbench.setState({ savedSets: [shared, a, b, lone], editingSetId: "a", editPath: ["a"] });
+// ⚠ **숨기지 않는다.** 안 보이는 내부 집합을 두면 익명 묶음이 이름만 바꿔 돌아온다(2026-09-19 기각분이
+//   예고한 함정). 🔗 가 없는 줄(= 아무도 안 씀)이 청소 창구다. 정렬 = 열림 → 손 이름 → 자동 이름.
+describe("집합 관리 판 — 한 목록 · 🔗쓰는 곳", () => {
+    const shared: SavedSet = { id: "sh", name: "양념장", expr: exprOfStages([]), universe: "daily" };
+    const a: SavedSet = { id: "a", name: "불고기", expr: mk("and", "root", [refNode("sh")]), universe: "daily" };
+    const b: SavedSet = { id: "b", name: "제육", expr: mk("and", "root", [refNode("sh")]), universe: "daily" };
+    const auto: SavedSet = { id: "auto", expr: exprOfStages([]), universe: "daily" };
+    const lone: SavedSet = { id: "lone", name: "혼자", expr: exprOfStages([]), universe: "daily" };
 
+    it("구획 머리가 없고, 쓰는 곳은 🔗N 으로만 — 안 쓰는 집합도 보인다", () => {
+        useWorkbench.setState({ savedSets: [shared, a, b, auto, lone], editingSetId: "a", editPath: ["a"] });
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
-        expect(mgr.textContent).toContain("여럿이 쓰는 집합");
-        expect(mgr.textContent).toContain("아무도 안 쓰는 집합");
-        // 지도(위 칩 줄)에도 같은 이름이 서므로 **목록 쪽 손잡이**로 집는다(data-chip 없는 버튼).
+        expect(mgr.textContent).not.toContain("아무도 안 쓰는 집합");
+        expect(mgr.textContent).not.toContain("여럿이 쓰는 집합");
+        const link = [...mgr.querySelectorAll("span")].find((x) => (x.title ?? "").startsWith("이 집합을 쓰는 집합 2개"));
+        expect(link?.textContent, "양념장 = 2곳이 쓴다").toBe("2");
         const listNames = [...mgr.querySelectorAll("button")]
-            .filter((b) => (b as HTMLElement).dataset.chip === undefined)
-            .map((b) => b.textContent ?? "");
+            .filter((x) => (x as HTMLElement).dataset.chip === undefined)
+            .map((x) => x.textContent ?? "");
         expect(listNames.some((t) => t.startsWith("혼자")), "안 쓰는 집합도 목록에 선다").toBe(true);
-        expect(listNames.some((t) => t.startsWith("양념장"))).toBe(true);
+    });
+
+    it("정렬 = 열린 집합 → 손 이름(원래 순서) → 자동 이름", () => {
+        expect(orderSets([shared, auto, a, lone], "a").map((x) => x.id)).toEqual(["a", "sh", "lone", "auto"]);
+        // 열린 집합이 자동 이름이어도 맨 위(열림이 이름보다 먼저).
+        expect(orderSets([shared, auto, lone], "auto").map((x) => x.id)).toEqual(["auto", "sh", "lone"]);
+    });
+
+    it("쓰는 곳이 있는 집합의 삭제 확인은 깨지는 수를 말한다", () => {
+        useWorkbench.setState({ savedSets: [shared, a, b], editingSetId: "a", editPath: ["a"] });
+        const { container, baseElement } = renderPanel();
+        fireEvent.click(btnByTitle(container, "집합 목록"));
+        const mgr = baseElement as HTMLElement;
+        const row = [...mgr.querySelectorAll("div")].find((d) => (d.textContent ?? "").startsWith("양념장") && d.querySelector("button[title^='삭제']"))!;
+        fireEvent.click(within(row).getByTitle(/^삭제\(한 번 더/));
+        expect(row.textContent).toContain("2곳이 깨집니다 · 삭제");
+        fireEvent.click(within(row).getByTitle("취소"));
+        expect(row.textContent, "취소 = 확인이 걷히고 🔗 가 돌아온다").not.toContain("곳이 깨집니다");
+        expect(within(row).getByTitle(/^삭제\(한 번 더/)).toBeTruthy();
+        expect(row.querySelector("span[title^='이 집합을 쓰는 집합 2개']")).not.toBeNull();
+        expect(useWorkbench.getState().savedSets.some((x) => x.id === "sh")).toBe(true);
+        // 확정하면 지워진다.
+        fireEvent.click(within(row).getByTitle(/^삭제\(한 번 더/));
+        fireEvent.click(within(row).getByTitle(/^정말 삭제/));
+        expect(useWorkbench.getState().savedSets.some((x) => x.id === "sh")).toBe(false);
+    });
+
+    it("안 쓰는 집합 — 🔗 가 없고, 삭제 확인은 「정말 삭제」", () => {
+        useWorkbench.setState({ savedSets: [a, lone], editingSetId: "a", editPath: ["a"] });
+        const { container, baseElement } = renderPanel();
+        fireEvent.click(btnByTitle(container, "집합 목록"));
+        const row = [...(baseElement as HTMLElement).querySelectorAll("div")].find((d) => (d.textContent ?? "").startsWith("혼자") && d.querySelector("button[title^='삭제']"))!;
+        expect(row.querySelector("span[title^='이 집합을 쓰는 집합']")).toBeNull();
+        fireEvent.click(within(row).getByTitle(/^삭제\(한 번 더/));
+        expect(row.textContent).toContain("정말 삭제");
+    });
+
+    it("손잡이(✎·🗑)는 hover·포커스한 줄에만 보인다 — 마우스가 떠나도 포커스가 있으면 남는다", () => {
+        useWorkbench.setState({ savedSets: [a, lone], editingSetId: "a", editPath: ["a"] });
+        const { container, baseElement } = renderPanel();
+        fireEvent.click(btnByTitle(container, "집합 목록"));
+        const rowOf = (name: string): HTMLElement => [...(baseElement as HTMLElement).querySelectorAll("div")]
+            .find((d) => (d.textContent ?? "").startsWith(name) && d.querySelector("button[aria-label='삭제']"))! as HTMLElement;
+        const toolsOf = (name: string): HTMLElement => rowOf(name).querySelector("button[aria-label='삭제']")!.parentElement!;
+        expect(toolsOf("혼자").style.opacity).toBe("0");
+        fireEvent.mouseEnter(rowOf("혼자"));
+        expect(toolsOf("혼자").style.opacity).toBe("1");
+        expect(toolsOf("불고기").style.opacity, "다른 줄은 그대로").toBe("0");
+        fireEvent.focus(rowOf("혼자").querySelector("button[aria-label='이름 바꾸기']")!);
+        fireEvent.mouseLeave(rowOf("혼자"));
+        expect(toolsOf("혼자").style.opacity, "포커스가 남아 있다").toBe("1");
+        fireEvent.blur(rowOf("혼자").querySelector("button[aria-label='이름 바꾸기']")!);
+        expect(toolsOf("혼자").style.opacity).toBe("0");
     });
 });
 
