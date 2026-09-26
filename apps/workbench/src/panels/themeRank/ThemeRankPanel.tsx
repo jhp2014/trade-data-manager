@@ -160,14 +160,14 @@ export function ThemeRankPanel({ panelId, baseTitle }: { panelId: string; baseTi
                 {/* 연동 배지 — 어느 행을 비추는 중인가(미연동이면 그 사실). 연동 손잡이는 보드에 있다(pull). */}
                 {linked !== null && linkedParams !== null ? (
                     <span style={{ ...label, color: "var(--accent-primary)", border: "1px solid var(--accent-primary)", background: "var(--accent-soft)", borderRadius: 8, padding: "0 6px" }}
-                        title="연동 중 — 십자선·조건 ▾ 가 이 행의 술어를 직접 고친다(사본 없음). 연동 변경/해제는 조건 보드에서(지금은 종단 보류 — 하루 생성소엔 테마 입구가 없다)">
+                        title="연동 중 — 십자선·조건 ▾ 가 이 행의 술어를 직접 고친다(사본 없음). 연동 변경/해제는 조건 보드에서(지금은 종단 보류 — 하루 조건판엔 테마 입구가 없다)">
                         ▣ {themeStrengthLabel(linkedParams)}
                     </span>
                 ) : (
                     <button onClick={() => openAndFocus(DAILY_GEN_PANEL_ID)}
                         style={{ ...label, color: "var(--text-tertiary)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                        title="테마 강도 조건은 종단 조건이라 지금(하루 모드) 생성소에 입구가 없다 — 클릭하면 생성소를 연다">
-                        미연동 — 하루 생성소엔 테마 입구 없음 ▸
+                        title="테마 강도 조건은 종단 조건이라 지금(하루 모드) 일별 타점[조건]에 입구가 없다 — 클릭하면 「일별 타점[조건]」을 연다">
+                        미연동 — 하루 조건판엔 테마 입구 없음 ▸
                     </button>
                 )}
                 {linked !== null && !linked.enabled && (

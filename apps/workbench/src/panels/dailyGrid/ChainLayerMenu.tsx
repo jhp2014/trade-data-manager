@@ -40,7 +40,7 @@ export function ChainLayerMenu({ anchor, overlay, on, onToggle, showBands, onTog
                     격자
                 </div>
                 {overlay.rows.length === 0 && (
-                    <div style={{ ...row, cursor: "default", color: "var(--text-tertiary)" }} title="생성소에서 「돌파」 줄을 만들고 격자판을 연결한다 — 미연동 줄은 계산하지 않는다">없음</div>
+                    <div style={{ ...row, cursor: "default", color: "var(--text-tertiary)" }} title="조건판에서 「돌파」 줄을 만들고 격자판을 연결한다 — 미연동 줄은 계산하지 않는다">없음</div>
                 )}
                 {overlay.rows.map((r) => {
                     const cur = src?.stageId === r.stageId;

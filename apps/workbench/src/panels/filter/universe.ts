@@ -124,7 +124,7 @@ export function kindDeficiency(k: PredicateKind, u: Universe): string | null {
             case "breakout":
             case "candleShape":
                 // 원리적 결손이 아니다 — 라벨 좌표도 그날 분봉 안에 있다. 종단 판정기를 안 물렸을 뿐(종단 보류).
-                return "Daily 타점 조건 — 종단에는 아직 판정기가 안 물렸다";
+                return "일별 타점[조건]의 조건 — 종단에는 아직 판정기가 안 물렸다";
             default:
                 return null;
         }

@@ -32,7 +32,7 @@ export interface DayCrossing extends DayCrossingState {
  * @param pinned  날짜 고정 — 경계에서 멈춘다("이 날만 보겠다"는 선언)
  * @param onLand  착지 — 도착한 날짜에서 방향에 맞는 끝 항목으로 시선을 옮기는 일은 호출자가 안다
  */
-export function useDayCrossing({ active, dates, ready, failed, count, heavy, pinned, truncated, onLand }: {
+export function useDayCrossing({ active, dates, ready, failed, count, heavy, pinned, truncated, onLand, origin = "workset-cross" }: {
     active: boolean;
     dates: readonly string[];
     ready: boolean;
@@ -42,6 +42,8 @@ export function useDayCrossing({ active, dates, ready, failed, count, heavy, pin
     pinned: boolean;
     truncated: boolean;
     onLand: (dir: 1 | -1) => void;
+    /** setDate 출처 — 패널마다 제 이름(포커스 추종·스냅 로직이 출처를 본다). */
+    origin?: string;
 }): DayCrossing {
     const date = useWorkbench((s) => s.focus.date);
     const setDate = useWorkbench((s) => s.setDate);
@@ -68,8 +70,8 @@ export function useDayCrossing({ active, dates, ready, failed, count, heavy, pin
         // ⚠ 마지막 손짓만 유효 — 연타하면 job 이 덮인다(기존 in-flight 가드와 같은 수법).
         job.current = { dir, to, remaining: max, skipped: 0, sawTruncated: truncated };
         setState({ seeking: true, skipped: 0, note: null });
-        setDate(to, "workset-cross");
-    }, [active, pinned, heavy, dates, date, truncated, setDate]);
+        setDate(to, origin);
+    }, [active, pinned, heavy, dates, date, truncated, setDate, origin]);
 
     // 도착 판정 — 새 날짜의 목록이 **확정된 뒤에만** 본다(로딩 중의 0건은 "빈 날"이 아니다).
     useEffect(() => {
@@ -118,7 +120,7 @@ export function useDayCrossing({ active, dates, ready, failed, count, heavy, pin
         }
         job.current = { ...j, to, remaining: j.remaining - 1, skipped: j.skipped + 1, sawTruncated: j.sawTruncated || truncated };
         setState((v) => ({ ...v, seeking: true, skipped: j.skipped + 1 }));
-        setDate(to, "workset-cross");
+        setDate(to, origin);
     }, [active, ready, failed, count, date, dates, truncated, setDate, onLand]);
 
     return { ...state, cross };

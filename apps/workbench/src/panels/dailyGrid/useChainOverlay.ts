@@ -120,7 +120,7 @@ export function useChainOverlay(args: {
     let why: string | null = null;
     if (on) {
         if (mode !== "daily") why = "하루 모드에서만 그린다";
-        else if (source === null) why = "보는 집합에 켜진 「돌파」 줄이 없다 — 생성소에서 만든다";
+        else if (source === null) why = "보는 집합에 켜진 「돌파」 줄이 없다 — 조건판에서 만든다";
         else if (!onSetDate) why = `집합 날짜(${date})의 차트에서만 그린다`;
         else if (snapQ.error) why = `분봉 재료 조회 실패: ${(snapQ.error as Error).message}`;
         else if (pointGrids.error) why = `기준선 재료 조회 실패: ${pointGrids.error.message}`;

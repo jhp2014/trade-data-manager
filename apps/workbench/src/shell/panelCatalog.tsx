@@ -18,6 +18,7 @@ import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
 import { RankSheetPanel } from "../panels/RankSheetPanel.js";
 import { DailyGenPanel } from "../panels/dailyGen/DailyGenPanel.js";
 import { DailyGridPanel } from "../panels/dailyGrid/DailyGridPanel.js";
+import { DailyExplorePanel } from "../panels/dailyExplore/DailyExplorePanel.js";
 import { NormOverlayPanel } from "../panels/norm/NormOverlayPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
 import { NewsPanel } from "../panels/NewsPanel.js";
@@ -98,13 +99,18 @@ export const PANEL_TYPES: PanelType[] = [
     //  미등록으로 걷어낸다(map·rankSkeleton 선례) — 사용자 화면의 그 탭은 다음 로드에 사라진다.)
     { idBase: "history", component: "recentHistory", title: "최근 탐색", plane: "eod", render: () => <RecentHistoryPanel /> },
     { idBase: "rank-sheet", component: "rankSheet", title: "시트", plane: "eod", render: (id) => <RankSheetPanel panelId={id} /> },
-    // Daily 타점 생성소 — 하루 조건 묶음(집합)이 태어나는 자리(다른 패널은 그 집합을 구독만 한다).
+    // 일별 타점[조건] — 하루 조건 묶음(집합)이 태어나는 자리(다른 패널은 그 집합을 구독만 한다).
     // 옛 「집합 편성」(2026-09-24 은퇴)의 idBase·component 를 **승계**한다 — 저장 배치·프리셋의 자리가 그대로
     // 새 패널이 되고(테마 [조건]판 선례), 두 패널 공존이 원리적으로 불가능하다. 옛 제목은 패널이 정규화한다.
-    { idBase: "filter-funnel", component: "filterFunnel", title: "Daily 타점 생성소", plane: "eod", render: (id) => <DailyGenPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
-    // Daily 타점 조건 [격자] — 생성소 「돌파」 줄의 편집면(① 격자 정의 · ② 사슬 필터 식). 그림은 기본 차트 사슬 층.
-    // 연동은 생성소 줄에서(pull·1:1·영속 — 테마 조건판과 같은 맵). duplicable 은 처음엔 끈다(나란히 비교가 필요해지면).
-    { idBase: "daily-grid", component: "dailyGrid", title: "Daily 타점 조건 [격자]", plane: "eod", render: (id) => <DailyGridPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
+    { idBase: "filter-funnel", component: "filterFunnel", title: "일별 타점[조건]", plane: "eod", render: (id) => <DailyGenPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
+    // 일별 타점[조건: 격자] — 조건판 「돌파」 줄의 편집면(① 격자 정의 · ② 사슬 필터 식). 그림은 기본 차트 사슬 층.
+    // 연동은 조건판 줄에서(pull·1:1·영속 — 테마 조건판과 같은 맵). duplicable 은 처음엔 끈다(나란히 비교가 필요해지면).
+    { idBase: "daily-grid", component: "dailyGrid", title: "일별 타점[조건: 격자]", plane: "eod", render: (id) => <DailyGridPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
+    // 일별 타점[탐색] — 하루 후보를 날짜 단위로 걷는 뷰(행 = 그날 후보, 열 = 조건 그룹 ●/·).
+    // 작업 대상과 다른 몫: 저긴 시선·큐레이션 브라우징, 여긴 조건 그룹 통과를 보며 걷는 하루 전용 판.
+    // ⚠ duplicable 아님 — w/s 순회(usePublishRowNav)가 **후보 패널 각 1개** 전제의 모듈 전역 단일 소유다
+    //   (rowNav 머리 주석). 복제가 필요해지면 rowNav 소유를 인스턴스 낟알로 바꾸는 일이 먼저다.
+    { idBase: "daily-explore", component: "dailyExplore", title: "일별 타점[탐색]", plane: "eod", render: (id) => <DailyExplorePanel panelId={id} /> },
     // (필터 레일 패널은 2026-09-19 철거 — 1차원 조건의 편집면이 편성 보드의 팝오버 하나가 됐다.
     //  저장 레이아웃·프리셋에 남은 "filterRails" 는 sanitizeLayout 자가치유가 걷어낸다.)
     // 시그널 결과 — 시그널 **이후**(미래) 값의 분포·조건(과거/미래 패널 경계).

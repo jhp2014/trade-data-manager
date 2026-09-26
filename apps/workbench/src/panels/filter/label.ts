@@ -56,7 +56,7 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
         case "cellValue": return cellValueLabel(p);
         case "priorHighBreak": return `전고 돌파 (${p.days}일)`;
         case "gridPoint": return "격자 Point";
-        // 노브를 라벨에 안 싣는다 — 값의 편집면은 격자판이고, 줄은 **연동된 판 이름**으로 갈린다(생성소 칩이
+        // 노브를 라벨에 안 싣는다 — 값의 편집면은 격자판이고, 줄은 **연동된 판 이름**으로 갈린다(조건판 칩이
         // 판 이름을 덧붙인다 · gridLink). 상세는 hover(breakoutText)로.
         case "breakout": return "돌파";
         case "candleShape": return CANDLE_SHAPE_LABEL[p.shape];

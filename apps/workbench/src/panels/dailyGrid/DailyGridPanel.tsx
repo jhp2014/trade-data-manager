@@ -1,12 +1,12 @@
-// Daily 타점 조건 [격자] — 생성소 「돌파」 줄의 **편집면**. 두 층(2026-09-24):
+// 일별 타점[조건: 격자] — 조건판 「돌파」 줄의 **편집면**. 두 층(2026-09-24):
 //   ① 격자 정의 — 밴드·zigzag(하루 전체에서 서는 구조)
-//   ② 사슬 필터 — 그 격자의 사슬 봉 위에 거는 식(생성소와 같은 문법: 칩 AND/OR · 한 겹 괄호 · NOT) +
+//   ② 사슬 필터 — 그 격자의 사슬 봉 위에 거는 식(조건판과 같은 문법: 칩 AND/OR · 한 겹 괄호 · NOT) +
 //      칩·괄호·식 전체 순번(「처음 K개」 — 붙은 자리가 곧 뜻)
-// **조건 설정만** 한다(2026-09-25) — 그림은 기본 분봉 차트의 사슬 층, 수는 생성소 머리글이 말한다(보는 곳 ≠ 고치는 곳).
+// **조건 설정만** 한다(2026-09-25) — 그림은 기본 분봉 차트의 사슬 층, 수는 조건판 머리글이 말한다(보는 곳 ≠ 고치는 곳).
 // 규칙: .claude/decisions.md 「Daily 타점 생성 = 돌파 사슬」.
 //
 // ## 연동 — pull · 1:1 · 영속(테마 조건판과 같은 맵)
-// 연동 손잡이는 생성소 줄에 있다. 판은 **나를 가리키는 편집 집합의 돌파 행**을 역참조하고, 쓰기는 그 행의 술어를
+// 연동 손잡이는 조건판 줄에 있다. 판은 **나를 가리키는 편집 집합의 돌파 행**을 역참조하고, 쓰기는 그 행의 술어를
 // 직접 고친다(사본 없음). ⚠ 역참조는 편집 집합 안에서만 한다 — 쓰기(`setFilterStagePredicates`)가 편집 집합에만
 // 닿으므로, 밖의 행에 붙어 보이면 노브가 조용히 먹힌다.
 // **값의 주인은 줄, 판은 창**이다(gridLink 머리 주석) — 비출 줄이 없으면 고칠 것도 없다. 미연동 판은 편집면을 안
@@ -91,13 +91,13 @@ export function DailyGridPanel({ panelId, baseTitle }: { panelId: string; baseTi
             <PanelHeader padding="4px 10px" style={{ whiteSpace: "nowrap" }}>
                 {linked !== null || elsewhere ? (
                     <span style={{ fontSize: 10.5, color: "var(--accent-primary)", border: "1px solid var(--accent-primary)", background: "var(--accent-soft)", borderRadius: 8, padding: "0 6px" }}
-                        title="생성소의 「돌파」 줄과 연동 중 — 여기서 만지는 값이 그 줄을 직접 고친다(사본 없음). 연동 변경·해제는 생성소 칩 우클릭">
-                        ▣ 생성소 연동
+                        title="조건판의 「돌파」 줄과 연동 중 — 여기서 만지는 값이 그 줄을 직접 고친다(사본 없음). 연동 변경·해제는 조건판 칩 우클릭">
+                        ▣ 조건판 연동
                     </span>
                 ) : (
                     <button onClick={() => openAndFocus(DAILY_GEN_PANEL_ID)}
                         style={{ fontSize: 10.5, color: "var(--warning)", background: "none", border: "none", cursor: "pointer", padding: 0 }}
-                        title="연동은 생성소의 「돌파」 칩에서 건다 — 클릭 = 생성소 열기">
+                        title="연동은 조건판의 「돌파」 칩에서 건다 — 클릭 = 조건판 열기">
                         ○ 연동 없음
                     </button>
                 )}
@@ -106,8 +106,8 @@ export function DailyGridPanel({ panelId, baseTitle }: { panelId: string; baseTi
             {linked === null ? (
                 <div style={{ padding: "12px 10px", fontSize: 11, color: "var(--text-tertiary)", lineHeight: 1.6 }}>
                     {elsewhere
-                        ? "이 판에 연동된 「돌파」 줄이 지금 편집 중인 집합 밖에 있습니다. 생성소에서 그 줄이 있는 집합으로 가면 여기서 고칩니다."
-                        : "이 판을 쓰는 「돌파」 줄이 없습니다. 생성소에서 「돌파」 칩을 눌러 이 판을 연결하면 그 줄의 값이 여기 뜹니다."}
+                        ? "이 판에 연동된 「돌파」 줄이 지금 편집 중인 집합 밖에 있습니다. 조건판에서 그 줄이 있는 집합으로 가면 여기서 고칩니다."
+                        : "이 판을 쓰는 「돌파」 줄이 없습니다. 조건판에서 「돌파」 칩을 눌러 이 판을 연결하면 그 줄의 값이 여기 뜹니다."}
                 </div>
             ) : (
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>

@@ -72,7 +72,7 @@ const EMPTY_VIEW: ViewedSet = { isFiltering: false, broken: false, viewedItems: 
  */
 const UNRESOLVED_VIEW: ViewedSet = { isFiltering: true, broken: true, viewedItems: [], viewedChartKeys: new Set(), viewedPointRefs: [] };
 
-const NO_CONDITION = "하루 우주에는 조건이 있어야 합니다 — Daily 타점 생성소에서 조건을 거세요";
+const NO_CONDITION = "하루 우주에는 조건이 있어야 합니다 — 일별 타점[조건]에서 조건을 거세요";
 const mismatchWhy = (mode: Universe, set: Universe): string =>
     `이 집합은 ${UNIVERSE_LABEL[set]} 집합입니다 — 지금 모드(${UNIVERSE_LABEL[mode]})와 어긋나 평가하지 않습니다`;
 

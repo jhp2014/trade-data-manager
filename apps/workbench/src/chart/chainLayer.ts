@@ -3,7 +3,7 @@
 //   · 후보 봉 세로 줄 — 사슬 필터 통과·다른 조건 탈락 = 살짝 진하게 / ◇ 로 남음 = 조금 더 진하게
 //   · 밴드(선택) — 러닝 고가 밴드·기준선 밴드를 **테두리 없는 옅은 면**으로(봉마다 그 봉 폭 — 비스듬히 안 잇는다)
 // ▼ 표식은 없다 — 남은 타점은 상단 ◇ 가 말하고, 사슬 필터 통과 자리는 세로 줄이 조용히 받는다.
-// 격자판(「Daily 타점 조건 [격자]」)과 **같은 계산**(breakoutOfStock + chainVerdicts)의 결과를 그리기만 한다.
+// 격자판(「일별 타점[조건: 격자]」)과 **같은 계산**(breakoutOfStock + chainVerdicts)의 결과를 그리기만 한다.
 //
 // 프리미티브인 이유·draw() 에서 좌표를 푸는 이유는 dropLine.ts·legMark.ts 와 같다. 전부 zOrder "bottom"(캔들 뒤).
 import type { IChartApi, ISeriesApi, ISeriesPrimitive, Time } from "lightweight-charts";

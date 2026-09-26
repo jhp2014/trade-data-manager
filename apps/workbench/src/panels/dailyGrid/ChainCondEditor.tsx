@@ -1,4 +1,4 @@
-// 사슬 필터 칩의 **아랫줄 편집면** — 값만 맡는다(구조 — NOT·괄호·연산자 — 는 줄의 우클릭이 맡는다: 생성소와 같은 가름).
+// 사슬 필터 칩의 **아랫줄 편집면** — 값만 맡는다(구조 — NOT·괄호·연산자 — 는 줄의 우클릭이 맡는다: 조건판과 같은 가름).
 // 조건 값 + 그 칩의 순번(전부 / 처음 K).
 import { useEffect, useState } from "react";
 import type { ChainCond, ChainRange, ChainTerm } from "@trade-data-manager/market/domain";

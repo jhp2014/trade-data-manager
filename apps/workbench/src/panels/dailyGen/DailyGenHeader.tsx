@@ -1,4 +1,4 @@
-// Daily 타점 생성소 머리글 — 날짜·수·상태(어긋남·미연동 돌파·죽은 참조)와 손잡이 줄.
+// 일별 타점[조건] 머리글 — 날짜·수·상태(어긋남·미연동 돌파·죽은 참조)와 손잡이 줄.
 // 모드 토글은 없다 — 작업면은 하루로 고정이다(main.tsx 가 부팅 때 한 번 고정, decisions).
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";

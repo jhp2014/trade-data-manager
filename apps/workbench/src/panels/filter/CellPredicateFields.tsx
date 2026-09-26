@@ -51,7 +51,7 @@ export function CellPredicateField({ p, onChange }: { p: CellPredicate; onChange
     if (p.kind === "priorHighBreak") {
         return <NumField label="창" suffix="일" value={p.days} min={1} onCommit={(v) => onChange({ ...p, days: Math.round(v) })} />;
     }
-    // 돌파의 값(밴드·zigzag·사슬 필터)은 **격자판 한 곳**에서 만진다 — 생성소 칩 클릭이 곧 격자판이라 여기 안 온다.
+    // 돌파의 값(밴드·zigzag·사슬 필터)은 **격자판 한 곳**에서 만진다 — 조건판 칩 클릭이 곧 격자판이라 여기 안 온다.
     if (p.kind === "breakout") return null;
     if (p.kind === "candleShape") {
         return <Toggle on label={CANDLE_SHAPE_LABEL[p.shape]} title="클릭 = 양봉 ↔ 음봉"

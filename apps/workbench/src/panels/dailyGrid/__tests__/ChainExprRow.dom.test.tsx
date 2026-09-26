@@ -1,4 +1,4 @@
-// 사슬 필터 식 줄 — 생성소 줄과 같은 손짓: 연산자 클릭 = AND/OR, 연산자 우클릭 = 괄호, 칩 우클릭 = NOT·지우기,
+// 사슬 필터 식 줄 — 조건판 줄과 같은 손짓: 연산자 클릭 = AND/OR, 연산자 우클릭 = 괄호, 칩 우클릭 = NOT·지우기,
 // 괄호 우클릭 = 순번. 순번은 칩·괄호 뒤 꼬리표로 보인다.
 import { describe, expect, it, vi } from "vitest";
 import { act, fireEvent, render } from "@testing-library/react";

@@ -17,6 +17,7 @@ import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, 
 import { hmsToMinute, pointKeyOf, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
 import type { Group, GroupMembership, PointGroupMembership } from "../api/groups.js";
 import {
+    dataDatesQuery,
     allAnchorsQuery, allCommentsQuery, allThemeMembersQuery, chartQuery, computedAxesQuery,
     groupMembershipsQuery, groupsQuery, labeledPointFactsQuery, pointGridsQuery, pointGroupMembershipsQuery, rankSectionsQuery, stockMasterQuery,
 } from "../api/queries.js";
@@ -120,6 +121,8 @@ export interface Seed {
     charts?: { code: string; date: string; data: ChartBundle }[];
     /** 순위 단면 번들(테마 강도 필터·패널 카운트의 재료). 안 주면 빈 번들. */
     rankSections?: RankSectionBundle;
+    /** 거래일 목록(오름차순) — 없으면 빈 배열(경계 넘김 없음). */
+    dataDates?: string[];
     /** 자동 타점 격자(디코딩 후 형태 — usePointGrids 재료). 안 주면 빈 번들(자동 Point 0). */
     pointGrids?: DecodedPointGrids;
     /** 좌표 봉 사실 — 안 주면 라벨 좌표를 격자 사건 봉에서 자동 유도한다(seededClient 주석). */
@@ -174,6 +177,8 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(pointGroupMembershipsQuery().queryKey, allLabels);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
     qc.setQueryData(rankSectionsQuery().queryKey, seed.rankSections ?? { version: 2, dates: [], pending: [] });
+    // 거래일 목록(날짜 경계 넘기의 재료) — 탐색판·작업 대상이 하루 우주에서 늘 당긴다.
+    qc.setQueryData(dataDatesQuery().queryKey, seed.dataDates ?? []);
     // 격자 — 명시 격자가 있으면 그대로, 없으면 seed.points 를 최소 격자로 번역한다(걷기·시뮬·격자 축 재료).
     const grids = seed.pointGrids ?? gridsFromPoints(seed.points ?? []);
     qc.setQueryData(pointGridsQuery().queryKey, grids);
