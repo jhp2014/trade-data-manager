@@ -30,7 +30,7 @@ import {
     type MinuteCandle,
     type PointGrid,
 } from "@trade-data-manager/market";
-import { axisDepsOf } from "../src/market/rank/axisDeps.js";
+import { axisDepsOf } from "../src/market/grid/axisDeps.js";
 import { saveReport, strFlag, toMin } from "./_shared.js";
 
 /** 옛(v8) 격자 — maxBefore 이전 모양. 피벗은 (high, low) 교대 쌍(저점 confirmedMin 항상 null). */

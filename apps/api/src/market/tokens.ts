@@ -12,10 +12,8 @@ export const DAILY_COMMENTS = Symbol("DailyComments");          // 코멘트 유
 export const THEME_ASSIGNMENT = Symbol("ThemeAssignment");      // 테마 배정 유스케이스(중복 skip·캐시 무효화)
 export const GROUP_REPO = Symbol("GroupRepository");
 export const CURATION_SYNC = Symbol("CurationSync"); // 로컬 미러 당겨오기 — 읽기 소스 갱신(단일 비행)
-export const COMPUTED_AXES = Symbol("ComputedAxes");      // 계산 축 값(타점→수치) 읽기모델 + 파일 캐시
 export const DERIVED_CACHE = Symbol("DerivedCache");      // 날짜별 day 스냅샷 캐시 — DayBoards 가 쓴다(옛 RankSections 은퇴, in-flight dedup 공유)
 export const POINT_GRIDS = Symbol("PointGrids");          // 자동 타점 격자(앵커∪라벨 차트당 zigzag+신고가 목록) 읽기모델 + 파일 캐시
-export const LABELED_POINT_FACTS = Symbol("LabeledPointFacts"); // 좌표 봉 사실(라벨=타점의 종가·고가) — 즉석 계산 + 상주 메모
 export const STOCK_NEWS_REPO = Symbol("StockNewsRepository");
 export const NEWS_SEARCHER = Symbol("NewsSearcher");
 export const MARKET_POOL = Symbol("MarketPool");

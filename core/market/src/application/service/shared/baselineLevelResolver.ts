@@ -10,7 +10,7 @@
 //     남은 것 중 최저를 기준선이라 부르면 틀린 걸 단언하게 된다(axis.ts 규칙 3 — 지어내지 않는다).
 import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, chartKeyOf, type AnchorField, type AnchorMarket, type ChartAnchor, type DailyCandle, type MinuteCandle, type ReviewPointKey } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
-import type { AxisDeps } from "../axis/axis.js";
+import type { AxisDeps } from "./axisDeps.js";
 
 /** (종목,날) 동시 읽기 상한 — 축들과 같은 이유(커넥션 풀 포화 방지). */
 const DAY_CONCURRENCY = 8;

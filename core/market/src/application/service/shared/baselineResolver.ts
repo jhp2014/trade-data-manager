@@ -18,7 +18,16 @@
 // 두 grain 의 병합 규칙은 첫 "both" param 이 실사용례를 들고 올 때 정한다(상상으로 미리 정하지 않는다).
 import { anchorCoordKey, BASELINE_PARAM, beatsAsBaseline, candlePrice, chartKeyOf, rawScaleOf, type AnchorField, type AnchorMarket, type ChartAnchor, type ChartRef, type DailyCandle, type MinuteCandle } from "#domain";
 import { mapWithConcurrency } from "../../concurrency.js";
-import type { AxisDeps } from "../axis/axis.js";
+import type { AxisDeps } from "./axisDeps.js";
+
+
+/**
+ * 당일 앵커 절단선 — **당일 캔들에 그은 선은 재료가 아니다**(전일까지). 지목한 param 의 앵커만 거른다.
+ * ⚠ 리졸버에 넣기 **전에** 걸러야 한다 — 리졸버는 "하나라도 미수집이면 통째 결손"이라, 뒤에서 거르면
+ * 당일 캔들이 아직 없는 차트(오늘 복기)가 당일 앵커 하나에 전체를 잃는다.
+ */
+export const dropSameDayAnchors = (anchors: readonly ChartAnchor[], param: string): ChartAnchor[] =>
+    anchors.filter((a) => a.param !== param || a.anchorDate < a.date);
 
 /** 가격 앵커로 좁힌 기준선 후보 — field·market 쌍이 있어야 값을 꺼낼 수 있다. */
 export type BaselineAnchor = ChartAnchor & { field: AnchorField; market: AnchorMarket };

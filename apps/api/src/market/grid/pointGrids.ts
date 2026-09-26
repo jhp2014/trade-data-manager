@@ -44,7 +44,7 @@ import {
 } from "@trade-data-manager/market";
 import { encodeChartGrid, POINT_GRID_RULE_VERSION } from "@trade-data-manager/market";
 import type { PointGridBundle, PointGridDate } from "@trade-data-manager/wire";
-import { anchorsFingerprint } from "../rank/axisFingerprint.js";
+import { anchorsFingerprint } from "./axisFingerprint.js";
 import type { GridStore, PointGridEntry } from "./gridStore.js";
 import { POINT_GRID_FILE_VERSION } from "./gridStore.js";
 

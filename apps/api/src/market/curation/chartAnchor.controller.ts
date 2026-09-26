@@ -1,9 +1,8 @@
 import { Controller, Get, Post, Inject, Body } from "@nestjs/common";
 import { BASELINE_PARAM, type ChartAnchor, type ChartAnchorReader, type NewChartAnchor } from "@trade-data-manager/market";
 import type { AddChartAnchorInput, RemoveChartAnchorInput } from "@trade-data-manager/wire";
-import { CHART_ANCHOR_REPO, CHART_ANCHORS, COMPUTED_AXES, POINT_GRIDS } from "../tokens.js";
+import { CHART_ANCHOR_REPO, CHART_ANCHORS, POINT_GRIDS } from "../tokens.js";
 import { ChartAnchors } from "./chartAnchors.js";
-import { ComputedAxes } from "../rank/computedAxes.js";
 import { PointGrids } from "../grid/pointGrids.js";
 import { assertYmd, assertHms, assertStockCode } from "../validation.js";
 
@@ -15,7 +14,6 @@ export class ChartAnchorController {
     constructor(
         @Inject(CHART_ANCHOR_REPO) private readonly repo: ChartAnchorReader,
         @Inject(CHART_ANCHORS) private readonly anchors: ChartAnchors,
-        @Inject(COMPUTED_AXES) private readonly computed: ComputedAxes,
         @Inject(POINT_GRIDS) private readonly grids: PointGrids,
     ) {}
 
@@ -47,10 +45,8 @@ export class ChartAnchorController {
     /** 앵커 변경 직후 굽기 세대 상향 — 변경 **전에** 시작된 in-flight 빌드에 이후 refetch 가 합류하지 않게
      *  (파일 캐시의 지문 무효화는 다음 빌드에서 작동하지만, 이미 굽는 중인 빌드는 옛 앵커를 읽었다). */
     private invalidateReadModels(param: string): void {
-        this.computed.invalidate();
         // 격자는 **기준선 앵커만** 재료다 — 무시 캔들 등 다른 param 편집이 in-flight 웜업(콜드 43s)을
-        // 통째로 버리고 전량 대사를 다시 물게 하지 않는다(계산 축은 전 param 이 입력이라 가리지 않는다).
-        // 순위 단면은 **안 부른다**(2026-09-18 A2) — 그 모수가 좌표 라벨로 좁아져 앵커와 무관해졌다.
+        // 통째로 버리고 전량 대사를 다시 물게 하지 않는다.
         if (param === BASELINE_PARAM) this.grids.invalidate();
     }
 

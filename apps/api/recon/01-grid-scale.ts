@@ -9,7 +9,7 @@
 import { gzipSync } from "node:zlib";
 import { createDb, createPoolFromEnv, DrizzleGroupRepository } from "@trade-data-manager/persistence";
 import { DEFAULT_GRID_OPTIONS, DEFAULT_POINT_DEFINITION, QUALIFY_MAX_MIN, QUALIFY_MIN_MIN, pointsOf } from "@trade-data-manager/market";
-import { axisDepsOf } from "../src/market/rank/axisDeps.js";
+import { axisDepsOf } from "../src/market/grid/axisDeps.js";
 import { fileGridStore } from "../src/market/grid/gridStore.js";
 import { PointGrids } from "../src/market/grid/pointGrids.js";
 import { distributionOf, numFlag, saveReport, strFlag } from "./_shared.js";
