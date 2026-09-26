@@ -151,6 +151,8 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
             return ok >= from && ok <= to;
         }
 
+        case "theme":
+            return undefined; // 하루 술어 — 종단 평가기엔 판정기가 없다(결손, universe 결손 지도와 같은 말)
         case "themeStrength": {
             // 시각 없는 항목(타점 없는 후보 하루)은 단면을 지목할 수 없다 — time 술어와 같은 결.
             if (item.time === undefined) return undefined;

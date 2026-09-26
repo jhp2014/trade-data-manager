@@ -1,4 +1,5 @@
 import { DEFAULT_CHAIN_FILTER, type ChainCond, type ChainFilter } from "../chainFilter.js";
+import { DEFAULT_THEME_ZONE } from "../themeZone.js";
 import { describe, it, expect, vi } from "vitest";
 import { evaluateCells, evaluateCellsExpr, type CellMaterials, type CellStock } from "../engine.js";
 import type { CellConditions, CellExpr, CellPredicate, Transition } from "../predicate.js";
@@ -25,7 +26,7 @@ function stock(code: string, over: Partial<CellStock> & { n?: number } = {}): Ce
     };
 }
 
-const NO_MAT: CellMaterials = { gridMinutesOf: () => [], zoneRankAt: () => null };
+const NO_MAT: CellMaterials = { gridMinutesOf: () => [], zoneRankAt: () => null, themeAt: () => null };
 
 /** 등락률 ≥ r 칸 하나 — 전이를 술어/칸 어느 자리에 둘지 골라서. */
 const rateCond = (r: number, at: "none" | "pred" | "cond" = "none", t: Transition = "firstTrue"): CellConditions => [
@@ -115,7 +116,7 @@ describe("evaluateCells — 전이", () => {
     it("improve 의 방향은 술어 종류가 안다 — 존 순위는 **작아지는 것**이 개선이다", () => {
         const s = stock("A", { n: 4 });
         const seq: (number | null)[] = [3, 3, 2, 4];
-        const mat: CellMaterials = { gridMinutesOf: () => [], zoneRankAt: (_c, min) => (seq[min - MIN0] === null ? null : { rank: seq[min - MIN0]!, theme: "T" }) };
+        const mat: CellMaterials = { gridMinutesOf: () => [], themeAt: () => null, zoneRankAt: (_c, min) => (seq[min - MIN0] === null ? null : { rank: seq[min - MIN0]!, theme: "T" }) };
         const conds: CellConditions = [
             { id: "z", enabled: true, predicates: [{ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 5 } }], transition: "improve" }] },
         ];
@@ -142,7 +143,7 @@ describe("evaluateCells — 전이", () => {
         // 값 술어(비싼 zoneRank)가 싼 술어 뒤에 선다. 싼 술어가 죽은 분에는 zone 을 안 보고,
         // 다시 살아난 분에서 improve 가 "직전 미참"으로 발화해야 한다.
         const s = stock("A", { rate: [9, 0, 9] , n: 3 });
-        const mat: CellMaterials = { gridMinutesOf: () => [], zoneRankAt: () => ({ rank: 2, theme: "T" }) };
+        const mat: CellMaterials = { gridMinutesOf: () => [], themeAt: () => null, zoneRankAt: () => ({ rank: 2, theme: "T" }) };
         const conds: CellConditions = [
             {
                 id: "c",
@@ -171,7 +172,7 @@ describe("evaluateCells — 게으름·상한", () => {
                 ],
             },
         ];
-        const r = evaluateCells([s], { gridMinutesOf: () => [], zoneRankAt }, conds);
+        const r = evaluateCells([s], { gridMinutesOf: () => [], zoneRankAt, themeAt: () => null }, conds);
         expect(mins(r)).toEqual([9]);
         expect(zoneRankAt).toHaveBeenCalledTimes(1); // 10 셀 중 1
     });
@@ -184,7 +185,7 @@ describe("evaluateCells — 게으름·상한", () => {
             enabled: true,
             predicates: [{ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }] }],
         });
-        evaluateCells([s], { gridMinutesOf: () => [], zoneRankAt }, [one("a"), one("b")]);
+        evaluateCells([s], { gridMinutesOf: () => [], zoneRankAt, themeAt: () => null }, [one("a"), one("b")]);
         expect(zoneRankAt).toHaveBeenCalledTimes(3);
     });
 
@@ -229,7 +230,7 @@ describe("evaluateCells — 격자·전고", () => {
     it("격자 분만 걸리고, 격자 재료는 종목당 한 번만 읽는다", () => {
         const s = stock("A", { n: 5 });
         const gridMinutesOf = vi.fn(() => [MIN0 + 2]);
-        const r = evaluateCells([s], { gridMinutesOf, zoneRankAt: () => null }, [{ id: "g", enabled: true, predicates: [{ kind: "gridPoint" }] }]);
+        const r = evaluateCells([s], { gridMinutesOf, zoneRankAt: () => null, themeAt: () => null }, [{ id: "g", enabled: true, predicates: [{ kind: "gridPoint" }] }]);
         expect(mins(r)).toEqual([2]);
         expect(gridMinutesOf).toHaveBeenCalledTimes(1);
     });
@@ -362,5 +363,72 @@ describe("돌파 생성기 + 캔들·분봉 대금 필터", () => {
         };
         evaluateCellsExpr([s], { ...NO_MAT, baselineOf }, two);
         expect(baselineOf).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("theme 술어 — payload 파라미터·게으름·전이·hit 존순위", () => {
+    const TP = { ...DEFAULT_THEME_ZONE, countOn: true, countMin: 2 };
+    const themeCond = (over: Partial<typeof TP> = {}, transition?: Transition): CellConditions => [
+        { id: "t", enabled: true, predicates: [{ kind: "theme", ...TP, ...over, ...(transition ? { transition } : {}) }] },
+    ];
+
+    it("themeAt 의 pass 가 곧 발화 — null(재료 없음)은 미발화(모름 ≠ 통과)", () => {
+        const s = stock("A", { rate: [1, 1, 1] , n: 3 });
+        const seq: (boolean | null)[] = [true, null, false];
+        const mat: CellMaterials = {
+            gridMinutesOf: () => [], zoneRankAt: () => null,
+            themeAt: (_c, min) => { const p = seq[min - MIN0]; return p === null ? null : { pass: p, zoneRank: p ? 2 : null, theme: p ? "T" : null }; },
+        };
+        const r = evaluateCells([s], mat, themeCond());
+        expect(mins(r)).toEqual([0]);
+        // 발화한 셀에는 존 순위·테마가 실린다(옛 zoneRank 셀 값과 같은 표시 재료).
+        expect(r.hits[0]).toMatchObject({ zoneRank: 2, zoneTheme: "T" });
+    });
+
+    it("단락 뒤에만 부른다 — 싼 조건이 먼저 떨어뜨린 셀에서는 호출 0", () => {
+        const s = stock("A", { rate: [1, 6, 1, 6, 1] });
+        const themeAt = vi.fn(() => ({ pass: true, zoneRank: 1, theme: "T" }));
+        const conds: CellConditions = [{
+            id: "c", enabled: true,
+            predicates: [
+                { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] },
+                { kind: "theme", ...TP },
+            ],
+        }];
+        const r = evaluateCells([s], { gridMinutesOf: () => [], zoneRankAt: () => null, themeAt }, conds);
+        expect(mins(r)).toEqual([1, 3]);
+        expect(themeAt).toHaveBeenCalledTimes(2); // 5 셀 중 등락 통과 2 셀에서만
+    });
+
+    it("같은 셀·같은 파라미터는 한 번만 묻고, 파라미터가 다르면 각각 묻는다(키 = payload)", () => {
+        const s = stock("A", { n: 1 });
+        const themeAt = vi.fn(() => ({ pass: true, zoneRank: 1, theme: "T" }));
+        const conds: CellConditions = [
+            { id: "a", enabled: true, predicates: [{ kind: "theme", ...TP }] },
+            { id: "b", enabled: true, predicates: [{ kind: "theme", ...TP }] },
+            { id: "c", enabled: true, predicates: [{ kind: "theme", ...TP, countMin: 9 }] },
+        ];
+        evaluateCells([s], { gridMinutesOf: () => [], zoneRankAt: () => null, themeAt }, conds);
+        expect(themeAt).toHaveBeenCalledTimes(2); // (TP) 한 번 + (countMin 9) 한 번
+    });
+
+    it("improve 전이 — 밑값은 존 순위(작을수록 개선), 직전 미참 포함", () => {
+        const s = stock("A", { n: 5 });
+        const ranks: (number | null)[] = [3, 3, 2, null, 2];
+        const mat: CellMaterials = {
+            gridMinutesOf: () => [], zoneRankAt: () => null,
+            themeAt: (_c, min) => { const z = ranks[min - MIN0]; return { pass: z !== null, zoneRank: z, theme: z !== null ? "T" : null }; },
+        };
+        // 0: 첫 참(직전 미참) ✓ · 1: 3→3 개선 아님 ✗ · 2: 3→2 개선 ✓ · 3: 미참 ✗ · 4: 직전 미참 ✓
+        expect(mins(evaluateCells([s], mat, themeCond({}, "improve")))).toEqual([0, 2, 4]);
+    });
+
+    it("빈 술어(활성 하위 조건 0)는 평가에서 빠진다 — '조건 없음 = 전부'가 되지 않게", () => {
+        const s = stock("A", { n: 2 });
+        const themeAt = vi.fn(() => ({ pass: true, zoneRank: 1, theme: "T" }));
+        const r = evaluateCells([s], { gridMinutesOf: () => [], zoneRankAt: () => null, themeAt },
+            themeCond({ countOn: false, baseRankOn: false, zoneRankOn: false }));
+        expect(r.hits).toEqual([]);
+        expect(themeAt).not.toHaveBeenCalled();
     });
 });

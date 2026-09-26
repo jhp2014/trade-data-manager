@@ -74,7 +74,7 @@ function Toggle({ on, label, title, onClick }: { on: boolean; label: string; tit
     );
 }
 
-const CELL_KINDS: ReadonlySet<string> = new Set(["cellValue", "priorHighBreak", "gridPoint", "breakout", "candleShape"]);
+const CELL_KINDS: ReadonlySet<string> = new Set(["cellValue", "priorHighBreak", "gridPoint", "breakout", "candleShape", "theme"]);
 export const isCellPredicate = (p: FilterPredicate): p is CellPredicate => CELL_KINDS.has(p.kind) || p.kind === "time";
 
 /**

@@ -7,12 +7,12 @@
 //
 // 순수 함수인 이유: 훅이 아니어야 dom 테스트 없이 잠글 수 있고, 호출부(useCellSet)의 memo 신원이
 // 재료 한 벌로 모인다(어댑터가 훅이면 의존 배열이 갈려 매 렌더 새 참조가 된다).
-import type { CellMaterials } from "@trade-data-manager/market/domain";
+import { themeAnswerOf, type CellMaterials } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { autoPointsOfChart } from "../../lib/PointGridsContext.js";
 import type { AutoPointsView } from "../../lib/usePointGrids.js";
 import { inZone, themeStatsOf, type SectionRanks, type ThemeProjection, type ThemeStrengthParams } from "../../lib/themeStrength.js";
-import { sectionAtMinute } from "../themeRank/sectionSeries.js";
+import { sectionAtMinute, themeSectionAt } from "../themeRank/sectionSeries.js";
 
 /**
  * 하루 재료 한 벌. `zoneRankAt` 은 **비싼 쪽**이라 엔진의 단락 뒤에서만 불린다 —
@@ -48,6 +48,9 @@ export function cellMaterialsOf(
     return {
         ...(baselineOf ? { baselineOf } : {}),
         gridMinutesOf: (code) => autoPointsOfChart(auto, code, date).map((p) => p.min),
+        // 테마 술어 — 판정은 core themeAnswerOf 하나(계산 규칙을 여기 두지 않는다). 단면은 sectionSeries
+        // 공용 캐시라 표시(테마 순위 판)와 같은 물건을 본다. 파라미터는 payload 로 술어마다 온다.
+        themeAt: (code, min, p) => themeAnswerOf(code, themeSectionAt(stocks, date, min, p.window), p, proj),
         zoneRankAt: (code, min) => {
             const memberOf = proj.themesByCode.get(code);
             if (!memberOf || memberOf.length === 0) return null;

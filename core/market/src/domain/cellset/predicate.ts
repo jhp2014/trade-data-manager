@@ -20,6 +20,7 @@
 // 같은 공간에서 비교된다(probe 의 전례 그대로).
 
 import { DEFAULT_CHAIN_FILTER, chainFilterKey, parseChainFilter, type ChainFilter } from "./chainFilter.js";
+import { anyThemeCondOn, parseThemeZoneParams, type ThemeZoneParams } from "./themeZone.js";
 
 /**
  * 전이 수식어 — 시점 술어를 **엣지**로 바꾸는 한 겹. 어휘가 셋인 이유는 이주 등가성이다:
@@ -111,7 +112,9 @@ export type CellPredicate =
     /** 돌파 사슬 후보(생성기) — 기준선은 `/point-grids` 의 확정 기준선(없으면 이름표가 전부 「고가 돌파」). */
     | { kind: "breakout"; zigzagPct: number; bandPct: number; chain: ChainFilter; transition?: Transition }
     | { kind: "candleShape"; shape: CandleShape; transition?: Transition }
-    | { kind: "time"; ranges: CellTimeRange[]; transition?: Transition };
+    | { kind: "time"; ranges: CellTimeRange[]; transition?: Transition }
+    /** 테마 존(2026-09-26 — 옛 종단 themeStrength·존순위 셀 값의 후신). 판정 한 벌은 themeZone.ts. */
+    | ({ kind: "theme"; transition?: Transition } & ThemeZoneParams);
 
 export type CellPredicateKind = CellPredicate["kind"];
 
@@ -141,6 +144,8 @@ export function costTierOf(p: CellPredicate): 0 | 1 | 2 {
             return 1;
         case "candleShape":
             return 0;
+        case "theme":
+            return 2; // 분 단면 + 멤버십 — 단락 뒤에만
         default:
             return unknownCellPredicate(p);
     }
@@ -219,6 +224,9 @@ export function isCellPredicateEmpty(p: CellPredicate): boolean {
         case "breakout":
         case "candleShape":
             return false;
+        case "theme":
+            // 활성 하위 조건 0 = 조건 없음(존은 시선 도구) — 평가에서 빼야 "전부 통과"가 뜻대로 선다.
+            return !anyThemeCondOn(p);
         default:
             return unknownCellPredicate(p);
     }
@@ -314,6 +322,10 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
                 ranges.push({ from: r.from, to: r.to });
             }
             return { kind: "time", ranges, ...transition };
+        }
+        case "theme": {
+            const params = parseThemeZoneParams(raw);
+            return params === null ? null : { kind: "theme", ...params, ...transition };
         }
         default:
             return null;

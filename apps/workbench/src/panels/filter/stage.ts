@@ -35,6 +35,7 @@ import {
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr, renameGroupInExpr } from "../rank/groupFilter.js";
 import { DEFAULT_THEME_STRENGTH, anyConditionOn, parseThemeStrengthParams, type ThemeStrengthParams } from "../../lib/themeStrength.js";
+import { anyThemeCondOn } from "@trade-data-manager/market/domain";
 import { isOutcomeMetric, type OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { isHotR, isHotW } from "../../lib/hotPoints.js";
 
@@ -104,7 +105,9 @@ export type FilterPredicate =
     | Extract<CellPredicate, { kind: "gridPoint" }>
     // Daily 타점 생성기(돌파 사슬)와 캔들 모양 필터(2026-09-24 — decisions 「Daily 타점 생성 = 돌파 사슬」).
     | Extract<CellPredicate, { kind: "breakout" }>
-    | Extract<CellPredicate, { kind: "candleShape" }>;
+    | Extract<CellPredicate, { kind: "candleShape" }>
+    // 테마 존(2026-09-26) — 옛 종단 themeStrength·존순위 셀 값의 후신. 판정·파서는 core themeZone 한 벌.
+    | Extract<CellPredicate, { kind: "theme" }>;
 
 export type PredicateKind = FilterPredicate["kind"];
 
@@ -142,6 +145,15 @@ export interface FilterStage {
 }
 
 /** 조건이 하나도 없는 술어(빈 식·빈 배열·빈 밴드) — 평가에서 빼야 "무제한"이 "전부 미배치"로 안 뒤집힌다. */
+/**
+ * "무거운 조건"인가 — 날짜 자동 스킵 상한을 줄이는 자(격자·존/테마 분 단면). 옛날엔 WorksetPanel·
+ * DailyExplorePanel 두 손 사본이었다(리뷰) — 한 벌로 모은다.
+ */
+export function isHeavyCellPredicate(p: FilterPredicate): boolean {
+    return p.kind === "gridPoint" || p.kind === "breakout" || p.kind === "theme"
+        || (p.kind === "cellValue" && p.field === "zoneRank");
+}
+
 export function isPredicateEmpty(p: FilterPredicate): boolean {
     switch (p.kind) {
         case "group": return isGroupExprEmpty(p.expr);
@@ -158,6 +170,7 @@ export function isPredicateEmpty(p: FilterPredicate): boolean {
         case "gridPoint": return false;
         case "breakout":
         case "candleShape": return false; // 노브가 전부 기본값을 가져 항상 조건이다
+        case "theme": return !anyThemeCondOn(p); // 활성 하위 조건 0 = 무제한 통과(core 빈 판정과 같은 자)
         default: return unknownPredicate(p); // 자물쇠 — 빠뜨리면 그 종류가 "무제한 통과"로 샌다
     }
 }
@@ -210,6 +223,7 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
         case "outcomeRecovery": return "point";
         case "hotPoints": return "point"; // 쌍을 세는 자가 타점이다 — 행 정체성도 타점
         // 셀 = (종목,날짜,분) — 좌표와 같은 모양이라 층위도 타점이다.
+        case "theme":
         case "cellValue":
         case "priorHighBreak":
         case "gridPoint":
@@ -498,6 +512,7 @@ function parsePredicate(o: unknown): FilterPredicate | null {
         case "gridPoint":
         case "breakout":
         case "candleShape":
+        case "theme":
             return parseCellPredicate(o) as FilterPredicate | null;
         default:
             return null;

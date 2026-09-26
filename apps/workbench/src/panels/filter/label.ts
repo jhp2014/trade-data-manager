@@ -47,6 +47,7 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
                 ? `${p.ranges[0]!.from}~${p.ranges[0]!.to}`
                 : `시간 ${p.ranges.length}구간`;
         case "themeStrength": return themeStrengthLabel(p.params);
+        case "theme": return themeZoneLabel(p);
         // T 를 라벨에 싣는다 — 같은 지표의 조건이 T 별로 여러 줄 설 수 있어(2026-09-09 인스턴스화)
         // T 가 없으면 보드 목록에서 두 줄이 같은 이름으로 보인다.
         case "outcome": return `${OUTCOME_METRIC_NAME[p.metric]} @T${p.t}%`;
@@ -79,6 +80,18 @@ export const transitionSuffix = (p: FilterPredicate): string => {
 };
 
 /** 테마 강도 묶음 한 줄 — 존 N/M·기준 + 활성 하위 조건. 보드 행·막대·패널 칩이 같은 표기를 쓴다. */
+/** 테마 존 술어 한 줄 — 존(창·대금 N·등락 축) + 켜진 컷만. */
+export function themeZoneLabel(p: Extract<FilterPredicate, { kind: "theme" }>): string {
+    const win = p.window === null ? "당일" : `${p.window}분`;
+    const rate = p.rate.mode === "rank" ? `등락≤${p.rate.max}` : `등락≥${p.rate.minPct}%`;
+    const cuts = [
+        p.countOn ? `재적≥${p.countMin}` : null,
+        p.zoneRankOn ? `존≤${p.zoneRankMax}` : null,
+        p.baseRankOn ? `기본≤${p.baseRankMax}` : null,
+    ].filter(Boolean).join(" ");
+    return `테마 ${win} 대금≤${p.zoneAmountN}·${rate}${cuts ? ` ${cuts}` : ""}`;
+}
+
 export function themeStrengthLabel(p: ThemeStrengthParams): string {
     const conds = [
         p.countOn ? `동료≥${p.countMin}` : null,
@@ -101,6 +114,7 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         case "date": return "날짜";
         case "time": return "시간";
         case "themeStrength": return "테마";
+        case "theme": return "테마";
         case "outcome":
         case "outcomeRecovery": return "결과";
         case "hotPoints": return "급타점";

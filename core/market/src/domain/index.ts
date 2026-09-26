@@ -43,6 +43,7 @@ export * from "./cellset/predicate.js";
 export * from "./cellset/engine.js";
 export * from "./cellset/breakoutChain.js";
 export * from "./cellset/chainFilter.js";
+export * from "./cellset/themeZone.js";
 export * from "./cellset/seed.js";
 
 // grid — 자동 타점 격자(순수 검출): 확정 고점·구간 저점 피벗 + 신고가 캔들 목록 + 기준선 첫 터치. Point 판정은 읽기 층(points).

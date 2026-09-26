@@ -17,7 +17,7 @@
 // ## core 시민 자격
 // 입출력이 전부 순수값이라 나중에 api 가 같은 판정을 하게 되면 core 로 파일 이동만 하면 된다 —
 // 훅·React import 를 이 파일에 들이지 말 것.
-import type { ThemeIndex } from "@trade-data-manager/market/domain";
+import type { ThemeProjection } from "@trade-data-manager/market/domain";
 
 /** 단면에서 이 모듈이 요구하는 것 — 구운 번들 단면(useRankSections.SectionView)과 스크럽 재계산
  *  단면(scrubSection) 어느 쪽이든 이 모양이면 **같은 함수**에 들어간다(서수 출처가 둘이 되지 않게). */
@@ -94,26 +94,9 @@ export function parseThemeStrengthParams(o: unknown): ThemeStrengthParams | null
     };
 }
 
-/** 테마 멤버십의 루프용 투영 — 복사는 여기서 한 번뿐. */
-export interface ThemeProjection {
-    themesByCode: ReadonlyMap<string, readonly string[]>;
-    codesByTheme: ReadonlyMap<string, readonly string[]>;
-}
-
-export function themeProjectionOf(index: ThemeIndex): ThemeProjection {
-    const codesByTheme = new Map<string, readonly string[]>();
-    const themesByCode = new Map<string, string[]>();
-    for (const theme of index.allThemes()) {
-        const codes = index.codesOf(theme);
-        codesByTheme.set(theme, codes);
-        for (const code of codes) {
-            const list = themesByCode.get(code);
-            if (list) list.push(theme);
-            else themesByCode.set(code, [theme]);
-        }
-    }
-    return { themesByCode, codesByTheme };
-}
+// 투영은 core 한 벌(cellset/themeZone — 2026-09-26 이주)을 재노출한다 — 모양이 같아 소비자는 무변경.
+export { themeProjectionOf } from "@trade-data-manager/market/domain";
+export type { ThemeProjection };
 
 /** 존 판정에 필요한 조각 — 틱 재료 함수는 임계값 없이 이만큼만 받는다(의존이 좁을수록 캐시가 오래 산다). */
 export type ZoneParams = Pick<ThemeStrengthParams, "zoneRateN" | "zoneAmountN" | "zoneAmountWindow" | "basis">;

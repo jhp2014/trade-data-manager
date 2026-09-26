@@ -354,6 +354,7 @@ export function useCellSet(
         () => usesCellPred(narrowed.expr, (p) => p.kind === "cellValue" && p.field === "zoneRank"),
         [narrowed],
     );
+    const needsTheme = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "theme"), [narrowed]);
     // 돌파 생성기 — 기준선(/point-grids)을 이름표 재료로 쓴다. 안 쓰면 게이트도 안 선다.
     // 오늘은 /point-grids 가 기준선을 안 굽는다 → 이름표가 전부 「고가 돌파」(복기만 쓴다 — decisions).
     const needsBaseline = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "breakout"), [narrowed]);
@@ -367,6 +368,9 @@ export function useCellSet(
         // ⚠ 재료가 없는 동안은 **null**(값을 모른다)이지 빈 결과가 아니다 — 빈 결과는 "조건에 다 걸렸다"로
         //   읽힌다(useBoundSet 의 UNRESOLVED 규칙). 기준선 재료(/point-grids)가 오기 전 평가하면 이름표가 뒤집힌다.
         if (needsBaseline && pointGrids.byDate === null) return null;
+        // 테마 재료(멤버십 투영)가 오기 전의 평가는 **모름**이지 빈 결과가 아니다 — 빈 투영으로 돌리면
+        // 테마 조건이 "그날 0건"이라는 그럴듯한 거짓을 낸다(리뷰가 예고한 자리).
+        if ((needsTheme || needsZone) && !themes.ready) return null;
         // 메모 키 — 조건·노브·**재료 세대를 전부** 싣는다. 하나라도 빠지면 조용히 낡은 목록을 돌려준다.
         //  · 바깥 축(WeakMap) = `stocks` 배열 참조 = 하루 재료의 세대. 오늘 날짜는 60초마다 재조회되므로
         //    이걸 안 가르면 새로 채워진 분의 후보가 세션 내내 안 뜬다.
@@ -417,7 +421,7 @@ export function useCellSet(
             needsBaseline ? pointGrids.error : null,
             needsGrid ? auto.error : null,
         ]),
-        themesReady: !needsZone || themes.ready,
+        themesReady: !(needsZone || needsTheme) || themes.ready,
         evaluable: narrowed.expr !== null,
         ready: result !== null,
     };

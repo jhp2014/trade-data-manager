@@ -14,6 +14,7 @@ import {
     windowedAmounts,
     type RankSection,
     type SectionValues,
+    type ThemeSectionRanks,
 } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
 
@@ -26,6 +27,10 @@ interface Entry {
     /** `${분}:${창}` → T-창 누적 대금 값/서수 — 창이 노브라 (분, 창) 낟알이다. */
     winValsByKey: Map<string, (number | null)[]>;
     winRanksByKey: Map<string, (number | null)[]>;
+    /** 코드 → 배열 인덱스 — 테마 단면(ranksOf)의 조회 자. 스냅샷당 한 번. */
+    codeIdx: Map<string, number> | null;
+    /** `${분}:${창 키}` → 테마 단면(창 적용 끝) — theme 술어·표시가 같은 단면을 본다. */
+    themeByKey: Map<string, ThemeSectionRanks>;
 }
 
 const cache = new WeakMap<readonly ReplayStock[], Entry>();
@@ -34,7 +39,7 @@ function entryOf(stocks: readonly ReplayStock[], date: string): Entry {
     let entry = cache.get(stocks);
     // 같은 배열에 다른 날짜가 올 일은 없지만(스냅샷은 날짜당 한 벌), 왔다면 낡은 단면을 섞느니 버린다.
     if (!entry || entry.date !== date) {
-        entry = { date, byMinute: new Map(), valsByMinute: new Map(), winValsByKey: new Map(), winRanksByKey: new Map() };
+        entry = { date, byMinute: new Map(), valsByMinute: new Map(), winValsByKey: new Map(), winRanksByKey: new Map(), codeIdx: null, themeByKey: new Map() };
         cache.set(stocks, entry);
     }
     return entry;
@@ -84,4 +89,31 @@ export function windowedRanksAt(stocks: readonly ReplayStock[], date: string, mi
         entry.winRanksByKey.set(key, ranks);
     }
     return ranks;
+}
+
+/**
+ * (스냅샷, 날짜, 분, 창) → **테마 단면**(themeZone.ThemeSectionRanks — 창 적용이 끝난 서수 + 등락률 값).
+ * 창(window)이 null 이면 당일 누적 서수, T분이면 창 서수 — 판정(themeAnswerOf)은 창을 모른다
+ * (같은 단면을 두 창이 나눠 읽는 혼선을 인터페이스에서 막는다 — themeZone 머리 주석).
+ */
+export function themeSectionAt(stocks: readonly ReplayStock[], date: string, minute: number, window: number | null): ThemeSectionRanks {
+    const entry = entryOf(stocks, date);
+    const key = `${minute}:${window ?? "d"}`;
+    let sec = entry.themeByKey.get(key);
+    if (!sec) {
+        if (entry.codeIdx === null) entry.codeIdx = new Map(stocks.map((s, i) => [s.code, i] as const));
+        const idx = entry.codeIdx;
+        const base = sectionAtMinute(stocks, date, minute);
+        const vals = valuesAtMinute(stocks, date, minute);
+        const amountOrd = window === null ? base.amount : windowedRanksAt(stocks, date, minute, window);
+        sec = {
+            ranksOf: (code) => {
+                const i = idx.get(code);
+                if (i === undefined) return null;
+                return { rateOrd: base.rate[i] ?? null, ratePct: vals.rate[i] ?? null, amountOrd: amountOrd[i] ?? null };
+            },
+        };
+        entry.themeByKey.set(key, sec);
+    }
+    return sec;
 }

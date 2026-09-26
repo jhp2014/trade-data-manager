@@ -125,6 +125,9 @@ export function kindDeficiency(k: PredicateKind, u: Universe): string | null {
             case "candleShape":
                 // 원리적 결손이 아니다 — 라벨 좌표도 그날 분봉 안에 있다. 종단 판정기를 안 물렸을 뿐(종단 보류).
                 return "일별 타점[조건]의 조건 — 종단에는 아직 판정기가 안 물렸다";
+            // ⚠ theme 는 **종류 층에서 중립**이다(decisions 2026-09-26) — 여기서 종단 결손으로 답하면
+            //   committingUniverse 가 하루 전용으로 읽어, themeStrength → theme 이주 때 종단 저장 집합의
+            //   우주 파생이 하루로 뒤집힌다(숨겨 둔 집합이 목록에 나타난다). 결손은 payload 층이 말한다.
             default:
                 return null;
         }
@@ -181,6 +184,11 @@ export function predicateDeficiency(p: FilterPredicate, u: Universe): string[] {
         case "date":
         case "themeStrength":
         case "outcomeRecovery":
+            break;
+        case "theme":
+            // 종류 층은 중립(위 kindDeficiency 주석) — 종단 결손은 payload 층인 여기가 말한다.
+            if (u === "longitudinal") out.push("테마 존 판정은 하루 분 단면 위에서만 돈다 — 종단에는 판정기가 없다");
+            if (p.transition && u === "longitudinal") out.push("전이 수식어는 시계열 위에서만 뜻이 있다 — 종단 행에는 '직전 분'이 없다");
             break;
         default:
             return unknownPredicate(p); // 자물쇠 — 새 종류는 반드시 여기를 지난다

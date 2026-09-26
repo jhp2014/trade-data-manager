@@ -4,6 +4,7 @@ import { DAILY_GEN_PANEL_ID } from "./dailyGen/dailyPanelIds.js";
 import { selectObservedSetId, selectObservedStages, useWorkbench } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
+import { isHeavyCellPredicate } from "./filter/stage.js";
 import type { CellHit } from "@trade-data-manager/market/domain";
 import { dayRows, longitudinalRows, stepWithin, walkableOf, type DayCell } from "./workset/rows.js";
 import { useDayCrossing } from "./workset/useDayCrossing.js";
@@ -246,7 +247,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     /** 그 날에 데이터가 있나 — 빈 화면이 "조건 탓"인지 "휴장"인지 가르는 재료(undefined = 아직 모름). */
     const hasData = useHasDataOn(focusDate);
     const heavyCondition = useMemo(
-        () => cellSet.stages.some((st) => st.counted) && stages.some((st) => st.predicates.some((p) => p.kind === "gridPoint" || p.kind === "breakout" || (p.kind === "cellValue" && p.field === "zoneRank"))),
+        () => cellSet.stages.some((st) => st.counted) && stages.some((st) => st.predicates.some(isHeavyCellPredicate)),
         [cellSet.stages, stages],
     );
     const landOn = useCallback((dir: 1 | -1) => {

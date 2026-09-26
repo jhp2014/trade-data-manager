@@ -25,6 +25,7 @@ import { PIN } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { DAY_SET_OPTS, useCellSet } from "../filter/useCellSet.js";
 import { leavesOf } from "../filter/expr.js";
+import { isHeavyCellPredicate } from "../filter/stage.js";
 import { neighborDates } from "../workset/dayCrossing.js";
 import { useDayCrossing } from "../workset/useDayCrossing.js";
 import { stepWithin, type NavKey } from "../workset/rows.js";
@@ -76,7 +77,7 @@ export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element
     // 무거운 조건(격자·존 순위)이면 빈 날 스킵 상한이 줄어든다 — 작업 대상과 같은 판정.
     const heavy = useMemo(
         () => cellSet.stages.some((st) => st.counted)
-            && leavesOf(funnel.slowExpr).some((st) => st.predicates.some((p) => p.kind === "gridPoint" || p.kind === "breakout" || (p.kind === "cellValue" && p.field === "zoneRank"))),
+            && leavesOf(funnel.slowExpr).some((st) => st.predicates.some(isHeavyCellPredicate)),
         [cellSet.stages, funnel.slowExpr],
     );
     const order = useMemo<NavKey[]>(() => shownRows.map((r) => ({ code: r.code, date: focusDate, time: r.time })), [shownRows, focusDate]);

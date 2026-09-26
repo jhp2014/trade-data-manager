@@ -86,6 +86,7 @@ export function rowIdOfStage(s: FilterStage): string {
         case "date": return "date";
         case "time": return "time";
         case "themeStrength": return `theme:${s.id}`;
+        case "theme": return `cell:${s.id}`;
         case "hotPoints": return `hot:${first.w}@${first.r}`; // (W×r) 별 줄 — rowIdOfKey 와 같은 자
     }
 }

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { committingUniverse, effectiveUniverse, kindDeficiency, parseUniverse, predicateDeficiency, stageDeficiency, universeOfExpr, universeOfStages, UNIVERSES, type Universe } from "../universe.js";
 import { exprOfStages, refNode, type SetExpr, type SetTerm } from "../expr.js";
 import type { FilterPredicate, PredicateKind } from "../stage.js";
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 
 /** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
 const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
@@ -9,13 +10,15 @@ const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, 
 // 이 표가 **스펙**이고 테스트는 그 사본이다 — 결손 지도의 단일 출처(universe.ts)가 여기와 어긋나면
 // 팔레트의 회색과 평가의 결손이 다른 이야기를 한다.
 const AVAILABLE: Record<Universe, PredicateKind[]> = {
-    longitudinal: ["group", "axisBand", "axisValue", "date", "time", "themeStrength", "outcome", "outcomeRecovery", "hotPoints"],
-    daily: ["time", "cellValue", "priorHighBreak", "gridPoint", "breakout", "candleShape"],
+    // ⚠ theme 는 **종류 층 중립**(양쪽 가용)이다 — 종단 결손은 payload 층(predicateDeficiency)이 말한다.
+    //   종류 층에 두면 themeStrength → theme 이주 때 종단 저장 집합의 우주 파생이 뒤집힌다(decisions 2026-09-26).
+    longitudinal: ["group", "axisBand", "axisValue", "date", "time", "themeStrength", "outcome", "outcomeRecovery", "hotPoints", "theme"],
+    daily: ["time", "cellValue", "priorHighBreak", "gridPoint", "breakout", "candleShape", "theme"],
 };
 const ALL_KINDS: PredicateKind[] = [
     "group", "axisBand", "axisValue", "date", "time", "themeStrength",
     "outcome", "outcomeRecovery", "hotPoints", "cellValue", "priorHighBreak", "gridPoint",
-    "breakout", "candleShape",
+    "breakout", "candleShape", "theme",
 ];
 
 describe("kindDeficiency — 종류 × 우주 전수", () => {
@@ -107,4 +110,16 @@ describe("parseUniverse — 부재·오염은 종단(우주가 없던 시절의 
         expect(parseUniverse(v)).toBe("longitudinal");
     });
     it("daily 만 daily", () => expect(parseUniverse("daily")).toBe("daily"));
+});
+
+describe("theme 술어 — 종류 중립 + payload 층 결손(우주 파생이 안 뒤집힌다)", () => {
+    const theme = { kind: "theme", ...DEFAULT_THEME_ZONE } as FilterPredicate;
+    it("committingUniverse 가 null — theme 만으로는 우주가 안 정해진다(이주 안전)", () => {
+        expect(committingUniverse("theme")).toBeNull();
+        expect(universeOfStages([{ predicates: [{ kind: "theme" }] }])).toBeNull();
+    });
+    it("종단에서 payload 결손 이유가 서고, 하루에선 빈 배열", () => {
+        expect(predicateDeficiency(theme, "longitudinal").length).toBeGreaterThan(0);
+        expect(predicateDeficiency(theme, "daily")).toEqual([]);
+    });
 });

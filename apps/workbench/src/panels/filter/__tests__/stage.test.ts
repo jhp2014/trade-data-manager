@@ -1,3 +1,4 @@
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 import { describe, it, expect } from "vitest";
 import {
     activeStages, autoGrain, canAddPredicate,
@@ -299,6 +300,19 @@ describe("themeStrength 술어 — 저장 왕복·빈 판정", () => {
         expect(isPredicateEmpty({ kind: "themeStrength", params: off })).toBe(true);
         expect(isPredicateEmpty({ kind: "themeStrength", params })).toBe(false);
         expect(predicateGrain({ kind: "themeStrength", params }, { hasGroup: () => false, axisScope: () => undefined })).toBe("point");
+    });
+});
+
+describe("theme 술어 — 저장 왕복·빈 판정(2026-09-26)", () => {
+    const theme: FilterPredicate = { kind: "theme", ...DEFAULT_THEME_ZONE, window: 30, rate: { mode: "value", minPct: 5 }, transition: "firstOfDay" };
+    it("parseStages 왕복이 창·값 축·전이를 보존한다 — 파서 누락 = 저장본 통째 폐기의 회귀 방지선", () => {
+        const stages: FilterStage[] = [{ id: "t", enabled: true, predicates: [theme] }];
+        const back = parseStages(JSON.parse(JSON.stringify(stages)));
+        expect(back).toEqual(stages);
+    });
+    it("활성 하위 조건 0 = 빈 술어(무제한 통과로 안 샌다)", () => {
+        expect(isPredicateEmpty({ ...theme, countOn: false, baseRankOn: false, zoneRankOn: false })).toBe(true);
+        expect(isPredicateEmpty(theme)).toBe(false);
     });
 });
 

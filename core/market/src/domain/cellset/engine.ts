@@ -44,6 +44,7 @@ import {
     type CellValueRange,
     type Transition,
 } from "./predicate.js";
+import { themeZoneKeyOf, type ThemeAnswer, type ThemeZoneParams } from "./themeZone.js";
 
 /** 입력 종목 — 쓰는 필드만 Pick(probe·rankSection 과 같은 수법: 와이어 ReplayStock 이 그대로 들어온다). */
 export type CellStock = Pick<
@@ -58,6 +59,11 @@ export interface CellMaterials {
     /** 그 분의 존 순위(소속 테마 중 best)와 승자 테마 — 존 밖·테마 없음·결손 = null.
      *  ⚠ 단락 뒤에만 불린다(비싼 재료). (클라: sectionSeries 캐시 + themeStrength.themeStatsOf) */
     zoneRankAt(code: string, min: number): { rank: number; theme: string } | null;
+    /**
+     * 테마 술어의 답(판정 + 존 순위 best) — 파라미터가 payload 라 술어마다 다르다. null = 재료 없음(모름 →
+     * 미발화). ⚠ 단락 뒤에만 불린다. (클라: sectionSeries.themeSectionAt + themeZone.themeAnswerOf)
+     */
+    themeAt(code: string, min: number, p: ThemeZoneParams): ThemeAnswer | null;
     /**
      * 그 종목·그날의 확정 기준선(그 날 원주가 스케일) — 없으면 null(돌파 사슬의 기준선 밴드가 없다 →
      * 이름표가 전부 「고가 돌파」). 옵셔널: 안 쓰는 호출자(probe 등가·기존 테스트)는 부재 = 없음.
@@ -318,6 +324,10 @@ interface CellCtx {
     zoneAsked: boolean;
     /** 이 가지가 존 순위를 물었나 — 발화한 가지만 hit 에 순위를 싣는다(옛 usedZone 과 같은 자). */
     usedZone: boolean;
+    /** 테마 술어 답 캐시 — 파라미터 키별(같은 셀에서 같은 파라미터는 한 번만 계산). */
+    themeAns: Map<string, ThemeAnswer | null>;
+    /** 이 가지의 테마 술어가 낸 존 순위 best — 발화한 가지만 hit 에 싣는다(usedZone 과 같은 규칙). */
+    themeUsed: { rank: number; theme: string } | null;
 }
 
 function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
@@ -368,6 +378,23 @@ function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
                     return t >= r.from && t <= r.to;
                 });
                 break;
+            case "theme": {
+                const key = themeZoneKeyOf(p);
+                let ans = ctx.themeAns.get(key);
+                if (ans === undefined) {
+                    ans = ctx.mat.themeAt(ctx.s.code, ctx.min, p);
+                    ctx.themeAns.set(key, ans);
+                }
+                raw = ans !== null && ans.pass;
+                // improve 전이의 밑값 = 존 순위(작을수록 개선 — 방향은 종류가 안다).
+                v = ans?.zoneRank ?? null;
+                improveUp = false;
+                if (ans !== null && ans.zoneRank !== null && ans.theme !== null
+                    && (ctx.themeUsed === null || ans.zoneRank < ctx.themeUsed.rank)) {
+                    ctx.themeUsed = { rank: ans.zoneRank, theme: ans.theme };
+                }
+                break;
+            }
             default:
                 unknownCellPredicate(p);
         }
@@ -463,10 +490,13 @@ export function evaluateCellsExpr(
 
         for (let i = 0; i < n; i++) {
             const min = minuteOfDayOf(s.times[i]);
-            const ctx: CellCtx = { s, i, min, pre, mat, zone: null, zoneAsked: false, usedZone: false };
+            const ctx: CellCtx = { s, i, min, pre, mat, zone: null, zoneAsked: false, usedZone: false, themeAns: new Map(), themeUsed: null };
 
             for (const b of branches) {
                 ctx.usedZone = false;
+                // ⚠ 캐스트 — TS 는 함수 호출(runNode 의 속 변이)로 프로퍼티 좁힘을 안 풀어서, 그냥 null 을
+                //   대입하면 아래 읽기가 never 로 좁혀진다.
+                ctx.themeUsed = null as CellCtx["themeUsed"];
                 if (!runNode(b, st, ctx)) continue;
 
                 byCondition.set(b.node.id, (byCondition.get(b.node.id) ?? 0) + 1);
@@ -489,6 +519,10 @@ export function evaluateCellsExpr(
                 if (ctx.usedZone && ctx.zone && (hit.zoneRank === null || ctx.zone.rank < hit.zoneRank)) {
                     hit.zoneRank = ctx.zone.rank;
                     hit.zoneTheme = ctx.zone.theme;
+                }
+                if (ctx.themeUsed !== null && (hit.zoneRank === null || ctx.themeUsed.rank < hit.zoneRank)) {
+                    hit.zoneRank = ctx.themeUsed.rank;
+                    hit.zoneTheme = ctx.themeUsed.theme;
                 }
 
                 if (matched > hardCap) {
