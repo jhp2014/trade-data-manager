@@ -14,18 +14,27 @@ import { DEFAULT_THEME_ZONE } from "../themeZone.js";
 // 파서는 panelUi(무검증 JSON 가방)의 유일한 문지기다 — 여기가 뚫리면 깨진 blob 이 평가기까지 간다.
 
 describe("parseCellPredicate", () => {
-    it("네 종류를 왕복한다(전이 포함)", () => {
+    it("세 종류를 왕복한다", () => {
         const preds = [
-            { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }], transition: "firstOfDay" },
+            { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] },
             { kind: "priorHighBreak", days: 20 },
             { kind: "time", ranges: [{ from: "09:00", to: "10:30" }] },
         ];
         for (const p of preds) expect(parseCellPredicate(JSON.parse(JSON.stringify(p)))).toEqual(p);
     });
 
-    it("옛 존순위 셀 값(zoneRank) → theme 이주 — 값 상한·전이 보존", () => {
+    it("옛 전이 저장물 — 술어에서 벗기고, theme 의 처음으로·직전 대비 상승만 enter 로 잇는다", () => {
+        const stripped = parseCellPredicate({ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }], transition: "firstOfDay" })!;
+        expect("transition" in stripped).toBe(false);
+        const migrated = parseCellPredicate({ kind: "theme", ...DEFAULT_THEME_ZONE, transition: "improve" });
+        expect(migrated).toMatchObject({ kind: "theme", enter: true });
+        const always = parseCellPredicate({ kind: "theme", ...DEFAULT_THEME_ZONE, transition: "firstOfDay" })!;
+        expect("enter" in always, "하루 처음은 등가물이 없다 — 상시로").toBe(false);
+    });
+
+    it("옛 존순위 셀 값(zoneRank) → theme 이주 — 값 상한 보존·전이는 enter 로", () => {
         const p = parseCellPredicate({ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }], transition: "improve" });
-        expect(p).toMatchObject({ kind: "theme", zoneRankOn: true, zoneRankMax: 3, countOn: false, baseRankOn: false, transition: "improve" });
+        expect(p).toMatchObject({ kind: "theme", zoneRankOn: true, zoneRankMax: 3, countOn: false, baseRankOn: false, enter: true });
     });
 
     it("zoneRank 에 값 상한이 없으면 컷을 켜지 않는다 — '조건 없음'이 '≤기본값 활성'으로 뒤집히지 않는다", () => {
@@ -103,9 +112,9 @@ describe("비용 등급·빈 판정·재료 사용 여부", () => {
 });
 
 describe("돌파 생성기 · 캔들 모양", () => {
-    it("왕복한다(전이 포함)", () => {
+    it("왕복한다", () => {
         const preds = [
-            { kind: "breakout", zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 }, transition: "firstTrue" },
+            { kind: "breakout", zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 } },
             {
                 kind: "breakout", zigzagPct: 3, bandPct: 1,
                 chain: {

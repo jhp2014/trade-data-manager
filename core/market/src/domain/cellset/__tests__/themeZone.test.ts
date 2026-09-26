@@ -6,6 +6,7 @@ import {
     DEFAULT_THEME_ZONE,
     anyThemeCondOn,
     parseThemeZoneParams,
+    themeAnswerAt,
     themeAnswerOf,
     themeProjectionOf,
     themeZoneKeyOf,
@@ -158,5 +159,45 @@ describe("parseThemeZoneParams — 관대한 병합 + 옛 themeStrength 모양 �
         expect(themeZoneKeyOf(a)).toBe(themeZoneKeyOf(P({})));
         expect(themeZoneKeyOf(P({ window: 30 }))).not.toBe(themeZoneKeyOf(a));
         expect(themeZoneKeyOf(P({ rate: { mode: "value", minPct: 5 } }))).not.toBe(themeZoneKeyOf(a));
+    });
+});
+
+describe("themeAnswerAt — enter(진입 시만) = pass(min) ∧ ¬pass(min−1)", () => {
+    const proj = projOf({ T: ["s", "m1"] });
+    const cond = P({ countOn: true, countMin: 2, baseRankOn: false, enter: true });
+    // 분별 단면 — 존(대금≤40 ∧ 등락≤30)에 두 종목이 드는 분과 안 드는 분을 번갈아 둔다.
+    const inZone = sectionOf({ s: [1, 1], m1: [2, 2] });
+    const outZone = sectionOf({ s: [99, 99], m1: [99, 99] });
+    const series = (byMin: Record<number, ThemeSectionRanks>) => (min: number): ThemeSectionRanks => byMin[min] ?? outZone;
+
+    it("직전 분 거짓 → 지금 참 = 발화, 유지 분은 미발화, 이탈 후 재진입은 다시 발화", () => {
+        const sec = series({ 10: inZone, 11: inZone, 13: inZone });
+        expect(themeAnswerAt("s", sec, 10, cond, proj).pass, "진입").toBe(true);
+        expect(themeAnswerAt("s", sec, 11, cond, proj).pass, "유지 — 진입 아님").toBe(false);
+        expect(themeAnswerAt("s", sec, 12, cond, proj).pass, "존 밖").toBe(false);
+        expect(themeAnswerAt("s", sec, 13, cond, proj).pass, "재진입").toBe(true);
+    });
+
+    it("enter 부재(상시)면 참인 매 분 발화한다 — min−1 단면을 아예 안 부른다", () => {
+        let calls = 0;
+        const sec = (min: number): ThemeSectionRanks => { calls++; return min >= 10 ? inZone : outZone; };
+        const always = P({ countOn: true, countMin: 2, baseRankOn: false });
+        expect(themeAnswerAt("s", sec, 11, always, proj).pass).toBe(true);
+        expect(calls, "상시는 지금 분 하나만 본다").toBe(1);
+    });
+
+    it("첫 분(min ≤ 0)은 진입으로 친다", () => {
+        expect(themeAnswerAt("s", () => inZone, 0, cond, proj).pass).toBe(true);
+    });
+
+    it("themeZoneKeyOf 는 enter 를 가른다(셀당 답 캐시가 두 술어를 섞지 않게)", () => {
+        expect(themeZoneKeyOf(cond)).not.toBe(themeZoneKeyOf({ ...cond, enter: false }));
+    });
+
+    it("parseThemeZoneParams — enter 왕복 + 옛 전이(firstTrue·improve) 이주", () => {
+        expect(parseThemeZoneParams({ ...DEFAULT_THEME_ZONE, enter: true })).toMatchObject({ enter: true });
+        expect(parseThemeZoneParams({ ...DEFAULT_THEME_ZONE, transition: "firstTrue" })).toMatchObject({ enter: true });
+        const plain = parseThemeZoneParams({ ...DEFAULT_THEME_ZONE })!;
+        expect("enter" in plain).toBe(false);
     });
 });

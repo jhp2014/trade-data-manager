@@ -2,7 +2,7 @@ import { DEFAULT_CHAIN_FILTER, type ChainCond, type ChainFilter } from "../chain
 import { DEFAULT_THEME_ZONE } from "../themeZone.js";
 import { describe, it, expect, vi } from "vitest";
 import { evaluateCells, evaluateCellsExpr, type CellMaterials, type CellStock } from "../engine.js";
-import type { CellConditions, CellExpr, CellPredicate, Transition } from "../predicate.js";
+import type { CellConditions, CellExpr, CellPredicate } from "../predicate.js";
 import { kstToUnix } from "../../kst.js";
 
 // 픽스처 — 09:00 부터 1분 간격 dense 타임라인(probe 테스트와 같은 모양).
@@ -28,19 +28,13 @@ function stock(code: string, over: Partial<CellStock> & { n?: number } = {}): Ce
 
 const NO_MAT: CellMaterials = { themeAt: () => null };
 
-/** 등락률 ≥ r 칸 하나 — 전이를 술어/칸 어느 자리에 둘지 골라서. */
-const rateCond = (r: number, at: "none" | "pred" | "cond" = "none", t: Transition = "firstTrue"): CellConditions => [
+/** 등락률 ≥ r 칸 하나. */
+const rateCond = (r: number): CellConditions => [
     {
         id: "c",
         enabled: true,
-        ...(at === "cond" ? { transition: t } : {}),
         predicates: [
-            {
-                kind: "cellValue",
-                field: "ratePct",
-                ranges: [{ from: { kind: "value", value: r } }],
-                ...(at === "pred" ? { transition: t } : {}),
-            },
+            { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: r } }] },
         ],
     },
 ];
@@ -48,7 +42,7 @@ const rateCond = (r: number, at: "none" | "pred" | "cond" = "none", t: Transitio
 const mins = (r: { hits: { min: number }[] }): number[] => r.hits.map((h) => h.min - MIN0);
 
 describe("evaluateCells — 기본", () => {
-    it("전이 없으면 참인 셀마다 걸린다", () => {
+    it("참인 셀마다 걸린다(시점 판정 — 전이 은퇴 2026-09-27)", () => {
         const s = stock("A", { rate: [1, 6, 6, 2, 7] });
         expect(mins(evaluateCells([s], NO_MAT, rateCond(5)))).toEqual([1, 2, 4]);
     });
@@ -91,101 +85,6 @@ describe("evaluateCells — 기본", () => {
         const s = stock("A", { n: 5 });
         const r = evaluateCells([s], NO_MAT, [{ id: "c", enabled: true, predicates: [{ kind: "time", ranges: [{ from: "09:01", to: "09:03" }] }] }]);
         expect(mins(r)).toEqual([1, 2, 3]);
-    });
-});
-
-describe("evaluateCells — 전이", () => {
-    it("firstTrue = 상승 엣지마다(하루 여러 번), firstOfDay = 하루 1회", () => {
-        const s = stock("A", { rate: [6, 6, 1, 6, 6] });
-        expect(mins(evaluateCells([s], NO_MAT, rateCond(5, "pred", "firstTrue")))).toEqual([0, 3]);
-        expect(mins(evaluateCells([s], NO_MAT, rateCond(5, "pred", "firstOfDay")))).toEqual([0]);
-    });
-
-    it("첫 봉에서 이미 참이면 발화한다 — 갭으로 조건을 만족한 종목을 놓치지 않는다", () => {
-        const s = stock("A", { rate: [9, 9, 9, 9, 9] });
-        expect(mins(evaluateCells([s], NO_MAT, rateCond(5, "pred", "firstTrue")))).toEqual([0]);
-        expect(mins(evaluateCells([s], NO_MAT, rateCond(5, "pred", "improve")))).toEqual([0]);
-    });
-
-    it("improve 는 밑값 개선 + **직전 미참**(결손·이탈 포함)에서 발화한다", () => {
-        // 등락률: 6(진입) 6(유지) 7(개선) 1(이탈) 6(재진입)
-        const s = stock("A", { rate: [6, 6, 7, 1, 6] });
-        expect(mins(evaluateCells([s], NO_MAT, rateCond(5, "pred", "improve")))).toEqual([0, 2, 4]);
-    });
-
-    it("improve 의 방향은 술어 종류가 안다 — 테마 존 순위는 **작아지는 것**이 개선이다", () => {
-        const s = stock("A", { n: 4 });
-        const seq: (number | null)[] = [3, 3, 2, 4];
-        const mat: CellMaterials = {
-            themeAt: (_c, min) => { const r = seq[min - MIN0]; return r === null ? null : { pass: r <= 5, zoneRank: r, theme: "T" }; },
-        };
-        const conds: CellConditions = [
-            { id: "z", enabled: true, predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, zoneRankOn: true, zoneRankMax: 5, transition: "improve" }] },
-        ];
-        expect(mins(evaluateCells([s], mat, conds))).toEqual([0, 2]);
-    });
-
-    it("칸 improve — 값 잎이 theme 하나면 잎 자리와 동치다(밑값 = 존 순위·작을수록 개선)", () => {
-        const s = stock("A", { n: 4 });
-        const seq = [3, 3, 2, 4];
-        const mat: CellMaterials = {
-            themeAt: (_c, min) => ({ pass: true, zoneRank: seq[min - MIN0]!, theme: "T" }),
-        };
-        const conds: CellConditions = [
-            { id: "z", enabled: true, transition: "improve", predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, zoneRankOn: true, zoneRankMax: 5 }] },
-        ];
-        expect(mins(evaluateCells([s], mat, conds))).toEqual([0, 2]);
-    });
-
-    it("칸 improve — [theme, 하한] 값 잎 둘이면 엣지다(하한 값 증가를 개선으로 오독하지 않는다)", () => {
-        // 등락률이 매 분 오르고(6→9) 존 순위는 2 고정 — 개선이 없으니 첫 진입(0)에만 발화해야 한다.
-        // (옛 존순위 cellValue 시절과 같은 판정 — theme 를 값 잎으로 안 세면 등락률이 sole 이 되어 매 분 발화한다.)
-        const s = stock("A", { rate: [6, 7, 8, 9], n: 4 });
-        const mat: CellMaterials = { themeAt: () => ({ pass: true, zoneRank: 2, theme: "T" }) };
-        const conds: CellConditions = [
-            {
-                id: "c", enabled: true, transition: "improve",
-                predicates: [
-                    { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, zoneRankOn: true, zoneRankMax: 5 },
-                    { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] },
-                ],
-            },
-        ];
-        expect(mins(evaluateCells([s], mat, conds))).toEqual([0]);
-    });
-
-    it("술어 자리와 칸 자리는 **술어 하나짜리 칸에서 동치**다(UI 문법이 어느 쪽으로 가도 저장물이 안 흔들린다)", () => {
-        const s = stock("A", { rate: [6, 6, 1, 7, 7] });
-        for (const t of ["firstOfDay", "firstTrue", "improve"] as Transition[]) {
-            const byPred = mins(evaluateCells([s], NO_MAT, rateCond(5, "pred", t)));
-            const byCond = mins(evaluateCells([s], NO_MAT, rateCond(5, "cond", t)));
-            expect(byCond, `전이 ${t}`).toEqual(byPred);
-        }
-    });
-
-    it("하루 경계 — 종목이 바뀌면 상태가 새로 시작한다(전 종목의 fired 가 안 샌다)", () => {
-        const a = stock("A", { rate: [6, 6, 6, 6, 6] });
-        const b = stock("B", { rate: [6, 6, 6, 6, 6] });
-        const r = evaluateCells([a, b], NO_MAT, rateCond(5, "cond", "firstOfDay"));
-        expect(r.hits.map((h) => `${h.code}@${h.min - MIN0}`)).toEqual(["A@0", "B@0"]);
-    });
-
-    it("단락으로 안 본 술어의 직전 상태는 미참으로 되돌아간다 — 모르는 것을 참으로 세지 않는다", () => {
-        // 값 술어(비싼 zoneRank)가 싼 술어 뒤에 선다. 싼 술어가 죽은 분에는 zone 을 안 보고,
-        // 다시 살아난 분에서 improve 가 "직전 미참"으로 발화해야 한다.
-        const s = stock("A", { rate: [9, 0, 9] , n: 3 });
-        const mat: CellMaterials = { themeAt: () => ({ pass: true, zoneRank: 2, theme: "T" }) };
-        const conds: CellConditions = [
-            {
-                id: "c",
-                enabled: true,
-                predicates: [
-                    { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, zoneRankOn: true, zoneRankMax: 5, transition: "improve" },
-                    { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] },
-                ],
-            },
-        ];
-        expect(mins(evaluateCells([s], mat, conds))).toEqual([0, 2]);
     });
 });
 
@@ -249,8 +148,8 @@ describe("evaluateCells — 격자·전고", () => {
 
     it("전고 자는 index 0(당일)을 제외한다 — 포함하면 영영 거짓", () => {
         const s = stock("A", { minuteHigh: [2, 10, 11, 11, 11], trailingHighs: { krx: [], un: [20, 8, 5, 3, 1, 2] } });
-        const conds: CellConditions = [{ id: "p", enabled: true, transition: "firstOfDay", predicates: [{ kind: "priorHighBreak", days: 5 }] }];
-        expect(mins(evaluateCells([s], NO_MAT, conds))).toEqual([1]);
+        const conds: CellConditions = [{ id: "p", enabled: true, predicates: [{ kind: "priorHighBreak", days: 5 }] }];
+        expect(mins(evaluateCells([s], NO_MAT, conds))).toEqual([1, 2, 3, 4]);
     });
 
     it("창이 비면(신규 상장) 결손 — 발화하지 않는다", () => {
@@ -366,22 +265,22 @@ describe("돌파 생성기 + 캔들·분봉 대금 필터", () => {
         expect(mins(evaluateCellsExpr([s], mat, either))).toEqual([0, 1, 2, 3]);
     });
 
-    it("같은 구조 키(zigzag·밴드)는 종목당 한 번 — 이름표·사슬 필터·전이만 다른 잎들이 사슬을 두 번 세우지 않는다", () => {
+    it("같은 구조 키(zigzag·밴드)는 종목당 한 번 — 이름표·사슬 필터만 다른 잎들이 사슬을 두 번 세우지 않는다", () => {
         const baselineOf = vi.fn(() => null);
         const two: CellExpr = {
             kind: "or",
             id: "r",
-            of: [bo(), { ...bo({ chain: cf(1, label("high")), transition: "firstTrue" }), id: "y" }, { ...bo({ chain: all }), id: "z" }],
+            of: [bo(), { ...bo({ chain: cf(1, label("high")) }), id: "y" }, { ...bo({ chain: all }), id: "z" }],
         };
         evaluateCellsExpr([s], { ...NO_MAT, baselineOf }, two);
         expect(baselineOf).toHaveBeenCalledTimes(1);
     });
 });
 
-describe("theme 술어 — payload 파라미터·게으름·전이·hit 존순위", () => {
+describe("theme 술어 — payload 파라미터·게으름·hit 존순위", () => {
     const TP = { ...DEFAULT_THEME_ZONE, countOn: true, countMin: 2 };
-    const themeCond = (over: Partial<typeof TP> = {}, transition?: Transition): CellConditions => [
-        { id: "t", enabled: true, predicates: [{ kind: "theme", ...TP, ...over, ...(transition ? { transition } : {}) }] },
+    const themeCond = (over: Partial<typeof TP> & { enter?: boolean } = {}): CellConditions => [
+        { id: "t", enabled: true, predicates: [{ kind: "theme", ...TP, ...over }] },
     ];
 
     it("themeAt 의 pass 가 곧 발화 — null(재료 없음)은 미발화(모름 ≠ 통과)", () => {
@@ -423,14 +322,17 @@ describe("theme 술어 — payload 파라미터·게으름·전이·hit 존순�
         expect(themeAt).toHaveBeenCalledTimes(2); // (TP) 한 번 + (countMin 9) 한 번
     });
 
-    it("improve 전이 — 밑값은 존 순위(작을수록 개선), 직전 미참 포함", () => {
-        const s = stock("A", { n: 5 });
-        const ranks: (number | null)[] = [3, 3, 2, null, 2];
-        const mat: CellMaterials = {
-            themeAt: (_c, min) => { const z = ranks[min - MIN0]; return { pass: z !== null, zoneRank: z, theme: z !== null ? "T" : null }; },
-        };
-        // 0: 첫 참(직전 미참) ✓ · 1: 3→3 개선 아님 ✗ · 2: 3→2 개선 ✓ · 3: 미참 ✗ · 4: 직전 미참 ✓
-        expect(mins(evaluateCells([s], mat, themeCond({}, "improve")))).toEqual([0, 2, 4]);
+    it("enter 만 다른 두 술어는 **다른 판정**이다 — 셀당 답 캐시 키가 갈린다(themeZoneKeyOf)", () => {
+        // enter 판정 자체는 재료 층(themeAnswerAt — themeZone.test)이 잠근다. 엔진은 payload 를
+        // 그대로 재료에 넘기고 캐시 키로만 가른다 — 키에서 enter 가 빠지면 두 술어가 한 답을 나눠 쓴다.
+        const s = stock("A", { n: 1 });
+        const themeAt = vi.fn(() => ({ pass: true, zoneRank: 1, theme: "T" }));
+        const conds: CellConditions = [
+            { id: "a", enabled: true, predicates: [{ kind: "theme", ...TP }] },
+            { id: "b", enabled: true, predicates: [{ kind: "theme", ...TP, enter: true }] },
+        ];
+        evaluateCells([s], { themeAt }, conds);
+        expect(themeAt).toHaveBeenCalledTimes(2);
     });
 
     it("빈 술어(활성 하위 조건 0)는 평가에서 빠진다 — '조건 없음 = 전부'가 되지 않게", () => {

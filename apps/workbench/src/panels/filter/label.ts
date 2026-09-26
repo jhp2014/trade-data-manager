@@ -1,6 +1,6 @@
 // 단계·술어의 표시 이름(순수). 화면 폭이 좁아 **짧게** 말해야 한다.
 // (옛 LabelLookup — 그룹·축 이름 사전 — 은 2026-09-26 종단 폐기로 은퇴: 남은 종류는 이름 재료가 전부 payload 다.)
-import { CANDLE_SHAPE_LABEL, CELL_VALUE_FIELDS, TRANSITION_LABEL } from "@trade-data-manager/market/domain";
+import { CANDLE_SHAPE_LABEL, CELL_VALUE_FIELDS } from "@trade-data-manager/market/domain";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 import { breakoutText } from "../breakout/chainChecks.js";
 
@@ -30,12 +30,6 @@ function cellValueLabel(p: Extract<FilterPredicate, { kind: "cellValue" }>): str
     return `${meta.label} ${bound}${meta.suffix}${more}`;
 }
 
-/** 전이 접미 — 라벨 뒤에 붙는 "· 하루 처음". 전이가 없으면 빈 문자열(호출부가 그냥 이어 붙인다). */
-export const transitionSuffix = (p: FilterPredicate): string => {
-    const t = "transition" in p ? p.transition : undefined;
-    return t ? ` · ${TRANSITION_LABEL[t]}` : "";
-};
-
 /** 테마 존 술어 한 줄 — 존(창·대금 N·등락 축) + 켜진 컷만. 보드 행·막대·패널 칩이 같은 표기를 쓴다. */
 export function themeZoneLabel(p: Extract<FilterPredicate, { kind: "theme" }>): string {
     const win = p.window === null ? "당일" : `${p.window}분`;
@@ -45,7 +39,7 @@ export function themeZoneLabel(p: Extract<FilterPredicate, { kind: "theme" }>): 
         p.zoneRankOn ? `존≤${p.zoneRankMax}` : null,
         p.baseRankOn ? `기본≤${p.baseRankMax}` : null,
     ].filter(Boolean).join(" ");
-    return `테마 ${win} 대금≤${p.zoneAmountN}·${rate}${cuts ? ` ${cuts}` : ""}`;
+    return `테마 ${win} 대금≤${p.zoneAmountN}·${rate}${cuts ? ` ${cuts}` : ""}${p.enter === true ? " · 진입" : ""}`;
 }
 
 /** 단계가 무슨 도구인가 — 막대 아래 한 줄. 한 단계는 한 종류라 첫 술어가 곧 단계의 종류다. */

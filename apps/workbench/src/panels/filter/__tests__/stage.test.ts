@@ -1,3 +1,4 @@
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 import { describe, it, expect } from "vitest";
 import {
     activeStages, isPredicateEmpty, parseStages, stageKind, takeRetiredPredicateCount,
@@ -32,11 +33,20 @@ describe("activeStages — 켜져 있고 빈 술어가 아닌 게 있어야 센�
 });
 
 describe("parseStages — 반쯤 살아난 조건은 없느니만 못하다", () => {
-    it("정상 저장본을 읽는다(전이 포함 왕복)", () => {
+    it("정상 저장본을 읽는다 — 술어의 옛 전이는 벗긴다(전이 은퇴 2026-09-27)", () => {
         const raw = [{ id: "a", enabled: true, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }], transition: "firstOfDay" }] }];
         expect(parseStages(raw)).toEqual([
-            { id: "a", name: undefined, enabled: true, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }], transition: "firstOfDay" }] },
+            { id: "a", name: undefined, enabled: true, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }] },
         ]);
+    });
+
+    it("칸 전이 「처음으로/직전 대비 상승」은 칸의 테마 술어 enter 로 잇는다 — 테마가 없으면 벗긴다", () => {
+        const theme = { kind: "theme", ...DEFAULT_THEME_ZONE };
+        const migrated = parseStages([{ id: "a", enabled: true, transition: "firstTrue", predicates: [theme] }])!;
+        expect(migrated[0]!.predicates[0]).toMatchObject({ kind: "theme", enter: true });
+        expect("transition" in migrated[0]!).toBe(false);
+        const stripped = parseStages([{ id: "b", enabled: true, transition: "improve", predicates: [{ kind: "time", ranges: [] }] }])!;
+        expect("transition" in stripped[0]!).toBe(false);
     });
 
     it("enabled 가 없으면 켜진 것으로 본다(옛 저장본 관용)", () => {

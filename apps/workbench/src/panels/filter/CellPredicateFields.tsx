@@ -6,10 +6,7 @@
 import {
     CANDLE_SHAPE_LABEL,
     CELL_VALUE_FIELDS,
-    TRANSITIONS,
-    TRANSITION_LABEL,
     type CellPredicate,
-    type Transition,
 } from "@trade-data-manager/market/domain";
 import { NumField } from "../../components/NumField.js";
 import type { FilterPredicate, FilterStage } from "./stage.js";
@@ -91,38 +88,13 @@ export function CellStageFields({ stage, onPatch }: {
 }): JSX.Element | null {
     const cells = stage.predicates.filter(isCellPredicate);
     if (cells.length === 0) return null;
-    // 읽기 흡수 — 칸 필드가 없으면 줄에 실린 것을 그대로 보여준다.
-    const onLine = stage.predicates.map((p) => ("transition" in p ? p.transition : undefined)).find((t) => t !== undefined);
-    const trans: Transition | undefined = stage.transition ?? onLine;
     const setPredicate = (idx: number, next: CellPredicate): void =>
         onPatch({ ...stage, predicates: stage.predicates.map((q, qi) => (qi === idx ? (next as FilterPredicate) : q)) });
-    const cycle = (): void => {
-        // 없음 → 셋을 돌고 다시 없음. 칩 하나로 네 상태를 도는 게 목록 줄에 가장 적게 든다.
-        const at = trans === undefined ? -1 : TRANSITIONS.indexOf(trans);
-        const next = at + 1 >= TRANSITIONS.length ? undefined : TRANSITIONS[at + 1];
-        // 쓰기는 **칸에만** — 줄에 남아 있던 옛 값도 같이 걷어 두 자리가 다른 말을 하지 않게 한다.
-        onPatch({
-            ...stage,
-            ...(next ? { transition: next } : { transition: undefined }),
-            predicates: stage.predicates.map((p) => ("transition" in p && p.transition !== undefined ? { ...p, transition: undefined } : p)),
-        });
-    };
     return (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "2px 8px", padding: "1px 0 2px 26px" }}>
             {stage.predicates.map((p, i) =>
                 isCellPredicate(p) ? <CellPredicateField key={`${p.kind}-${i}`} p={p} onChange={(n) => setPredicate(i, n)} /> : null,
             )}
-            <button
-                onClick={cycle}
-                title="전이 수식어 — 값이 참인 매 분이 아니라 그 순간에만 걸린다. 칸 전체(술어 AND)에 붙는다. 클릭으로 순환."
-                style={{
-                    fontSize: 9.5, padding: "0 5px", borderRadius: 8, cursor: "pointer",
-                    border: `1px solid ${trans ? "var(--accent-primary)" : "var(--border-default)"}`,
-                    background: "transparent", color: trans ? "var(--accent-primary)" : "var(--text-tertiary)",
-                }}
-            >
-                {trans ? TRANSITION_LABEL[trans] : "전이 없음"}
-            </button>
         </div>
     );
 }

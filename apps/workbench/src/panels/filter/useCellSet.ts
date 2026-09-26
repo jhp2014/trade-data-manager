@@ -30,7 +30,6 @@ import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { usePointGrids } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { cellMaterialsOf } from "./cellMaterials.js";
-import type { FilterStage } from "./stage.js";
 import { activeExpr, foldExpr, isFoldedNode, type FoldedNode, type SetExpr, type SetTerm } from "./expr.js";
 
 /**
@@ -153,13 +152,11 @@ export function toCellExpr(
         // 그때는 AND 묶음으로 세운다 — 첫 술어만 싣던 옛 실수가 여기서 재발하지 않게.
         const preds = s.predicates as CellPredicate[];
         const neg = t.neg === true ? { neg: true as const } : {};
-        if (preds.length === 1) return { kind: "pred", id: s.id, pred: withTransition(preds[0]!, s.transition), ...neg };
+        if (preds.length === 1) return { kind: "pred", id: s.id, pred: preds[0]!, ...neg };
         return {
             kind: "and",
             id: s.id,
             of: preds.map((pred, i): CellExpr => ({ kind: "pred", id: `${s.id}#${i}`, pred })),
-            // ⚠ **칸 전이를 반드시 싣는다** — 술어가 여럿일 때 전이의 자리는 묶음이다.
-            ...(s.transition !== undefined ? { transition: s.transition } : {}),
             ...neg,
         };
     };
@@ -241,13 +238,6 @@ export function toCellExpr(
     return { expr: out === ABSENT ? null : out, stages: status };
 }
 
-/**
- * 잎 하나짜리 칸의 **전이 수식어**는 술어에 싣는다 — 술어 하나짜리 칸에서 "칸 전이"와 "술어 전이"가
- * 동치라는 core 의 계약(applyTransition 주석)을 그대로 쓴다. 안 실으면 "하루 처음"이 조용히 사라져
- * 매 분 재발화한다(후보 수가 소리 없이 는다).
- */
-const withTransition = (p: CellPredicate, t: FilterStage["transition"]): CellPredicate =>
-    (t === undefined || p.transition !== undefined ? p : { ...p, transition: t });
 
 // ── 모듈 메모 — 소비자가 셋이 된다(순회 목록 · 차트 ◇ · 날짜 경계 판정). 같은 (하루 재료, 조건, 노브)
 //    조합을 두 번 평가하면 그 비용(0.25~0.47초)이 그대로 두 번 든다.

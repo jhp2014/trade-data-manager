@@ -6,7 +6,7 @@
 //
 // 순수 함수인 이유: 훅이 아니어야 dom 테스트 없이 잠글 수 있고, 호출부(useCellSet)의 memo 신원이
 // 재료 한 벌로 모인다(어댑터가 훅이면 의존 배열이 갈려 매 렌더 새 참조가 된다).
-import { themeAnswerOf, type CellMaterials } from "@trade-data-manager/market/domain";
+import { themeAnswerAt, type CellMaterials } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import type { ThemeProjection } from "@trade-data-manager/market/domain";
 import { themeSectionAt } from "../themeRank/sectionSeries.js";
@@ -24,8 +24,8 @@ export function cellMaterialsOf(
 ): CellMaterials {
     return {
         ...(baselineOf ? { baselineOf } : {}),
-        // 테마 술어 — 판정은 core themeAnswerOf 하나(계산 규칙을 여기 두지 않는다). 단면은 sectionSeries
-        // 공용 캐시라 표시(시장 단면 판)와 같은 물건을 본다. 파라미터는 payload 로 술어마다 온다.
-        themeAt: (code, min, p) => themeAnswerOf(code, themeSectionAt(stocks, date, min, p.window), p, proj),
+        // 테마 술어 — 판정은 core themeAnswerAt 하나(계산 규칙을 여기 두지 않는다 — enter 의 min−1 비교 포함).
+        // 단면은 sectionSeries 공용 캐시라 표시(시장 단면 판)와 같은 물건을 보고, min−1 단면도 분당 캐시에 얹힌다.
+        themeAt: (code, min, p) => themeAnswerAt(code, (m) => themeSectionAt(stocks, date, m, p.window), min, p, proj),
     };
 }

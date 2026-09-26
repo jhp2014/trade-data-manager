@@ -45,6 +45,12 @@ export interface ThemeZoneParams {
     /** ③ 테마 내 존 순위 ≤ zoneRankMax (존에 든 멤버 중 — 자신이 존 밖이면 불만족). */
     zoneRankOn: boolean;
     zoneRankMax: number;
+    /**
+     * **진입 시만**(부재 = 상시) — 판정이 직전 분에는 거짓이었고 지금 참인 셀만 발화한다(옛 전이
+     * 기계의 후신 — 테마에만 남았다). 판정식은 `themeAnswerAt` 한 곳: pass(min) ∧ ¬pass(min−1),
+     * 첫 분(min−1 단면에 재료 없음)은 진입으로 친다. 활성 하위 조건이 0이면 뜻이 없다(빈 술어 규칙 그대로).
+     */
+    enter?: boolean;
 }
 
 export const DEFAULT_THEME_ZONE: ThemeZoneParams = {
@@ -67,7 +73,7 @@ export const anyThemeCondOn = (p: ThemeZoneParams): boolean => p.countOn || p.ba
 /** 파라미터 키 — 엔진의 셀당 답 캐시·표시 memo 가 같은 자를 쓴다(같은 키 = 같은 판정). */
 export const themeZoneKeyOf = (p: ThemeZoneParams): string =>
     `tz|w${p.window ?? "d"}|a${p.zoneAmountN}|r${p.rate.mode === "rank" ? `k${p.rate.max}` : `v${p.rate.minPct}`}|b${p.basis}` +
-    `|c${p.countOn ? p.countMin : "-"}|B${p.baseRankOn ? p.baseRankMax : "-"}|Z${p.zoneRankOn ? p.zoneRankMax : "-"}`;
+    `|c${p.countOn ? p.countMin : "-"}|B${p.baseRankOn ? p.baseRankMax : "-"}|Z${p.zoneRankOn ? p.zoneRankMax : "-"}|e${p.enter === true ? 1 : 0}`;
 
 /**
  * 저장물 파서 — 유효성 정의 한 벌(관대한 병합: 객체가 아니면 null, 필드는 맞는 것만 승계·나머지 기본값).
@@ -110,6 +116,9 @@ export function parseThemeZoneParams(o: unknown): ThemeZoneParams | null {
         baseRankMax: num(r.baseRankMax, d.baseRankMax),
         zoneRankOn: bool(r.zoneRankOn, d.zoneRankOn),
         zoneRankMax: num(r.zoneRankMax, d.zoneRankMax),
+        // 옛 전이 저장물 이주(2026-09-27 전이 은퇴): 처음으로·직전 대비 상승은 뜻이 "진입"이었다.
+        // 하루 처음(firstOfDay)은 등가물이 없어 벗긴다(상시로).
+        ...(r.enter === true || r.transition === "firstTrue" || r.transition === "improve" ? { enter: true } : {}),
     };
 }
 
@@ -239,4 +248,23 @@ export function themeAnswerOf(code: string, section: ThemeSectionRanks, p: Theme
         if (stats?.zoneRank != null && (best === null || stats.zoneRank < best.rank)) best = { rank: stats.zoneRank, theme: t };
     }
     return { pass, zoneRank: best?.rank ?? null, theme: best?.theme ?? null };
+}
+
+/**
+ * 타점(종목·분) 하나의 답 — **enter(진입 시만)까지 본** 판정. 엔진 재료(`CellMaterials.themeAt`)가
+ * 이걸 그대로 배선한다: pass(min) ∧ ¬pass(min−1). min−1 단면은 공급자(sectionOf)가 대는데,
+ * 분당 캐시(sectionSeries)라 이웃 분 평가에서 재사용된다 — 진입 노브의 비용은 "단면 하나 더"다.
+ * 첫 분(min ≤ 0 또는 min−1 재료 없음 → pass(min−1)=false)은 진입으로 친다.
+ */
+export function themeAnswerAt(
+    code: string,
+    sectionOf: (min: number) => ThemeSectionRanks,
+    min: number,
+    p: ThemeZoneParams,
+    proj: ThemeProjection,
+): ThemeAnswer {
+    const now = themeAnswerOf(code, sectionOf(min), p, proj);
+    if (p.enter !== true || !now.pass || min <= 0) return now;
+    const prev = themeAnswerOf(code, sectionOf(min - 1), p, proj);
+    return prev.pass ? { ...now, pass: false } : now;
 }

@@ -25,13 +25,12 @@ const leafIds = (e: SetExpr): string[] => {
 };
 
 describe("toCellExpr — 잎 변환", () => {
-    it("셀 술어 잎은 그대로 넘어간다 · **전이가 술어에 실린다**(술어 하나짜리 칸)", () => {
-        const withName = stage("c2", cell.predicates, { name: "돌파", transition: "firstOfDay" });
+    it("셀 술어 잎은 그대로 넘어간다(술어 하나짜리 칸 = pred 잎)", () => {
+        const withName = stage("c2", cell.predicates, { name: "돌파" });
         const { expr } = toCellExpr(exprOfStages([withName]));
-        // ⚠ 전이가 빠지면 "하루 처음"이 조용히 사라져 매 분 재발화한다(후보 수가 소리 없이 는다).
         expect(expr).toMatchObject({
             kind: "and",
-            of: [{ kind: "pred", id: "c2", pred: { ...cell.predicates[0], transition: "firstOfDay" } }],
+            of: [{ kind: "pred", id: "c2", pred: cell.predicates[0] }],
         });
     });
 
@@ -39,11 +38,11 @@ describe("toCellExpr — 잎 변환", () => {
         const two = stage("c3", [
             cell.predicates[0]!,
             { kind: "time", ranges: [{ from: "09:00", to: "10:00" }] },
-        ], { transition: "firstTrue" });
+        ]);
         const { expr } = toCellExpr(exprOfStages([two]));
         expect(expr).toMatchObject({
             kind: "and",
-            of: [{ kind: "and", id: "c3", transition: "firstTrue", of: [{ kind: "pred" }, { kind: "pred" }] }],
+            of: [{ kind: "and", id: "c3", of: [{ kind: "pred" }, { kind: "pred" }] }],
         });
     });
 });

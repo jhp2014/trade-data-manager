@@ -81,6 +81,11 @@ export function ThemeCondEditor({ at, pred, onWrite, onClose }: {
                 onToggle={() => w({ zoneRankOn: !pred.zoneRankOn })} onValue={(v) => w({ zoneRankMax: v })} />
             <CutRow label="기본 순위" hint="테마 전 멤버 중 기준 서수 순위 ≤ k (존 무관)" on={pred.baseRankOn} value={pred.baseRankMax} unit="위"
                 onToggle={() => w({ baseRankOn: !pred.baseRankOn })} onValue={(v) => w({ baseRankMax: v })} />
+            <div style={row} title="발화 시점 — 상시: 판정이 참인 매 분 · 진입 시만: 직전 분에는 아니었던 분만(첫 분은 진입)">
+                <span style={rowLabel}>판정</span>
+                <Seg options={[["always", "상시"], ["enter", "진입 시만"]]} value={pred.enter === true ? "enter" : "always"}
+                    onPick={(v) => w(v === "enter" ? { enter: true } : { enter: undefined })} />
+            </div>
             <div style={row} title="순위 컷(존·기본)의 기준 서수 — 등락률 기본, 거래대금 옵션">
                 <span style={rowLabel}>기준</span>
                 <Seg options={[["rate", "등락"], ["amount", "대금"]]} value={pred.basis} onPick={(v) => w({ basis: v })} />

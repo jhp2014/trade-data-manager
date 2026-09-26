@@ -11,7 +11,7 @@
 
 import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
-import { parseStages, takeRetiredPredicateCount } from "../panels/filter/stage.js";
+import { parseStages, takeRetiredPredicateCount, takeStrippedTransitionCount } from "../panels/filter/stage.js";
 import { appendTerm, emptyExpr, hasCycle, parseExpr, refNode, refsOf, type SetExpr } from "../panels/filter/expr.js";
 import { parseUniverse } from "../panels/filter/universe.js";
 import { backupRawOnce, loadJson, saveJson } from "./persist.js";
@@ -44,6 +44,8 @@ const SAVED_SETS_KEY = "wb.savedSets.v6";
 backupRawOnce("wb.savedSets.v6", "pre-theme");
 // 종단 트랙 전면 폐기(2026-09-26) 전 원문 — 종단 집합·은퇴 술어를 걷기 전에 한 번 뜬다(되돌릴 다리).
 backupRawOnce("wb.savedSets.v6", "pre-longitudinal");
+// 전이 은퇴(2026-09-27) — 벗기기·enter 이주 전 원문 1회 백업.
+backupRawOnce("wb.savedSets.v6", "pre-transition");
 
 /** 이번 로드에 폐기한 종단 집합 수 — 아래 loadSavedSets 가 로그로 낸다. */
 let droppedLongitudinal = 0;
@@ -115,9 +117,10 @@ const loadSavedSets = (): SavedSet[] => {
     droppedLongitudinal = 0;
     const sets = parseSavedSets(loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null))) ?? [];
     const retiredPreds = takeRetiredPredicateCount();
-    if (droppedLongitudinal > 0 || retiredPreds > 0) {
-        // 이주 보고 — 백업 키(pre-longitudinal)가 원문을 든다. 조용히 사라졌다는 인상을 안 남긴다.
-        console.info(`[savedSets] 종단 폐기 이주: 종단 집합 ${droppedLongitudinal}개 폐기 · 은퇴 술어 ${retiredPreds}개 걷음 (백업: wb.savedSets.v6.backup.pre-longitudinal)`);
+    const strippedTrans = takeStrippedTransitionCount();
+    if (droppedLongitudinal > 0 || retiredPreds > 0 || strippedTrans > 0) {
+        // 이주 보고 — 백업 키(pre-longitudinal·pre-transition)가 원문을 든다. 조용히 사라졌다는 인상을 안 남긴다.
+        console.info(`[savedSets] 이주: 종단 집합 ${droppedLongitudinal}개 폐기 · 은퇴 술어 ${retiredPreds}개 걷음 · 전이 ${strippedTrans}개 벗김(테마는 진입으로 이주) (백업: wb.savedSets.v6.backup.*)`);
     }
     const withDefault = sets.length > 0 ? sets : [...sets, blankSet()];
     // 이주 결과를 곧바로 굳힌다 — 다음 로드부터는 걷어낼 것이 없다(로그도 한 번만).

@@ -10,7 +10,6 @@ import {
     parseCellPredicate,
     type CellPredicate,
     type Grain,
-    type Transition,
 } from "@trade-data-manager/market/domain";
 import { anyThemeCondOn, DEFAULT_THEME_ZONE, parseThemeZoneParams } from "@trade-data-manager/market/domain";
 
@@ -24,7 +23,7 @@ export interface TimeRange { from: string; to: string } // HH:MM (양끝 포함)
  * `time` 만 workbench 소유다(엔진에도 같은 kind 가 있어 payload 가 글자까지 같다).
  */
 export type FilterPredicate =
-    | { kind: "time"; ranges: TimeRange[]; transition?: Transition }
+    | { kind: "time"; ranges: TimeRange[] }
     | Extract<CellPredicate, { kind: "cellValue" }>
     | Extract<CellPredicate, { kind: "priorHighBreak" }>
     // Daily 타점 생성기(돌파 사슬)와 캔들 모양 필터(decisions 「Daily 타점 생성 = 돌파 사슬」).
@@ -34,9 +33,6 @@ export type FilterPredicate =
     | Extract<CellPredicate, { kind: "theme" }>;
 
 export type PredicateKind = FilterPredicate["kind"];
-
-/** 전이 수식어 재수출 — 필터 모듈들은 stage 만 본다(core 경로가 바뀌어도 한 줄). */
-export type { Transition };
 
 /**
  * 술어 종류 스위치의 **자물쇠**. 이 레포는 `noImplicitReturns` 가 없어서, 반환형에 `undefined`/`null`
@@ -56,11 +52,6 @@ export interface FilterStage {
     /** 끈 단계는 평가에서 통째로 빠진다 — 지우지 않고 잠깐 빼보는 게 "이 조건이 일을 하나"를 눈으로 확인하는 손짓이다. */
     enabled: boolean;
     predicates: FilterPredicate[];
-    /**
-     * **전이 수식어(칸 수준)** — 술어 AND 전체를 하나의 f 로 보고 그 엣지에서만 건다.
-     * 술어에도 같은 필드가 있고 **술어 하나짜리 칸에서 둘은 동치**다(core engine 테스트가 잠갔다).
-     */
-    transition?: Transition;
 }
 
 /**
@@ -118,6 +109,14 @@ export function takeRetiredPredicateCount(): number {
     return n;
 }
 
+let strippedTransitions = 0;
+/** 이번 세션에 벗긴 전이 수식어 수(테마 enter 로 이주된 것 제외) — 로드 직후 로그용(읽으면 0 리셋). */
+export function takeStrippedTransitionCount(): number {
+    const n = strippedTransitions;
+    strippedTransitions = 0;
+    return n;
+}
+
 /**
  * 저장본 파싱 — 형태가 안 맞는 항목은 **통째로 버린다**(부분 복구 안 함). 반쯤 살아난 조건은
  * 화면에 멀쩡히 뜨면서 다른 걸 세기 때문에, 없는 편이 낫다.
@@ -140,13 +139,20 @@ export function parseStages(o: unknown): FilterStage[] | null {
             predicates.push(parsed);
         }
         if (predicates.length === 0 && dropped > 0) continue; // 은퇴 술어뿐이던 칸 — 칸째 걷는다
+        // 칸 전이 이주(전이 은퇴 2026-09-27) — 「처음으로/직전 대비 상승」은 뜻이 "진입"이라 칸의 테마
+        // 술어 enter 로 잇는다. 테마가 없거나 「하루 처음」이면 벗긴다(수는 로그로 — 조용히 사라지지 않게).
         const t = (raw as { transition?: unknown }).transition;
+        let migrated = predicates;
+        if (t === "firstTrue" || t === "improve") {
+            if (predicates.some((q) => q.kind === "theme")) {
+                migrated = predicates.map((q) => (q.kind === "theme" ? { ...q, enter: true } : q));
+            } else strippedTransitions += 1;
+        } else if (t === "firstOfDay") strippedTransitions += 1;
         out.push({
             id: s.id,
             name: typeof s.name === "string" ? s.name : undefined,
             enabled: s.enabled !== false,
-            predicates,
-            ...(isTransitionValue(t) ? { transition: t } : {}),
+            predicates: migrated,
         });
     }
     return out;
@@ -159,35 +165,39 @@ const isFromToRange = (o: unknown): o is { from: string; to: string } => {
     return typeof r.from === "string" && typeof r.to === "string";
 };
 
-/** 전이 수식어 값인가 — core 어휘 3종(모르는 값은 전이 없음으로 떨군다). */
-const isTransitionValue = (v: unknown): v is Transition =>
-    v === "firstOfDay" || v === "firstTrue" || v === "improve";
-
 function parsePredicate(o: unknown): FilterPredicate | typeof RETIRED | null {
     const p = o as { kind?: unknown };
     switch (p?.kind) {
         case "themeStrength": {
             // 옛 종단 테마 강도 → theme 이주(2026-09-26) — core 파서가 옛 params 모양(zoneRateN·0|60 창)을
             // 그대로 읽는다. payload 누락·오염은 **조건-off theme** 로 살린다(빈 술어가 정직하고 덜 파괴적이다).
+            // 술어에 실려 있던 옛 전이(처음으로·직전 대비 상승)는 진입 노브로 잇는다(전이 은퇴 2026-09-27).
+            const t = (o as { transition?: unknown }).transition;
+            const enter = t === "firstTrue" || t === "improve" ? { enter: true as const } : {};
             const params = parseThemeZoneParams((o as { params?: unknown }).params);
             return params !== null
-                ? { kind: "theme", ...params }
-                : { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, baseRankOn: false, zoneRankOn: false };
+                ? { kind: "theme", ...params, ...enter }
+                : { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, baseRankOn: false, zoneRankOn: false, ...enter };
         }
         case "time": {
             const t = o as { ranges?: unknown; transition?: unknown };
             if (!Array.isArray(t.ranges) || !t.ranges.every(isFromToRange)) return null;
-            // 전이는 옵셔널 — 모르는 값은 **떨군다**(조용히 다른 뜻이 되지 않게). 왕복 보존은 골든이 지킨다.
-            return { kind: "time", ranges: t.ranges, ...(isTransitionValue(t.transition) ? { transition: t.transition } : {}) };
+            if (t.transition !== undefined) strippedTransitions += 1; // 전이 은퇴 — 시간 술어의 전이는 벗긴다
+            return { kind: "time", ranges: t.ranges };
         }
         // 셀 술어는 **core 파서 한 벌**을 그대로 쓴다(검증 두 벌 금지). core 의 null 이 여기선
-        // "저장본 통째 폐기" 신호로 흐른다.
+        // "저장본 통째 폐기" 신호로 흐른다. 옛 술어 전이는 core 가 벗기고(theme 의 처음으로·직전 대비
+        // 상승은 enter 로 이주 — parseThemeZoneParams), 여기서는 벗긴 수만 센다(로그).
         case "cellValue":
         case "priorHighBreak":
         case "breakout":
         case "candleShape":
-        case "theme":
+        case "theme": {
+            const t = (o as { transition?: unknown }).transition;
+            const migrates = p.kind === "theme" && (t === "firstTrue" || t === "improve");
+            if (t !== undefined && !migrates) strippedTransitions += 1;
             return parseCellPredicate(o) as FilterPredicate | null;
+        }
         default:
             return typeof p?.kind === "string" && RETIRED_KINDS.has(p.kind) ? RETIRED : null;
     }
