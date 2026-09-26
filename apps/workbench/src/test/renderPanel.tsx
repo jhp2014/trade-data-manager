@@ -13,13 +13,13 @@ import { effectiveUniverse, universeOfExpr, type Universe } from "../panels/filt
 import type { SetExpr } from "../panels/filter/expr.js";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, LabeledPointFact, RankSectionBundle, StockMeta, ThemeMember } from "@trade-data-manager/wire";
+import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, LabeledPointFact, StockMeta, ThemeMember } from "@trade-data-manager/wire";
 import { hmsToMinute, pointKeyOf, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
 import type { Group, GroupMembership, PointGroupMembership } from "../api/groups.js";
 import {
     dataDatesQuery,
     allAnchorsQuery, allCommentsQuery, allThemeMembersQuery, chartQuery, computedAxesQuery,
-    groupMembershipsQuery, groupsQuery, labeledPointFactsQuery, pointGridsQuery, pointGroupMembershipsQuery, rankSectionsQuery, stockMasterQuery,
+    groupMembershipsQuery, groupsQuery, labeledPointFactsQuery, pointGridsQuery, pointGroupMembershipsQuery, stockMasterQuery,
 } from "../api/queries.js";
 import type { DecodedPointGrids } from "../api/pointGrids.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
@@ -111,16 +111,10 @@ export interface Seed {
     daySnapshot?: { date: string; data: DayReplay };
     computedAxes?: ComputedAxisFeed[];
     /**
-     * 그날 복기 파생(테마 선·거래대금의 재료). 키는 골격 패널 전용이다 — 복기 보드와 **일부러 갈라져**
-     * 있다(응답이 ~15MB 라 gcTime 이 긴 보드 캐시와 섞이면 힙에 여러 날이 앉는다, useDaySnapshot 참고).
-     */
-    /**
      * 차트 번들(원주가 분봉 + 2년 일봉) — **캔들 오버레이의 재료**. 종목·날짜별이라 목록으로 받는다.
      * 안 심고 캔들을 켜면 setup 의 네트워크 그물에 걸린다(그게 의도다 — 빈 캔들로 통과하지 않게).
      */
     charts?: { code: string; date: string; data: ChartBundle }[];
-    /** 순위 단면 번들(테마 강도 필터·패널 카운트의 재료). 안 주면 빈 번들. */
-    rankSections?: RankSectionBundle;
     /** 거래일 목록(오름차순) — 없으면 빈 배열(경계 넘김 없음). */
     dataDates?: string[];
     /** 자동 타점 격자(디코딩 후 형태 — usePointGrids 재료). 안 주면 빈 번들(자동 Point 0). */
@@ -176,7 +170,6 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
     qc.setQueryData(pointGroupMembershipsQuery().queryKey, allLabels);
     qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
-    qc.setQueryData(rankSectionsQuery().queryKey, seed.rankSections ?? { version: 2, dates: [], pending: [] });
     // 거래일 목록(날짜 경계 넘기의 재료) — 탐색판·작업 대상이 하루 우주에서 늘 당긴다.
     qc.setQueryData(dataDatesQuery().queryKey, seed.dataDates ?? []);
     // 격자 — 명시 격자가 있으면 그대로, 없으면 seed.points 를 최소 격자로 번역한다(걷기·시뮬·격자 축 재료).

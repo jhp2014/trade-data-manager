@@ -26,7 +26,7 @@ import {
     attachGroup, detachGroup, attachPointGroup, detachPointGroup,
     createGroup, renameGroup as apiRenameGroup, deleteGroup as apiDeleteGroup, setGroupParent,
 } from "../api/groups.js";
-import { groupsQuery, groupMembershipsQuery, pointGroupMembershipsQuery, labeledPointFactsQuery, pointGridsQuery, rankSectionsQuery } from "../api/queries.js";
+import { groupsQuery, groupMembershipsQuery, pointGroupMembershipsQuery, labeledPointFactsQuery, pointGridsQuery } from "../api/queries.js";
 import type { DecodedPointGrids } from "../api/pointGrids.js";
 import { useWorkbench } from "../store/workbench.js";
 import { groupGrainSets, type GroupGrainSets } from "./groupGrain.js";
@@ -270,7 +270,6 @@ export function useGroupsValue(): GroupsView {
             void qc.invalidateQueries({ queryKey: labeledPointFactsQuery().queryKey });
             // 순위 단면도 같은 결 — 모수가 라벨 분이라(A2) 새 라벨의 단면은 refetch 전엔 없다(테마 술어
             // 영구 결손). 옛 모수(격자 사건 봉 전량 3.5MB)일 땐 못 하던 무효화가 A2 로 싸졌다.
-            void qc.invalidateQueries({ queryKey: rankSectionsQuery().queryKey });
             // 격자 번들은 **그 차트의 격자가 아직 없을 때만** 무효화한다(부착 = 기대집합 입장 가능성).
             // 매 토글 10~20MB refetch 는 연타 입력에 못 버티고, 이미 구워진 차트는 라벨과 무관하다.
             if (on) {

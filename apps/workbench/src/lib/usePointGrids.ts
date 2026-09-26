@@ -55,7 +55,7 @@ export interface AutoPointsView {
     /**
      * 행 원천용 키 목록 — 날짜 내림차순, 같은 날 시각 오름차순. **여기서 한 번만** 만든다:
      * 소비자(시트·깔때기·작업셋·레일·통계)가 각자 정렬하면 1만 개짜리 배열이 화면 수만큼 복제되고,
-     * 참조가 갈려 파생 memo(useThemeStrengthStats 모듈 캐시)가 통째로 헛돈다.
+     * 참조가 갈려 파생 memo(useThemeProjection 모듈 캐시)가 통째로 헛돈다.
      */
     rows: readonly ReviewPointKey[];
     /** 차트키(chartKeyOf) → 그 차트의 파생 Point 목록 — 차트 마커·per-chart 소비자용. */

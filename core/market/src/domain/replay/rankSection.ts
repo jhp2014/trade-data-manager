@@ -1,11 +1,11 @@
 // 순위 단면 — 어느 (날짜, 분)의 그날 유니버스 전 종목 등락률·거래대금 **서수 전체**(순수, I/O 0).
 //
-// N/M(top-N 컷)은 여기 없다 — 서수 원료만 굽고 존(zone)·테마 강도·임계값은 전부 소비자의 읽기 시점
-// 파생이다(decisions.md "테마 강도·순위 단면"). 그래서 캐시가 N/M 에 불변이고, 시트 테마 멤버십처럼
-// 가변인 것도 여기 안 들어온다.
+// N/M(top-N 컷)은 여기 없다 — 서수 원료만 굽고 존(zone)·테마 판정·임계값은 전부 소비자의 읽기 시점
+// 파생이다(decisions.md "테마 술어·순위 단면"). 그래서 계산이 N/M 에 불변이고, 시트 테마 멤버십처럼
+// 가변인 것도 여기 안 들어온다. (옛 서버 사전계산은 2026-09-26 은퇴 — 소비자는 클라 /day-replay 즉석 계산 하나.)
 //
-// **서버가 굽는 서수와 클라가 /day-replay 로 즉석 계산하는 서수는 이 한 벌이어야 한다** — 갈리면 같은
-// 화면에서 N/M 이 두 개가 된다(minuteOfDayOf 를 유일 변환자로 묶은 것과 같은 이유). 그래서:
+// **이 서수를 쓰는 모든 화면(테마 순위 판·타점 정보·셀 엔진)은 이 한 벌을 봐야 한다** — 재계산기가
+// 갈리면 같은 화면에서 N/M 이 두 개가 된다(minuteOfDayOf 를 유일 변환자로 묶은 것과 같은 이유). 그래서:
 //  · 시점 값 = lastIndexAtOrBefore(carry-forward) — 그 분 이전 데이터가 하나라도 있으면 참가(마지막 값),
 //    없으면 결손(null, 분모 제외). 복기 보드의 snapshotAt 이 이미 이 규칙이다 — 정지 종목이 분모에서
 //    빠지면 두 화면의 M 이 갈린다.
@@ -118,11 +118,6 @@ export function windowedAmounts(
     return out;
 }
 
-/**
- * 구워지는 창 길이(분) — 검색(깔때기 술어)이 아는 유일한 T-창. 모든 T 를 미리 구울 수 없으므로
- * 단면에는 이 창의 서수 하나만 싣고, 표시(테마 순위 패널)는 임의 T 를 클라에서 즉석 계산한다.
- */
-export const BAKED_AMOUNT_WINDOW_MIN = 60;
 
 /** 단면 하나 — 배열들은 입력 stocks 와 같은 길이·같은 순서(코드 테이블은 호출측이 든다). */
 export interface RankSection {
@@ -134,9 +129,6 @@ export interface RankSection {
     rate: (number | null)[];
     /** 누적 거래대금 서수(1=최대). null = 결손. */
     amount: (number | null)[];
-    /** 60분 창(BAKED_AMOUNT_WINDOW_MIN) 누적 거래대금 서수(1=최대) — 오후 상승주가 아침 상승주와
-     *  같은 자로 재이지 않게 하는 창. 창 값 규칙은 windowedAmounts(경계 0 기준·결손만 null). */
-    amount60: (number | null)[];
 }
 
 /**
@@ -159,6 +151,5 @@ export function rankSectionOf(
         n,
         rate,
         amount: descendingOrdinals(vals.cumAmount),
-        amount60: descendingOrdinals(windowedAmounts(stocks, date, time, BAKED_AMOUNT_WINDOW_MIN)),
     };
 }

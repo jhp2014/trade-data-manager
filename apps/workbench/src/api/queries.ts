@@ -12,7 +12,6 @@ import { fetchTapeThemes } from "./liveTape.js";
 import { fetchMirrorStatus } from "./curation.js";
 import { fetchAllChartAnchors } from "./chartAnchors.js";
 import { fetchComputedAxes } from "./rank.js";
-import { fetchRankSections } from "./rankSections.js";
 import { fetchPointGrids } from "./pointGrids.js";
 import { fetchGroups, fetchGroupMemberships, fetchPointGroupMemberships } from "./groups.js";
 import { fetchLabeledPointFacts } from "./pointFacts.js";
@@ -97,12 +96,6 @@ export const allCommentsQuery = () =>
 export const computedAxesQuery = () =>
     queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
 
-// 순위 단면 번들(라벨 좌표가 선 날짜·분의 서수) — **키 하나**(전 소비자가 통째를 본다). 모수가 좌표
-// 라벨이라 라벨 토글(useGroups — 그게 곧 모수의 변경)·테마 배정(접기가 바뀐다)·미러 동기화(CURATION)가
-// 무효화한다(앵커 편집은 A2 이후 무관). 서수 자체는 불변 원료다.
-export const rankSectionsQuery = () =>
-    queryOptions({ queryKey: ["rank-sections"], queryFn: ({ signal }) => fetchRankSections(signal), staleTime: IMMUTABLE , meta: CURATION });
-
 // 자동 타점 격자 번들 — **키 하나**. 기대집합·기준선 승자가 앵커(큐레이션) 파생이라 앵커 mutation
 // (chartAnchorHooks.invalidate)과 미러 동기화(CURATION)가 무효화한다. Point 판정은 클라 파생(usePointGrids).
 export const pointGridsQuery = () =>
@@ -142,8 +135,7 @@ export const themeContextQuery = (code: string) =>
 
 // 시트 멤버십 전량(테마↔종목 인덱스 원자재) — 시트는 사람이 편집하므로 ∞는 위험, 마스터 메타와 같은 30분.
 // 배정 mutation·/theme/refresh 가 ["theme-members-all"] invalidate 로 즉시 갱신한다(AssignThemeModal).
-// ⚠ 그때 **["rank-sections"] 도 같이** 비운다 — 단면은 서빙 시점에 테마로 접혀 오므로 두 캐시의
-//   멤버십이 갈리면 새 동료가 행 없이 분모에서 빠진다(결손이 아니라 틀린 값).
+// 테마 판정은 클라 즉석 계산(2026-09-26 서버 단면 은퇴)이라 이 키 하나가 곧 판정의 멤버십 출처다.
 export const allThemeMembersQuery = () =>
     queryOptions({ queryKey: ["theme-members-all"], queryFn: ({ signal }) => fetchAllThemeMembers(signal), staleTime: META_STALE });
 

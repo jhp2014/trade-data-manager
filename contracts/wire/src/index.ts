@@ -14,7 +14,6 @@ export type * from "./group.js";
 export type * from "./rank.js";
 export type * from "./rankComputed.js";
 export type * from "./rankPaths.js";
-export type * from "./rankSection.js";
 export type * from "./news.js";
 export type * from "./telegramNews.js";
 export type * from "./stockMeta.js";

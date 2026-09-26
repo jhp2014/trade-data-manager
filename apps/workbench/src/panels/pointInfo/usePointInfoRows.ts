@@ -1,10 +1,9 @@
 // 타점 정보 줄 목록의 **값 배선** — 세 출처(축 피드·결과 단면·테마 진단)를 한 타점에 대해 모은다.
 //
 // 셋 다 **이미 다른 화면이 당기고 있는 파생**이라 이 패널이 여는 것만으로 새 요청이 생기면 안 된다
-// (그게 생기면 배선이 틀린 것): 축 = `useRankAxes`, 결과·시뮬 = `PointGridsContext`, 테마 = 구운
-// 단면 번들(`useRankSections`) + 멤버십 투영. 테마 단면을 `useDaySnapshot`(테마 순위 패널의 재계산
-// 경로)으로 끌어오면 패널을 여는 것만으로 날짜당 요청이 하나씩 는다 — 그래서 번들을 쓰고, 그 분의
-// 단면이 없으면 테마 줄을 아예 안 세운다(없는 값을 지어내지 않는다).
+// (그게 생기면 배선이 틀린 것): 축 = `useRankAxes`, 결과·시뮬 = `PointGridsContext`, 테마 =
+// `useDaySnapshot`(react-query 캐시 — 테마 순위 판·깔때기가 이미 당기는 같은 키) + sectionSeries
+// 공용 단면 캐시 + 멤버십 투영. 스냅샷이 아직 없으면 테마 줄을 안 세운다(없는 값을 지어내지 않는다).
 import { useMemo } from "react";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
 import { usePlacements } from "../../lib/usePlacements.js";
@@ -56,7 +55,7 @@ export function usePointInfoRows(point: PointRef | null): PointInfoRowsView {
         if (!point) return [];
         const detail = placements.detailOf(point);
         // 시선 한 종목·한 시각에만 도는 진단이라 (그 종목의 테마 × 멤버) 한 패스다 — 모수를 도는
-        // useThemeStrengthStats("호출자는 하나여야 한다")와는 층이 다르다.
+        // sectionSeries 캐시("계산 주체는 core 하나")와는 층이 다르다.
         const stocks = snapQ.data?.date === point.date ? snapQ.data.stocks : null;
         const section = themes.ready && stocks !== null
             ? themeSectionAt(stocks, point.date, minuteOfDayOf(kstToUnix(point.date, point.time)), themeParams.window)

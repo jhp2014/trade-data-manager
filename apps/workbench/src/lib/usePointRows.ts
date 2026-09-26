@@ -9,7 +9,7 @@ import { useLabelRows } from "./PointGridsContext.js";
 
 export interface PointRowsView {
     /** 날짜 내림차순, 같은 날 시각 오름차순. **readonly** — 파생 한 벌의 원본이라, 소비자가 제자리
-     *  정렬하면 참조는 그대로인 채 내용만 바뀌어 하류 memo(useThemeStrengthStats 모듈 캐시)가 조용히 틀어진다. */
+     *  정렬하면 참조는 그대로인 채 내용만 바뀌어 하류 memo(useThemeProjection 모듈 캐시)가 조용히 틀어진다. */
     points: readonly ReviewPointKey[];
     isLoading: boolean;
     /** 첫 로드 실패 — 빈 목록을 "타점 없음"으로 오독하지 않게 겉으로 낸다. */

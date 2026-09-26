@@ -14,10 +14,9 @@ import type {
     AttachPointGroupInput,
     SetGroupParentInput,
 } from "@trade-data-manager/wire";
-import { GROUP_REPO, LABELED_POINT_FACTS, POINT_GRIDS, RANK_SECTIONS } from "../tokens.js";
+import { GROUP_REPO, LABELED_POINT_FACTS, POINT_GRIDS } from "../tokens.js";
 import type { PointGrids } from "../grid/pointGrids.js";
 import type { LabeledPointFacts } from "../grid/labeledPointFacts.js";
-import type { RankSections } from "../board/rankSections.js";
 import { assertYmd, assertHms, assertStockCode, assertName, rejectDuplicateName } from "../validation.js";
 
 // 그룹 큐레이션 — 이름 붙인 집합 + 관계(중첩)·위치. 옛 태그 컨트롤러를 흡수했다.
@@ -33,7 +32,6 @@ export class GroupController {
         @Inject(GROUP_REPO) private readonly repo: GroupReader & GroupStore,
         @Inject(POINT_GRIDS) private readonly grids: PointGrids,
         @Inject(LABELED_POINT_FACTS) private readonly facts: LabeledPointFacts,
-        @Inject(RANK_SECTIONS) private readonly sections: RankSections,
     ) {}
 
     @Get()
@@ -94,7 +92,6 @@ export class GroupController {
         // 봉 사실·순위 단면은 부착·해제 양쪽에서 — 둘 다 모수가 곧 라벨이라, 편집 전에 시작된 비행에
         // 합류하면 낡은 목록이 클라 IMMUTABLE 캐시에 굳는다(양쪽 다 gen 재시도로 받는다).
         this.facts.invalidate();
-        this.sections.invalidate();
         return { ok: true };
     }
 
@@ -102,7 +99,6 @@ export class GroupController {
     async detachPoint(@Body() body: AttachPointGroupInput): Promise<{ ok: true }> {
         await guard(() => this.repo.detachPoint(assertName(body?.group, "group"), assertPointItem(body?.item)));
         this.facts.invalidate();
-        this.sections.invalidate();
         return { ok: true };
     }
 

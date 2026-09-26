@@ -8,12 +8,11 @@ import {
     DrizzleStockMasterRepository,
     DrizzleDailyMarketCapRepository,
     DrizzleDailyCommentRepository,
-    DrizzleGroupRepository,
 } from "@trade-data-manager/persistence";
 import type { DataDateReader } from "@trade-data-manager/market";
 import { SheetThemeMembershipAdapter, DEFAULT_THEME_SHEET } from "@trade-data-manager/broker";
 import { createSheetsClient } from "@trade-data-manager/google/sheets";
-import { DAY_BOARDS, DERIVED_CACHE, MASTER_CACHE, MEMBERSHIP_CACHE, RANK_SECTIONS, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, MARKET_POOL, DATA_DATE_READER } from "../tokens.js";
+import { DAY_BOARDS, DERIVED_CACHE, MASTER_CACHE, MEMBERSHIP_CACHE, THEME_MEMBERSHIP_STORE, THEME_ASSIGNMENT, MARKET_POOL, DATA_DATE_READER } from "../tokens.js";
 import type { Pool } from "../pool.js";
 import { DerivedCache } from "./derivedCache.js";
 import { MasterCache } from "./masterCache.js";
@@ -21,18 +20,15 @@ import { DayBoards } from "./dayBoards.js";
 import { CachedMembership } from "./cachedMembership.js";
 import { DataDatesCache } from "./dataDatesCache.js";
 import { ThemeAssignment } from "./themeAssignment.js";
-import { RankSections } from "./rankSections.js";
-import { fileRankSectionStore } from "./rankSectionStore.js";
 import { DaySummaryController } from "./daySummary.controller.js";
 import { DayReplayController } from "./dayReplay.controller.js";
 import { DatesController } from "./dates.controller.js";
 import { ThemeController } from "./theme.controller.js";
-import { RankSectionController } from "./rankSection.controller.js";
 import { StocksController } from "../stocks/stocks.controller.js";
 
 // 보드(날짜 단위) 화면의 팩토리 묶음 — 모듈은 이 배열을 그대로 합친다(chart/board/curation/news 1:1).
 // StocksController 는 종목 마스터(MASTER_CACHE) 소비자라 여기 묶인다.
-export const boardControllers = [DayReplayController, DaySummaryController, ThemeController, StocksController, DatesController, RankSectionController];
+export const boardControllers = [DayReplayController, DaySummaryController, ThemeController, StocksController, DatesController];
 
 export const boardProviders: Provider[] = [
     {
@@ -53,7 +49,7 @@ export const boardProviders: Provider[] = [
         inject: [THEME_MEMBERSHIP_STORE],
     },
     {
-        // day 스냅샷 캐시 — **단일 인스턴스**로 승격(DayBoards·RankSections 공유). 인스턴스가 갈리면
+        // day 스냅샷 캐시 — **단일 인스턴스**로 승격(DayBoards 공유 — 옛 RankSections 은퇴). 인스턴스가 갈리면
         // in-flight dedup 이 갈려 같은 cold 날짜를 둘이 동시에 빌드한다(스냅샷 힙 ~11MB × 2).
         provide: DERIVED_CACHE,
         useFactory: (marketPool: Pool): DerivedCache => {
@@ -81,20 +77,6 @@ export const boardProviders: Provider[] = [
             return new DayBoards({ derived, master, membership, dailyComment });
         },
         inject: [MARKET_POOL, MASTER_CACHE, MEMBERSHIP_CACHE, DERIVED_CACHE],
-    },
-    {
-        // 순위 단면 읽기모델 — 좌표 라벨(기대집합) × day 스냅샷 → (날짜,분) 전 종목 서수 + 날짜별 파일 캐시.
-        // 테마 멤버십은 **서빙 접기에만** 쓴다(저장물은 테마 무지) — 같은 시트 캐시를 보드와 나눠 쓴다.
-        // 라벨은 **로컬 미러**(DrizzleGroupRepository(marketPool) — 격자·계산 축 배선과 같은 관용구).
-        provide: RANK_SECTIONS,
-        useFactory: (marketPool: Pool, derived: DerivedCache, membership: CachedMembership): RankSections =>
-            new RankSections({
-                derived,
-                labels: new DrizzleGroupRepository(createDb(marketPool)),
-                membership,
-                store: fileRankSectionStore,
-            }),
-        inject: [MARKET_POOL, DERIVED_CACHE, MEMBERSHIP_CACHE],
     },
     {
         // 테마 배정 유스케이스 — 시트 쓰기 + 중복 skip + 캐시 무효화 순서를 소유(컨트롤러는 검증만).

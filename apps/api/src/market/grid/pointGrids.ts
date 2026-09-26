@@ -7,7 +7,7 @@
 // 아니라 차트의 기대집합 출입일 뿐이고, 그 차트에 나중에 기준선이 그어지면 앵커 지문이 갈려 자동 재굽기.
 // market 캐시 대사가 curation(로컬 미러) 멤버십을 읽는 첫 자리다.
 // 요청마다 저장집합(파일)과 대조해 지문 불일치·누락 차트만 굽고, 참조 없는 날짜 파일은 GC 한다
-// (RankSections 와 같은 대조 모델). 다르게 간 두 가지:
+// (옛 RankSections — 2026-09-26 은퇴 — 과 같은 대조 모델이었다). 다르게 간 두 가지:
 //
 //  ① **굽기 게이트는 DerivedCache.isSealed 가 아니다** — 그건 "day-snapshot 파일 존재"라서(보드를 연 적
 //    없는 날짜가 실측 280일 중 207일) 물려받으면 격자의 74%가 영원히 안 구워진다. 격자의 재료는
@@ -106,7 +106,7 @@ export interface GridReconcileReport {
 export class PointGrids {
     private inFlight: Promise<GridReconcileReport> | null = null;
     /** invalidate 세대 — 낡은 기대집합으로 시작한 비행이 새 비행의 산출물(파일·메모)을 덮거나 지우는 경합을
-     *  막는다(RankSections 와 같은 이유·같은 세 자리: 파일 write/remove·GC·메모 반영). */
+     *  막는다(파일 write/remove·GC·메모 반영 세 자리). */
     private gen = 0;
     /** 재료 없음 음성 메모 — 차트키 → 기록 시각(ms). */
     private readonly missingAt = new Map<string, number>();
@@ -227,7 +227,7 @@ export class PointGrids {
             tookMs: 0,
         };
 
-        // 기대집합을 떠난 차트의 음성 메모는 여기서 턴다 — "읽기에서 무시"로만 남아 영원히 쌓이지 않게(RankSections gc 와 대칭).
+        // 기대집합을 떠난 차트의 음성 메모는 여기서 턴다 — "읽기에서 무시"로만 남아 영원히 쌓이지 않게(GC 와 대칭).
         const expectedKeys = new Set<string>();
         for (const [date, byCode] of expected) for (const code of byCode.keys()) expectedKeys.add(chartKeyOf({ stockCode: code, date }));
         for (const k of this.missingAt.keys()) if (!expectedKeys.has(k)) this.missingAt.delete(k);

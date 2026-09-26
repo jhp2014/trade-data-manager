@@ -46,7 +46,7 @@ export function useSubject(): Subject | null {
 }
 
 /**
- * 그 시각이 이 차트의 라벨 좌표인가 — **분 절단으로 비교**한다(단면 조회 useRankSections 와 같은 자를
+ * 그 시각이 이 차트의 라벨 좌표인가 — **분 절단으로 비교**한다(분 단면 자(themeSectionAt 등 분 절단 소비자)와 같은 자를
  * 써야 초가 붙은 setTime 호출자(뉴스 점프 등)의 시각이 조용히 "타점 아님"으로 떨어지지 않는다).
  */
 export function isLabelTime(time: string | null, labels: readonly { time: string }[]): boolean {

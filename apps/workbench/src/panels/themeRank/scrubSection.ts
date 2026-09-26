@@ -1,20 +1,17 @@
 // 스크럽 단면 어댑터 — /day-replay(ReplayStock[])에서 임의 분의 순위 단면을 **core rankSectionOf 로**
 // 재계산한다. 자체 계산 로직 0 — 여기에 정렬·동점 규칙을 다시 쓰면 그 순간 서수 출처가 둘이 된다
-// (구운 번들과 "타점 분에서만 미묘하게 다른 값"이라는 최악의 버그 모양).
-//
-// 화면(산점)은 **항상 이 재계산 단면**을 그린다 — 번들(/rank-sections)에는 타점 분의 단면만 있어
-// 스크럽하는 순간 어차피 이 경로로 넘어가고, 두 경로를 섞으면 위 사고 모양이 된다. 번들은 모수 전체를
-// 도는 카운트(useThemeStrengthStats) 전용. 두 재료가 같다는 근거: dayBoards.replayBoard 와 RankSections
-// 가 같은 derived.snapshot(date).stocks[].minutes 를 쓴다.
+// ("타점 분에서만 미묘하게 다른 값"이라는 최악의 버그 모양. 옛 서버 구운 번들 /rank-sections 은
+// 2026-09-26 은퇴 — 이제 모든 단면이 이 즉석 계산 한 경로다).
 import type { RankSection } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
-/** 옛 lib/themeStrength 의 단면 모양 — 이 파일의 산출물 계약으로만 남는다(소비자 정리 시 함께 은퇴). */
-interface SectionRanks {
-    ranksOf(code: string): { rate: number | null; amount: number | null; amount60?: number | null } | null;
-}
 import { sectionAtMinute } from "./sectionSeries.js";
 
-/** 재계산 단면 + O(1) 조회 — themeStrength 의 SectionRanks 를 충족(번들 단면과 같은 함수에 들어간다). */
+/** 산점 좌표용 단면 모양 — 이 파일의 산출물 계약(소비자 = ThemePlaneView 산점). */
+interface SectionRanks {
+    ranksOf(code: string): { rate: number | null; amount: number | null } | null;
+}
+
+/** 재계산 단면 + O(1) 조회 — 산점·툴팁이 같은 물건을 본다. */
 export interface ScrubSection extends SectionRanks {
     section: RankSection;
     /** 종목 → 배열 인덱스(산점이 점을 그릴 때 서수를 직접 꺼내는 용도). */
@@ -52,7 +49,7 @@ export function scrubSectionOf(stocks: readonly ReplayStock[], date: string, tim
         ranksOf: (code) => {
             const i = idx.get(code);
             if (i === undefined) return null;
-            return { rate: section.rate[i], amount: section.amount[i], amount60: section.amount60[i] };
+            return { rate: section.rate[i], amount: section.amount[i] };
         },
     };
 }
