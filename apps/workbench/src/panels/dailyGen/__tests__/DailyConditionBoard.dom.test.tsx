@@ -1,10 +1,10 @@
 // 일별 타점[조건] 조건 보드 — 옛 「집합 편성」 ConditionBoard 의 **관리소 규약**을 하루 보드로 옮긴 것.
 //   ① 걸린 것이 전부 **한 줄에 칩으로** 선다 ② 칩을 누르면 그 내용이 **아랫줄**에 열린다(편집면은 한 곳)
-//   ③ 이름 클릭 = 그 종류의 편집면(시각 = 그 자리 팝오버) · 돌파 칩 = 연동 표시(판 이름)·클릭 = 격자판(pull·1:1·영속)
+//   ③ 이름 클릭 = 그 종류의 편집면(시각·테마·돌파 = 그 자리 팝오버 — 2026-09-26 격자판·연동 은퇴)
 //   ④ ＋ 조건 = 하루 종류만(생성기 돌파 + 후보 필터) ⑤ 연산자·괄호·NOT·묶음 쌓임은 옛 보드와 같은 식 문법
 //
 // ⚠ 조건 줄은 **열었을 때만** 선다 — 그래서 대부분의 검사가 `openChip` 으로 시작한다.
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { exprOfStages, refsOf, topOpOf } from "../../filter/expr.js";
 import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 import { act, fireEvent, render } from "@testing-library/react";
@@ -12,10 +12,6 @@ import type { ReactNode } from "react";
 import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
 import { selectEditingExpr, selectEditingStages, useWorkbench } from "../../../store/workbench.js";
 import { DailyConditionBoard, setPickerOf } from "../DailyConditionBoard.js";
-import { openPanelExact } from "../../../lib/openPanel.js";
-
-// 판 열기는 dock 이 없어 조용히 no-op 이다 — 불렸는지만 잰다(나머지는 진짜 구현).
-vi.mock("../../../lib/openPanel.js", async (orig) => ({ ...(await orig<object>()), openPanelExact: vi.fn() }));
 
 const A = "005930", B = "000660";
 const DATES = ["2026-07-06", "2026-07-07"];
@@ -60,7 +56,7 @@ const pickItem = (c: HTMLElement, text: string): void => {
 const RATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "cellValue" as const, field: "ratePct" as const, ranges: [{ from: { kind: "value" as const, value: 5 } }] }] };
 const BO_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "breakout" as const, zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 } }] };
 const TIME_STAGE = { id: "tm", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: "09:00", to: "10:30" }] }] };
-const RESET = { funnelSelection: null, savedSets: [], editingSetId: "edit", editPath: ["edit"], sessionUi: {}, themeBindings: {}, filterMode: "daily" as const };
+const RESET = { funnelSelection: null, savedSets: [], editingSetId: "edit", editPath: ["edit"], sessionUi: {}, filterMode: "daily" as const };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
@@ -69,7 +65,7 @@ describe("한 줄 — 종류를 가리지 않고 걸린 것이 전부 칩으로 
         seedEditing(exprOfStages([RATE_STAGE, BO_STAGE]));
         const { container } = renderBoard();
         expect(chipByText(container, "등락률 ≥5%"), "셀 값 요약").toBeDefined();
-        expect(chipByText(container, "돌파"), "생성기 칩 — 이름 + 연동 표시(값은 hover)").toBeDefined();
+        expect(chipByText(container, "돌파 2%/0.5%"), "생성기 칩 — 요약 라벨(테마 칩과 같은 문법)").toBeDefined();
         expect(rows(container), "줄은 하나 — 내려간 게 없다").toHaveLength(1);
     });
 
@@ -109,72 +105,51 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         expect(baseElement.textContent).toContain("시간 구간");
     });
 
-    // 돌파 칩 = **연동 표시**(2026-09-25) — 칩이 판 이름만 말하고(값은 hover), 클릭 = 판 열기 / 미연동이면 연동 메뉴,
-    // 우클릭 판 맨 위 = 연동 바꾸기·해제. 값의 주인은 줄이고 판은 창이다(gridLink).
-    it("미연동 돌파 칩 — 「○ 미연동」, 클릭 = 연동 메뉴(pull: 이 보드가 유일한 연동 손잡이)", () => {
+    // 돌파 칩 = 요약 라벨(2026-09-26 — 옛 연동 표시·격자판 모델 은퇴), 클릭 = 그 자리 팝오버(테마와 같은 문법).
+    it("돌파 칩 — 요약 라벨, 클릭 = 두 층 팝오버(격자 정의·사슬 필터)", () => {
         seedEditing(exprOfStages([RATE_STAGE, BO_STAGE]));
         const { container, baseElement } = renderBoard();
-        const chip = chipByText(container, "돌파")!;
-        expect(chip.textContent).toContain("○ 미연동");
-        expect(chip.textContent, "값은 칩에 안 선다(hover)").not.toContain("2%/0.5%");
-        expect(chip.title).toContain("2%/0.5%");
+        const chip = chipByText(container, "돌파 2%/0.5%")!;
+        expect(chip.textContent).not.toContain("미연동");
         act(() => { fireEvent.click(chip); });
-        expect(baseElement.textContent).toContain("연동할 격자판");
-        expect(baseElement.textContent).toContain("＋ 새 격자판");
-        // 상비 슬롯 1 이 후보로 선다 — 고르면 영속 바인딩이 생긴다.
-        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "○ 격자 1")!); });
-        expect(useWorkbench.getState().themeBindings["t1"]).toBe("daily-grid-1");
+        expect(baseElement.textContent).toContain("격자 정의");
+        expect(baseElement.textContent).toContain("사슬 필터");
+        expect(rows(container), "아랫줄 편집면은 안 열린다 — 편집면은 팝오버 하나").toHaveLength(1);
     });
 
-    it("소멸된 판을 가리키는 바인딩 = 읽기 시점 미연동 — 칩이 죽은 판 이름을 말하지 않는다", () => {
+    it("팝오버의 노브가 그 줄의 술어를 직접 고친다(값의 주인 = 줄)", () => {
         seedEditing(exprOfStages([BO_STAGE]));
-        // 슬롯 대장(기본 시딩)에 없는 판 id — ×로 소멸된 판이 남긴 바인딩의 모양.
-        act(() => { useWorkbench.getState().bindTheme("t1", "daily-grid-9"); });
-        const { container } = renderBoard();
-        expect(container.textContent).not.toContain("격자 9");
-        expect(chipByText(container, "돌파")!.textContent).toContain("○ 미연동");
-    });
-
-    it("고아 바인딩은 후보를 점유하지 않는다 — 죽은 행이 가리키는 판도 목록에 선다(2026-09-17 실사용 버그)", () => {
-        seedEditing(exprOfStages([BO_STAGE]));
-        // 살아 있지 않은 행 id 가 기본 판(슬롯 1)을 가리키는 고아 — 집합 적용의 통째 교체가 남기는 모양.
-        act(() => { useWorkbench.getState().bindTheme("dead-row", "daily-grid-1"); });
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(chipByText(container, "돌파")!); });
-        expect(byText(baseElement as HTMLElement, "○ 격자 1")).toBeTruthy();
+        const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
+        const zigzag = [...dialog.querySelectorAll("input")].find((el) => (el.closest("label")?.textContent ?? "").includes("zigzag")) ?? dialog.querySelectorAll("input")[1]!;
+        act(() => {
+            fireEvent.change(zigzag, { target: { value: "5" } });
+            fireEvent.blur(zigzag);
+        });
+        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "breakout", zigzagPct: 5, bandPct: 0.5 });
     });
 
-    it("연동된 돌파 칩 — 칩이 판 이름을 말하고, 우클릭 「격자판 연동…」 = 변경/해제 메뉴", () => {
+    it("팝오버 안 「＋ 조건 ▾」 판 — 항목 클릭이 팝오버를 닫지 않는다(판은 팝오버 DOM 안)", () => {
         seedEditing(exprOfStages([BO_STAGE]));
-        act(() => { useWorkbench.getState().bindTheme("t1", "daily-grid-1"); });
         const { container, baseElement } = renderBoard();
-        const chip = chipByText(container, "돌파")!;
-        expect(chip.textContent).toContain("▣ 격자 1");
-        rightClick(chip);
-        pickItem(container, "격자판 연동");
-        expect(baseElement.textContent).toContain("◉ 격자 1");
-        act(() => { fireEvent.click(byText(baseElement as HTMLElement, "연동 해제")!); });
-        expect(useWorkbench.getState().themeBindings["t1"]).toBeUndefined();
-        // 해제 = 값은 줄에 남는다(판은 창).
-        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "breakout", zigzagPct: 2, bandPct: 0.5 });
-    });
-
-    it("연동된 돌파 칩 클릭 = 그 격자판을 연다(아랫줄 편집면은 안 열린다)", () => {
-        seedEditing(exprOfStages([BO_STAGE]));
-        act(() => { useWorkbench.getState().bindTheme("t1", "daily-grid-1"); });
-        const { container } = renderBoard();
-        vi.mocked(openPanelExact).mockClear();
         act(() => { fireEvent.click(chipByText(container, "돌파")!); });
-        expect(openPanelExact).toHaveBeenCalledWith("daily-grid-1");
-        expect(rows(container)).toHaveLength(1);
-        expect(container.textContent).not.toContain("연동할 격자판");
+        const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
+        const add = [...dialog.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("＋ 조건"))!;
+        act(() => { fireEvent.mouseDown(add); fireEvent.click(add); });
+        const item = [...dialog.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("봉 대금"))!;
+        act(() => { fireEvent.mouseDown(item); fireEvent.click(item); });
+        expect(baseElement.querySelector('[role="dialog"]'), "팝오버가 살아 있다").not.toBeNull();
+        const chain = (stages()[0]!.predicates[0] as { chain: { expr: { of: unknown[] } } }).chain;
+        expect(chain.expr.of).toHaveLength(1);
     });
 
-    it("보통 조건 칩의 우클릭 판엔 연동 항목이 없다", () => {
-        seedEditing(exprOfStages([RATE_STAGE]));
+    it("돌파 칩 우클릭 판 — 연동 항목이 없다(NOT·끄기·지우기 뿐)", () => {
+        seedEditing(exprOfStages([BO_STAGE]));
         const { container } = renderBoard();
-        rightClick(chipByText(container, "등락률")!);
+        rightClick(chipByText(container, "돌파")!);
         expect(container.textContent).not.toContain("격자판 연동");
+        expect(container.textContent).toContain("NOT");
     });
 });
 
@@ -191,13 +166,13 @@ describe("＋ 조건 — 생성 입구 하나", () => {
         for (const t of ["날짜", "계산 축", "결과", "그룹", "테마 강도", "격자 Point", "급타점", "존순위"]) expect(byText(baseElement, t), t).toBeUndefined();
     });
 
-    it("돌파 = 기본값 행이 서고 **곧바로 연동 메뉴**가 뜬다(노브의 편집면이 격자판이라서)", () => {
+    it("돌파 = 기본값 행이 서고 **곧바로 팝오버**가 뜬다(값의 편집면이 팝오버 하나라서)", () => {
         const { container, baseElement } = renderBoard();
         openMenu(container);
         act(() => { fireEvent.click(byText(baseElement, "돌파")!); });
         expect(stages()).toHaveLength(1);
         expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "breakout", zigzagPct: 2, bandPct: 0.5, chain: { firstK: 1 } });
-        expect(baseElement.textContent).toContain("연동할 격자판");
+        expect(baseElement.textContent).toContain("격자 정의");
     });
 
     it("셀 필터 = 기본값 행이 선다(분봉 대금 ≥ 30억)", () => {

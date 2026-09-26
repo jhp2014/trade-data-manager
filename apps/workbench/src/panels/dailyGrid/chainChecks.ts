@@ -1,4 +1,4 @@
-// 사슬 필터 식의 **말** — 조건 이름·칩 글자·식 한 줄 요약. 격자판의 칩·「＋ 조건」 메뉴와 조건판 칩 hover·
+// 사슬 필터 식의 **말** — 조건 이름·칩 글자·식 한 줄 요약. 돌파 팝오버의 칩·「＋ 조건」 메뉴와 조건판 칩·
 // 기본 차트 사슬 층 출처 목록이 같은 이 한 벌을 쓴다(말이 두 벌이면 같은 조건을 두 이름으로 부른다).
 import {
     foldFlat,
@@ -87,5 +87,5 @@ export function chainSummary(p: BreakoutPred): string {
     return e === "" ? rankText(p.chain.firstK) : `${e} · ${rankText(p.chain.firstK)}`;
 }
 
-/** 「돌파」 술어의 상세 한 줄 — 조건판 돌파 칩·차트 사슬 층 격자 목록의 hover 가 같은 한 벌(칩 글자는 판 이름). */
+/** 「돌파」 술어의 요약 한 줄 — 조건판 돌파 칩 본문(predicateLabel)·차트 사슬 층 목록이 같은 한 벌. */
 export const breakoutText = (p: BreakoutPred): string => `돌파 ${p.zigzagPct}%/${p.bandPct}% · ${chainSummary(p)}`;

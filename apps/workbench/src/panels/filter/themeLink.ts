@@ -1,6 +1,6 @@
 // 연동 id 해석의 **범용 코어** — 세션 수명(sessionUi) "펼침 ≡ 연동" 관용구. hot(급타점)·outcome(결과)이
-// 이 훅으로 제 연동을 든다. ⚠ **테마는 2026-09-17 부터 이 관용구를 안 쓴다** — 테마 행↔조건판은
-// 영속 1:1 바인딩(store/themeBindingSlice, pull — 결정권은 보드)이고, 옛 useLinkedThemeStage 는 은퇴했다.
+// 이 훅으로 제 연동을 든다. (테마·돌파는 이 관용구를 안 쓴다 — 편집면이 조건판 팝오버라 연동 자체가 없다.
+// 옛 영속 1:1 바인딩 themeBindingSlice 는 2026-09-26 격자판 은퇴와 함께 통째로 죽었다.)
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
 

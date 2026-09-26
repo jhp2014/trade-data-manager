@@ -5,22 +5,13 @@
 // 빠진 것(종단 전용 — 종단 보류): 타점 정의 머리·계산 축·날짜·결과·급타점·그룹·테마 강도 입구.
 // 모드는 하루 고정이라 팔레트에 회색이 없다 — 여기 있는 종류는 전부 하루에서 산다.
 //
-// ## 「돌파」 줄 ↔ 격자판 — pull · 1:1 · 영속
-// 테마 조건판과 **같은 연동 맵**(`themeBindings` — stageId → panelId, 종류 무관)을 쓴다. 새 슬라이스를
-// 만들면 슬롯 발급·복제에서 연동 청소를 둘 다 불러야 하는데(컴파일러가 못 잡는 자리) 그걸 빠뜨리기 쉽다.
-// 값(밴드·zigzag·사슬 필터)의 편집면은 **격자판 하나**다 — 줄의 칩은 **판 이름**만 보인다(「돌파 ▣ 격자 2」,
-// 상세는 hover). 값의 주인은 줄이고 판은 창이다 — 판을 지워도 값은 집합에 남고, 칩이 「○ 미연동」(미완성 —
-// 계산 안 함)으로 바뀐다(gridLink 머리 주석).
-// 칩 클릭 = 판 열기(미연동이면 연동 메뉴) · 칩 우클릭 판 맨 위 = 연동 바꾸기·해제.
-import { useCallback, useMemo, useRef, useState } from "react";
+// ## 「돌파」 줄 — 값의 편집면은 그 자리 팝오버(2026-09-26, 옛 격자판·연동 모델 폐지)
+// 테마 줄과 같은 문법: 칩 = 요약 라벨(breakoutText — predicateLabel 이 짓는다), 클릭 = 팝오버.
+// 값의 주인은 줄(집합) — 팝오버는 stageId 로 최신 술어를 스토어에서 읽고 그 줄에 바로 쓴다.
+import { useCallback, useMemo, useState } from "react";
 import { DEFAULT_BREAKOUT, DEFAULT_THEME_ZONE, type CellPredicate, type CellValueRange } from "@trade-data-manager/market/domain";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
-import { createPanelSlot, openPanelExact } from "../../lib/openPanel.js";
 import { allStagesOf, selectEditingExpr, selectEditingStages, useWorkbench } from "../../store/workbench.js";
-import { useDock } from "../../store/dock.js";
-import { slotTitleOf } from "../../shell/panelCatalog.js";
-import { parseSlotId } from "../../shell/panelSlots.js";
-import { useDismiss } from "../../ui/useDismiss.js";
 import { CellStageFields } from "../filter/CellPredicateFields.js";
 import { RailEditors, type RailEditor } from "../filter/ConditionEditors.js";
 import { ExprRow, type RowHandlers } from "../filter/ExprRow.js";
@@ -31,12 +22,10 @@ import { activeExpr, hasCycle, idOf, leavesOf, mapLeaves, negateGroupAt, negateT
 import { setDisplayName, stageLabel } from "../filter/label.js";
 import { stageKind, type FilterPredicate, type FilterStage } from "../filter/stage.js";
 import { stageDeficiency } from "../filter/universe.js";
-import { DAILY_GRID_BASE } from "./dailyPanelIds.js";
-import { gridShortName, liveGridPanelOf } from "./gridLink.js";
+import { BreakoutCondEditor } from "./BreakoutCondEditor.js";
 import { ThemeCondEditor } from "./ThemeCondEditor.js";
 import { FAIL, PIN } from "../../styles/palette.js";
 import { LinkIcon } from "../../components/icons.js";
-import { breakoutText } from "../dailyGrid/chainChecks.js";
 
 const UNIVERSE = "daily" as const;
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
@@ -59,28 +48,20 @@ export function DailyConditionBoard(): JSX.Element {
     const editPath = useWorkbench((s) => s.editPath);
     const editingSetId = useWorkbench((s) => s.editingSetId);
 
-    // ── 격자판 연동 ──
-    const bindings = useWorkbench((s) => s.themeBindings);
-    const bindTheme = useWorkbench((s) => s.bindTheme);
-    const unbindTheme = useWorkbench((s) => s.unbindTheme);
-    const dockSlots = useDock((s) => s.slots);
-    const [gridLink, setGridLink] = useState<{ stageId: string; x: number; y: number } | null>(null);
-    // 바인딩이 가리키는 판이 **슬롯 대장에 살아 있을 때만** 연동 — 판정 한 벌(gridLink, 차트 사슬 층도 같은 것).
-    const livePanelOf = useCallback((stageId: string): string | undefined => liveGridPanelOf(bindings, dockSlots, stageId), [bindings, dockSlots]);
-
     const [railEditor, setRailEditor] = useState<RailEditor | null>(null);
-    /** 테마 팝오버 — 줄에서 연다(값의 편집면, 2026-09-26). stageId 로 최신 술어를 스토어에서 읽는다. */
+    /** 테마·돌파 팝오버 — 줄에서 연다(값의 편집면, 2026-09-26). stageId 로 최신 술어를 스토어에서 읽는다. */
     const [themeEdit, setThemeEdit] = useState<{ stageId: string; x: number; y: number } | null>(null);
+    const [breakoutEdit, setBreakoutEdit] = useState<{ stageId: string; x: number; y: number } | null>(null);
     const [picked, setPicked] = useState<string | null>(null);
 
-    /** 조건 만들기의 **유일한 입구** — 만든 조건 id 를 돌려준다(돌파는 곧바로 연동 메뉴를 편다). */
+    /** 조건 만들기의 **유일한 입구** — 만든 조건 id 를 돌려준다(돌파·테마는 곧바로 팝오버를 편다). */
     const addStageHere = (predicates: FilterPredicate[]): string | undefined => {
         const before = new Set(selectEditingStages(useWorkbench.getState()).map((x) => x.id));
         addStage(predicates);
         return selectEditingStages(useWorkbench.getState()).find((x) => !before.has(x.id))?.id;
     };
 
-    /** 줄 이름 클릭 — 그 종류의 편집면으로. 시각 = 그 자리 팝오버(돌파는 칩 클릭이 곧 격자판이라 여기 안 온다). */
+    /** 줄 이름 클릭 — 그 종류의 편집면으로(시각·테마·돌파 = 그 자리 팝오버). */
     const openEditor = (stage: FilterStage, e: React.MouseEvent): void => {
         switch (stageKind(stage)) {
             case "time":
@@ -88,6 +69,9 @@ export function DailyConditionBoard(): JSX.Element {
                 return;
             case "theme":
                 setThemeEdit({ stageId: stage.id, x: e.clientX, y: e.clientY });
+                return;
+            case "breakout":
+                setBreakoutEdit({ stageId: stage.id, x: e.clientX, y: e.clientY });
                 return;
             default:
                 return; // 셀 값·캔들 등 — 줄 안에서 만진다.
@@ -131,7 +115,7 @@ export function DailyConditionBoard(): JSX.Element {
         if (cur) st.setFilterExpr(fn(cur));
     }, [rows, editingSetId, popTo]);
 
-    /** 돌파 줄 id → 술어 — 칩의 연동 표시·클릭 가름(모든 집합에서 본다: 윗줄 칩도 같은 칩이다). */
+    /** 돌파 줄 id 집합 — 칩 클릭 = 팝오버 가름(모든 집합에서 본다: 윗줄 칩도 같은 칩이다). */
     const breakoutById = useMemo(() => {
         const m = new Map<string, BreakoutPred>();
         for (const st of allStagesOf(savedSets)) {
@@ -147,29 +131,13 @@ export function DailyConditionBoard(): JSX.Element {
         onPickLeaf: (sid, leafId, at) => {
             const i = rows.indexOf(sid);
             if (i >= 0 && sid !== editingSetId) popTo(i);
-            // 돌파 칩 = 판 열기(미연동이면 연동 메뉴) — 값의 편집면은 격자판 하나라 아랫줄을 열지 않는다.
-            // ⚠ 판은 **편집 집합의** 줄을 비추므로 위에서 popTo 로 그 줄의 집합을 편집 대상으로 먼저 세운다.
+            // 돌파 칩 = 그 자리 팝오버 — 아랫줄을 열지 않는다(사슬 필터 식은 팝오버가 층 문법째 든다).
+            // ⚠ 쓰기는 **편집 집합의** 줄에 닿으므로 위에서 popTo 로 그 줄의 집합을 편집 대상으로 먼저 세운다.
             if (breakoutById.has(leafId)) {
-                const bound = livePanelOf(leafId);
-                if (bound !== undefined) openPanelExact(bound);
-                else setGridLink({ stageId: leafId, ...at });
+                setBreakoutEdit({ stageId: leafId, ...at });
                 return;
             }
             setPicked((cur) => (cur === leafId ? null : leafId));
-        },
-        linkOf: (leafId) => {
-            const p = breakoutById.get(leafId);
-            if (!p) return undefined;
-            const bound = livePanelOf(leafId);
-            return { panel: bound === undefined ? null : gridShortName(bound), hint: breakoutText(p) };
-        },
-        onLinkMenu: (sid, leafId, at) => {
-            // 왼클릭과 같은 가름 — 판은 **편집 집합의** 줄을 비추므로 그 줄의 집합을 먼저 편집 대상으로 세운다
-            // (안 세우면 드릴인 중 윗줄 칩을 연결한 판이 「○ 연동 없음」을 말한다).
-            const i = rows.indexOf(sid);
-            if (i < 0) return;
-            if (sid !== editingSetId) popTo(i);
-            setGridLink({ stageId: leafId, ...at });
         },
         onDrill: (sid, target) => {
             const i = rows.indexOf(sid);
@@ -189,7 +157,7 @@ export function DailyConditionBoard(): JSX.Element {
         onRemoveTerm: (sid, termId) => { actOn(sid, (e) => removeTerm(e, termId)); setPicked(null); },
         onRenameSet: (targetId, name) => renameSet(targetId, name),
         onDeleteSet: (targetId) => deleteSet(targetId),
-    }), [chipLabelOf, refInfo, rows, editingSetId, popTo, drillInto, actOn, renameSet, deleteSet, breakoutById, livePanelOf]);
+    }), [chipLabelOf, refInfo, rows, editingSetId, popTo, drillInto, actOn, renameSet, deleteSet, breakoutById]);
 
     const openTerm = useMemo(() => {
         if (picked === null) return null;
@@ -234,9 +202,9 @@ export function DailyConditionBoard(): JSX.Element {
                         <AddCondition
                             onCell={(p) => { addStageHere([p]); }}
                             onBreakout={(e) => {
-                                // 행을 만들고 곧바로 연동 메뉴를 편다 — 노브의 편집면이 격자판이라서다(무시하면 미연동 행).
+                                // 행을 만들고 곧바로 팝오버 — 값의 편집면이 팝오버 하나라서다(테마와 같은 결).
                                 const made = addStageHere([{ kind: "breakout", ...DEFAULT_BREAKOUT }]);
-                                if (made) setGridLink({ stageId: made, x: e.clientX, y: e.clientY });
+                                if (made) setBreakoutEdit({ stageId: made, x: e.clientX, y: e.clientY });
                             }}
                             onTheme={(e) => {
                                 // 행을 만들고 곧바로 팝오버 — 값의 편집면이 팝오버 하나라서다(시각 조건과 같은 결).
@@ -337,23 +305,6 @@ export function DailyConditionBoard(): JSX.Element {
                 <div style={{ height: 8 }} />
             </div>
 
-            {gridLink !== null && (
-                <LinkMenu anchor={gridLink}
-                    boundId={livePanelOf(gridLink.stageId)}
-                    candidates={dockSlots.filter((id) => {
-                        if (parseSlotId(id)?.base !== DAILY_GRID_BASE) return false;
-                        // 다른 **살아 있는 돌파 행**이 쓰는 판은 뺀다(1:1). 고아 바인딩은 판을 점유하지 않는다.
-                        // ⚠ "살아 있다"는 **모든 집합**에서 본다 — 편집 집합만 보면 묶음으로 드릴인한 동안 부모
-                        //   행의 판이 빈 판으로 떠서, 고르는 순간 부모 행의 연동이 조용히 지워진다(리뷰가 잡은 자리).
-                        return !Object.entries(bindings).some(([sid, pid]) => pid === id && sid !== gridLink.stageId
-                            && allStagesOf(savedSets).some((st) => st.id === sid && stageKind(st) === "breakout"));
-                    })}
-                    onPick={(panelId) => { bindTheme(gridLink.stageId, panelId); openPanelExact(panelId); setGridLink(null); }}
-                    onNew={() => { const id = createPanelSlot(DAILY_GRID_BASE); bindTheme(gridLink.stageId, id); openPanelExact(id); setGridLink(null); }}
-                    onUnbind={() => { unbindTheme(gridLink.stageId); setGridLink(null); }}
-                    onClose={() => setGridLink(null)} />
-            )}
-
             {themeEdit !== null && (() => {
                 const st = stages.find((x) => x.id === themeEdit.stageId);
                 const pred = st?.predicates.find((x): x is Extract<FilterPredicate, { kind: "theme" }> => x.kind === "theme");
@@ -361,6 +312,17 @@ export function DailyConditionBoard(): JSX.Element {
                 return (
                     <ThemeCondEditor at={themeEdit} pred={pred} onClose={() => setThemeEdit(null)}
                         onWrite={(next) => setPredicates(st.id, st.predicates.map((x) => (x.kind === "theme" ? next : x)))} />
+                );
+            })()}
+
+            {breakoutEdit !== null && (() => {
+                const st = stages.find((x) => x.id === breakoutEdit.stageId);
+                const pred = st?.predicates.find((x): x is BreakoutPred => x.kind === "breakout");
+                if (!st || !pred) return null; // 줄이 지워졌으면 조용히 닫힌다
+                return (
+                    // key = 줄 id — 팝오버 안 "열린 칩" 상태가 다른 줄의 같은 칩 id(m0·m1…)로 새지 않게.
+                    <BreakoutCondEditor key={st.id} at={breakoutEdit} pred={pred} onClose={() => setBreakoutEdit(null)}
+                        onWrite={(next) => setPredicates(st.id, st.predicates.map((x) => (x.kind === "breakout" ? next : x)))} />
                 );
             })()}
 
@@ -483,7 +445,7 @@ function AddCondition({ onCell, onBreakout, onTheme }: {
                 {(close) => (
                     <div style={{ overflowY: "auto", padding: "3px 0" }}>
                         {head("생성기")}
-                        {item(close, "돌파", "돌파 사슬 후보 — 고가(와 기준선) 밴드 사건에서 사슬이 서고, 눌림(zigzag) 전까지 대금이 커진 봉이 후보. 노브는 격자판에서", onBreakout)}
+                        {item(close, "돌파", "돌파 사슬 후보 — 고가(와 기준선) 밴드 사건에서 사슬이 서고, 눌림(zigzag) 전까지 대금이 커진 봉이 후보. 값은 팝오버에서", onBreakout)}
                         {head("후보 필터")}
                         {item(close, "분봉 대금", "그 분 봉 자신의 거래대금(억) — 돌파 대금 필터", () => onCell({ kind: "cellValue", field: "minuteAmountEok", ranges: [atLeast(30)] }))}
                         {item(close, "양봉", "캔들 모양 — 종가 > 시가(줄에서 음봉으로 바꿀 수 있다)", () => onCell({ kind: "candleShape", shape: "bull" }))}
@@ -496,42 +458,6 @@ function AddCondition({ onCell, onBreakout, onTheme }: {
                     </div>
                 )}
             </HeaderPopover>
-        </div>
-    );
-}
-
-/** 돌파 행의 연동 메뉴 — 미연동 격자판 + 「＋ 새 격자판」 + (연동 중이면) 해제. 1:1(다른 행이 쓰는 판은 없다). */
-function LinkMenu({ anchor, boundId, candidates, onPick, onNew, onUnbind, onClose }: {
-    anchor: { x: number; y: number };
-    boundId: string | undefined;
-    candidates: readonly string[];
-    onPick: (panelId: string) => void;
-    onNew: () => void;
-    onUnbind: () => void;
-    onClose: () => void;
-}): JSX.Element {
-    const ref = useRef<HTMLDivElement>(null);
-    useDismiss(ref, onClose, true);
-    const item = (label: string, hint: string, run: () => void, accent = false): JSX.Element => (
-        <button key={label} onClick={run} title={hint}
-            style={{ ...menuItem, whiteSpace: "nowrap", color: accent ? "var(--accent-primary)" : "var(--text-primary)" }}>
-            {label}
-        </button>
-    );
-    return (
-        <div ref={ref}
-            style={{
-                position: "fixed", top: Math.min(anchor.y + 4, window.innerHeight - 200), left: Math.min(anchor.x, window.innerWidth - 190),
-                zIndex: 300, minWidth: 180, background: "var(--bg-primary)", border: "1px solid var(--border-default)",
-                borderRadius: 8, boxShadow: "0 8px 30px rgba(0,0,0,0.25)", padding: "4px 0",
-            }}>
-            <div style={{ padding: "3px 10px", fontSize: 10, color: "var(--text-tertiary)" }}>연동할 격자판 — 값은 거기서 만진다</div>
-            {candidates.map((id) =>
-                item(`${boundId === id ? "◉ " : "○ "}${gridShortName(id)}`,
-                    `${slotTitleOf(id)} — ${boundId === id ? "지금 이 줄이 연동된 판" : "이 판에 연동하고 연다(판에는 이 줄의 값이 뜬다)"}`,
-                    () => onPick(id), boundId === id))}
-            {item("＋ 새 격자판", "격자판을 만들어 연동하고 연다", onNew)}
-            {boundId !== undefined && item("연동 해제", "판은 남고, 줄은 미연동 — 다시 연결할 때까지 계산하지 않는다(값은 줄에 남는다)", onUnbind)}
         </div>
     );
 }

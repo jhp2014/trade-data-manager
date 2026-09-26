@@ -108,7 +108,8 @@ export function ChainExprRow({ expr, open, onPick, onChange, tail }: {
     const paren = ctx?.kind === "paren" ? groupAtBoundary(expr, ctx.at) : null;
 
     return (
-        <div style={{ display: "flex", alignItems: "center", minHeight: ROW_H, overflowX: "auto", overflowY: "hidden" }}>
+        // 팝오버 폭(400)에 맞춰 줄바꿈 — 옛 격자판의 가로 스크롤은 팝오버에선 손이 안 닿는다(decisions "식 줄 wrap").
+        <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", minHeight: ROW_H, rowGap: 2 }}>
             {pieces.length === 0 && (
                 <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}
                     title="사슬 봉 전부가 식을 통과합니다 — 아래 식 전체 순번만 걸립니다">조건 없음</span>

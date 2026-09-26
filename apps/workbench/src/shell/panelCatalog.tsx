@@ -17,7 +17,6 @@ import { WorksetPanel } from "../panels/WorksetPanel.js";
 import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
 import { RankSheetPanel } from "../panels/RankSheetPanel.js";
 import { DailyGenPanel } from "../panels/dailyGen/DailyGenPanel.js";
-import { DailyGridPanel } from "../panels/dailyGrid/DailyGridPanel.js";
 import { DailyExplorePanel } from "../panels/dailyExplore/DailyExplorePanel.js";
 import { NormOverlayPanel } from "../panels/norm/NormOverlayPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
@@ -102,9 +101,8 @@ export const PANEL_TYPES: PanelType[] = [
     // 옛 「집합 편성」(2026-09-24 은퇴)의 idBase·component 를 **승계**한다 — 저장 배치·프리셋의 자리가 그대로
     // 새 패널이 되고(테마 [조건]판 선례), 두 패널 공존이 원리적으로 불가능하다. 옛 제목은 패널이 정규화한다.
     { idBase: "filter-funnel", component: "filterFunnel", title: "일별 타점[조건]", plane: "eod", render: (id) => <DailyGenPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
-    // 일별 타점[조건: 격자] — 조건판 「돌파」 줄의 편집면(① 격자 정의 · ② 사슬 필터 식). 그림은 기본 차트 사슬 층.
-    // 연동은 조건판 줄에서(pull·1:1·영속 — 테마 조건판과 같은 맵). duplicable 은 처음엔 끈다(나란히 비교가 필요해지면).
-    { idBase: "daily-grid", component: "dailyGrid", title: "일별 타점[조건: 격자]", plane: "eod", render: (id) => <DailyGridPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
+    // (격자판 「일별 타점[조건: 격자]」은 2026-09-26 은퇴 — 돌파 편집은 조건판 팝오버.
+    //  저장 배치·프리셋의 daily-grid 칸은 sanitizeLayout 이 걷는다 — 테마 [조건]판 선례.)
     // 일별 타점[탐색] — 하루 후보를 날짜 단위로 걷는 뷰(행 = 그날 후보, 열 = 조건 그룹 ●/·).
     // 작업 대상과 다른 몫: 저긴 시선·큐레이션 브라우징, 여긴 조건 그룹 통과를 보며 걷는 하루 전용 판.
     // ⚠ duplicable 아님 — w/s 순회(usePublishRowNav)가 **후보 패널 각 1개** 전제의 모듈 전역 단일 소유다

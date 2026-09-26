@@ -19,9 +19,8 @@ import { createRankViewSlice, type RankViewSlice } from "./rankViewSlice.js";
 import { createFilterFunnelSlice, type FilterFunnelSlice } from "./filterFunnelSlice.js";
 import { createSavedSetsSlice, type SavedSetsSlice } from "./savedSetsSlice.js";
 import { createPointDefSlice, type PointDefSlice } from "./pointDefSlice.js";
-import { createThemeBindingSlice, type ThemeBindingSlice } from "./themeBindingSlice.js";
 
-export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelUiSlice & SessionUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankViewSlice & FilterFunnelSlice & SavedSetsSlice & PointDefSlice & ThemeBindingSlice;
+export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelUiSlice & SessionUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankViewSlice & FilterFunnelSlice & SavedSetsSlice & PointDefSlice;
 
 export type { Focus, Scope, Search, FocusSlice } from "./focusSlice.js";
 export type { LiveFocus, LiveFocusSlice } from "./liveFocusSlice.js";
@@ -37,7 +36,6 @@ export type { FilterFunnelSlice } from "./filterFunnelSlice.js";
 export { allStagesOf, selectEditingExpr, selectEditingStages, selectEditingUniverse, selectObservedExpr, selectObservedSetId, selectObservedStages, selectObservedUniverse } from "./filterFunnelSlice.js";
 export type { SavedSet, SavedSetsSlice } from "./savedSetsSlice.js";
 export type { PointDefSlice } from "./pointDefSlice.js";
-export type { ThemeBindingSlice } from "./themeBindingSlice.js";
 
 export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createFocusSlice(...a),
@@ -53,5 +51,4 @@ export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createFilterFunnelSlice(...a),
     ...createSavedSetsSlice(...a),
     ...createPointDefSlice(...a),
-    ...createThemeBindingSlice(...a),
 }));

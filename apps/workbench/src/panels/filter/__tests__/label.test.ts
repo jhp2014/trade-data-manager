@@ -129,8 +129,8 @@ describe("setDisplayName — 참조도 항이다", () => {
     });
 });
 
-describe("돌파 생성기 라벨 — 이름은 「돌파」, 상세는 hover(breakoutText) — 줄은 연동된 판 이름으로 갈린다", () => {
-    it("라벨엔 노브가 안 실리고, 상세 한 줄엔 zigzag/밴드와 사슬 필터 식(칩·괄호·식 전체 순번)이 실린다", () => {
+describe("돌파 생성기 라벨 = breakoutText 요약(2026-09-26 — 옛 「돌파」 한 단어·판 이름 규칙 은퇴)", () => {
+    it("라벨에 zigzag/밴드와 사슬 필터 식이 실린다 — 돌파 두 줄이 서로 갈린다", () => {
         const a: FilterPredicate = { kind: "breakout", zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 } };
         const b: FilterPredicate = {
             kind: "breakout", zigzagPct: 3, bandPct: 1,
@@ -149,8 +149,8 @@ describe("돌파 생성기 라벨 — 이름은 「돌파」, 상세는 hover(br
             },
         };
         const c: FilterPredicate = { kind: "candleShape", shape: "bear" };
-        expect(predicateLabel(a, look)).toBe("돌파");
-        expect(predicateLabel(b, look)).toBe("돌파");
+        expect(predicateLabel(a, look)).toBe("돌파 2%/0.5% · 처음 1개");
+        expect(predicateLabel(b, look)).toBe(breakoutText(b as BreakoutPred));
         expect(breakoutText(a as BreakoutPred)).toBe("돌파 2%/0.5% · 처음 1개");
         expect(breakoutText(b as BreakoutPred)).toBe("돌파 3%/1% · 봉 대금 ≥ 50억 · 처음 1 AND (세션 고가 돌파 OR NOT 기준선 돌파) · 처음 2 · 전부");
         expect(predicateLabel(c, look)).toBe("음봉");

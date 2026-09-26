@@ -8,6 +8,7 @@ import { NONE_LABEL, isNoneLiteral, type GroupExpr } from "../rank/groupFilter.j
 import { shortDate } from "../../lib/date.js";
 import { OUTCOME_METRIC_NAME } from "../../lib/outcomeMetric.js";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
+import { breakoutText } from "../dailyGrid/chainChecks.js";
 
 export interface LabelLookup {
     groupName: (id: string) => string | undefined;
@@ -55,9 +56,9 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
         case "cellValue": return cellValueLabel(p);
         case "priorHighBreak": return `전고 돌파 (${p.days}일)`;
         case "gridPoint": return "격자 Point";
-        // 노브를 라벨에 안 싣는다 — 값의 편집면은 격자판이고, 줄은 **연동된 판 이름**으로 갈린다(조건판 칩이
-        // 판 이름을 덧붙인다 · gridLink). 상세는 hover(breakoutText)로.
-        case "breakout": return "돌파";
+        // 요약 라벨(breakoutText) — 옛 "판 이름으로 갈린다" 규칙은 격자판 은퇴(2026-09-26)와 함께 죽었다.
+        // 돌파 줄이 여럿이면 이 요약이 서로를 가른다(결과 @T·급타점 (W,r) 과 같은 이유).
+        case "breakout": return breakoutText(p);
         case "candleShape": return CANDLE_SHAPE_LABEL[p.shape];
     }
 }

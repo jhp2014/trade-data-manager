@@ -9,7 +9,7 @@ import { DailyExplorePanel } from "../DailyExplorePanel.js";
 
 const SEED: Seed = { candidateDays: [], points: [] };
 const PANEL = "daily-explore-1";
-const RESET = { funnelSelection: null, savedSets: [], editingSetId: "edit", editPath: ["edit"], sessionUi: {}, themeBindings: {}, panelUi: {}, filterMode: "daily" as const };
+const RESET = { funnelSelection: null, savedSets: [], editingSetId: "edit", editPath: ["edit"], sessionUi: {}, panelUi: {}, filterMode: "daily" as const };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
