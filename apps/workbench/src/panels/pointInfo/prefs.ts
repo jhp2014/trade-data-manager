@@ -6,10 +6,10 @@
 // 같은 이유로 드래그는 저장 순서 위에서 **한 칸 이동**이고(화면 목록 통째 베끼기 금지),
 // 키를 지우는 건 청소 한 곳뿐이다(시트 `reorderCol` 주석과 같은 규율).
 import { retainHidden } from "../../lib/axisPrefs.js";
-import { dropSide, orderByPref, placeCol } from "../rank/sheetColumns.js";
+import { dropSide, orderByPref, placeCol } from "../../lib/orderPrefs.js";
 import type { PointInfoRow } from "./rows.js";
 
-/** 순서 pref — 열 순서(`wb.rankSheetColOrder`)와 **딴 저장물**이다(모수도 화면도 다르다). */
+/** 순서 pref — 이 패널 전용 저장물. */
 export const ORDER_KEY = "wb.pointInfoOrder";
 export const HIDDEN_KEY = "wb.pointInfoHidden";
 /** 드래그 미디어타입 — 화면끼리 갈라 둔다(시트 `x-rank-col`·레일 `x-filter-axis`와 섞이면 안 된다). */
@@ -18,7 +18,7 @@ export const ROW_DND = "application/x-point-info-row";
 export const parseKeys = (o: unknown): string[] | null =>
     Array.isArray(o) && o.every((k) => typeof k === "string") ? (o as string[]) : null;
 
-/** 사용자 순서를 기본 순서(축→결과→테마)에 입힌다. */
+/** 사용자 순서를 기본 순서에 입힌다. */
 export const orderRows = (rows: readonly PointInfoRow[], pref: readonly string[]): PointInfoRow[] =>
     orderByPref(rows, (r) => r.key, pref);
 
@@ -41,24 +41,21 @@ export function moveRow(
     return next === null ? null : retainHidden(next, prev, new Set(prev));
 }
 
-/** 살아 있는 주소 — 청소의 기준. `out:` 은 붙박이라 목록이 필요 없다(절대 안 지운다). */
+/** 살아 있는 주소 — 청소의 기준. */
 export interface LiveKeys {
-    /** 축 키 전부 — 화면에 안 선 보호 축(격자 로딩 창·급타점 인스턴스)까지 포함해서 줄 것. */
-    axisKeys: readonly string[];
     /** **전체** 테마 이름 — 시선 종목의 테마가 아니다(위 ⚠). */
     themes: readonly string[];
 }
 
 /**
  * 유령 키 청소 — 바뀔 게 없으면 **같은 배열**을 돌려준다(영속 쓰기가 안 돌게).
- * 호출부는 재료가 다 온 뒤에만 부른다: 축·테마가 서로 다른 시각에 도착하므로, 한쪽만 온 순간에 돌면
- * 아직 안 온 쪽의 키를 전부 유령으로 오인한다(시트가 겪은 사고와 같은 모양).
+ * 호출부는 테마 재료가 온 뒤에만 부른다(빈 목록 도착 순간에 돌면 저장된 th: 키가 통째로 지워진다).
  */
 export function pruneRowKeys(cur: readonly string[], live: LiveKeys): string[] {
-    const axes = new Set(live.axisKeys.map((k) => `ax:${k}`));
     const themes = new Set(live.themes.map((t) => `th:${t}`));
+    // 옛 축·결과 키(ax:·out: — 2026-09-26 종단 은퇴)는 전부 유령이다.
     const dead = (k: string): boolean =>
-        (k.startsWith("ax:") && !axes.has(k)) || (k.startsWith("th:") && !themes.has(k));
+        k.startsWith("ax:") || k.startsWith("out:") || (k.startsWith("th:") && !themes.has(k));
     const next = cur.filter((k) => !dead(k));
     return next.length === cur.length ? (cur as string[]) : next;
 }

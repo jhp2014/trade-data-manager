@@ -4,9 +4,6 @@
 //   뜨면 서로 덮어쓴다). 패널을 복수 인스턴스로 만들려면 저장물 모양부터 바꿔야 한다.
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { usePersistedState } from "../../store/persist.js";
-import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
-import { hotAxisId, hotInstancesOf } from "../../lib/hotAxis.js";
-import { allStagesOf, useWorkbench } from "../../store/workbench.js";
 import { HIDDEN_KEY, ORDER_KEY, moveRow, orderRows, parseKeys, pruneRowKeys } from "./prefs.js";
 import type { PointInfoRow } from "./rows.js";
 
@@ -21,31 +18,19 @@ export interface PointInfoPrefs {
     reorder: (dragged: string, target: string, shownKeys: readonly string[]) => void;
 }
 
-export function usePointInfoPrefs(rows: readonly PointInfoRow[], live: { axisKeys: readonly string[]; allThemes: readonly string[] | null; isLoading: boolean }): PointInfoPrefs {
+export function usePointInfoPrefs(rows: readonly PointInfoRow[], live: { allThemes: readonly string[] | null; isLoading: boolean }): PointInfoPrefs {
     const [order, setOrder] = usePersistedState<string[]>(ORDER_KEY, parseKeys, []);
     const [hidden, setHidden] = usePersistedState<string[]>(HIDDEN_KEY, parseKeys, []);
 
-    // 격자 로딩 창에 잠깐 없는 축들 — 시트와 같은 보호 목록(없으면 로딩 중 한 번에 유령으로 몰린다).
-    // ⚠ 유령 청소의 보호 목록이라 **저장 집합 전부**를 본다 — 좁히면 지금 안 보이는 집합의 축 키가
-    //   유령으로 잡혀 **영구 삭제**된다(useSheetColumns 의 생사 기준과 같은 이유).
-    const savedSets = useWorkbench((s) => s.savedSets);
-    const stages = useMemo(() => allStagesOf(savedSets), [savedSets]);
-    const liveAxisKeys = useMemo(
-        () => [...live.axisKeys, ...GRID_AXIS_IDS, ...hotInstancesOf(stages).map((h) => hotAxisId(h.stageId))],
-        [live.axisKeys, stages],
-    );
-
-    // ⚠ 재료가 다 온 뒤에만 청소한다 — 축과 테마는 **서로 다른 시각에 도착**한다. 한쪽만 온 순간에
-    //   돌면 아직 안 온 쪽의 순서·숨김이 통째로 날아간다(사용자 설정이 조용히 사라지는 종류).
-    //   **빈 목록도 잠금이다**(축·테마 둘 다): 테마가 `[]` 로 도착하는 경로가 실재하고(미러가 비었거나
-    //   멤버십 응답이 일시적으로 빈 배열), 그때 청소가 돌면 저장된 `th:` 키가 통째로 지워진다 —
-    //   멤버십이 정상 복구돼도 되돌릴 수 없다. 지울 게 있는지 모르는 상태에선 아무것도 안 지운다.
+    // ⚠ 재료가 온 뒤에만 청소한다 — **빈 목록도 잠금이다**: 테마가 `[]` 로 도착하는 경로가 실재하고
+    //   (미러가 비었거나 멤버십 응답이 일시적으로 빈 배열), 그때 청소가 돌면 저장된 `th:` 키가 통째로
+    //   지워진다. 지울 게 있는지 모르는 상태에선 아무것도 안 지운다.
     useEffect(() => {
-        if (live.isLoading || live.allThemes === null || live.allThemes.length === 0 || live.axisKeys.length === 0) return;
-        const prune = (cur: string[]): string[] => pruneRowKeys(cur, { axisKeys: liveAxisKeys, themes: live.allThemes! });
+        if (live.isLoading || live.allThemes === null || live.allThemes.length === 0) return;
+        const prune = (cur: string[]): string[] => pruneRowKeys(cur, { themes: live.allThemes! });
         setOrder(prune);
         setHidden(prune);
-    }, [live.isLoading, live.allThemes, live.axisKeys, liveAxisKeys, setOrder, setHidden]);
+    }, [live.isLoading, live.allThemes, setOrder, setHidden]);
 
     const ordered = useMemo(() => orderRows(rows, order), [rows, order]);
     const hiddenSet = useMemo(() => new Set(hidden), [hidden]);

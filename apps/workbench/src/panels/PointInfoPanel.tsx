@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { usePlaneBus } from "../store/usePlaneBus.js";
 import { usePanelUi } from "../store/usePanelUi.js";
-import { useWorkbench } from "../store/workbench.js";
 import { useChartPoints } from "../lib/useChartPoints.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { useStockName } from "../lib/useStockName.js";
@@ -23,7 +22,6 @@ import { usePointInfoRows } from "./pointInfo/usePointInfoRows.js";
 export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
     const { code, viewDate, time } = usePlaneBus("replay");
     const name = useStockName(code);
-    const revealSheetCol = useWorkbench((s) => s.revealSheetCol);
     const [missingOpen, setMissingOpen] = usePanelUi(panelId, "unplacedOpen", false);
     const [hiddenOpen, setHiddenOpen] = usePanelUi(panelId, "hiddenOpen", false);
 
@@ -43,8 +41,8 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
         [pointTime, code, viewDate, pointGroupsOf],
     );
 
-    const { rows, displayT, axisKeys, allThemes, isLoading } = usePointInfoRows(point);
-    const prefs = usePointInfoPrefs(rows, { axisKeys, allThemes, isLoading });
+    const { rows, allThemes, isLoading } = usePointInfoRows(point);
+    const prefs = usePointInfoPrefs(rows, { allThemes, isLoading });
 
     if (!code) return <BoardCenter text="종목을 선택하세요" />;
     if (!point) return <BoardCenter text={time ? `${time.slice(0, 5)} — 타점 아님` : "시각을 선택하세요"} />;
@@ -72,16 +70,12 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
         <div
             style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 12 }}
         >
-            {/* 헤더 — 종목 · 시각 · 표시 T(결과 값 전부의 기준). 종목/날짜는 헤더 툴팁(좁은 셀이라 한 줄). */}
+            {/* 헤더 — 종목 · 시각. 종목/날짜는 헤더 툴팁(좁은 셀이라 한 줄). */}
             <PanelHeader chrome={false} gap={6} padding="5px 8px"
                 title={`${name ?? code} · ${viewDate}`}
                 style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
                 <span style={{ minWidth: 0, fontWeight: 700, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name ?? code}</span>
                 <span className="tabular" style={{ flexShrink: 0, color: "var(--accent-primary)", fontWeight: 700 }}>{pointTime!.slice(0, 5)}</span>
-                <span className="tabular" title="지금 보는 허용 폭 T — 결과 줄의 기준(연동 결과 조건, 없으면 탐색 T)"
-                    style={{ flexShrink: 0, marginLeft: "auto", background: "var(--accent-soft)", color: "var(--accent-primary)", borderRadius: 3, padding: "0 4px", fontSize: 10, fontWeight: 700 }}>
-                    T {displayT}%
-                </span>
             </PanelHeader>
 
             {/* 그룹 카드 — 타점(좌표 라벨)·그 날 두 줄. 배경을 accent 로 올려 먼저 눈에 걸리게 한다.
@@ -100,7 +94,6 @@ export function PointInfoPanel({ panelId }: { panelId: string }): JSX.Element {
                     hiddenOpen={hiddenOpen}
                     onToggleMissing={() => setMissingOpen((v) => !v)}
                     onToggleHidden={() => setHiddenOpen((v) => !v)}
-                    onPick={(key) => { if (key) revealSheetCol(key); }}
                     onHide={prefs.toggleHidden}
                     onDrop={prefs.reorder}
                     onUnhideAll={prefs.unhideAll}

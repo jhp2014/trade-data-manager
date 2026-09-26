@@ -4,9 +4,7 @@ import { useEffect, useMemo, type MutableRefObject, type RefObject } from "react
 import { type IChartApi, type ISeriesApi, type UTCTimestamp } from "lightweight-charts";
 import { usePriceLineSet, type PriceLineSpec } from "./priceLines.js";
 import { type VertLineSpec } from "./vertLine.js";
-import { buildLegSpecs } from "./legMark.js";
 import { buildChainLayerSpec, EMPTY_CHAIN_LAYER, type ChainOverlayInput } from "./chainLayer.js";
-import { amountBucketIndex } from "@trade-data-manager/market/domain";
 import { type MinutePoint } from "../lib/derive.js";
 import { linePct, snapToBar, type RenderLine } from "../lib/chartFrame.js";
 import { ALARM, PRICE_LINE } from "../styles/palette.js";
@@ -41,8 +39,6 @@ export function unionMarkPoints<T extends { time: number; label: string }>(
     return [...byTime.values()].sort((a, b) => a.time - b.time);
 }
 
-const NO_TIMES: readonly number[] = [];
-
 /** 목록을 실제 봉 시각으로 스냅(≤ target 최대, 같은 봉 중복 제거) — 자동 Point ◇ 와 라벨 ◆ 가 같은 자를 쓴다. */
 export function snapPoints<T extends { time: number }>(points: MinutePoint[], list: readonly T[]): T[] {
     const seen = new Set<number>();
@@ -64,7 +60,6 @@ export function snapPoints<T extends { time: number }>(points: MinutePoint[], li
  * **타점으로 이동하면 `markerTime` 이 그 좌표라 파란 선이 이미 거기 선다** — "선택된 타점 선"을
  * 따로 만들 필요가 없었다. 거래대금 pane 의 선도 같은 배열이라 함께 걷혔다.
  * `autoSnapped` 반환은 유지한다 — ◇ 마커의 x 좌표 스냅에 여전히 쓰인다.
- * (다리 고점은 세로선이 아니라 드롭 캡/띠 — useLegMarks 가 별도 primitive 로 진다: 형태가 같으면 안 갈린다.)
  */
 export function useMarkerVertLines(
     series: MinuteSeries,
@@ -90,25 +85,6 @@ export function useMarkerVertLines(
     return { currentSnapped, autoSnapped };
 }
 
-/**
- * 다리 표식(고점 렌즈) — 드롭 캡(고점 봉 전부) + 다리 띠(선택 시그널 하나). 스펙 조립은 buildLegSpecs(순수),
- * 여기는 스냅 결과를 primitive 에 미는 배선만. 갱신 렌즈·실시간 차트는 빈 입력이라 아무것도 안 그린다.
- * 마커 규칙은 anchorMarkArgs 의 분봉 판정과 같은 함수(amountBucketIndex)를 쓴다 — 두 벌이면 예약분이 갈린다.
- */
-export function useLegMarks(
-    series: MinuteSeries,
-    points: MinutePoint[],
-    highTimes: readonly number[] = NO_TIMES,
-    band: { from: number; to: number } | null = null,
-    showAmountMarkers = false,
-): void {
-    useEffect(() => {
-        const specs = buildLegSpecs(points, highTimes, band, (p) => showAmountMarkers && amountBucketIndex(p.amount) >= 0);
-        series.legRef.current?.set(specs.caps, specs.band);
-        series.bumpOverlay();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [points, highTimes, band, showAmountMarkers, series.gen]);
-}
 
 /** 사슬 층 — 돌파 사슬 띠·후보 봉 세로 줄·밴드 면(chainLayer). 입력이 null 이면 비운다(층 꺼짐·재료 없음). */
 export function useChainLayer(series: MinuteSeries, points: MinutePoint[], input: ChainOverlayInput | null): void {

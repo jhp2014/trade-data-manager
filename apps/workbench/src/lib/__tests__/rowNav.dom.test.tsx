@@ -18,26 +18,26 @@ const titleOf = (id: string): string => useKeymapDynamic.getState().commands[id]
 beforeEach(() => {
     localStorage.clear();
     useKeymapDynamic.setState({ commands: {} });
-    act(() => selectRowNavOwner("rank-sheet"));
+    act(() => selectRowNavOwner("daily-explore"));
 });
 afterEach(() => { useKeymapDynamic.setState({ commands: {} }); });
 
 describe("effectiveOwner", () => {
     it("고른 주인이 얹혀 있으면 그것, 아니면 우선순위 폴백. 아무도 없으면 선택 그대로.", () => {
-        expect(effectiveOwner(["workset", "rank-sheet"], "workset")).toBe("workset");
-        expect(effectiveOwner(["workset", "theme-board"], "rank-sheet")).toBe("workset"); // 시트 없음 → 우선순위
-        expect(effectiveOwner(["theme-board"], "rank-sheet")).toBe("theme-board");
+        expect(effectiveOwner(["workset", "daily-explore"], "workset")).toBe("workset");
+        expect(effectiveOwner(["workset", "theme-board"], "daily-explore")).toBe("workset"); // 시트 없음 → 우선순위
+        expect(effectiveOwner(["theme-board"], "daily-explore")).toBe("theme-board");
         expect(effectiveOwner([], "replay-board")).toBe("replay-board");
     });
 });
 
 describe("nextOwner(q 순환)", () => {
     it("얹혀 있는 후보만 돌고, 끝에서 처음으로 감는다.", () => {
-        const avail = ["rank-sheet", "replay-board", "theme-board"] as const;
-        expect(nextOwner(avail, "rank-sheet")).toBe("replay-board");
+        const avail = ["daily-explore", "replay-board", "theme-board"] as const;
+        expect(nextOwner(avail, "daily-explore")).toBe("replay-board");
         expect(nextOwner(avail, "replay-board")).toBe("theme-board");
-        expect(nextOwner(avail, "theme-board")).toBe("rank-sheet");
-        expect(nextOwner(avail, "workset")).toBe("rank-sheet"); // 후보 밖이면 첫 후보로
+        expect(nextOwner(avail, "theme-board")).toBe("daily-explore");
+        expect(nextOwner(avail, "workset")).toBe("daily-explore"); // 후보 밖이면 첫 후보로
         expect(nextOwner([], "workset")).toBe("workset"); // 후보 없음 → 제자리
     });
 });
@@ -47,47 +47,47 @@ describe("행 순회 소유권", () => {
         const seen: string[] = [];
         renderHook(() => {
             useRowNavHotkeys();
-            usePublishRowNav("rank-sheet").current = (d) => seen.push(`sheet${d}`);
+            usePublishRowNav("daily-explore").current = (d) => seen.push(`explore${d}`);
             usePublishRowNav("workset").current = (d) => seen.push(`workset${d}`);
             usePublishRowNav("replay-board").current = (d) => seen.push(`replay${d}`);
         });
 
         press("s");
         press("w");
-        expect(seen).toEqual(["sheet1", "sheet-1"]);
+        expect(seen).toEqual(["explore1", "explore-1"]);
 
         act(() => selectRowNavOwner("replay-board"));
         press("s");
-        expect(seen).toEqual(["sheet1", "sheet-1", "replay1"]);
+        expect(seen).toEqual(["explore1", "explore-1", "replay1"]);
     });
 
     it("고른 주인이 안 얹혀 있으면(배경 탭 언마운트) 우선순위로 흘린다 — 선택 자체는 안 지운다.", () => {
         const seen: string[] = [];
         act(() => selectRowNavOwner("theme-board"));
-        const sheet = renderHook(() => { usePublishRowNav("rank-sheet").current = (d) => seen.push(`sheet${d}`); });
+        const workset = renderHook(() => { usePublishRowNav("workset").current = (d) => seen.push(`workset${d}`); });
         renderHook(() => {
             useRowNavHotkeys();
-            usePublishRowNav("workset").current = (d) => seen.push(`workset${d}`);
+            usePublishRowNav("daily-explore").current = (d) => seen.push(`explore${d}`);
         });
         press("s");
-        expect(seen).toEqual(["sheet1"]); // 테마보드 없음 → 우선순위 1등(시트)
+        expect(seen).toEqual(["workset1"]); // 테마보드 없음 → 우선순위 1등(작업 대상)
 
-        sheet.unmount();
+        workset.unmount();
         press("s");
-        expect(seen).toEqual(["sheet1", "workset1"]); // 시트도 사라지면 다음 후보로
+        expect(seen).toEqual(["workset1", "explore1"]); // 작업 대상도 사라지면 다음 후보로
     });
 
     it("q 는 얹혀 있는 후보 사이만 순환한다.", () => {
         renderHook(() => {
             useRowNavHotkeys();
-            usePublishRowNav("rank-sheet").current = () => {};
+            usePublishRowNav("daily-explore").current = () => {};
             usePublishRowNav("theme-board").current = () => {};
         });
-        expect(titleOf("nav.row.next")).toContain("시트");
+        expect(titleOf("nav.row.next")).toContain("일별 [탐색]");
         press("q");
         expect(titleOf("nav.row.next")).toContain("테마 [장 마감]"); // 작업셋·복기는 건너뛴다
         press("q");
-        expect(titleOf("nav.row.next")).toContain("시트");
+        expect(titleOf("nav.row.next")).toContain("일별 [탐색]");
     });
 
     it("선택은 영속된다 — 새로고침(스토어 재생성) 대신 저장 키로 확인.", () => {
@@ -104,8 +104,8 @@ describe("행 순회 소유권", () => {
     it("얹은 순서가 뒤집혀도 새 프로바이더를 안 지운다 — 리마운트(새 publish → 옛 cleanup) 대비.", () => {
         const seen: string[] = [];
         renderHook(() => useRowNavHotkeys());
-        const first = renderHook(() => { usePublishRowNav("rank-sheet").current = () => seen.push("old"); });
-        renderHook(() => { usePublishRowNav("rank-sheet").current = () => seen.push("new"); }); // 새 것이 먼저 얹히고
+        const first = renderHook(() => { usePublishRowNav("daily-explore").current = () => seen.push("old"); });
+        renderHook(() => { usePublishRowNav("daily-explore").current = () => seen.push("new"); }); // 새 것이 먼저 얹히고
         first.unmount(); // 옛 것이 나중에 거둔다
         press("s");
         expect(seen).toEqual(["new"]);

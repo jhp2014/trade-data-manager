@@ -15,12 +15,11 @@ import { createSessionUiSlice, type SessionUiSlice } from "./sessionUiSlice.js";
 import { createBoardFilterSlice, type BoardFilterSlice } from "./boardFilterSlice.js";
 import { createSettingsSlice, type SettingsSlice } from "./settingsSlice.js";
 import { createHistorySlice, type HistorySlice } from "./historySlice.js";
-import { createRankViewSlice, type RankViewSlice } from "./rankViewSlice.js";
 import { createFilterFunnelSlice, type FilterFunnelSlice } from "./filterFunnelSlice.js";
 import { createSavedSetsSlice, type SavedSetsSlice } from "./savedSetsSlice.js";
 import { createPointDefSlice, type PointDefSlice } from "./pointDefSlice.js";
 
-export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelUiSlice & SessionUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & RankViewSlice & FilterFunnelSlice & SavedSetsSlice & PointDefSlice;
+export type WorkbenchState = FocusSlice & LiveFocusSlice & LiveChartSlice & ChartSlice & PanelUiSlice & SessionUiSlice & BoardFilterSlice & SettingsSlice & HistorySlice & FilterFunnelSlice & SavedSetsSlice & PointDefSlice;
 
 export type { Focus, Scope, Search, FocusSlice } from "./focusSlice.js";
 export type { LiveFocus, LiveFocusSlice } from "./liveFocusSlice.js";
@@ -31,7 +30,6 @@ export type { SessionUiSlice } from "./sessionUiSlice.js";
 export type { BoardFilterActions, BoardFilterSlice } from "./boardFilterSlice.js";
 export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, BoardMarket, BoardMarketMap, SettingsSlice } from "./settingsSlice.js";
 export type { HistoryEntry, HistorySlice } from "./historySlice.js";
-export type { RankViewSlice } from "./rankViewSlice.js";
 export type { FilterFunnelSlice } from "./filterFunnelSlice.js";
 export { allStagesOf, selectEditingExpr, selectEditingStages, selectEditingUniverse, selectObservedExpr, selectObservedSetId, selectObservedStages, selectObservedUniverse } from "./filterFunnelSlice.js";
 export type { SavedSet, SavedSetsSlice } from "./savedSetsSlice.js";
@@ -47,7 +45,6 @@ export const useWorkbench = create<WorkbenchState>()((...a) => ({
     ...createBoardFilterSlice(...a),
     ...createSettingsSlice(...a),
     ...createHistorySlice(...a),
-    ...createRankViewSlice(...a),
     ...createFilterFunnelSlice(...a),
     ...createSavedSetsSlice(...a),
     ...createPointDefSlice(...a),

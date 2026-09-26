@@ -3,15 +3,15 @@ import { moveRow, orderRows, pruneRowKeys } from "../prefs.js";
 import type { PointInfoRow } from "../rows.js";
 
 const row = (key: string): PointInfoRow => ({
-    key, kind: "axis", name: key, value: { text: "1", color: "", numeric: true, badge: null }, title: key, revealKey: key,
+    key, name: key, value: { text: "1", color: "", numeric: true }, title: key,
 });
 
 describe("pruneRowKeys — 유령 청소", () => {
-    const live = { axisKeys: ["c:a1", "c:a2"], themes: ["반도체", "2차전지"] };
+    const live = { themes: ["반도체", "2차전지"] };
 
-    it("죽은 축·테마 키만 지운다.", () => {
-        const got = pruneRowKeys(["ax:c:a1", "ax:c:dead", "th:반도체", "th:사라진테마"], live);
-        expect(got).toEqual(["ax:c:a1", "th:반도체"]);
+    it("죽은 테마 키와 옛 축·결과 키(ax:·out: — 종단 은퇴)를 지운다.", () => {
+        const got = pruneRowKeys(["ax:c:a1", "out:extHigh", "th:반도체", "th:사라진테마"], live);
+        expect(got).toEqual(["th:반도체"]);
     });
 
     it("`th:` 의 생사는 **전체 테마 목록**이 정한다 — 시선 종목의 테마로 재면 종목을 옮길 때마다 남의 키가 죽는다.", () => {
@@ -20,13 +20,8 @@ describe("pruneRowKeys — 유령 청소", () => {
         expect(got).toEqual(["th:반도체", "th:2차전지"]);
     });
 
-    it("`out:` 은 붙박이라 절대 안 지운다(목록을 안 받는 이유).", () => {
-        expect(pruneRowKeys(["out:extHigh", "out:simStatus"], { axisKeys: [], themes: [] }))
-            .toEqual(["out:extHigh", "out:simStatus"]);
-    });
-
     it("바뀔 게 없으면 같은 배열을 돌려준다(영속 쓰기가 안 돌게).", () => {
-        const cur = ["ax:c:a1", "th:반도체"];
+        const cur = ["th:반도체", "th:2차전지"];
         expect(pruneRowKeys(cur, live)).toBe(cur);
     });
 });

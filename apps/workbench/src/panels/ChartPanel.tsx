@@ -10,9 +10,7 @@ import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
 import { publishChartWalk } from "../lib/chartHooks.js";
-import { autoPointsOfChart, useAutoPoints, usePointGrids } from "../lib/PointGridsContext.js";
-import { useDisplayT } from "./outcome/outcomeLink.js";
-import { minuteToHms, sliceOutcome, walkOutcome } from "@trade-data-manager/market/domain";
+import { minuteToHms } from "@trade-data-manager/market/domain";
 import { unionMarkPoints, type AutoPointInput } from "../chart/minuteOverlays.js";
 import { BREAKOUT_HIGH } from "../styles/palette.js";
 import { useChainOverlay } from "./breakout/useChainOverlay.js";
@@ -44,7 +42,6 @@ import {
     marketControl,
     pinControl,
     scaleControl,
-    legMarkControl,
     searchLineControl,
     viewControl,
 } from "./ChartPanelChrome.js";
@@ -74,7 +71,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [lockScale, setLockScale] = usePanelUi(panelId, "lockScale", false); // 분봉 스케일 고정
     const [showGuide, setShowGuide] = usePanelUi(panelId, "showGuide", true); // +30% 가이드선(검색일 전일종가 ×1.3)
     const [showAnchorMarks, setShowAnchorMarks] = usePanelUi(panelId, "showAnchorMarks", true); // 상단 앵커 표식(칩+드롭선)
-    const [showLegMarks, setShowLegMarks] = usePanelUi(panelId, "showLegMarks", false); // 다리 표식(드롭 캡+띠) — 기본 꺼짐(렌즈 폐지 전 갱신 렌즈 화면과 동일)
     // 우클릭 메뉴의 기준 시장 — 선 줄이 따른다. 패널에 남겨(sticky) 오염 회피로 KRX 를 보는 중에
     // 봉마다 다시 누르지 않게 한다. 분봉·KRX 부재 봉에서는 메뉴가 UN 으로 되돌린다(없는 시장은 못 지목).
     const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
@@ -101,16 +97,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const lines = useBaselineLines(code, viewDate, dailyQ.data, minuteQ.data);
     const ignore = useIgnoreCandles(code, viewDate);
 
-    // 자동 Point(격자 파생) — 정의(pointDef) 반영 즉석 파생. ◇ 마커가 품질 육안 검증 입구다(재현율 대신).
-    // 다리 표식이 켜지면 ◇ 라벨에 연장 고점을 덧붙이고, 그 봉엔 드롭 캡을 긋는다.
-    // 기준 T 는 **지금 보는 T**(연동 결과 조건의 T, 없으면 탐색 T) — 차트는 조건이 아니라 읽기 면이라
-    // 자기 T 를 안 든다(단일 출처 = outcomeLink.useDisplayT).
-    const autoView = useAutoPoints();
-    const grids = usePointGrids();
-    const t1 = useDisplayT();
-    // ── 표식의 **두 소스는 갈라 둔다**(2026-09-18 단계 ③):
-    //    ◇ = **현재 집합의 후보**(하루·셀 우주) · 다리 표식(드롭 캡·띠) = 격자 파생.
-    //    한 memo 에서 뽑으면 ◇ 를 집합으로 옮기는 손이 다리 표식을 같이 죽인다.
     // ⚠ 라우팅의 자는 **모드**다(2026-09-22) — 파생은 조건 0개면 종단으로 떨어져 하루의 빈 집합을 놓친다.
     const setUniverse = useWorkbench((s) => s.filterMode);
     const funnelStages = useWorkbench(selectObservedStages);
@@ -137,37 +123,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
             }));
     }, [cellExpr, cellSet.hits, cellSet.isLoading, code, viewDate, funnelStages]);
 
-    const { legHighTimes, legHighBySignal } = useMemo<{
-        legHighTimes: number[];
-        /** 시그널 봉(unix초) → 그 연장 고점 봉(unix초) — 선택 시그널의 다리 띠 재료. */
-        legHighBySignal: Map<number, number>;
-    }>(() => {
-        const grid = showLegMarks ? grids.gridOf(code, viewDate) : undefined;
-        const legTimes = new Set<number>();
-        const bySignal = new Map<number, number>();
-        for (const p of autoPointsOfChart(autoView, code, viewDate)) {
-            const signalUnix = kstToUnix(viewDate, minuteToHms(p.min));
-            if (showLegMarks && grid) {
-                // 세션 최고가 굽기 이후 걷기는 항상 선다 — 무눌림(옛 "고점 없음")도 연장 고점 = 세션 최고가.
-                const s = sliceOutcome(walkOutcome(grid, p), t1, p.close);
-                // 분모 = 레벨가(다리 상승폭) — 결과 패널·시트의 % 는 Point 봉 종가 분모라 값이 다르다. 기준을 라벨에 명시.
-                // 밴드 Point 는 연장 고점이 레벨가 아래일 수 있어(§10.4 cap) 부호를 값이 정한다 — "+-" 금지.
-                const highUnix = kstToUnix(viewDate, minuteToHms(s.extHighMin));
-                legTimes.add(highUnix);
-                bySignal.set(signalUnix, highUnix);
-            }
-        }
-        return { legHighTimes: [...legTimes], legHighBySignal: bySignal };
-    }, [autoView, grids, showLegMarks, t1, code, viewDate]);
-
-    // 다리 띠 — **선택한 시그널 하나**만(전 시그널에 칠하면 겹쳐서 바탕색이 된다). 선택 = focus.time 이
-    // 이 차트의 시그널일 때(subject 계약과 같은 판정). 시그널 봉 = 고점 봉이어도 한 봉짜리 띠가 선다.
-    const legBand = useMemo<{ from: number; to: number } | null>(() => {
-        if (!time || !viewDate) return null;
-        const sig = kstToUnix(viewDate, time);
-        const high = legHighBySignal.get(sig);
-        return high === undefined ? null : { from: sig, to: high };
-    }, [time, viewDate, legHighBySignal]);
 
 
     // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
@@ -252,7 +207,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         searchLineControl(showLine, () => setShowLine((v) => !v)),
         guideControl(showGuide, () => setShowGuide((v) => !v)),
         anchorMarkControl(showAnchorMarks, () => setShowAnchorMarks((v) => !v)),
-        legMarkControl(showLegMarks, () => setShowLegMarks((v) => !v)),
         {
             kind: "action", id: "chainLayer", name: "사슬", group: "마커", activeColor: BREAKOUT_HIGH, on: showChain,
             help: `돌파 사슬 — 누르면 판(사슬·밴드 켜기, 돌파 줄 고르기)${chain.source ? ` · ${chain.source.text}` : ""}${chain.why ? ` — ${chain.why}` : ""}`,
@@ -265,7 +219,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         marketControl(mode, setMode),
     ], [view, setView, pinMinute, setPinMinute, lockScale, setLockScale, showPointInfo, setShowPointInfo,
         showMarkers, setShowMarkers, showLine, setShowLine, showGuide, setShowGuide,
-        showAnchorMarks, setShowAnchorMarks, showLegMarks, setShowLegMarks,
+        showAnchorMarks, setShowAnchorMarks,
         showChain, setShowChain, chain.source, chain.why,
         lines.clear, lines.hasLines, mode, setMode]);
 
@@ -344,8 +298,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     pctBase={pctBase}
                                     markerTime={markerTime}
                                     autoPoints={unionPoints}
-                                    legHighTimes={legHighTimes}
-                                    legBand={legBand}
                                     showPointInfo={showPointInfo}
                                     zoom={chartZoom ? { bars: cs.minuteZoomBars, anchorTime: chartZoom.anchor } : null}
                                     lockTimeScale={lockScale}

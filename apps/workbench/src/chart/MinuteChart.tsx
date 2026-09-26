@@ -13,7 +13,6 @@ import { useMinuteSeries, useMinuteSeriesData } from "./minuteSeries.js";
 import { useMinuteVisibleRange } from "./minuteFraming.js";
 import {
     useChainLayer,
-    useLegMarks,
     useMarkerOverlay,
     useMarkerVertLines,
     usePercentPriceLines,
@@ -110,8 +109,6 @@ export function MinuteChart({
     pctBase,
     markerTime = null,
     autoPoints = NO_AUTO,
-    legHighTimes,
-    legBand = null,
     showPointInfo = false,
     zoom = null,
     lockTimeScale = false,
@@ -135,10 +132,6 @@ export function MinuteChart({
     /** 표식 ◇(unix초+라벨) — **라벨 ∪ 조건 후보 한 줄**(2026-09-26, ◆/◇ 구분 폐지 — 합치는 손은 ChartPanel).
      *  ◇ 마커 + 청록 세로선 + hover 카드 — 안 넘기면 없음(실시간 차트가 그렇다). */
     autoPoints?: AutoPointInput[];
-    /** 고점 렌즈의 다리 고점 봉(unix초) — 고가 위 드롭 캡. 안 넘기면 없음(갱신 렌즈·실시간 차트). */
-    legHighTimes?: readonly number[];
-    /** 선택한 시그널의 다리 띠(unix초 구간, 시그널 봉→고점 봉) — 하나만. null = 띠 없음. */
-    legBand?: { from: number; to: number } | null;
     showPointInfo?: boolean; // 현재 타점 정보 박스 토글
     zoom?: { bars: number; anchorTime: number | null } | null; // f 줌 — anchorTime 중심 ±bars/2 봉. null = 세션 기본(07:50/08:50~15:30).
     lockTimeScale?: boolean; // 스케일 고정 — 종목/날짜 전환에도 보던 시각 창 유지(리프레임 안 함)
@@ -181,7 +174,6 @@ export function MinuteChart({
     const series = useMinuteSeries(chartRef);
     const { amountMapRef, cumMapRef, pointMapRef } = useMinuteSeriesData(series, points, showAmountMarkers);
     const { currentSnapped, autoSnapped } = useMarkerVertLines(series, points, markerTime, autoPoints);
-    useLegMarks(series, points, legHighTimes, legBand, showAmountMarkers);
     useChainLayer(series, points, chainOverlay);
     useMinuteVisibleRange(chartRef, points, zoom, frameKey, series.bumpOverlay, lockTimeScale);
     useMinuteInteraction({ chartRef, containerRef, candleRef: series.candleRef, pointMapRef, lines, base, pctBase, onMovePoint, onRightClick, onRemoveLine, onLineContext, onPickPrice, captureArmed: capturePriceArmed });

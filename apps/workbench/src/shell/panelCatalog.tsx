@@ -15,7 +15,6 @@ import { RealtimeChartPanel } from "../panels/RealtimeChartPanel.js";
 import { ReplayBoardPanel } from "../panels/ReplayBoardPanel.js";
 import { WorksetPanel } from "../panels/WorksetPanel.js";
 import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
-import { RankSheetPanel } from "../panels/RankSheetPanel.js";
 import { DailyGenPanel } from "../panels/dailyGen/DailyGenPanel.js";
 import { DailyExplorePanel } from "../panels/dailyExplore/DailyExplorePanel.js";
 import { NormOverlayPanel } from "../panels/norm/NormOverlayPanel.js";
@@ -25,10 +24,6 @@ import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 import { WatchlistPanel } from "../panels/WatchlistPanel.js";
 import { LiveTapePanel } from "../panels/liveTape/LiveTapePanel.js";
 import { ThemeScopePanel } from "../panels/themeRank/ThemeScopePanel.js";
-import { OutcomePanel } from "../panels/outcome/OutcomePanel.js";
-import { HotPointsPanel } from "../panels/hot/HotPointsPanel.js";
-import { PointDefPanel } from "../panels/pointdef/PointDefPanel.js";
-import { TradeSimPanel } from "../panels/sim/TradeSimPanel.js";
 import { AlertLogPanel } from "../panels/AlertLogPanel.js";
 import { UniverseRulesPanel } from "../panels/UniverseRulesPanel.js";
 import { parseSlotId, slotIdOf } from "./panelSlots.js";
@@ -96,7 +91,6 @@ export const PANEL_TYPES: PanelType[] = [
     //  그 패널이 곧 후보 순회 목록이다. 저장 레이아웃의 `component: "probe"` 는 sanitizeLayout 이
     //  미등록으로 걷어낸다(map·rankSkeleton 선례) — 사용자 화면의 그 탭은 다음 로드에 사라진다.)
     { idBase: "history", component: "recentHistory", title: "최근 탐색", plane: "eod", render: () => <RecentHistoryPanel /> },
-    { idBase: "rank-sheet", component: "rankSheet", title: "시트", plane: "eod", render: (id) => <RankSheetPanel panelId={id} /> },
     // 일별 타점[조건] — 하루 조건 묶음(집합)이 태어나는 자리(다른 패널은 그 집합을 구독만 한다).
     // 옛 「집합 편성」(2026-09-24 은퇴)의 idBase·component 를 **승계**한다 — 저장 배치·프리셋의 자리가 그대로
     // 새 패널이 되고(테마 [조건]판 선례), 두 패널 공존이 원리적으로 불가능하다. 옛 제목은 패널이 정규화한다.
@@ -108,25 +102,11 @@ export const PANEL_TYPES: PanelType[] = [
     // ⚠ duplicable 아님 — w/s 순회(usePublishRowNav)가 **후보 패널 각 1개** 전제의 모듈 전역 단일 소유다
     //   (rowNav 머리 주석). 복제가 필요해지면 rowNav 소유를 인스턴스 낟알로 바꾸는 일이 먼저다.
     { idBase: "daily-explore", component: "dailyExplore", title: "일별 타점[탐색]", plane: "eod", render: (id) => <DailyExplorePanel panelId={id} /> },
-    // (필터 레일 패널은 2026-09-19 철거 — 1차원 조건의 편집면이 편성 보드의 팝오버 하나가 됐다.
-    //  저장 레이아웃·프리셋에 남은 "filterRails" 는 sanitizeLayout 자가치유가 걷어낸다.)
-    // 시그널 결과 — 시그널 **이후**(미래) 값의 분포·조건(과거/미래 패널 경계).
-    // 결과 시트 패널(outcomeSheet)은 2026-09-04 폐지 — 결과 열이 기존 시트(rankSheet)의 열 프리셋으로 들어갔다.
-    // 옛 배치에 남은 id 는 sanitizeLayout 자가치유가 걷어낸다(옛 map·rankSkeleton* 과 같은 길).
-    { idBase: "outcome-rails", component: "outcomeRails", title: "시그널 결과", plane: "eod", render: (id) => <OutcomePanel panelId={id} /> },
-    // 급타점 — 창 W 안 급한 재돌파의 개수(시그널 **이전**의 특징이라 필터 레일의 형제다). 전제가 쌍
-    // (W,r) 이라 1차원 레일에 안 앉아 전용 판을 둔다 — 편집면이 여기 하나여야 값의 경로가 닫힌다.
-    { idBase: "hot-points", component: "hotPoints", title: "급타점", plane: "eod", render: () => <HotPointsPanel /> },
-    // 트레이드 시뮬 — 노브 7(정의 payload 동승) + 체결률 곡선·분류·도달 분포. 깔때기 거울이 아니라
-    // 모수(보는 집합)로만 이어진다(decisions.md 「시그널 결과」 트레이드 시뮬 항목).
-    { idBase: "trade-sim", component: "tradeSim", title: "트레이드 시뮬", plane: "eod", render: (id) => <TradeSimPanel panelId={id} /> },
-    // 타점 정의 — 판정 노브를 분포 보며 긋는 자리(모수 선언층, POINT_DEF teal). 필터 레일의 형제이되
-    // 깔때기 단이 아니다: 여기 컷은 행을 지우는 게 아니라 시그널의 존재·위치를 바꾼다.
-    { idBase: "point-def", component: "pointDef", title: "타점 정의", plane: "eod", render: () => <PointDefPanel /> },
-    // 정규화 두 판 — 골격 패널의 후신(골격의 실가치 = 정규화, 2026-08-23 은퇴). 실물 캔들/종가선을 원점으로 접어 겹친다.
-    // 옛 골격 컴포넌트("rankSkeleton"/"rankSkeletonMinute")는 저장 프리셋에서 sanitizeLayout 이 걷어낸다(맵 패널과 같은 길).
+    // (종단 트랙 전면 폐기, 2026-09-26 — 시트(rankSheet)·시그널 결과(outcomeRails)·급타점(hotPoints)·
+    //  트레이드 시뮬(tradeSim)·타점 정의(pointDef)·정규화 [타점](normPoint) 여섯 판 은퇴. 통계는 나중에
+    //  "그룹 → 서버 리포트"로 재설계(decisions 「종단 트랙 전면 폐기」). 저장 배치의 그 칸들은 sanitizeLayout 이 걷는다.)
+    // 정규화 [일봉] — 골격 패널의 후신(골격의 실가치 = 정규화). 실물 캔들/종가선을 원점으로 접어 겹친다.
     { idBase: "norm-daily", component: "normDaily", title: "정규화 [일봉]", plane: "eod", render: () => <NormOverlayPanel grain="daily" /> },
-    { idBase: "norm-point", component: "normPoint", title: "정규화 [타점]", plane: "eod", render: () => <NormOverlayPanel grain="minute" /> },
     // ⚠ duplicable 아님 — 순서·숨김(wb.pointInfoOrder/Hidden)이 usePointInfoPrefs 의 **전역 단일 소유 키**라
     //   인스턴스-안전화 조건("영속 키 전부 panelId 낟알")을 못 지킨다. 복제하려면 그 저장물 모양부터.
     { idBase: "rank-point", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },
