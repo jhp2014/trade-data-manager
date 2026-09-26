@@ -39,8 +39,7 @@ const fmtEok = (won: number): string => `${(won / 1e8).toFixed(won >= 1e10 ? 0 :
 export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element {
     const funnel = useFunnel();
     const { nameOf } = useStockNamesDict();
-    const mode = useWorkbench((s) => s.filterMode);
-    const isDaily = mode === "daily";
+    const isDaily = true;
     const focusDate = useWorkbench((s) => s.focus.date);
     const focusCode = useWorkbench((s) => s.focus.code);
     const focusTime = useWorkbench((s) => s.focus.time);

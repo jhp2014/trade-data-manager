@@ -3,14 +3,13 @@
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
-import { selectEditingExpr, selectEditingUniverse, useWorkbench } from "../../store/workbench.js";
+import { selectEditingExpr, useWorkbench } from "../../store/workbench.js";
 import { FAIL } from "../../styles/palette.js";
 import { leafCount, leavesOf, refsOf } from "../filter/expr.js";
 import { useBoundSet } from "../filter/useBoundSet.js";
 
 export function DailyGenHeader({ panelId }: { panelId: string }): JSX.Element {
     const clearStages = useWorkbench((s) => s.clearFilterStages);
-    const derived = useWorkbench(selectEditingUniverse);
     const date = useWorkbench((s) => s.focus.date);
     const expr = useWorkbench(selectEditingExpr);
     const exprIsEmpty = leafCount(expr) === 0 && refsOf(expr).length === 0;
@@ -51,13 +50,7 @@ export function DailyGenHeader({ panelId }: { panelId: string }): JSX.Element {
                 조건 {on}{all > on ? ` / ${all}` : ""}
             </span>
             {/* 열린 집합이 종단 조건을 품고 있다(옛 저장물) — 모드를 바꾸는 손은 없다(종단 보류). 사실만 말한다. */}
-            {derived === "longitudinal" && (
-                <span title={d.unsupported ?? "이 집합에는 종단 조건이 있어 하루에서 평가하지 않습니다"}
-                    style={{ fontSize: 10.5, color: FAIL, flexShrink: 0 }}>
-                    종단 집합 — 평가 안 함
-                </span>
-            )}
-            <HeaderControls controls={controls} storageKey="wb.headerPins.funnel" />
+                        <HeaderControls controls={controls} storageKey="wb.headerPins.funnel" />
         </PanelHeader>
     );
 }

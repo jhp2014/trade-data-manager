@@ -87,19 +87,12 @@ describe("useBoundSet — 하루 우주", () => {
         expect(evalSpy, "같은 (조건, 날짜, opts) 는 한 번만 평가한다").toHaveBeenCalledTimes(1);
     });
 
-    it("종단 모드면 하루 경로가 아예 안 선다 — 재료도 안 당긴다", () => {
-        seedEditing(exprOfStages([]), [], "longitudinal");
-        renderProbes(["a"], false); // 재료를 안 심었다: 당기면 setup 의 네트워크 그물이 이 테스트를 죽인다
-        expect(seen.a!.universe).toBe("longitudinal");
-        expect(seen.a!.day.on, "하루 경로가 안 선다 — 이게 이 검사의 본론이다").toBe(false);
-        expect(evalSpy).not.toHaveBeenCalled();
-    });
 });
 
-describe("useBoundSet — 모드가 라우팅을 정한다 (2026-09-22)", () => {
+describe("useBoundSet — 하루 하나다(종단 은퇴 2026-09-26)", () => {
     it("평가할 조건이 없으면(전부 결손 — 깨진 참조) **이유 있는 빈 집합**이다 — 빈 목록이 아니다", () => {
         // 지워진 집합을 가리키는 참조 하나 — AND 오염으로 평가할 식이 안 남는다(남은 유일한 결손 경로).
-        seedEditing({ id: "root", of: [{ kind: "ref", id: "r1", setId: "없는것" }], ops: [], groups: [] }, [], "daily");
+        seedEditing({ id: "root", of: [{ kind: "ref", id: "r1", setId: "없는것" }], ops: [], groups: [] }, []);
         renderProbes(["a"], false); // 재료를 안 당기는 것도 이 검사의 일부다
         expect(seen.a!.day.on, "하루 경로는 선다").toBe(true);
         expect(seen.a!.view.viewedItems).toHaveLength(0);
@@ -109,10 +102,9 @@ describe("useBoundSet — 모드가 라우팅을 정한다 (2026-09-22)", () => 
         expect(evalSpy).not.toHaveBeenCalled();
     });
 
-    it("빈 집합을 하루 모드에서 열어도 **하루로** 라우팅된다 — 파생은 종단으로 떨어진다", () => {
-        seedEditing(exprOfStages([]), [], "daily");
+    it("빈 집합 — 하루 경로는 서되 「조건 없음」으로 말한다", () => {
+        seedEditing(exprOfStages([]), []);
         renderProbes(["a"], false);
-        expect(seen.a!.universe, "자는 모드다(파생이 아니다)").toBe("daily");
         expect(seen.a!.day.unsupported, "조건이 없다고 말한다").toBeTruthy();
         expect(evalSpy, "조건이 없으면 재료를 안 당긴다").not.toHaveBeenCalled();
     });

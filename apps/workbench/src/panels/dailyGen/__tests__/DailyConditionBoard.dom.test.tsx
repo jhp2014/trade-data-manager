@@ -423,17 +423,16 @@ describe("테마 조건 — 팝오버가 편집면(2026-09-26)", () => {
 
 describe("＋ 집합 — 세 칸 판", () => {
     const leaf = { kind: "cond" as const, stage: RATE_STAGE };
-    const set = (id: string, expr = exprOfStages([RATE_STAGE]), universe: "daily" | "longitudinal" = "daily", name: string | undefined = id) =>
-        ({ id, expr, universe, ...(name !== undefined ? { name } : {}) });
+    const set = (id: string, expr = exprOfStages([RATE_STAGE]), name: string | undefined = id) =>
+        ({ id, expr, universe: "daily" as const, ...(name !== undefined ? { name } : {}) });
     const ref = (setId: string) => ({ kind: "ref" as const, id: `r-${setId}`, setId });
 
-    it("setPickerOf — 자기·종단은 안 보이고, 나를 쓰는 집합·빈 집합만 회색", () => {
+    it("setPickerOf — 자기는 안 보이고, 나를 쓰는 집합·빈 집합만 회색", () => {
         const edit = { id: "edit", expr: { id: "root", of: [ref("a")], ops: [], groups: [] }, universe: "daily" as const };
         const sets = [
             edit,
             set("a"),
             set("b"),
-            set("lon", exprOfStages([RATE_STAGE]), "longitudinal"),
             set("cyc", { id: "root", of: [ref("edit")], ops: [], groups: [] }),
             set("empty", exprOfStages([])),
         ];
@@ -475,14 +474,12 @@ describe("＋ 집합 — 세 칸 판", () => {
         expect(baseElement.textContent).toContain("저장된 다른 집합이 없습니다");
     });
 
-    it("종단 집합은 안 보이고, 빈 집합은 회색 + 「비어 있음」", () => {
+    it("빈 집합은 회색 + 「비어 있음」", () => {
         seedEditing(exprOfStages([RATE_STAGE]));
         act(() => { useWorkbench.setState((s) => ({ savedSets: [...s.savedSets,
-            { id: "lon", name: "종단 후보", expr: exprOfStages([RATE_STAGE]), universe: "longitudinal" },
             { id: "emp", name: "빈 것", expr: exprOfStages([]), universe: "daily" }] })); });
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(byText(container, "＋ 집합")!); });
-        expect(baseElement.textContent).not.toContain("종단 후보");
         const item = [...baseElement.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("빈 것"))!;
         expect(item.disabled).toBe(true);
         expect(item.textContent).toContain("비어 있음");

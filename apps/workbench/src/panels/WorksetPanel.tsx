@@ -47,11 +47,9 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     const { pointGroupsOf, pathLabel } = useGroups();
     const funnel = useFunnel();
 
-    // ── 하루·셀 우주 — 편집 중인 집합의 타입이 이 패널의 모습을 정한다(decisions 「집합」 단계 ③).
-    //    종단이면 지금까지의 3층 목록 그대로, 하루면 그날의 셀 ∪ 라벨 2층 목록이 된다.
-    // ⚠ 라우팅의 자는 **모드**다(2026-09-22) — 파생은 조건 0개면 종단으로 떨어진다.
     const stages = useWorkbench(selectObservedStages);
-    const isDaily = useWorkbench((s) => s.filterMode) === "daily";
+    // 종단 은퇴(2026-09-26) — 작업 대상은 하루 하나다. 아래 isDaily 가지들은 이 상수로 접혔다.
+    const isDaily = true;
     const pid = panelId ?? "workset";
     const [sortMode, setSortMode] = usePanelUi<"stock" | "time">(pid, "daySort", "stock");
     const [collapsedCodes, setCollapsedCodes] = usePanelUi<string[]>(pid, "dayCollapsed", []);
@@ -225,7 +223,6 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     //    (첫 마운트마다 지나는 경로다 — 리뷰가 잡았다).
     const labelCount = useMemo(() => dayCells.filter((c) => c.labeled).length, [dayCells]);
 
-    if (!isDaily) return <BoardCenter text="작업 대상은 하루 전용입니다(종단 은퇴 — 2026-09-26)" />;
     if (cellSet.isLoading) return <BoardCenter text={`${focusDate} 후보 계산중…`} />;
     if (cellSet.error) return <BoardCenter text={`후보 오류: ${cellSet.error.message}`} />;
 

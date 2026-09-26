@@ -48,14 +48,13 @@ describe("toCellExpr — 잎 변환", () => {
     });
 });
 
-// 결손을 내는 유일한 남은 경로 = 종단 집합 참조(2026-09-26 종단 폐기 뒤 술어 결손 종류는 없다).
+// 결손을 내는 유일한 남은 경로 = 깨진 참조·순환(2026-09-26 종단 폐기 뒤 술어 결손 종류는 없다).
 const brokenRef = (id: string): SetTerm => ({ kind: "ref", id: `r-${id}`, setId: id });
-const longSet = { expr: exprOfStages([stage("in-long", [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }])]), universe: "longitudinal" as const };
 
-describe("toCellExpr — 결손(종단 참조)", () => {
+describe("toCellExpr — 결손(깨진 참조)", () => {
     it("결손 항은 빠지고 그 사실이 함께 나온다 — 조용히 0건이 되지 않는다(OR 은 그 항만)", () => {
         const e: SetExpr = mk("or", "root", [{ kind: "cond", stage: cell }, brokenRef("s9")]);
-        const { stages } = toCellExpr(e, (id) => (id === "s9" ? longSet : undefined));
+        const { stages } = toCellExpr(e, () => undefined);
         expect(leafIds(e)).toEqual(["c1"]);
         expect(stages.find((s) => s.stageId === "c1")).toMatchObject({ counted: true, reasons: [] });
     });
@@ -63,7 +62,7 @@ describe("toCellExpr — 결손(종단 참조)", () => {
     // ⚠ AND 에서 결손 항만 빼면 그 묶음이 **느슨해진다**(사용자가 건 적 없는 더 넓은 집합).
     it("AND 는 결손 항 하나에 **묶음째** 빠진다 — 멀쩡한 잎에도 이유가 달린다", () => {
         const e: SetExpr = mk("and", "root", [{ kind: "cond", stage: cell }, brokenRef("s9")]);
-        const { expr, stages } = toCellExpr(e, (id) => (id === "s9" ? longSet : undefined));
+        const { expr, stages } = toCellExpr(e, () => undefined);
         expect(expr).toBeNull();
         expect(stages.find((s) => s.stageId === "c1")).toMatchObject({ counted: false });
     });
@@ -122,11 +121,11 @@ describe("toCellExpr — 결손 수는 덜 세어지지 않는다", () => {
     //   화면의 결손 수가 그만큼 적게 나온다("결손은 조용히 사라지지 않는다"가 제 구현에서 새던 자리).
     it("오염된 AND 의 **뒤쪽 형제도** status 에 실린다", () => {
         const e: SetExpr = mk("and", "root", [
-                brokenRef("s9"),                                                  // 결손(종단 참조)
+                brokenRef("s9"),                                                  // 결손(깨진 참조)
                 { kind: "cond", stage: stage("after1", cell.predicates) },        // 뒤쪽 형제 둘
                 { kind: "cond", stage: stage("after2", cell.predicates) },
             ]);
-        const { expr, stages } = toCellExpr(e, (id) => (id === "s9" ? longSet : undefined));
+        const { expr, stages } = toCellExpr(e, () => undefined);
         expect(expr).toBeNull();
         expect(stages.map((x) => x.stageId).sort()).toEqual(["after1", "after2"]);
         expect(stages.every((x) => !x.counted), "묶음째 빠졌으므로 전부 결손으로 선다").toBe(true);
@@ -145,7 +144,7 @@ describe("toCellExpr — 부정", () => {
 // 하루 우주는 참조를 **그 자리에 펼친다**. 안 펼치면 참조가 결손이고, 「결손은 AND 를 오염시킨다」
 // 규칙이 묶음 하나를 **집합 전체의 0건**으로 키운다 — 오류도 경고도 없이. 「묶음은 곧 이름 붙은
 // 집합」(식 1층화) 이후로는 중첩이 전부 참조라 이 자리가 상시 경로가 된다.
-describe("toCellExpr — 참조는 하루 집합만 펼친다", () => {
+describe("toCellExpr — 참조는 그 자리에 펼친다", () => {
     const daily = (expr: SetExpr): { expr: SetExpr; universe: "daily" } => ({ expr, universe: "daily" });
     const ref = (setId: string, neg = false): SetTerm =>
         ({ kind: "ref", id: `r-${setId}`, setId, ...(neg ? { neg: true as const } : {}) });
@@ -157,14 +156,6 @@ describe("toCellExpr — 참조는 하루 집합만 펼친다", () => {
         expect(expr).not.toBeNull();
         expect(stages.map((x) => x.stageId).sort(), "안쪽 조건도 줄로 선다").toEqual(["c1", "in1"]);
         expect(stages.every((x) => x.counted)).toBe(true);
-    });
-
-    it("종단 집합 참조는 **여전히 결손**이다 — 키가 아예 다르다", () => {
-        const e: SetExpr = mk("and", "root", [{ kind: "cond", stage: cell }, ref("s1")]);
-        // ⚠ **비어 있지 않은** 종단 집합이어야 한다 — 빈 집합은 우주와 무관하게 "제한 없음"이다(아래 절).
-        const { expr, stages } = toCellExpr(e, () => longSet);
-        expect(expr, "AND 가 오염돼 묶음째 빠진다").toBeNull();
-        expect(stages.find((x) => x.stageId === "c1")?.counted, "멀쩡한 형제도 이유를 받는다").toBe(false);
     });
 
     it("지워진 집합을 가리키는 참조도 결손이다(조용히 통과시키지 않는다)", () => {
@@ -206,20 +197,13 @@ describe("toCellExpr — 빈 집합 참조는 **부재**지 결손이 아니다"
     const daily = (expr: SetExpr): { expr: SetExpr; universe: "daily" } => ({ expr, universe: "daily" });
     const ref = (setId: string): SetTerm => ({ kind: "ref", id: `r-${setId}`, setId });
 
-    // ⚠ 종단에서 빈 집합 참조는 **공허참(= 제한 없음)** 이다(`and3([])`). 여기서 결손으로 접으면
-    //   같은 식이 두 우주에서 다른 답을 낸다 — `＋ 묶음` 으로 갓 만든 빈 집합이 부모 하루 집합을
-    //   **이유 없이 0건**으로 만들던 자리(2026-09-20 리뷰).
+    // ⚠ 빈 집합 참조는 **공허참(= 제한 없음)** 이다. 결손으로 접으면 `＋ 묶음` 으로 갓 만든
+    //   빈 집합이 부모 집합을 **이유 없이 0건**으로 만든다(2026-09-20 리뷰).
     it("AND 안의 빈 집합 참조는 그냥 빠진다 — 형제 조건이 산다", () => {
         const e: SetExpr = mk("and", "root", [{ kind: "cond", stage: cell }, ref("empty")]);
         const { expr, stages } = toCellExpr(e, () => daily(exprOfStages([])));
         expect(expr, "묶음이 통째로 빠지지 않는다").not.toBeNull();
         expect(stages.find((x) => x.stageId === "c1")?.counted, "형제가 오염되지 않는다").toBe(true);
-    });
-
-    it("**우주를 안 묻는다** — 갓 만든 빈 집합은 저장값이 종단이라도 통과한다", () => {
-        const e: SetExpr = mk("and", "root", [{ kind: "cond", stage: cell }, ref("new")]);
-        const { expr } = toCellExpr(e, () => ({ expr: exprOfStages([]), universe: "longitudinal" as const }));
-        expect(expr).not.toBeNull();
     });
 
     it("OR 안의 빈 집합 참조는 **묶음 전체를 제한 없음**으로 만든다(참인 항이 하나면 OR 은 참)", () => {
@@ -257,7 +241,7 @@ describe("괄호 — 3치 규칙이 한 층 더 내려간다", () => {
     it("괄호 **안**의 결손은 그 괄호만 오염시킨다 — 바깥 AND 는 산다", () => {
         // (결손 OR 셀) — OR 이라 결손 가지만 빠지고 나머지가 선다.
         const e = withParen([{ kind: "cond", stage: cell }, brokenRef("s9"), { kind: "cond", stage: cell2 }]);
-        const { expr, stages } = toCellExpr(e, (id) => (id === "s9" ? longSet : undefined));
+        const { expr, stages } = toCellExpr(e, () => undefined);
         expect(expr).toMatchObject({ kind: "and", of: [{ kind: "pred", id: "c1" }, { kind: "or", of: [{ kind: "pred", id: "c2" }] }] });
         expect(stages.find((s) => s.stageId === "c1")).toMatchObject({ counted: true });
     });
@@ -269,7 +253,7 @@ describe("괄호 — 3치 규칙이 한 층 더 내려간다", () => {
             of: [{ kind: "cond", stage: cell }, brokenRef("s9"), { kind: "cond", stage: cell2 }],
             ops: ["or", "and"], groups: [{ from: 1, to: 2 }],
         };
-        const { expr, stages } = toCellExpr(e, (id) => (id === "s9" ? longSet : undefined));
+        const { expr, stages } = toCellExpr(e, () => undefined);
         expect(expr).toMatchObject({ kind: "or", of: [{ kind: "pred", id: "c1" }] });
         // 괄호가 통째로 빠졌으니 **그 안의 멀쩡한 조건도 이유를 받는다**(조용히 사라지지 않는다).
         expect(stages.find((s) => s.stageId === "c2")).toMatchObject({ counted: false });

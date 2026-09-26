@@ -19,13 +19,11 @@ import { FilterRow } from "../filter/FilterRow.js";
 import { activeExpr, hasCycle, idOf, leavesOf, mapLeaves, negateGroupAt, negateTerm, refsOf, removeGroupAt, removeTerm, setOpAt, toggleBoundaryGroup, type SetExpr, type SetTerm } from "../filter/expr.js";
 import { setDisplayName, stageLabel } from "../filter/label.js";
 import { stageKind, type FilterPredicate, type FilterStage } from "../filter/stage.js";
-import { stageDeficiency } from "../filter/universe.js";
 import { BreakoutCondEditor } from "./BreakoutCondEditor.js";
 import { ThemeCondEditor } from "./ThemeCondEditor.js";
 import { FAIL, PIN } from "../../styles/palette.js";
 import { LinkIcon } from "../../components/icons.js";
 
-const UNIVERSE = "daily" as const;
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
 
 export function DailyConditionBoard(): JSX.Element {
@@ -170,7 +168,6 @@ export function DailyConditionBoard(): JSX.Element {
                 stage={t.stage}
                 label={stageLabel(t.stage)}
                 dead={false}
-                deficiency={stageDeficiency(t.stage, UNIVERSE)}
                 cellFields={<CellStageFields stage={t.stage} onPatch={setStage} />}
                 neg={t.neg === true}
                 onOpen={(e) => openEditor(t.stage, e)}
@@ -213,7 +210,7 @@ export function DailyConditionBoard(): JSX.Element {
                             ＋ 묶음
                         </button>
                         {/* ⚠ 늘 열린다 — 붙일 게 없어도 **왜 없는지**를 판이 말한다. 규칙(2026-09-25): **절대 안 되는 것은
-                            안 보이고**(열린 집합·경로 위 조상·종단 — 이 판은 Daily 전용), **상황 때문에 안 되는 것만** 회색 +
+                            안 보이고**(열린 집합·경로 위 조상), **상황 때문에 안 되는 것만** 회색 +
                             이유(나를 쓰는 집합 · 빈 집합). 식 칩 우클릭 판 Item 의 "숨기지 않고 회색 + 이유"는 후자에만 걸린다. */}
                         <HeaderPopover width={260} align="start" closeOnOutside
                             trigger={(open, toggle) => (
@@ -330,7 +327,7 @@ export function DailyConditionBoard(): JSX.Element {
     );
 }
 
-type PickerSet = { id: string; name?: string; expr: SetExpr; universe: string };
+type PickerSet = { id: string; name?: string; expr: SetExpr };
 /** 상황 때문에 못 붙이는 이유 — 회색 칸에 선다(절대 안 되는 것은 아예 안 선다). */
 type BlockWhy = "usesMe" | "empty";
 const BLOCK_TEXT: Record<BlockWhy, string> = { usesMe: "이 집합을 쓰고 있음", empty: "비어 있음" };
@@ -343,8 +340,7 @@ const BLOCK_HINT: Record<BlockWhy, string> = {
  * ＋ 집합 판의 세 칸 — 순수부(테스트 표면). 올라와 있음 = 이 식에 이미 붙은 참조(식 순서) · 붙일 수 있음 ·
  * 붙일 수 없음(나를 쓰는 집합 → 빈 집합 순으로 첫 이유 하나).
  * **아예 안 서는 것**(무조건 불가 — 2026-09-25 사용자): 편집 중인 집합 자신 · 경로 위 조상(`path` — 묶음 안에서 볼 때
- * 위 집합들, 나를 품는다) · 종단 집합(이 판은 Daily 전용 — 하루 모드는 부팅 때 고정이라 스토어의 `filterMode` 검사와
- * 같은 답이다). 스토어 `addSetRef` 보다 **한 가지 더 엄격**하다: 빈 집합은 스토어가 받지만(부재 = 제한 없음) 판은 회색으로 세운다.
+ * 위 집합들, 나를 품는다). 스토어 `addSetRef` 보다 **한 가지 더 엄격**하다: 빈 집합은 스토어가 받지만(부재 = 제한 없음) 판은 회색으로 세운다.
  * 지워진 집합을 가리키는 참조는 `broken` 으로 따로 낸다 — 칩 줄이 「(지워진 집합)」으로 세우는 것을 판이 숨기면 둘이 엇갈린다.
  */
 export function setPickerOf<T extends PickerSet>(savedSets: readonly T[], editingSetId: string, expr: SetExpr, path: readonly string[] = []): {
@@ -360,7 +356,7 @@ export function setPickerOf<T extends PickerSet>(savedSets: readonly T[], editin
     const attachable: T[] = [];
     const blocked: { set: T; why: BlockWhy }[] = [];
     for (const f of savedSets) {
-        if (mine.includes(f.id) || f.id === editingSetId || path.includes(f.id) || f.universe !== UNIVERSE) continue;
+        if (mine.includes(f.id) || f.id === editingSetId || path.includes(f.id) ) continue;
         const why: BlockWhy | null = hasCycle(editingSetId, f.expr, exprOfSet) ? "usesMe"
             // 빈 집합(꺼진 조건뿐인 것 포함 — 평가에선 부재)은 붙여도 제한이 없다.
             : activeExpr(f.expr).of.length === 0 ? "empty"

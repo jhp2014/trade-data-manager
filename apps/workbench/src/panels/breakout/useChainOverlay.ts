@@ -24,7 +24,6 @@ import { breakoutOfStock, chainVerdicts, type BreakoutChainResult, type CellPred
 import type { ChainFillSpec, ChainOverlayInput } from "../../chart/chainLayer.js";
 import { usePointGrids } from "../../lib/PointGridsContext.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
-import { useWorkbench } from "../../store/workbench.js";
 import { BREAKOUT_BASE, BREAKOUT_HIGH } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { leavesOf } from "../filter/expr.js";
@@ -78,12 +77,11 @@ export function useChainOverlay(args: {
 }): ChainOverlay {
     const { on, showBands, sourceId, code, date, onSetDate, ownBars, chartBase, keptTimes } = args;
     const stages = leavesOf(useFunnel().slowExpr);
-    const mode = useWorkbench((s) => s.filterMode);
 
     const rows = useMemo(() => chainSourceRowsOf(stages), [stages]);
     const source = rows.find((r) => r.stageId === sourceId) ?? rows[0] ?? null;
 
-    const active = on && mode === "daily" && source !== null && onSetDate;
+    const active = on && source !== null && onSetDate;
     const snapQ = useDaySnapshot(active ? date : null);
     const pointGrids = usePointGrids();
     const stocks = snapQ.data?.date === date ? snapQ.data.stocks : null;
@@ -107,8 +105,7 @@ export function useChainOverlay(args: {
 
     let why: string | null = null;
     if (on) {
-        if (mode !== "daily") why = "하루 모드에서만 그린다";
-        else if (source === null) why = "보는 집합에 켜진 「돌파」 줄이 없다 — 조건판에서 만든다";
+        if (source === null) why = "보는 집합에 켜진 「돌파」 줄이 없다 — 조건판에서 만든다";
         else if (!onSetDate) why = `집합 날짜(${date})의 차트에서만 그린다`;
         else if (snapQ.error) why = `분봉 재료 조회 실패: ${(snapQ.error as Error).message}`;
         else if (pointGrids.error) why = `기준선 재료 조회 실패: ${pointGrids.error.message}`;

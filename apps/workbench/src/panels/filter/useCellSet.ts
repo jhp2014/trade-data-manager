@@ -32,7 +32,6 @@ import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { cellMaterialsOf } from "./cellMaterials.js";
 import type { FilterStage } from "./stage.js";
 import { activeExpr, foldExpr, isFoldedNode, type FoldedNode, type SetExpr, type SetTerm } from "./expr.js";
-import { stageDeficiency, type Universe } from "./universe.js";
 
 /**
  * 하루 집합의 평가 옵션 — **목록을 그리는 소비자는 전부 이 상수를 쓴다**(목록·차트). 예외 하나:
@@ -107,7 +106,7 @@ export interface CellSetView {
  * 참조가 가리키는 집합 — 하루 우주 전개의 재료. `SavedSet` 을 구조적으로 만족하는 좁은 모양이라
  * 이 파일이 스토어 타입을 안 물어도 된다(순수부는 순수부끼리).
  */
-export type DaySetLookup = (setId: string) => { expr: SetExpr; universe: Universe } | undefined;
+export type DaySetLookup = (setId: string) => { expr: SetExpr } | undefined;
 
 export function toCellExpr(
     input: SetExpr,
@@ -141,19 +140,16 @@ export function toCellExpr(
     const ABSENT = Symbol("absent");
     type Out = CellExpr | null | typeof ABSENT;
 
-    /** 조건 항 하나 → 셀 술어(들). 결손이면 null 이고 이유가 status 에 실린다. */
-    const condOf = (t: Extract<SetTerm, { kind: "cond" }>, mine: string[]): CellExpr | null => {
+    /** 조건 항 하나 → 셀 술어(들). 결손은 이제 참조 쪽(깨진 참조·순환)에만 있다. */
+    const condOf = (t: Extract<SetTerm, { kind: "cond" }>, mine: string[]): CellExpr => {
         const s = t.stage;
         mine.push(s.id);
-        const reasons = stageDeficiency(s, "daily");
+        // 종단 폐기(2026-09-26)로 남은 kind 는 전부 하루 평가 가능 — 조건의 결손이란 게 없어졌다.
         // 같은 집합을 두 번 참조하면 같은 조건이 두 번 지난다 — 줄은 하나이므로 status 도 하나다.
         if (!status.some((x) => x.stageId === s.id)) {
-            status.push(reasons.length > 0
-                ? { stageId: s.id, counted: false, reasons }
-                : { stageId: s.id, counted: true, reasons: [] });
+            status.push({ stageId: s.id, counted: true, reasons: [] });
         }
-        if (reasons.length > 0) return null;
-        // 결손 0 = 전부 셀 술어(위 게이트가 보장). 조건 하나가 술어 **여럿**을 들 수 있으므로
+        // 조건 하나가 술어 **여럿**을 들 수 있으므로
         // 그때는 AND 묶음으로 세운다 — 첫 술어만 싣던 옛 실수가 여기서 재발하지 않게.
         const preds = s.predicates as CellPredicate[];
         const neg = t.neg === true ? { neg: true as const } : {};
@@ -176,11 +172,8 @@ export function toCellExpr(
     const refOf = (t: Extract<SetTerm, { kind: "ref" }>, mine: string[]): Out => {
         const target = setOf(t.setId);
         if (target === undefined || visiting.has(t.setId)) return null; // 지워진 집합 · 순환 = 결손
-        // ⚠ **빈 집합은 우주를 안 묻고 부재로 통과시킨다.** 조건이 없으면 우주가 미정이라 저장값이
-        //   `longitudinal` 인데(갓 만든 묶음이 그렇다), 우주로 먼저 거르면 그 묶음이 결손이 되어
-        //   부모를 통째로 0건으로 만든다. 빈 집합은 어느 우주에서도 "제한 없음"이다.
+        // ⚠ **빈 집합은 부재로 통과시킨다** — 결손으로 접으면 갓 만든 묶음이 부모를 통째로 0건으로 만든다.
         if (activeExpr(target.expr).of.length === 0) return ABSENT;
-        if (target.universe !== "daily") return null; // 종단 집합 — 멤버십을 물을 키가 아예 다르다
         visiting.add(t.setId);
         const inner: string[] = [];
         try {
@@ -315,7 +308,7 @@ export const cellHitToItem = (h: CellHit, date: string): FunnelItem => ({
 export function useCellSet(
     expr: SetExpr | null,
     /** 참조를 펼칠 저장물 — **식과 같은 박자**여야 한다(호출부가 `funnel.slowSets` 를 그대로 넘긴다). */
-    savedSets: readonly { id: string; expr: SetExpr; universe: Universe }[],
+    savedSets: readonly { id: string; expr: SetExpr }[],
     date: string,
     opts?: CellEvalOptions,
 ): CellSetView {

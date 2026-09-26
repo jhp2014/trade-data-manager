@@ -30,7 +30,7 @@ export type { BoardFilterActions, BoardFilterSlice } from "./boardFilterSlice.js
 export type { NewsSearchEngine, ThemeBoardSettings, ReplayBoardSettings, BoardMarket, BoardMarketMap, SettingsSlice } from "./settingsSlice.js";
 export type { HistoryEntry, HistorySlice } from "./historySlice.js";
 export type { FilterFunnelSlice } from "./filterFunnelSlice.js";
-export { allStagesOf, selectEditingExpr, selectEditingStages, selectEditingUniverse, selectObservedExpr, selectObservedSetId, selectObservedStages, selectObservedUniverse } from "./filterFunnelSlice.js";
+export { allStagesOf, selectEditingExpr, selectEditingStages, selectObservedExpr, selectObservedSetId, selectObservedStages } from "./filterFunnelSlice.js";
 export type { SavedSet, SavedSetsSlice } from "./savedSetsSlice.js";
 
 export const useWorkbench = create<WorkbenchState>()((...a) => ({

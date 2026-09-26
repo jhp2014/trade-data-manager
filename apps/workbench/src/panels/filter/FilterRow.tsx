@@ -13,7 +13,7 @@ import { stageKind, type FilterStage } from "./stage.js";
 import { iconBtn } from "./ui.js";
 
 export function FilterRow({
-    no, stage, label, dead, deficiency, cellFields, neg,
+    no, stage, label, dead, cellFields, neg,
     onOpen, onToggle, onNegate, onRemove,
 }: {
     no: number;
@@ -27,7 +27,6 @@ export function FilterRow({
      * 이 우주에서 **결손**인 이유들(빈 배열 = 온전히 평가된다). 죽은 참조(dead)와 **다른 표식**이어야
      * 한다 — 죽음은 고쳐야 할 것이고, 결손은 사실이다(재료가 생기면 문법 변경 없이 켜진다).
      */
-    deficiency?: string[];
     /** 셀 술어의 그 자리 편집 줄(하루 우주) — 전용 편집 판이 없는 종류라 줄 안에서 만진다. */
     cellFields?: React.ReactNode;
     /** 이름 클릭 — 그 종류의 편집면으로(좌표는 그 자리에 여는 팝오버가 쓴다). */
@@ -58,13 +57,7 @@ export function FilterRow({
                     style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", border: "none", background: "transparent", padding: 0, font: "inherit", cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: dead ? FAIL : "var(--text-primary)", textAlign: "left" }}>
                     {label}
                 </button>
-                {deficiency !== undefined && deficiency.length > 0 && (
-                    <span title={`이 우주에서 평가할 수 없는 조건입니다 — ${deficiency.join(" / ")}`}
-                        style={{ flexShrink: 0, fontSize: 9.5, color: "var(--text-tertiary)", border: "1px dashed var(--border-strong)", borderRadius: 3, padding: "0 4px" }}>
-                        결손
-                    </span>
-                )}
-                <span style={{ marginLeft: "auto", flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                                <span style={{ marginLeft: "auto", flexShrink: 0, display: "flex", alignItems: "center", gap: 4 }}>
                     {/* ⚠ 끄기·부정·지우기는 **여기 없다**(2026-09-22) — 칩 우클릭 전용이다. 아랫줄은
                         **값**만 맡는다: 같은 일이 두 자리에 있으면 옛 "필터 UI 가 두 곳" 함정이다.
                         (손잡이를 옵셔널로 받아 두는 이유는 다른 소비자가 아직 있을 수 있어서다.) */}

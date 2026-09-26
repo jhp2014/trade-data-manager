@@ -17,9 +17,7 @@ import {
 } from "../panels/filter/expr.js";
 
 import { applyRailToExpr, type RailKey } from "../panels/filter/stageBinding.js";
-import { committingUniverse, universeOfExpr, type Universe } from "../panels/filter/universe.js";
-import { persistSavedSets, refUniverse, switchSeat, type SavedSet } from "./savedSetsSlice.js";
-import { loadFilterMode, saveFilterMode } from "./filterMode.js";
+import { persistSavedSets, type SavedSet } from "./savedSetsSlice.js";
 
 /**
  * v2: **묶음이 곧 집합**(2026-09-20 — 식 1층화). 옛 키(v1·`wb.filterStages.*`·슬롯)는 **안 읽는다**.
@@ -47,7 +45,7 @@ import { loadFilterMode, saveFilterMode } from "./filterMode.js";
 
 
 /** 편집·관측 대상을 푸는 데 필요한 것 — 셀렉터들이 공유하는 최소 조각. */
-export type EditingCtx = { editingSetId: string; editPath: readonly string[]; savedSets: readonly SavedSet[]; filterMode: Universe };
+export type EditingCtx = { editingSetId: string; editPath: readonly string[]; savedSets: readonly SavedSet[] };
 
 /**
  * ## 편집 대상과 관측 대상은 **다른 것**이다 (2026-09-21)
@@ -76,16 +74,6 @@ const EMPTY_EXPR = emptyExpr();
 
 export interface FilterFunnelSlice {
 
-    /**
-     * **작업면의 모드** — 종단/하루 중 지금 무엇을 하러 왔나. **전역이다**(2026-09-22):
-     * 바꾸면 집합 목록·편집 자리·구독 패널의 라우팅이 전부 같이 넘어간다.
-     *
-     * ⚠ 집합의 `universe`(조건에서 **파생**)와 다른 물건이다. 파생은 집합의 성질이고(참조 해결·
-     * `refUniverse` 가 쓴다), 이건 작업면의 상태이자 **하류 라우팅의 자**다 — 파생은 조건이 없으면
-     * null → 종단으로 떨어져, 하루 모드의 빈 집합이 패널을 통째로 종단 기계로 보낸다.
-     */
-    filterMode: Universe;
-    setFilterMode: (u: Universe) => void;
     addFilterStage: (predicates?: FilterPredicate[]) => void;
     /**
      * 보드에서 레일을 그은 결과 — 그 레일의 필터를 만들거나 갈아끼우거나(술어) 지운다(null).
@@ -126,17 +114,6 @@ export const selectObservedStages = (s: EditingCtx): FilterStage[] => leavesOf(s
  */
 export const allStagesOf = (savedSets: readonly SavedSet[]): FilterStage[] => savedSets.flatMap((f) => leavesOf(f.expr));
 
-/**
- * 조건이 사는 **우주** — 2026-09-19 부터 **파생**이다(저장 필드도 토글도 없다).
- * null = 아직 안 정해짐(중립 조건뿐이거나 조건 0개). 평가·표시는 effectiveUniverse 로 확정한다.
- */
-export const selectEditingUniverse = (s: EditingCtx): Universe | null =>
-    universeOfExpr(selectEditingExpr(s), refUniverse(s.savedSets));
-
-/** 하류 라우팅(하루/종단)이 보는 우주 — **관측 집합**의 것이다. */
-export const selectObservedUniverse = (s: EditingCtx): Universe | null =>
-    universeOfExpr(selectObservedExpr(s), refUniverse(s.savedSets));
-
 // 2026-09-22: 옛 `evalSets`(「계산」을 누른 순간의 저장물 스냅샷)·`computeNow`·`selectEvalExpr`·
 // `selectEvalStale` 은 **없다** — 실측으로 하루 평가가 0.25~0.47초라 관문의 근거가 사라졌다.
 // 평가의 박자는 이제 깔때기의 디바운스 하나(`useFilterFunnel` 의 `slowExpr`/`slowSets`)다.
@@ -156,42 +133,25 @@ export const putExpr = (s: EditingCtx, expr: SetExpr): { savedSets: SavedSet[] }
     const has = s.savedSets.some((x) => x.id === s.editingSetId);
     const next = has
         ? s.savedSets.map((x) => (x.id === s.editingSetId ? { ...x, expr } : x))
-        // 없는 집합을 여기서 만들면 **지금 모드**로 태어난다(blankSet 과 같은 규칙).
-        : [...s.savedSets, { id: s.editingSetId, expr, universe: s.filterMode }];
-    // 우주는 여기서 안 굳힌다 — `persistSavedSets` 의 재조정이 파생 규칙 한 곳에서 맡는다.
+        : [...s.savedSets, { id: s.editingSetId, expr, universe: "daily" as const }];
     const savedSets = persistSavedSets(next);
     // 2026-09-22: **선택 포인터로 복귀시킬 것이 없다** — 집합을 가리키는 주소가 편집 경로 하나뿐이라,
     // 조건을 만지면 그 집합이 이미 하류가 보는 것이다.
     return { savedSets };
 };
 
-/**
- * **모드 문지기** — 지금 모드의 반대편에만 사는 조건은 편집 집합에 못 들어온다(2026-09-24).
- * 모드가 하루로 고정되면서, 종단 판(시그널 결과·급타점)이 여전히 편집 집합에 조건을 밀어 넣을 수 있는
- * 구멍이 **영구화**됐다 — 빈 하루 집합에 결과 컷 하나가 들어가면 재조정이 그 집합을 종단으로 뒤집어
- * 하루 목록에서 사라지게 한다(`addSetRef` 의 교차 모드 거절과 같은 결). 막는 자리는 쓰기 손 한 곳.
- */
-const crossesMode = (mode: Universe, preds: readonly FilterPredicate[]): boolean => {
-    const bad = preds.find((p) => { const u = committingUniverse(p.kind); return u !== null && u !== mode; });
-    if (bad) console.warn(`[filter] ${bad.kind} 조건은 지금 모드(${mode})에서 만들 수 없습니다 — 무시`);
-    return bad !== undefined;
-};
 
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => {
     return {
-    filterMode: loadFilterMode(),
-    // 모드를 바꾸면 **자리도 같이 갈아 끼운다** — 그 모드에 집합이 없으면 그때 빈 집합을 만든다.
-    setFilterMode: (u) => set((s) => (u === s.filterMode ? {} : { filterMode: saveFilterMode(u), ...switchSeat(s, u) })),
-
     // ⚠ 쓰기 API 의 **주소는 조건 id**(= `stage.id`)다 — 시그니처가 안 바뀌어 소비자가 그대로다.
     //   바뀐 건 쓰는 자리뿐: 독립 저장물 → **편집 중인 집합의 식**(putExpr 이 그 한 곳).
-    addFilterStage: (predicates) => set((s) => (crossesMode(s.filterMode, predicates ?? []) ? {} : putExpr(s, appendLeaf(selectEditingExpr(s), newStage(predicates ?? []))))),
+    addFilterStage: (predicates) => set((s) => putExpr(s, appendLeaf(selectEditingExpr(s), newStage(predicates ?? [])))),
     setFilterExpr: (expr) => set((s) => putExpr(s, expr)),
-    applyFilterRail: (key, predicate, stageId) => set((s) => (predicate !== null && crossesMode(s.filterMode, [predicate]) ? {} : putExpr(s, applyRailToExpr(selectEditingExpr(s), key, predicate, stageId)))),
+    applyFilterRail: (key, predicate, stageId) => set((s) => putExpr(s, applyRailToExpr(selectEditingExpr(s), key, predicate, stageId))),
     removeFilterStage: (id) => set((s) => putExpr(s, filterLeaves(selectEditingExpr(s), (x) => x.id !== id))),
     toggleFilterStage: (id) => set((s) => putExpr(s, mapLeaves(selectEditingExpr(s), (x) => (x.id === id ? { ...x, enabled: !x.enabled } : x)))),
-    setFilterStagePredicates: (id, predicates) => set((s) => (crossesMode(s.filterMode, predicates) ? {} : putExpr(s, mapLeaves(selectEditingExpr(s), (x) => (x.id === id ? { ...x, predicates } : x))))),
-    setFilterStage: (next) => set((s) => (crossesMode(s.filterMode, next.predicates) ? {} : putExpr(s, mapLeaves(selectEditingExpr(s), (x) => (x.id === next.id ? next : x))))),
+    setFilterStagePredicates: (id, predicates) => set((s) => putExpr(s, mapLeaves(selectEditingExpr(s), (x) => (x.id === id ? { ...x, predicates } : x)))),
+    setFilterStage: (next) => set((s) => putExpr(s, mapLeaves(selectEditingExpr(s), (x) => (x.id === next.id ? next : x)))),
     renameFilterStage: (id, name) => set((s) => putExpr(s, mapLeaves(selectEditingExpr(s), (x) => {
         if (x.id !== id) return x;
         const n = name.trim();

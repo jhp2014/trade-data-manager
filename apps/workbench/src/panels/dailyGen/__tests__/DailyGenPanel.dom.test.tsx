@@ -67,7 +67,7 @@ describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·
     const ONE = [{ id: "fs1", name: "돌파", expr: exprOfStages([]), universe: "daily" as const }];
 
     it("판에서 고르면 **그 집합이 열리고**(뿌리가 된다) 판이 닫힌다", () => {
-        seedEditing(exprOfStages([]), ONE, "daily");
+        seedEditing(exprOfStages([]), ONE);
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
@@ -76,17 +76,8 @@ describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·
         expect(useWorkbench.getState().editPath, "연 집합이 곧 뿌리다").toEqual(["fs1"]);
     });
 
-    it("판은 **지금 모드의 집합만** 세운다", () => {
-        seedEditing(exprOfStages([]), [...ONE, { id: "fs-long", name: "종단묶음", expr: exprOfStages([]), universe: "longitudinal" as const }], "daily");
-        const { container, baseElement } = renderPanel();
-        fireEvent.click(btnByTitle(container, "집합 목록"));
-        const mgr = baseElement as HTMLElement;
-        expect(within(mgr).queryByText("돌파")).toBeTruthy();
-        expect(within(mgr).queryByText("종단묶음"), "종단 집합은 숨는다(지우지 않는다)").toBeNull();
-    });
-
     it("고정 칸이 없다 — 줄에 칩이 하나뿐이라 고정할 것이 없다", () => {
-        seedEditing(exprOfStages([]), ONE, "daily");
+        seedEditing(exprOfStages([]), ONE);
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
@@ -94,7 +85,7 @@ describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·
     });
 
     it("삭제는 2단계 — 한 번으로는 안 지워지고, 목록이 비지도 않는다", () => {
-        seedEditing(exprOfStages([]), ONE, "daily");
+        seedEditing(exprOfStages([]), ONE);
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
@@ -126,7 +117,7 @@ describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·
     });
 
     it("이름 바꾸기 — 행의 이름 버튼 → 입력 → Enter. 다른 집합과 같은 이름은 무시된다", () => {
-        useWorkbench.setState({ savedSets: [...ONE, { id: "fs2", name: "눌림", expr: exprOfStages([]), universe: "longitudinal" as const }] });
+        useWorkbench.setState({ savedSets: [...ONE, { id: "fs2", name: "눌림", expr: exprOfStages([]), universe: "daily" as const }] });
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 목록"));
         const mgr = baseElement as HTMLElement;
@@ -231,7 +222,7 @@ describe("머리글 — 하루 고정", () => {
 
     // 조건을 **꺼 둔다** — 켜진 셀 조건이면 머리글의 수(useBoundSet)가 그날 분봉을 당겨 하네스가 네트워크를 막는다.
     it("「계산」·「낡음」·모드 바꾸기 손잡이가 없고, 조건 수는 편집 집합의 잎이다(켠 것 / 전부)", () => {
-        seedEditing(exprOfStages([{ ...cellStage, enabled: false }]), [], "daily");
+        seedEditing(exprOfStages([{ ...cellStage, enabled: false }]), []);
         const { container } = renderPanel();
         expect(container.textContent).not.toContain("계산");
         expect(container.textContent).not.toContain("낡음");

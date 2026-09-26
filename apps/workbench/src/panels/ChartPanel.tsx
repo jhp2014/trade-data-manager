@@ -97,8 +97,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const lines = useBaselineLines(code, viewDate, dailyQ.data, minuteQ.data);
     const ignore = useIgnoreCandles(code, viewDate);
 
-    // ⚠ 라우팅의 자는 **모드**다(2026-09-22) — 파생은 조건 0개면 종단으로 떨어져 하루의 빈 집합을 놓친다.
-    const setUniverse = useWorkbench((s) => s.filterMode);
     const funnelStages = useWorkbench(selectObservedStages);
     const funnel = useFunnel();
     // 집합 평가는 **이 차트가 집합의 날짜를 보고 있을 때만** — 다른 날짜 차트가 두 번째 평가(와 15MB
@@ -108,7 +106,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     //   집합의 날짜를 보면서도 ◇ 가 사라지는 정반대 동작). `drifted` 가 그 판정의 단일 출처다.
     // opts 는 목록과 **같은 상수**를 쓴다(안 그러면 메모가 갈려 하루 평가가 두 번 돈다).
     // 식·저장물은 깔때기의 **늦은 한 벌**을 그대로 쓴다 — 박자가 갈리면 목록과 ◇ 가 다른 순간을 그린다.
-    const cellExpr = setUniverse === "daily" && !drifted ? funnel.slowExpr : null;
+    const cellExpr = !drifted ? funnel.slowExpr : null;
     const cellSet = useCellSet(cellExpr, funnel.slowSets, viewDate, DAY_SET_OPTS);
     const autoPoints = useMemo<(AutoPointInput & { hms: string })[]>(() => {
         // 평가 중에는 안 그린다 — 표식 층의 계산이 캔들(시선의 소비자)을 지연시키면 안 된다.
@@ -313,7 +311,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     ⚠ unionPoints 가 빈 날은 평가를 안 돈다 — 날짜 자동 스킵이 지나는 빈 날마다
                                     그룹 5벌(0.25~0.47초씩)을 물지 않게(탐색판의 rows>0 보호와 같은 몫). */}
                                 <GroupChipCard code={code} date={viewDate} time={time}
-                                    active={setUniverse === "daily" && !drifted && ownBundle(minuteQ.data, code) !== undefined
+                                    active={!drifted && ownBundle(minuteQ.data, code) !== undefined
                                         && unionPoints.length > 0 && time !== null}
                                     isPoint={time !== null && unionPoints.some((u) => u.hms === time)} />
                                 </div>
