@@ -33,6 +33,7 @@ import { stageKind, type FilterPredicate, type FilterStage } from "../filter/sta
 import { stageDeficiency } from "../filter/universe.js";
 import { DAILY_GRID_BASE } from "./dailyPanelIds.js";
 import { gridShortName, liveGridPanelOf } from "./gridLink.js";
+import { ThemeCondEditor } from "./ThemeCondEditor.js";
 import { FAIL, PIN } from "../../styles/palette.js";
 import { LinkIcon } from "../../components/icons.js";
 import { breakoutText } from "../dailyGrid/chainChecks.js";
@@ -44,6 +45,7 @@ export function DailyConditionBoard(): JSX.Element {
     const v = useFunnel();
     const stages = useWorkbench(selectEditingStages);
     const setStage = useWorkbench((s) => s.setFilterStage);
+    const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
     const addStage = useWorkbench((s) => s.addFilterStage);
     const applyRail = useWorkbench((s) => s.applyFilterRail);
     const expr = useWorkbench(selectEditingExpr);
@@ -67,6 +69,8 @@ export function DailyConditionBoard(): JSX.Element {
     const livePanelOf = useCallback((stageId: string): string | undefined => liveGridPanelOf(bindings, dockSlots, stageId), [bindings, dockSlots]);
 
     const [railEditor, setRailEditor] = useState<RailEditor | null>(null);
+    /** 테마 팝오버 — 줄에서 연다(값의 편집면, 2026-09-26). stageId 로 최신 술어를 스토어에서 읽는다. */
+    const [themeEdit, setThemeEdit] = useState<{ stageId: string; x: number; y: number } | null>(null);
     const [picked, setPicked] = useState<string | null>(null);
 
     /** 조건 만들기의 **유일한 입구** — 만든 조건 id 를 돌려준다(돌파는 곧바로 연동 메뉴를 편다). */
@@ -81,6 +85,9 @@ export function DailyConditionBoard(): JSX.Element {
         switch (stageKind(stage)) {
             case "time":
                 setRailEditor({ kind: "time", stageId: stage.id, x: e.clientX, y: e.clientY });
+                return;
+            case "theme":
+                setThemeEdit({ stageId: stage.id, x: e.clientX, y: e.clientY });
                 return;
             default:
                 return; // 셀 값·캔들 등 — 줄 안에서 만진다.
@@ -231,6 +238,11 @@ export function DailyConditionBoard(): JSX.Element {
                                 const made = addStageHere([{ kind: "breakout", ...DEFAULT_BREAKOUT }]);
                                 if (made) setGridLink({ stageId: made, x: e.clientX, y: e.clientY });
                             }}
+                            onTheme={(e) => {
+                                // 행을 만들고 곧바로 팝오버 — 값의 편집면이 팝오버 하나라서다(시각 조건과 같은 결).
+                                const made = addStageHere([{ kind: "theme", ...DEFAULT_THEME_ZONE }]);
+                                if (made) setThemeEdit({ stageId: made, x: e.clientX, y: e.clientY });
+                            }}
                         />
                         {/* 새로 만드는 손(조건·묶음)이 앞, 있는 것을 가져오는 손(집합)이 뒤다. */}
                         <button onClick={() => addGroupTerm()} title="새 묶음 — 빈 집합을 만들어 이 식에 붙이고 그 안으로 내려갑니다" style={addBtn}>
@@ -342,6 +354,16 @@ export function DailyConditionBoard(): JSX.Element {
                     onClose={() => setGridLink(null)} />
             )}
 
+            {themeEdit !== null && (() => {
+                const st = stages.find((x) => x.id === themeEdit.stageId);
+                const pred = st?.predicates.find((x): x is Extract<FilterPredicate, { kind: "theme" }> => x.kind === "theme");
+                if (!st || !pred) return null; // 줄이 지워졌으면 조용히 닫힌다
+                return (
+                    <ThemeCondEditor at={themeEdit} pred={pred} onClose={() => setThemeEdit(null)}
+                        onWrite={(next) => setPredicates(st.id, st.predicates.map((x) => (x.kind === "theme" ? next : x)))} />
+                );
+            })()}
+
             {/* 시각 조건 팝오버 — 주소(stageId)를 반드시 준다(없으면 "첫 잎" 규칙으로 떨어져 `시각A ∨ 시각B` 를 못 만든다). */}
             <RailEditors editor={railEditor} stages={stages}
                 write={(key, predicate, stageId) => applyRail(key, predicate, stageId ?? null)}
@@ -438,9 +460,10 @@ const menuItem: React.CSSProperties = {
  * ＋ 조건 — 하루 종류만. 생성기(돌파)가 맨 위, 그 아래가 후보에 거는 필터들이다(필터는 구조를 안 바꾼다).
  * ⚠ 판은 **포털 + fixed**(HeaderPopover) — 스크롤 컨테이너 안 absolute 는 탭 스트립에 덮였다(2026-09-19 실측).
  */
-function AddCondition({ onCell, onBreakout }: {
+function AddCondition({ onCell, onBreakout, onTheme }: {
     onCell: (p: FilterPredicate) => void;
     onBreakout: (e: React.MouseEvent) => void;
+    onTheme: (e: React.MouseEvent) => void;
 }): JSX.Element {
     const atLeast = (value: number): CellValueRange => ({ from: { kind: "value", value } });
     const item = (close: () => void, label: string, hint: string, run: (e: React.MouseEvent) => void): JSX.Element => (
@@ -468,7 +491,7 @@ function AddCondition({ onCell, onBreakout }: {
                         {item(close, "등락률", "그 분의 등락률(UN %) — 값은 줄에서 만집니다", () => onCell({ kind: "cellValue", field: "ratePct", ranges: [atLeast(5)] }))}
                         {item(close, "누적대금", "그 분까지의 세션 누적 거래대금(억)", () => onCell({ kind: "cellValue", field: "cumAmountEok", ranges: [atLeast(100)] }))}
                         {item(close, "분봉고가", "그 분 봉의 고가(UN %)", () => onCell({ kind: "cellValue", field: "minuteHighPct", ranges: [atLeast(5)] }))}
-                        {item(close, "테마", "테마 존(대금·등락 상위 무리) 판정 — 분 단면을 굽는 비싼 재료입니다. 값은 줄에서 팝오버로", () => onCell({ kind: "theme", ...DEFAULT_THEME_ZONE }))}
+                        {item(close, "테마", "테마 존(대금·등락 상위 무리) 판정 — 분 단면을 굽는 비싼 재료입니다. 값은 팝오버에서", onTheme)}
                         {item(close, "전고 돌파", "직전 W 거래일 고가를 분봉 고가가 넘는 분(당일 제외)", () => onCell({ kind: "priorHighBreak", days: 20 }))}
                     </div>
                 )}

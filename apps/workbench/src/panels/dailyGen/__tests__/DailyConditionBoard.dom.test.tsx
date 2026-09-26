@@ -6,6 +6,7 @@
 // ⚠ 조건 줄은 **열었을 때만** 선다 — 그래서 대부분의 검사가 `openChip` 으로 시작한다.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { exprOfStages, refsOf, topOpOf } from "../../filter/expr.js";
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 import { act, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seedEditing, seededClient, type Seed, type SeedPoint } from "../../../test/renderPanel.js";
@@ -416,6 +417,31 @@ describe("묶음 우클릭 — 이름·빼기·지우기", () => {
 //
 // 버튼은 늘 눌리고 판은 늘 열린다. **절대 안 되는 것은 안 보이고**(열린 집합·경로 위 조상·종단 — Daily 전용 판),
 // **상황 때문에 안 되는 것만** 회색 + 이유(나를 쓰는 집합 · 빈 집합). 이름 없는 집합은 누르면 이름 칸이 열린다.
+describe("테마 조건 — 팝오버가 편집면(2026-09-26)", () => {
+    it("＋ 테마 = 기본값 행이 서고 곧바로 팝오버 — 값을 쓰면 술어 payload 에 실린다", () => {
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(byText(container, "＋ 조건")!); });
+        act(() => { fireEvent.click(byText(baseElement, "테마")!); });
+        expect(stages()).toHaveLength(1);
+        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "theme", window: null, countOn: true });
+        expect(baseElement.textContent).toContain("존 정의");
+        // 재적 컷 끄기 — payload 로 바로 쓰인다.
+        const off = [...baseElement.querySelectorAll<HTMLButtonElement>("button")].filter((b) => (b.textContent ?? "") === "켬")[0]!;
+        act(() => { fireEvent.click(off); });
+        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "theme", countOn: false });
+    });
+
+    it("테마 줄 이름 클릭 = 같은 팝오버 · 자 값 가져오기는 자 저장값이 없으면 회색", () => {
+        seedEditing(exprOfStages([{ id: "th", enabled: true, predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE }] }]));
+        const { container, baseElement } = renderBoard();
+        openChip(container, "테마");
+        act(() => { fireEvent.click(byText(container, "테마")!); });
+        expect(baseElement.textContent).toContain("대금 창");
+        const pull = [...baseElement.querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.textContent ?? "").includes("자 값 가져오기"))!;
+        expect(pull.disabled).toBe(true);
+    });
+});
+
 describe("＋ 집합 — 세 칸 판", () => {
     const leaf = { kind: "cond" as const, stage: RATE_STAGE };
     const set = (id: string, expr = exprOfStages([RATE_STAGE]), universe: "daily" | "longitudinal" = "daily", name: string | undefined = id) =>
