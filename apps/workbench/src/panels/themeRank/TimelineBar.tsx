@@ -6,7 +6,11 @@
 // getBoundingClientRect 로 한다.
 import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { ACTIVE, ACTIVE_SOFT, FILTER, ZONE_TENURE } from "../../styles/palette.js";
-import type { BandSegment } from "./zoneTrack.js";
+/** 재적 띠 한 구간 — 옛 zoneTrack 의 산출물 모양(띠 자체는 은퇴, 소비자가 남아 타입만 여기 산다). */
+export interface BandSegment {
+    from: number;
+    to: number;
+}
 
 /** 트랙 좌우 여백(px) — 끝 분의 표식·라벨이 잘리지 않을 만큼(Rail 의 RAIL_PAD 와 같은 역할). */
 const PAD_X = 10;

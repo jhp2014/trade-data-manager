@@ -25,16 +25,22 @@ export interface ThemeBindingSlice {
     clearBindingsToPanel: (panelId: string) => void;
 }
 
-const FIELD = persistedField<Record<string, string>>(
-    "wb.themeRankBindings.v1",
-    (o) => {
-        if (!o || typeof o !== "object") return null;
-        const out: Record<string, string> = {};
-        for (const [k, v] of Object.entries(o as Record<string, unknown>)) if (typeof v === "string") out[k] = v;
-        return out;
-    },
-    {},
-);
+/**
+ * 영속 파서(순수) — ⚠ 옛 테마 [조건]판(theme-rank-N) 연동은 걷는다(2026-09-26 — 그 판이 은퇴했다).
+ * 격자 연동(daily-grid-N)은 같은 맵을 계속 쓰므로 **값의 밑동으로만** 거른다(키를 갈면 격자가 죽는다).
+ */
+export function parseThemeBindings(o: unknown): Record<string, string> | null {
+    if (!o || typeof o !== "object") return null;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+        if (typeof v !== "string") continue;
+        if (/^theme-rank-\d+$/.test(v)) continue;
+        out[k] = v;
+    }
+    return out;
+}
+
+const FIELD = persistedField<Record<string, string>>("wb.themeRankBindings.v1", parseThemeBindings, {});
 
 export const createThemeBindingSlice: StateCreator<WorkbenchState, [], [], ThemeBindingSlice> = (set) => ({
     themeBindings: FIELD.load(),

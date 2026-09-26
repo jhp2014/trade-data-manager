@@ -14,6 +14,8 @@ import { AxisControls } from "./AxisControls.js";
 import { ThemeLensStrip } from "./ThemeLensStrip.js";
 import { ThemePlaneView } from "./ThemePlaneView.js";
 import { parseThemeRankAxes, windowLabel } from "./axisModel.js";
+import { useThemeReadParams } from "../filter/themeLink.js";
+import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { fmtMin, useThemePlane } from "./useThemePlane.js";
 
 export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseTitle?: string }): JSX.Element {
@@ -38,6 +40,20 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
 
     const axisSummary = `${windowLabel(axes.windowMin)} 대금 ${axes.xMode === "rank" ? "순위" : "값"} × 등락 ${axes.yMode === "rank" ? "순위" : "값"}`;
 
+    // 깔때기 테마 조건의 **읽기 전용 겹침**(2026-09-26) — 첫 켜진 theme 조건 하나, **축이 일치하는 변만**
+    // (창까지 같아야 대금 선이 선다 — 다른 창의 N 을 이 축에 그으면 거짓말이다). 수정은 조건판 팝오버.
+    const stages = useWorkbench(selectEditingStages);
+    const readParams = useThemeReadParams();
+    const hasThemeCond = useMemo(() => stages.some((s) => s.enabled && s.predicates.some((p) => p.kind === "theme")), [stages]);
+    const overlay = useMemo(() => {
+        if (!hasThemeCond) return null;
+        const x = axes.xMode === "rank" && axes.windowMin === readParams.window ? readParams.zoneAmountN : null;
+        const y = axes.yMode === readParams.rate.mode
+            ? (readParams.rate.mode === "rank" ? readParams.rate.max : readParams.rate.minPct)
+            : null;
+        return x === null && y === null ? null : { x, y };
+    }, [hasThemeCond, axes, readParams]);
+
     return (
         <div style={wrap}>
             <PanelHeader chrome={false} gap={8} style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
@@ -51,7 +67,10 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
                     )}>
                     {() => <AxisControls axes={axes} onChange={setAxesRaw} />}
                 </HeaderPopover>
-                <span style={{ ...label, color: "var(--text-tertiary)" }}>관찰 — 컷·판정 없음(조건은 조건판)</span>
+                <span style={{ ...label, color: "var(--text-tertiary)" }}
+                    title="빨간 점선 = 깔때기 첫 테마 조건(읽기 전용 — 축·창이 일치하는 변만). 수정은 일별 타점[조건]의 테마 팝오버">
+                    {overlay !== null ? "조건 겹침(읽기 전용)" : "관찰 — 판정 없음(조건은 일별 타점[조건])"}
+                </span>
                 {subject && (
                     <span style={{ ...label, color: "var(--text-tertiary)" }}>
                         {nameOf(subject.code)} · {subject.date}{plane.minute !== null && ` ${fmtMin(plane.minute)}`}
@@ -74,7 +93,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
                 </div>
             )}
 
-            <ThemePlaneView plane={plane} cut={null} guideKeys={guideKeys} segments={null} />
+            <ThemePlaneView plane={plane} cut={null} guideKeys={guideKeys} segments={null} overlay={overlay} />
         </div>
     );
 }

@@ -12,7 +12,7 @@ describe("normalizeSlots", () => {
     it("상비 슬롯 1 — 타입마다 항상 실존하고, 시딩 밖 추가 슬롯은 입력에 있을 때만", () => {
         const empty = normalizeSlots([]);
         expect(empty).toContain("chart-1");
-        expect(empty).toContain("theme-rank-1");
+        expect(empty).toContain("theme-scope-1");
         expect(empty).not.toContain("chart-2");
     });
 
@@ -23,9 +23,9 @@ describe("normalizeSlots", () => {
     });
 
     it("정식 정렬 — 같은 타입의 슬롯이 이웃해 서고(타입 선언 순서 → 번호), 중복은 하나로", () => {
-        const out = normalizeSlots(["theme-rank-2", "chart-3", "chart-3"]);
+        const out = normalizeSlots(["theme-scope-2", "chart-3", "chart-3"]);
         expect(out.indexOf("chart-3")).toBe(out.indexOf("chart-1") + 1);
-        expect(out.indexOf("theme-rank-2")).toBe(out.indexOf("theme-rank-1") + 1);
+        expect(out.indexOf("theme-scope-2")).toBe(out.indexOf("theme-scope-1") + 1);
         expect(out.filter((id) => id === "chart-3")).toHaveLength(1);
     });
 
@@ -40,8 +40,8 @@ describe("normalizeSlots", () => {
 
 describe("useDock 슬롯 대장", () => {
     it("setOpenPanels 가 대장 밖 슬롯을 자가등록한다 — 프리셋/복원에 나타난 id 가 칩 자격을 얻는 길", () => {
-        useDock.getState().setOpenPanels(["theme-rank-2", "chart-1"]);
-        expect(useDock.getState().slots).toContain("theme-rank-2");
+        useDock.getState().setOpenPanels(["theme-scope-2", "chart-1"]);
+        expect(useDock.getState().slots).toContain("theme-scope-2");
     });
 
     it("registerSlots 는 합집합이고 무변경이면 참조도 안 바뀐다", () => {

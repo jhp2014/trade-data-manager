@@ -25,7 +25,6 @@ import { NewsPanel } from "../panels/NewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 import { WatchlistPanel } from "../panels/WatchlistPanel.js";
 import { LiveTapePanel } from "../panels/liveTape/LiveTapePanel.js";
-import { ThemeRankPanel } from "../panels/themeRank/ThemeRankPanel.js";
 import { ThemeScopePanel } from "../panels/themeRank/ThemeScopePanel.js";
 import { OutcomePanel } from "../panels/outcome/OutcomePanel.js";
 import { HotPointsPanel } from "../panels/hot/HotPointsPanel.js";
@@ -133,10 +132,11 @@ export const PANEL_TYPES: PanelType[] = [
     // ⚠ duplicable 아님 — 순서·숨김(wb.pointInfoOrder/Hidden)이 usePointInfoPrefs 의 **전역 단일 소유 키**라
     //   인스턴스-안전화 조건("영속 키 전부 panelId 낟알")을 못 지킨다. 복제하려면 그 저장물 모양부터.
     { idBase: "rank-point", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },
-    // 테마 순위 판 둘(2026-09-17 이원화) — 조건판: 순위×순위 고정·연동 가능(기존 component "themeRank" 승계 —
+    // 테마 순위 — 판 하나(2026-09-26, 옛 조건판/관찰판 이원화 개정): View 전용, 깔때기 테마 조건은 읽기
+    // 전용 겹침. 옛 [조건]판(component "themeRank")은 은퇴 — sanitizeLayout 이 저장 배치에서 걷어낸다.
+    // (옛 주석) 테마 순위 판 둘(2026-09-17 이원화) — 조건판: 순위×순위 고정·연동 가능(기존 component "themeRank" 승계 —
     // 저장 배치 무손상) / 관찰판: 축 자유(임의 분·값 모드)·연동 불가. 종류 전환 없음(처음부터 다른 패널).
-    { idBase: "theme-rank", component: "themeRank", title: "테마 순위 [조건]", plane: "eod", duplicable: true, render: (id) => <ThemeRankPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
-    { idBase: "theme-scope", component: "themeScope", title: "테마 순위 [관찰]", plane: "eod", duplicable: true, render: (id) => <ThemeScopePanel panelId={id} baseTitle={slotTitleOf(id)} /> },
+        { idBase: "theme-scope", component: "themeScope", title: "테마 순위", plane: "eod", duplicable: true, render: (id) => <ThemeScopePanel panelId={id} baseTitle={slotTitleOf(id)} /> },
     // (옛 그룹 목록 패널("groupList")은 2026-09-10 은퇴 — 그룹 편집은 배정 팝오버가 유일 표면.
     //  옛 맵 패널("map")과 같은 길: 저장 프리셋의 그 칸은 sanitizeLayout 이 걷어낸다.)
     { idBase: "hts-news", component: "htsNews", title: "HTS뉴스", plane: "eod", render: () => <NewsPanel plane="replay" /> },

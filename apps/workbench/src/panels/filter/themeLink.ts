@@ -3,30 +3,26 @@
 // 영속 1:1 바인딩(store/themeBindingSlice, pull — 결정권은 보드)이고, 옛 useLinkedThemeStage 는 은퇴했다.
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
-import { stageKind, type FilterStage } from "./stage.js";
-import { DEFAULT_THEME_STRENGTH, type ThemeStrengthParams } from "../../lib/themeStrength.js";
+
+import { DEFAULT_THEME_ZONE, type ThemeZoneParams } from "@trade-data-manager/market/domain";
 
 export const THEME_LINK_KEY = "stageId";
 
-/** 행의 테마 술어 params — 테마 행이 아니면 null. */
-export function themeParamsOf(s: FilterStage): ThemeStrengthParams | null {
-    const p = s.predicates.find((x) => x.kind === "themeStrength");
-    return p && p.kind === "themeStrength" ? p.params : null;
-}
-
 /**
- * "지금 화면이 따를 테마 노브" 한 벌 — 조건 행이 아닌 읽기 면(타점 정보·탐색 후보)이 존 순위를 셀 때의
- * 결정론 사다리: **바인딩된 행 중 보드 순서 첫 행** → 테마 행 첫 행 → 기본값. 화면마다 이 사다리를
- * 손으로 다시 쓰면 같은 존 순위가 두 숫자로 갈린다(2026-09-17 pull 연동 재편의 따름 규칙).
+ * "지금 보는 존 기준" 한 벌(2026-09-26 — 옛 연동/노브 사다리 대체) — 읽기 면(타점 정보 등)이 존 순위를
+ * 셀 때의 결정론 사다리: **편집 집합 직속 잎의 첫 켜진 theme 조건** → 없으면 기본값(useDisplayT 동형).
+ * 화면마다 손으로 다시 쓰면 같은 존 순위가 두 숫자로 갈린다.
  */
-export function useThemeKnobParams(): ThemeStrengthParams {
+export function useThemeReadParams(): ThemeZoneParams {
     const stages = useWorkbench(selectEditingStages);
-    const bindings = useWorkbench((s) => s.themeBindings);
     return useMemo(() => {
-        const themeStages = stages.filter((s) => stageKind(s) === "themeStrength");
-        const first = themeStages.find((s) => bindings[s.id] !== undefined) ?? themeStages[0] ?? null;
-        return (first ? themeParamsOf(first) : null) ?? DEFAULT_THEME_STRENGTH;
-    }, [stages, bindings]);
+        for (const s of stages) {
+            if (!s.enabled) continue;
+            const p = s.predicates.find((x) => x.kind === "theme");
+            if (p && p.kind === "theme") return p;
+        }
+        return DEFAULT_THEME_ZONE;
+    }, [stages]);
 }
 
 /**

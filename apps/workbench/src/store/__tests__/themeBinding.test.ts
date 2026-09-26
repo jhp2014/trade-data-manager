@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useWorkbench } from "../workbench.js";
+import { parseThemeBindings } from "../themeBindingSlice.js";
 
 // 테마 행 ↔ 조건판 영속 바인딩 — 1:1 불변식·재사용 가드·고아 무해.
 beforeEach(() => {
@@ -34,5 +35,13 @@ describe("themeBindingSlice", () => {
         useWorkbench.getState().bindTheme("row-b", "theme-rank-3");
         useWorkbench.getState().clearBindingsToPanel("theme-rank-2");
         expect(useWorkbench.getState().themeBindings).toEqual({ "row-b": "theme-rank-3" });
+    });
+});
+
+describe("영속 파서 — 옛 [조건]판 연동 청소(2026-09-26)", () => {
+    it("theme-rank-N 값만 걷고 격자(daily-grid-N) 연동은 남긴다 · 멱등", () => {
+        const first = parseThemeBindings({ a: "theme-rank-2", b: "daily-grid-1", c: "theme-rank-13" });
+        expect(first).toEqual({ b: "daily-grid-1" });
+        expect(parseThemeBindings(first)).toEqual(first);
     });
 });

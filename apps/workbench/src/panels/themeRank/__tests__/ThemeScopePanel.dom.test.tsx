@@ -24,7 +24,7 @@ describe("관찰판 — 연동·판정이 원리적으로 없다", () => {
     it("테마 행+바인딩이 있어도 연동 배지·조건 ▾·카운트가 안 선다(이 판은 목록 밖)", () => {
         act(() => useWorkbench.getState().addFilterStage([{ kind: "themeStrength", params: DEFAULT_THEME_STRENGTH }]));
         const { container } = renderPanel();
-        expect(container.textContent).toContain("관찰 — 컷·판정 없음");
+        expect(container.textContent).toContain("관찰 — 판정 없음");
         expect(container.textContent).not.toContain("조건 ▾");
         expect(container.textContent).not.toContain("통과");
         expect(container.textContent).not.toContain("미연동"); // "미연동"조차 조건판의 말이다

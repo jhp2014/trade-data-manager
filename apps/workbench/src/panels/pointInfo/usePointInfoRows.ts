@@ -11,10 +11,13 @@ import { usePlacements } from "../../lib/usePlacements.js";
 import { rowLookup, type PointRef } from "../../lib/pointKey.js";
 import { pointKeyOf } from "../../lib/pointKey.js";
 import { useOutcomeSlices, useTradeSim } from "../../lib/PointGridsContext.js";
-import { useRankSections } from "../../lib/useRankSections.js";
+
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
-import { themeVerdicts } from "../../lib/themeStrength.js";
-import { useThemeKnobParams } from "../filter/themeLink.js";
+import { minuteOfDayOf, themeZoneVerdicts } from "@trade-data-manager/market/domain";
+import { kstToUnix } from "../../lib/derive.js";
+import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
+import { themeSectionAt } from "../themeRank/sectionSeries.js";
+import { useThemeReadParams } from "../filter/themeLink.js";
 import { useDisplayT } from "../outcome/outcomeLink.js";
 import { pointInfoRows, type PointInfoRow } from "./rows.js";
 
@@ -42,10 +45,11 @@ export function usePointInfoRows(point: PointRef | null): PointInfoRowsView {
     const outcomes = sliceAt(displayT);
     const sim = useTradeSim();
 
-    // ── 테마 — 노브 출처는 공용 사다리(useThemeKnobParams — 바인딩 첫 행 → 테마 행 첫 → 기본값).
-    //    연동 행이 없어도 존 순위 값은 계속 보인다(존 N·기준만 있으면 나온다). 탐색 후보 패널과 같은 숫자.
-    const themeParams = useThemeKnobParams();
-    const sections = useRankSections();
+    // ── 테마 — 기준은 "지금 보는 존 기준"(useThemeReadParams: 첫 켜진 theme 조건 → 기본값, 2026-09-26).
+    //    단면은 하루 스냅샷 즉석 계산(테마 순위 판·깔때기와 같은 sectionSeries 캐시 — /rank-sections 은퇴 수순).
+    //    스냅샷은 시선 날짜라 대개 차트·깔때기가 이미 당겨 둔 RQ 캐시를 나눠 쓴다(추가 왕복 0이 보통).
+    const themeParams = useThemeReadParams();
+    const snapQ = useDaySnapshot(point?.date ?? null);
     const themes = useThemeProjection();
 
     const rows = useMemo(() => {
@@ -53,8 +57,11 @@ export function usePointInfoRows(point: PointRef | null): PointInfoRowsView {
         const detail = placements.detailOf(point);
         // 시선 한 종목·한 시각에만 도는 진단이라 (그 종목의 테마 × 멤버) 한 패스다 — 모수를 도는
         // useThemeStrengthStats("호출자는 하나여야 한다")와는 층이 다르다.
-        const section = themes.ready ? sections.sectionAt(point.date, point.time) : null;
-        const verdicts = section ? themeVerdicts(point.stockCode, section, themeParams, themes.proj) : null;
+        const stocks = snapQ.data?.date === point.date ? snapQ.data.stocks : null;
+        const section = themes.ready && stocks !== null
+            ? themeSectionAt(stocks, point.date, minuteOfDayOf(kstToUnix(point.date, point.time)), themeParams.window)
+            : null;
+        const verdicts = section ? themeZoneVerdicts(point.stockCode, section, themeParams, themes.proj) : null;
         const key = pointKeyOf(point.stockCode, point.date, point.time);
         return pointInfoRows({
             axes,
@@ -70,7 +77,7 @@ export function usePointInfoRows(point: PointRef | null): PointInfoRowsView {
             sim: sim.byKey.get(key),
             verdicts,
         });
-    }, [point, placements, axes, computedValues, computedMeta, outcomes, sim, sections, themes, themeParams]);
+    }, [point, placements, axes, computedValues, computedMeta, outcomes, sim, snapQ.data, themes, themeParams]);
 
     const allThemes = useMemo(() => (themes.ready ? [...themes.proj.codesByTheme.keys()] : null), [themes]);
 
@@ -79,6 +86,6 @@ export function usePointInfoRows(point: PointRef | null): PointInfoRowsView {
         displayT,
         axisKeys: axisIds,
         allThemes,
-        isLoading: axesLoading || themes.isLoading || sections.isLoading,
+        isLoading: axesLoading || themes.isLoading || snapQ.isLoading,
     };
 }

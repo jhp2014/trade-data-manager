@@ -14,7 +14,7 @@ import { panAmountDom, panRateDom, zoomAmountDom, zoomRateDom, type ValueDom } f
 import { tooltipBoxOf } from "./tooltipBox.js";
 import { TimelineBar } from "./TimelineBar.js";
 import { TrailControl } from "./TrailControl.js";
-import type { BandSegment } from "./zoneTrack.js";
+import type { BandSegment } from "./TimelineBar.js";
 import { CLICK_SLOP, LBL_H, LBL_PAD, LBL_W, ZOOM_MIN_SPAN, fmtHms, type ThemePlane } from "./useThemePlane.js";
 
 /** 연동 조건판의 컷 모델 — 십자선이 곧 술어다(드래그 미리보기는 패널 소유, 커밋은 손 뗄 때 한 번). */
@@ -25,10 +25,15 @@ export interface CutModel {
     onCommit(): void;
 }
 
-export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
+export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null }: {
     plane: ThemePlane;
     /** null = 자유 자 모드(미연동 조건판·관찰판). */
     cut: CutModel | null;
+    /**
+     * 깔때기 테마 조건의 **읽기 전용** 겹침(2026-09-26) — 자유 자와 **동시에** 선다(cut 과 달리 자를 안
+     * 끈다: 수정은 조건판 팝오버, 여긴 "보는 것과 걸린 것의 눈맞춤"뿐). 값은 데이터 공간(서수·%·분).
+     */
+    overlay?: { x: number | null; y: number | null } | null;
     /** 자의 저장 키(x·y) — 판 종류가 키 규칙을 정한다(조건판은 창 포함, 관찰판은 모드만). */
     guideKeys: { x: string; y: string };
     /** 시선 종목의 존 재적 띠 — 연동 조건판만 준다. */
@@ -254,6 +259,21 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments }: {
                             const zyA = clamp(scales.y(1), box.top, box.top + box.height);
                             const zyB = clamp(cutY, box.top, box.top + box.height);
                             return <rect x={Math.min(zxA, zxB)} y={Math.min(zyA, zyB)} width={Math.abs(zxB - zxA)} height={Math.abs(zyB - zyA)} fill="var(--accent-soft)" opacity={0.7} />;
+                        })()}
+                        {overlay !== null && (overlay.x !== null || overlay.y !== null) && (() => {
+                            const ox = overlay.x !== null && xScale.inDomain(overlay.x) ? scales.x(overlay.x) : null;
+                            const oy = overlay.y !== null && yScale.inDomain(overlay.y) ? scales.y(overlay.y) : null;
+                            return (
+                                <g pointerEvents="none">
+                                    {ox !== null && oy !== null && (
+                                        // 존 틴트 — 1위 = 오른쪽·위(x 반전 규칙 그대로).
+                                        <rect x={ox} y={box.top} width={Math.max(0, box.left + box.width - ox)} height={Math.max(0, oy - box.top)}
+                                            fill={FILTER} opacity={0.06} />
+                                    )}
+                                    {ox !== null && <line x1={ox} y1={box.top} x2={ox} y2={box.top + box.height} stroke={FILTER} strokeWidth={1} strokeDasharray="3 3" opacity={0.7} />}
+                                    {oy !== null && <line x1={box.left} y1={oy} x2={box.left + box.width} y2={oy} stroke={FILTER} strokeWidth={1} strokeDasharray="3 3" opacity={0.7} />}
+                                </g>
+                            );
                         })()}
                         {cut === null && gx !== null && gy !== null && (() => {
                             // 자 기준의 "강한 쪽"(오른쪽-위) 틴트 — 존과 뜻이 다르니 색도 가른다(자 = 회색 계열,
