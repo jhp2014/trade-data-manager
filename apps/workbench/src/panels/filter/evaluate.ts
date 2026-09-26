@@ -46,8 +46,6 @@ export interface EvalLookup {
     axisValueOf: (axisId: string, item: FunnelItem) => number | undefined;
     /** 값 구간 경계 해석 — 타점 앵커면 그 타점의 값, 리터럴이면 그 수. 앵커가 사라졌으면 undefined. */
     boundValue: (axisId: string, bound: AxisBound) => number | undefined;
-    /** (날짜, 시각) → 순위 단면. 재료 미도착·단면 없음(pending·미수집)은 null = 판단 불가(탈락 아님). */
-    /** 테마 멤버십 투영(읽기 시점 — 굽지 않는다). 재료 미도착이면 null. */
     /**
      * 결과 술어값(**그 술어 자신의 허용 폭 T** 단면, 전부 정확 — 세션 최고가 굽기 이후 하한 기계 철거) —
      * 무눌림의 낙폭 2종·격자 미도착은 undefined(3치). T 가 인자인 이유: 조건마다 T 가 다를 수 있다.

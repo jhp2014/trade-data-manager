@@ -140,7 +140,6 @@ export interface FilterStage {
     transition?: Transition;
 }
 
-/** 조건이 하나도 없는 술어(빈 식·빈 배열·빈 밴드) — 평가에서 빼야 "무제한"이 "전부 미배치"로 안 뒤집힌다. */
 /**
  * "무거운 조건"인가 — 날짜 자동 스킵 상한을 줄이는 자(격자·존/테마 분 단면). 옛날엔 WorksetPanel·
  * DailyExplorePanel 두 손 사본이었다(리뷰) — 한 벌로 모은다.
@@ -149,6 +148,7 @@ export function isHeavyCellPredicate(p: FilterPredicate): boolean {
     return p.kind === "gridPoint" || p.kind === "breakout" || p.kind === "theme";
 }
 
+/** 조건이 하나도 없는 술어(빈 식·빈 배열·빈 밴드) — 평가에서 빼야 "무제한"이 "전부 미배치"로 안 뒤집힌다. */
 export function isPredicateEmpty(p: FilterPredicate): boolean {
     switch (p.kind) {
         case "group": return isGroupExprEmpty(p.expr);

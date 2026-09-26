@@ -1,9 +1,9 @@
-// 테마 순위 평면의 공용 렌더 — 축/눈금/존 틴트(under SVG) + 캔버스(점·꼬리) + 포인터 층(over SVG:
-// 컷/자 배지 드래그·팬·클릭 이동·휠 줌·호버 툴팁) + footer(타임라인·꼬리 설정).
+// 테마 순위 평면의 렌더 — 축/눈금/자 틴트(under SVG) + 캔버스(점·꼬리) + 포인터 층(over SVG:
+// 자 배지 드래그·팬·클릭 이동·휠 줌·호버 툴팁) + footer(타임라인·꼬리 설정).
 //
-// 판정의 유무는 **props 로만** 갈린다: `cut`(연동 조건판) 가 있으면 십자선 = 술어(FILTER 빨강·존 틴트),
-// 없으면 십자선 = 자유 자(회색, panelUi "guides" — **상시**, 2026-09-17 "선은 항상 있다").
-// 자의 기본 자리는 뷰 가운데(저장 전엔 파생 — 저장물 없이도 선이 선다).
+// 십자선 = **자유 자**(회색, panelUi "guides" — **상시**, 2026-09-17 "선은 항상 있다"), 기본 자리는
+// 뷰 가운데(저장 전엔 파생 — 저장물 없이도 선이 선다). 술어 십자선(옛 연동 조건판의 cut)은 2026-09-26
+// 판 통합과 함께 은퇴 — 걸린 조건은 읽기 전용 overlay 한 층으로만 선다(수정은 조건판 팝오버).
 import { useRef, useState } from "react";
 import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
@@ -14,30 +14,17 @@ import { panAmountDom, panRateDom, zoomAmountDom, zoomRateDom, type ValueDom } f
 import { tooltipBoxOf } from "./tooltipBox.js";
 import { TimelineBar } from "./TimelineBar.js";
 import { TrailControl } from "./TrailControl.js";
-import type { BandSegment } from "./TimelineBar.js";
 import { CLICK_SLOP, LBL_H, LBL_PAD, LBL_W, ZOOM_MIN_SPAN, fmtHms, type ThemePlane } from "./useThemePlane.js";
 
-/** 연동 조건판의 컷 모델 — 십자선이 곧 술어다(드래그 미리보기는 패널 소유, 커밋은 손 뗄 때 한 번). */
-export interface CutModel {
-    rateN: number;
-    amountN: number;
-    onPreview(patch: { zoneRateN?: number; zoneAmountN?: number }): void;
-    onCommit(): void;
-}
-
-export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null }: {
+export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
     plane: ThemePlane;
-    /** null = 자유 자 모드(미연동 조건판·관찰판). */
-    cut: CutModel | null;
     /**
-     * 깔때기 테마 조건의 **읽기 전용** 겹침(2026-09-26) — 자유 자와 **동시에** 선다(cut 과 달리 자를 안
-     * 끈다: 수정은 조건판 팝오버, 여긴 "보는 것과 걸린 것의 눈맞춤"뿐). 값은 데이터 공간(서수·%·분).
+     * 깔때기 테마 조건의 **읽기 전용** 겹침(2026-09-26) — 자유 자와 **동시에** 선다(자를 안 끈다:
+     * 수정은 조건판 팝오버, 여긴 "보는 것과 걸린 것의 눈맞춤"뿐). 값은 데이터 공간(서수·%·분).
      */
     overlay?: { x: number | null; y: number | null } | null;
-    /** 자의 저장 키(x·y) — 판 종류가 키 규칙을 정한다(조건판은 창 포함, 관찰판은 모드만). */
+    /** 자의 저장 키(x·y) — 축 모드별(창 무시 — ThemeScopePanel 의 키 규칙). */
     guideKeys: { x: string; y: string };
-    /** 시선 종목의 존 재적 띠 — 연동 조건판만 준다. */
-    segments: BandSegment[] | null;
 }): JSX.Element | null {
     const { nameOf } = useStockNamesDict();
     const setTime = useWorkbench((s) => s.setTime);
@@ -52,20 +39,16 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null
     const guidePrevRef = useRef<{ k: string; v: number } | null>(null);
     const centerX = xScale.invert(p.inner.left + p.inner.width / 2);
     const centerY = yScale.invert(p.inner.top + p.inner.height / 2);
-    const gx = cut !== null ? null : guidePrev?.k === guideKeys.x ? guidePrev.v : guides[guideKeys.x] ?? centerX;
-    const gy = cut !== null ? null : guidePrev?.k === guideKeys.y ? guidePrev.v : guides[guideKeys.y] ?? centerY;
+    const gx = guidePrev?.k === guideKeys.x ? guidePrev.v : guides[guideKeys.x] ?? centerX;
+    const gy = guidePrev?.k === guideKeys.y ? guidePrev.v : guides[guideKeys.y] ?? centerY;
 
     // ── 포인터 상태.
-    const dragRef = useRef<"rate" | "amount" | "gx" | "gy" | null>(null);
+    const dragRef = useRef<"gx" | "gy" | null>(null);
     const downRef = useRef<{ x: number; y: number } | null>(null);
     const panRef = useRef<{ x: number; y: number; dom: { x0: number; x1: number; y0: number; y1: number }; vx: ValueDom; vy: ValueDom } | null>(null);
     const [hover, setHover] = useState<{ x: number; y: number; code: string; rate: number; amount: number } | null>(null);
 
-    const cutX = cut !== null ? scales.x(cut.amountN) : null;
-    const cutY = cut !== null ? scales.y(cut.rateN) : null;
-    // 뷰 밖의 컷/자는 선·배지를 접는다(클램프 배지를 잘못 잡으면 커밋이 값을 파괴). 드래그 중인 축은 예외.
-    const cutXVisible = dragRef.current === "amount" || (cut !== null && xScale.inDomain(cut.amountN));
-    const cutYVisible = dragRef.current === "rate" || (cut !== null && yScale.inDomain(cut.rateN));
+    // 뷰 밖의 자는 선·배지를 접는다(클램프 배지를 잘못 잡으면 커밋이 값을 파괴). 드래그 중인 축은 예외.
     const gxVisible = dragRef.current === "gx" || (gx !== null && xScale.inDomain(gx));
     const gyVisible = dragRef.current === "gy" || (gy !== null && yScale.inDomain(gy));
 
@@ -75,7 +58,6 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null
     const rateLabelX = box.left + box.width + 4;
     const vLabel = (px: number): { x: number; y: number } => ({ x: clamp(px - LBL_W / 2, box.left, box.left + box.width - LBL_W), y: box.top + box.height + 3 });
     const hLabel = (py: number): { x: number; y: number } => ({ x: rateLabelX, y: clamp(py - LBL_H / 2, box.top, box.top + box.height - LBL_H) });
-    const cutLabels = cut !== null && cutX !== null && cutY !== null ? { amount: vLabel(cutX), rate: hLabel(cutY) } : null;
     const gpxX = gx !== null ? scales.x(gx) : null;
     const gpxY = gy !== null ? scales.y(gy) : null;
     const guideLabels = { x: gpxX !== null ? vLabel(gpxX) : null, y: gpxY !== null ? hLabel(gpxY) : null };
@@ -88,21 +70,11 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         downRef.current = { x, y };
-        if (cut !== null && cutLabels) {
-            const target = cutXVisible && inLabel(x, y, cutLabels.amount) ? "amount" : cutYVisible && inLabel(x, y, cutLabels.rate) ? "rate" : null;
-            if (target) {
-                dragRef.current = target;
-                e.currentTarget.setPointerCapture(e.pointerId);
-                return;
-            }
-        }
-        if (cut === null) {
-            const target = gxVisible && guideLabels.x && inLabel(x, y, guideLabels.x) ? "gx" : gyVisible && guideLabels.y && inLabel(x, y, guideLabels.y) ? "gy" : null;
-            if (target) {
-                dragRef.current = target;
-                e.currentTarget.setPointerCapture(e.pointerId);
-                return;
-            }
+        const target = gxVisible && guideLabels.x && inLabel(x, y, guideLabels.x) ? "gx" : gyVisible && guideLabels.y && inLabel(x, y, guideLabels.y) ? "gy" : null;
+        if (target) {
+            dragRef.current = target;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            return;
         }
         // 빈 곳 누름 = 팬 후보(상시). 클릭(무이동)이면 up 의 슬롭 판정이 점 클릭으로 살린다.
         panRef.current = { x, y, dom: { x0: p.dom.x0, x1: p.dom.x1, y0: p.dom.y0, y1: p.dom.y1 }, vx: p.vx, vy: p.vy };
@@ -113,10 +85,8 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null
         const rect = e.currentTarget.getBoundingClientRect();
         const drag = dragRef.current;
         if (drag) {
-            if (drag === "amount" && cut) cut.onPreview({ zoneAmountN: xScale.invert(e.clientX - rect.left) });
-            else if (drag === "rate" && cut) cut.onPreview({ zoneRateN: yScale.invert(e.clientY - rect.top) });
             // 자는 미리보기 로컬로만 따라오고 커밋(영속 쓰기)은 손 뗄 때 한 번(panelUi 는 set 마다 디스크를 두드린다).
-            else if (drag === "gx" || drag === "gy") {
+            {
                 const next = drag === "gx"
                     ? { k: guideKeys.x, v: xScale.invert(e.clientX - rect.left) }
                     : { k: guideKeys.y, v: yScale.invert(e.clientY - rect.top) };
@@ -205,9 +175,7 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null
             guidePrevRef.current = null;
             setGuidePrev(null);
             if (prev) setGuides((g) => ({ ...g, [prev.k]: prev.v }));
-            return;
         }
-        if (drag === "amount" || drag === "rate") cut?.onCommit();
     };
     const onPointerUp = (e: React.PointerEvent<SVGSVGElement>): void => {
         const down = downRef.current;
@@ -252,14 +220,6 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null
             {p.subject && p.section && (
                 <div ref={p.wrapRef} style={{ position: "relative", flex: 1, minHeight: 0 }}>
                     <svg width={size.w} height={size.h} style={underSvg}>
-                        {cut !== null && cutX !== null && cutY !== null && (() => {
-                            // 존 사각 = 서수 [1..컷] — x 반전으로 1위 모서리가 오른쪽(min/max 로 방향 무관하게).
-                            const zxA = clamp(scales.x(1), box.left, box.left + box.width);
-                            const zxB = clamp(cutX, box.left, box.left + box.width);
-                            const zyA = clamp(scales.y(1), box.top, box.top + box.height);
-                            const zyB = clamp(cutY, box.top, box.top + box.height);
-                            return <rect x={Math.min(zxA, zxB)} y={Math.min(zyA, zyB)} width={Math.abs(zxB - zxA)} height={Math.abs(zyB - zyA)} fill="var(--accent-soft)" opacity={0.7} />;
-                        })()}
                         {overlay !== null && (overlay.x !== null || overlay.y !== null) && (() => {
                             const ox = overlay.x !== null && xScale.inDomain(overlay.x) ? scales.x(overlay.x) : null;
                             const oy = overlay.y !== null && yScale.inDomain(overlay.y) ? scales.y(overlay.y) : null;
@@ -275,7 +235,7 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null
                                 </g>
                             );
                         })()}
-                        {cut === null && gx !== null && gy !== null && (() => {
+                        {gx !== null && gy !== null && (() => {
                             // 자 기준의 "강한 쪽"(오른쪽-위) 틴트 — 존과 뜻이 다르니 색도 가른다(자 = 회색 계열,
                             // 술어 무관·보기용). 강한 모서리 = 순위 축은 1위, 값 축은 도메인 상한(오른쪽/위).
                             const zxA = clamp(scales.x(p.axes.xMode === "rank" ? 1 : p.vx.hi), box.left, box.left + box.width);
@@ -346,29 +306,7 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null
                         onPointerLeave={() => setHover(null)}
                         onWheel={onWheel}
                         onDoubleClick={onDoubleClick}>
-                        {cut !== null && cutLabels && cutX !== null && cutY !== null && (
-                            <>
-                                {cutXVisible && <line x1={cutX} y1={box.top} x2={cutX} y2={box.top + box.height} stroke={FILTER} strokeWidth={1.5} strokeDasharray="5 3" />}
-                                {cutYVisible && <line x1={box.left} y1={cutY} x2={box.left + box.width} y2={cutY} stroke={FILTER} strokeWidth={1.5} strokeDasharray="5 3" />}
-                                <g style={{ fontSize: 10, fill: "#fff", fontVariantNumeric: "tabular-nums" }}>
-                                    {cutXVisible && (
-                                        <g style={{ cursor: "ew-resize" }}>
-                                            <title>끌어서 거래대금 컷 옮기기(한 위씩은 조건 ▾ 의 ±)</title>
-                                            <rect x={cutLabels.amount.x} y={cutLabels.amount.y} width={LBL_W} height={LBL_H} rx={3} fill={FILTER} />
-                                            <text x={cutLabels.amount.x + LBL_W / 2} y={cutLabels.amount.y + 11} textAnchor="middle">대금 {cut.amountN}</text>
-                                        </g>
-                                    )}
-                                    {cutYVisible && (
-                                        <g style={{ cursor: "ns-resize" }}>
-                                            <title>끌어서 등락률 컷 옮기기(한 위씩은 조건 ▾ 의 ±)</title>
-                                            <rect x={cutLabels.rate.x} y={cutLabels.rate.y} width={LBL_W} height={LBL_H} rx={3} fill={FILTER} />
-                                            <text x={cutLabels.rate.x + LBL_W / 2} y={cutLabels.rate.y + 11} textAnchor="middle">등락 {cut.rateN}</text>
-                                        </g>
-                                    )}
-                                </g>
-                            </>
-                        )}
-                        {cut === null && (gxVisible || gyVisible) && (
+                        {(gxVisible || gyVisible) && (
                             <>
                                 {/* 자유 자 — 판정 컷과 다른 어휘(가는 점선·회색 배지): 술어와 무관한 자일 뿐이다. */}
                                 {gxVisible && gpxX !== null && <line x1={gpxX} y1={box.top} x2={gpxX} y2={box.top + box.height} stroke="var(--text-tertiary)" strokeWidth={1} strokeDasharray="2 4" />}
@@ -406,12 +344,12 @@ export function ThemePlaneView({ plane, cut, guideKeys, segments, overlay = null
                 </div>
             )}
 
-            {/* footer = 시각 타임라인(전역 setTime 의 큰 손잡이) + 꼬리 설정. 띠 = 존 재적(연동 조건판만). */}
+            {/* footer = 시각 타임라인(전역 setTime 의 큰 손잡이) + 꼬리 설정. */}
             {p.subject && p.section && p.minuteRange && (
                 <div style={footer}>
                     <span style={{ flexShrink: 0 }}>시각</span>
                     <TimelineBar lo={p.minuteRange.lo} hi={p.minuteRange.hi} minute={p.minute}
-                        pointMinutes={p.pointMinutes} segments={segments}
+                        pointMinutes={p.pointMinutes}
                         trailFrom={p.trailMinutes.length > 0 ? p.trailMinutes[0] : null}
                         // 동등값 가드 — setTime 은 같은 값이어도 새 focus 객체를 만들어 전역 재렌더를 일으킨다.
                         onScrub={(m) => { const t = fmtHms(m); if (useWorkbench.getState().focus.time !== t) setTime(t); }} />

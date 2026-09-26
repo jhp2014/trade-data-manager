@@ -98,7 +98,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
                 </div>
             )}
 
-            <ThemePlaneView plane={plane} cut={null} guideKeys={guideKeys} segments={null} overlay={overlay} />
+            <ThemePlaneView plane={plane} guideKeys={guideKeys} overlay={overlay} />
         </div>
     );
 }

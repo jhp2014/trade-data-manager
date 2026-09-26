@@ -293,10 +293,15 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
             if (raw.field === "zoneRank") {
                 const ranges = parseRanges(raw.ranges) ?? [];
                 const to = ranges.find((r) => r.to?.kind === "value")?.to;
-                const max = to?.kind === "value" ? Math.max(1, Math.floor(to.value)) : DEFAULT_THEME_ZONE.zoneRankMax;
+                // 값 상한이 없으면(빈 ranges·하한만·point 경계) 컷을 **켜지 않는다** — 여기서 기본 상한을
+                // 지어내면 "조건 없음"이 "≤2 활성"이 되고 하한(≥k)은 뜻이 뒤집힌다(themeStrength 깨진
+                // payload 를 조건-off 로 살리는 것과 같은 원칙).
+                const max = to?.kind === "value" ? Math.max(1, Math.floor(to.value)) : null;
                 return {
                     kind: "theme", ...DEFAULT_THEME_ZONE,
-                    countOn: false, baseRankOn: false, zoneRankOn: true, zoneRankMax: max,
+                    countOn: false, baseRankOn: false,
+                    zoneRankOn: max !== null,
+                    zoneRankMax: max ?? DEFAULT_THEME_ZONE.zoneRankMax,
                     ...transition,
                 };
             }

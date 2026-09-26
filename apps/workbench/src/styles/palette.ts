@@ -92,7 +92,6 @@ export const IGNORED_CANDLE = "#6b7280"; // 무시 캔들 마커 — 회색이 �
 // 모양으로도 갈린다 — 색만으로 가르면 작은 크기에서 결국 섞인다.
 
 // ── 테마 순위 패널(순위 평면)
-export const ZONE_TENURE = "#16796f"; // 시선 종목의 존 재적 띠(테마 순위 타임라인) — PRICE_LINE 과 지금 같은 teal 이지만 뜻이 다르다(머리 규칙: 이름을 가른다).
 //   옛 이름 THEME_PEER(동료 점)는 2026-09-07 폐기 — 동료 점은 이제 테마마다 다른 색이다(themeColor.ts).
 
 export const AUTO_POINT = "#16796f"; // 자동 Point(격자 파생) 마커 ◇ — PRICE_LINE 과 지금 같은 teal 이지만 뜻이 다르다(머리 규칙: 이름을 가른다)

@@ -1,4 +1,3 @@
-import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 // 깔때기 배선 — 조각 넷(유니버스·펼치기·3치 판정·정산)을 실제 데이터로 잇는 단 하나의 자리.
 //
 // 순수 조각들은 각자 덮여 있고(stage·evaluate·axisLookup·core/funnel), **재료를 꽂는 일**은 아무도
@@ -10,6 +9,7 @@ import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 //   통째로 다시 그려지고, 더 나쁘게는 그 사이의 5칸 숫자가 전부 미배치로 부풀어 **사용자가 그걸 사실로
 //   읽는다**. 숫자가 틀렸다는 신호가 화면 어디에도 안 뜨는 종류다.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 import { exprOfStages } from "../expr.js";
 import { renderHook, act } from "@testing-library/react";
 import { QueryClient } from "@tanstack/react-query";

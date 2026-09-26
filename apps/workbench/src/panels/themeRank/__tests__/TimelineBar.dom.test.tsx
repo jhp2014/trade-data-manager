@@ -12,7 +12,7 @@ const xAt = (frac: number): number => PAD + frac * (1000 - 2 * PAD);
 function setup(over: Partial<Parameters<typeof TimelineBar>[0]> = {}) {
     const onScrub = vi.fn();
     const utils = render(
-        <TimelineBar lo={LO} hi={HI} minute={600} pointMinutes={[]} segments={null} onScrub={onScrub} {...over} />,
+        <TimelineBar lo={LO} hi={HI} minute={600} pointMinutes={[]} onScrub={onScrub} {...over} />,
     );
     const track = utils.container.querySelector('[title^="누르거나 끌어서 시각"]') as HTMLElement;
     return { ...utils, onScrub, track };

@@ -383,8 +383,8 @@ export function useCellSet(
                 ...(limitBy !== undefined ? { limitBy } : {}),
             });
         });
-    }, [stocks, snapQ.data?.date, date, auto, themes.proj, narrowed, limit, hardCap, limitBy,
-        needsBaseline, pointGrids]);
+    }, [stocks, snapQ.data?.date, date, auto, themes.proj, themes.ready, needsTheme, narrowed,
+        limit, hardCap, limitBy, needsBaseline, pointGrids]);
 
     const items = useMemo<readonly FunnelItem[]>(
         () => (result ? result.hits.map((h) => cellHitToItem(h, date)) : EMPTY_ITEMS),
@@ -408,11 +408,13 @@ export function useCellSet(
         // 재료 게이트는 **그 재료를 쓰는 조건이 있을 때만** 선다 — 칸을 지웠는데 격자 실패가 화면을
         // 죽이면 "지웠다"가 거짓말이 된다.
         isLoading: snapQ.isLoading || (needsGrid && auto.isLoading)
-            || (needsBaseline && pointGrids.isLoading),
+            || (needsBaseline && pointGrids.isLoading) || (needsTheme && themes.isLoading),
         error: firstError([
             snapQ.error as Error | null,
             needsBaseline ? pointGrids.error : null,
             needsGrid ? auto.error : null,
+            // 멤버십 로드 실패를 삼키면 "재료 대기"로 영원히 위장한다(ready=false·null 결과가 로딩과 같은 얼굴).
+            needsTheme ? themes.error : null,
         ]),
         themesReady: !needsTheme || themes.ready,
         evaluable: narrowed.expr !== null,

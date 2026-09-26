@@ -289,7 +289,10 @@ function compile(e: CellExpr, next: () => number): Compiled {
     }
     // 단락 순서 = 비용 오름차순. 가지의 비용은 그 안 **가장 비싼 잎**이다(싼 가지부터 봐야 비싼 재료가 늦게 불린다).
     const children = e.of.map((c) => compile(c, next)).sort((a, b) => a.tier - b.tier);
-    const valueLeaves = children.filter((c) => c.node.kind === "pred" && c.node.pred.kind === "cellValue");
+    // 값 잎 = 밑값(prevValue)을 가진 잎: cellValue 와 theme(존 순위). theme 를 빼면 옛 존순위(cellValue)
+    // 시절과 묶음 improve 판정이 갈린다 — [theme, 하한] 칸이 "하한 증가"를 개선으로 오독하는 모양.
+    const valueLeaves = children.filter((c) =>
+        c.node.kind === "pred" && (c.node.pred.kind === "cellValue" || c.node.pred.kind === "theme"));
     return {
         node: e,
         idx,
@@ -309,6 +312,9 @@ function resetSubtree(c: Compiled, st: TransitionState[]): void {
 }
 
 /** 한 셀의 평가 문맥 — 재료 호출이 셀당 한 번이 되게 존 순위를 여기 캐시한다. */
+/** theme 술어 없는 평가의 공유 빈 캐시 — 읽기만 닿는다(theme 잎이 없으면 set 도 없다). */
+const EMPTY_THEME_ANS: Map<string, ThemeAnswer | null> = new Map();
+
 interface CellCtx {
     s: CellStock;
     i: number;
@@ -395,8 +401,10 @@ function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
         // 그 값이고(그래야 잎 하나짜리 묶음에서 두 자리가 동치), 아니면 밑값 없이 엣지로 동작한다.
         const sole = c.soleValueChild;
         const base = sole !== null && all ? st[sole.idx]!.prevValue : null;
-        const improveUp = sole !== null && sole.node.kind === "pred" && sole.node.pred.kind === "cellValue"
-            ? CELL_VALUE_FIELDS[sole.node.pred.field].improve === "up"
+        const improveUp = sole !== null && sole.node.kind === "pred"
+            ? (sole.node.pred.kind === "cellValue"
+                ? CELL_VALUE_FIELDS[sole.node.pred.field].improve === "up"
+                : false) // theme — 존 순위는 작을수록 개선(잎 자리와 같은 방향)
             : true;
         out = applyTransition(e.transition, st[c.idx]!, all, base, improveUp);
     } else {
@@ -449,12 +457,14 @@ export function evaluateCellsExpr(
     // 재면 묶음 안의 격자·전고 술어를 못 보고, 그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**.
     const needDays: number[] = [];
     let needGrid = false;
+    let needTheme = false;
     const needBreakout = new Map<string, BreakoutPred>();
     const scan = (e: CellExpr): void => {
         if (e.kind === "pred") {
             if (e.pred.kind === "priorHighBreak" && !needDays.includes(e.pred.days)) needDays.push(e.pred.days);
             if (e.pred.kind === "gridPoint") needGrid = true;
             if (e.pred.kind === "breakout") needBreakout.set(breakoutKeyOf(e.pred), e.pred);
+            if (e.pred.kind === "theme") needTheme = true;
             return;
         }
         for (const c of e.of) scan(c);
@@ -474,7 +484,8 @@ export function evaluateCellsExpr(
 
         for (let i = 0; i < n; i++) {
             const min = minuteOfDayOf(s.times[i]);
-            const ctx: CellCtx = { s, i, min, pre, mat, themeAns: new Map(), themeUsed: null };
+            // themeAns Map 은 theme 술어가 있을 때만 — 없는 평가에서 셀(종목×분)마다 할당하면 그 수가 백만대다.
+            const ctx: CellCtx = { s, i, min, pre, mat, themeAns: needTheme ? new Map() : EMPTY_THEME_ANS, themeUsed: null };
 
             for (const b of branches) {
                 // ⚠ 캐스트 — TS 는 함수 호출(runNode 의 속 변이)로 프로퍼티 좁힘을 안 풀어서, 그냥 null 을

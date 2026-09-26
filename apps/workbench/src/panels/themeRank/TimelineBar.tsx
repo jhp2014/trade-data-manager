@@ -1,31 +1,23 @@
 // 세션 타임라인 바 — 시각 스크럽의 손. 옛 range 슬라이더를 대체한다(2026-08-28 재편):
-//   · teal 띠 = 시선 종목의 존 재적 구간(연동 행 N/M 기준) — 끊김이 곧 이탈/결손(테이프 어휘)
 //   · ▼ = 타점(클릭 = 그 시각으로 점프 — 옛 ↺ 버튼의 후계)
 //   · 트랙 클릭/드래그 = 스크럽(분 단위)
 // 좌표는 전부 %(프랙션) — 픽셀 측정(ResizeObserver)이 필요 없다. 포인터 → 분 변환만 이벤트 시점의
 // getBoundingClientRect 로 한다.
 import { useRef, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { ACTIVE, ACTIVE_SOFT, FILTER, ZONE_TENURE } from "../../styles/palette.js";
-/** 재적 띠 한 구간 — 옛 zoneTrack 의 산출물 모양(띠 자체는 은퇴, 소비자가 남아 타입만 여기 산다). */
-export interface BandSegment {
-    from: number;
-    to: number;
-}
+import { ACTIVE, ACTIVE_SOFT, FILTER } from "../../styles/palette.js";
 
 /** 트랙 좌우 여백(px) — 끝 분의 표식·라벨이 잘리지 않을 만큼(Rail 의 RAIL_PAD 와 같은 역할). */
 const PAD_X = 10;
 
 const fmtMin = (m: number): string => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
-export function TimelineBar({ lo, hi, minute, pointMinutes, segments, trailFrom, onScrub }: {
+export function TimelineBar({ lo, hi, minute, pointMinutes, trailFrom, onScrub }: {
     lo: number;
     hi: number;
     /** 현재 분(스크럽 또는 기본 사다리) — null 이면 플레이헤드 없음. */
     minute: number | null;
     /** 타점의 분들(그 종목·그날). */
     pointMinutes: readonly number[];
-    /** 존 재적 구간 — null 은 연동 행 없음(띠 없이 트랙만). */
-    segments: readonly BandSegment[] | null;
     /** 꼬리 창 시작(가장 오래된 오프셋 분) — null 은 꼬리 없음. [trailFrom, minute] 에 옅은 띠. */
     trailFrom?: number | null;
     onScrub: (minute: number) => void;
@@ -71,13 +63,6 @@ export function TimelineBar({ lo, hi, minute, pointMinutes, segments, trailFrom,
                     left: at(trailFrom), width: `calc(${Math.max(fracOf(minute) - fracOf(trailFrom), 0)} * (100% - ${2 * PAD_X}px))`,
                 }} />
             )}
-            {/* 존 재적 띠 — 끊김이 이탈이다. */}
-            {segments?.map((s, i) => (
-                <div key={i} aria-hidden style={{
-                    position: "absolute", top: TRACK_TOP, height: 4, background: ZONE_TENURE, pointerEvents: "none",
-                    left: at(s.from), width: `calc(${Math.max(fracOf(s.to) - fracOf(s.from), 0.002)} * (100% - ${2 * PAD_X}px))`,
-                }} />
-            ))}
             {/* 타점 ▼ — 클릭 = 점프. 트랙의 스크럽 드래그와 안 섞이게 pointerdown 을 막는다. */}
             {pointMinutes.map((m, i) => (
                 <button key={i} onPointerDown={(e) => e.stopPropagation()} onClick={() => onScrub(m)}

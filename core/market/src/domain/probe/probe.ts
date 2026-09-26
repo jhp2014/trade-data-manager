@@ -83,7 +83,7 @@ export interface ProbeDeps {
     /** 격자 파생 Point 의 시각(분) 목록 — 없으면 빈 배열. (클라: useAutoPoints/defDerived) */
     gridMinutesOf(code: string): readonly number[];
     /** 그 분의 존 순위(소속 테마 중 best)와 승자 테마 — 존 밖·테마 없음·결손 = null.
-     *  (클라: sectionSeries 캐시 + themeStrength.themeStatsOf) */
+     *  (클라: sectionSeries 캐시 + themeZone.themeAnswerOf) */
     zoneRankAt(code: string, min: number): { rank: number; theme: string } | null;
 }
 

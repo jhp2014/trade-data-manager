@@ -89,9 +89,6 @@ export interface FunnelView {
 /** 재료 세대 일련번호 — 값 자체엔 뜻이 없고 "바뀌었다"만 말한다(발급은 아래 materialsEpoch). */
 let materialsSeq = 0;
 
-/** 테마 재료가 필요 없는 상태의 고정 참조 — 재료 refetch 가 epoch 를 안 올리게 하는 열쇠. */
-
-
 const hasOutcomePredicate = (stages: readonly FilterStage[]): boolean =>
     stages.some((s) => s.predicates.some((p) => p.kind === "outcome" || p.kind === "outcomeRecovery"));
 
@@ -227,7 +224,6 @@ export function useFilterFunnel(): FunnelView {
                     : (values.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time })) ?? values.get(chartKey(i)));
             },
             boundValue: (axisId, b) => resolveBound(b, over.valuesOf(axisId)),
-            // 순위 단면(구운 번들) — 로딩·오류면 sectionAt 이 null 을 줘 테마 술어가 미배치로 선다.
             // 결과 술어(기본 허용 T1 평가) — 무눌림의 낙폭·격자 미도착은 레코드에 없어 그대로 3치의 undefined 가 된다.
             outcomeEvalOf: (metric, t, i) => {
                 const oc = over.outcomesOf(t);

@@ -126,6 +126,36 @@ describe("evaluateCells — 전이", () => {
         expect(mins(evaluateCells([s], mat, conds))).toEqual([0, 2]);
     });
 
+    it("칸 improve — 값 잎이 theme 하나면 잎 자리와 동치다(밑값 = 존 순위·작을수록 개선)", () => {
+        const s = stock("A", { n: 4 });
+        const seq = [3, 3, 2, 4];
+        const mat: CellMaterials = {
+            gridMinutesOf: () => [],
+            themeAt: (_c, min) => ({ pass: true, zoneRank: seq[min - MIN0]!, theme: "T" }),
+        };
+        const conds: CellConditions = [
+            { id: "z", enabled: true, transition: "improve", predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, zoneRankOn: true, zoneRankMax: 5 }] },
+        ];
+        expect(mins(evaluateCells([s], mat, conds))).toEqual([0, 2]);
+    });
+
+    it("칸 improve — [theme, 하한] 값 잎 둘이면 엣지다(하한 값 증가를 개선으로 오독하지 않는다)", () => {
+        // 등락률이 매 분 오르고(6→9) 존 순위는 2 고정 — 개선이 없으니 첫 진입(0)에만 발화해야 한다.
+        // (옛 존순위 cellValue 시절과 같은 판정 — theme 를 값 잎으로 안 세면 등락률이 sole 이 되어 매 분 발화한다.)
+        const s = stock("A", { rate: [6, 7, 8, 9], n: 4 });
+        const mat: CellMaterials = { gridMinutesOf: () => [], themeAt: () => ({ pass: true, zoneRank: 2, theme: "T" }) };
+        const conds: CellConditions = [
+            {
+                id: "c", enabled: true, transition: "improve",
+                predicates: [
+                    { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, zoneRankOn: true, zoneRankMax: 5 },
+                    { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] },
+                ],
+            },
+        ];
+        expect(mins(evaluateCells([s], mat, conds))).toEqual([0]);
+    });
+
     it("술어 자리와 칸 자리는 **술어 하나짜리 칸에서 동치**다(UI 문법이 어느 쪽으로 가도 저장물이 안 흔들린다)", () => {
         const s = stock("A", { rate: [6, 6, 1, 7, 7] });
         for (const t of ["firstOfDay", "firstTrue", "improve"] as Transition[]) {

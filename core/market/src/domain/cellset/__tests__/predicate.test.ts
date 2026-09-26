@@ -27,6 +27,19 @@ describe("parseCellPredicate", () => {
         for (const p of preds) expect(parseCellPredicate(JSON.parse(JSON.stringify(p)))).toEqual(p);
     });
 
+    it("옛 존순위 셀 값(zoneRank) → theme 이주 — 값 상한·전이 보존", () => {
+        const p = parseCellPredicate({ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }], transition: "improve" });
+        expect(p).toMatchObject({ kind: "theme", zoneRankOn: true, zoneRankMax: 3, countOn: false, baseRankOn: false, transition: "improve" });
+    });
+
+    it("zoneRank 에 값 상한이 없으면 컷을 켜지 않는다 — '조건 없음'이 '≤기본값 활성'으로 뒤집히지 않는다", () => {
+        for (const ranges of [[], [{ from: { kind: "value", value: 2 } }]]) {
+            const p = parseCellPredicate({ kind: "cellValue", field: "zoneRank", ranges });
+            expect(p).toMatchObject({ kind: "theme", zoneRankOn: false });
+            expect(isCellPredicateEmpty(p!)).toBe(true);
+        }
+    });
+
     it("모르는 종류·깨진 payload 는 null(그 술어만 건너뛴다)", () => {
         expect(parseCellPredicate({ kind: "axisValue", axisId: "x", ranges: [] })).toBeNull();
         expect(parseCellPredicate({ kind: "cellValue", field: "없는필드", ranges: [] })).toBeNull();

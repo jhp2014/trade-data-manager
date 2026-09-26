@@ -5,8 +5,8 @@
 // ## 의미론 (decisions.md 「테마 강도·순위 단면」 — 묶음 필터)
 // 타점 통과 ⟺ 그 종목의 소속 테마 중, **활성 하위 조건 전부를 혼자 만족하는** 테마가 하나라도 존재
 // (테마 단위 AND · 테마 간 ∃). 하위 조건을 독립 평가해 조합하면 서로 다른 테마로 나눠 만족해도
-// 통과해 버린다 — 그래서 판정이 두 층이다: passesThemeZone(테마 하나의 AND) → themeAnswerOf(∃).
-// **passesThemeZone 를 단독 소비하는 코드를 만들지 말 것** — 그 순간 분해 금지가 무너진다.
+// 통과해 버린다 — 그래서 판정이 두 층이다: 테마 하나의 AND(themeZoneStatsOf → themeZoneStatsPass)
+// → themeAnswerOf(∃). **한 테마의 AND 를 단독 소비하는 코드를 만들지 말 것** — 분해 금지가 무너진다.
 // 화면이 "어느 테마가 통과시키나"를 말해야 할 때는 `themeZoneVerdicts`(∃ 를 접기 전 재료)를 쓴다.
 // 활성 조건이 하나도 없으면 조건 없음 = 전부 통과(존 N/M 은 그때 순수 시선 도구다 — 사용자 확정).
 //
@@ -196,16 +196,6 @@ export function themeZoneStatsPass(stats: ThemeZoneStats | null, p: ThemeZonePar
     if (p.baseRankOn && (stats.baseRank === null || stats.baseRank > p.baseRankMax)) return false;
     if (p.zoneRankOn && (stats.zoneRank === null || stats.zoneRank > p.zoneRankMax)) return false;
     return true;
-}
-
-/** 테마 하나가 활성 하위 조건 전부를 만족하는가(AND) — 뜨거운 경로의 조기 탈락 포함. */
-export function passesThemeZone(code: string, theme: string, section: ThemeSectionRanks, p: ThemeZoneParams, proj: ThemeProjection): boolean {
-    if (p.zoneRankOn || p.baseRankOn) {
-        const self = section.ranksOf(code);
-        if (p.zoneRankOn && !(self !== null && inThemeZone(self, p))) return false;
-        if (p.baseRankOn && (self === null || basisOf(self, p) === null)) return false;
-    }
-    return themeZoneStatsPass(themeZoneStatsOf(code, theme, section, p, proj), p);
 }
 
 /** 테마별 진단 한 줄 — 셈 + 그 테마 단독 판정(표시 전용 — 모수 루프에서 부르지 말 것). */

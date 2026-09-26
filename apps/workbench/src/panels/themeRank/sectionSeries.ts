@@ -31,6 +31,25 @@ interface Entry {
     codeIdx: Map<string, number> | null;
     /** `${분}:${창 키}` → 테마 단면(창 적용 끝) — theme 술어·표시가 같은 단면을 본다. */
     themeByKey: Map<string, ThemeSectionRanks>;
+    /** 최근 쓴 창(분 아님) — 창별 캐시 상한의 LRU. */
+    winLru: number[];
+}
+
+/** 살려 두는 창 수 상한 — 팝오버에서 T 를 바꿔 볼 때마다 창별 배열(분×종목 두 벌)이 스냅샷 수명만큼
+ *  쌓이는 걸 막는다. ⚠ 엔진은 종목 바깥 루프로 분을 재방문하므로, 한 식의 서로 다른 T 수보다 작으면
+ *  창들이 서로를 밀어내며 매 종목 전량 재계산이 된다 — 그래서 2~3이 아니라 6(표시 1 + 술어 T 여유). */
+const MAX_WINDOWS = 6;
+
+function touchWindow(entry: Entry, windowMin: number): void {
+    const i = entry.winLru.indexOf(windowMin);
+    if (i === 0) return;
+    if (i > 0) entry.winLru.splice(i, 1);
+    entry.winLru.unshift(windowMin);
+    while (entry.winLru.length > MAX_WINDOWS) {
+        const evictKey = `:${entry.winLru.pop()!}`;
+        for (const m of [entry.winValsByKey, entry.winRanksByKey, entry.themeByKey])
+            for (const k of [...m.keys()]) if (k.endsWith(evictKey)) m.delete(k);
+    }
 }
 
 const cache = new WeakMap<readonly ReplayStock[], Entry>();
@@ -39,7 +58,7 @@ function entryOf(stocks: readonly ReplayStock[], date: string): Entry {
     let entry = cache.get(stocks);
     // 같은 배열에 다른 날짜가 올 일은 없지만(스냅샷은 날짜당 한 벌), 왔다면 낡은 단면을 섞느니 버린다.
     if (!entry || entry.date !== date) {
-        entry = { date, byMinute: new Map(), valsByMinute: new Map(), winValsByKey: new Map(), winRanksByKey: new Map(), codeIdx: null, themeByKey: new Map() };
+        entry = { date, byMinute: new Map(), valsByMinute: new Map(), winValsByKey: new Map(), winRanksByKey: new Map(), codeIdx: null, themeByKey: new Map(), winLru: [] };
         cache.set(stocks, entry);
     }
     return entry;
@@ -70,6 +89,7 @@ export function valuesAtMinute(stocks: readonly ReplayStock[], date: string, min
 /** (스냅샷, 날짜, 분, 창) → T-창 누적 대금 값(원). 계산 주체는 core windowedAmounts 하나. */
 export function windowedAmountsAt(stocks: readonly ReplayStock[], date: string, minute: number, windowMin: number): (number | null)[] {
     const entry = entryOf(stocks, date);
+    touchWindow(entry, windowMin);
     const key = `${minute}:${windowMin}`;
     let vals = entry.winValsByKey.get(key);
     if (!vals) {
@@ -82,6 +102,7 @@ export function windowedAmountsAt(stocks: readonly ReplayStock[], date: string, 
 /** (스냅샷, 날짜, 분, 창) → T-창 대금 서수 — 서수 규칙은 당일 서수와 같은 descendingOrdinals 다. */
 export function windowedRanksAt(stocks: readonly ReplayStock[], date: string, minute: number, windowMin: number): (number | null)[] {
     const entry = entryOf(stocks, date);
+    touchWindow(entry, windowMin); // 히트 경로에서도 — 안 만지면 뜨거운 창이 LRU 꼬리로 밀려 증발한다.
     const key = `${minute}:${windowMin}`;
     let ranks = entry.winRanksByKey.get(key);
     if (!ranks) {
@@ -98,6 +119,7 @@ export function windowedRanksAt(stocks: readonly ReplayStock[], date: string, mi
  */
 export function themeSectionAt(stocks: readonly ReplayStock[], date: string, minute: number, window: number | null): ThemeSectionRanks {
     const entry = entryOf(stocks, date);
+    if (window !== null) touchWindow(entry, window); // 당일("d")은 상한 밖 — 창이 아니라 기본 단면이다.
     const key = `${minute}:${window ?? "d"}`;
     let sec = entry.themeByKey.get(key);
     if (!sec) {

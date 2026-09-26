@@ -46,7 +46,6 @@ const SAVED_SETS_KEY = "wb.savedSets.v6";
 // 테마 술어 이주(2026-09-26 — zoneRank 셀 값·themeStrength → theme) 전 원문 백업: 이주된 저장물을
 // 옛 코드가 읽으면 parseStages 가 한 벌 통째 폐기한다 — 되돌릴 다리를 한 번 남긴다(pre-universe 선례).
 backupRawOnce("wb.savedSets.v6", "pre-theme");
-backupRawOnce("wb.filterStages.v3", "pre-theme");
 
 export interface SavedSet {
     id: string;

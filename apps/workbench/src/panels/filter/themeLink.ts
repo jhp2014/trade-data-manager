@@ -4,25 +4,30 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
 
-import { DEFAULT_THEME_ZONE, type ThemeZoneParams } from "@trade-data-manager/market/domain";
+import { anyThemeCondOn, DEFAULT_THEME_ZONE, type ThemeZoneParams } from "@trade-data-manager/market/domain";
+import type { FilterStage } from "./stage.js";
 
 export const THEME_LINK_KEY = "stageId";
 
 /**
  * "지금 보는 존 기준" 한 벌(2026-09-26 — 옛 연동/노브 사다리 대체) — 읽기 면(타점 정보 등)이 존 순위를
- * 셀 때의 결정론 사다리: **편집 집합 직속 잎의 첫 켜진 theme 조건** → 없으면 기본값(useDisplayT 동형).
- * 화면마다 손으로 다시 쓰면 같은 존 순위가 두 숫자로 갈린다.
+ * 셀 때의 결정론 사다리: **편집 집합 직속 잎의 첫 켜진 theme 조건**(컷이 하나도 안 켜진 빈 술어는
+ * 조건이 아니다 — 건너뛴다) → 없으면 기본값(useDisplayT 동형). 화면마다 손으로 다시 쓰면 같은 존
+ * 순위가 두 숫자로 갈린다.
  */
+export function themeReadParamsOf(stages: readonly FilterStage[]): ThemeZoneParams {
+    for (const s of stages) {
+        if (!s.enabled) continue;
+        for (const x of s.predicates) {
+            if (x.kind === "theme" && anyThemeCondOn(x)) return x;
+        }
+    }
+    return DEFAULT_THEME_ZONE;
+}
+
 export function useThemeReadParams(): ThemeZoneParams {
     const stages = useWorkbench(selectEditingStages);
-    return useMemo(() => {
-        for (const s of stages) {
-            if (!s.enabled) continue;
-            const p = s.predicates.find((x) => x.kind === "theme");
-            if (p && p.kind === "theme") return p;
-        }
-        return DEFAULT_THEME_ZONE;
-    }, [stages]);
+    return useMemo(() => themeReadParamsOf(stages), [stages]);
 }
 
 /**
