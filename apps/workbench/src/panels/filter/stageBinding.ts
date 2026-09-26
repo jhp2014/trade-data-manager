@@ -10,8 +10,7 @@
 //
 // ⚠ 그룹은 레일이 아니다(순서가 없다) — railKeyOf 가 null 을 준다. 그룹 조건은 보드에서 리스트로 관리하고
 // 필터 여러 개가 될 수 있다(테마A / 돌파형을 나눠 걸어야 각각을 따로 끄고 켤 수 있다).
-import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
-import { newStage, unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
+import { newStage, unknownPredicate, type FilterPredicate, type FilterStage, type OutcomeMetric, type PredicateKind } from "./stage.js";
 import { appendLeaf, filterLeaves, leavesOf, mapLeaves, type SetExpr } from "./expr.js";
 
 /** 레일 하나를 가리키는 열쇠. 축은 id 로, 결과는 지표로, 날짜·시간은 종류만으로 유일하다. */

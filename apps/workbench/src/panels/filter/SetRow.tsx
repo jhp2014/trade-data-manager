@@ -24,19 +24,11 @@ import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { FAIL } from "../../styles/palette.js";
 import { LinkIcon, PencilIcon, TrashIcon } from "../../components/icons.js";
 import { useFunnel } from "./FunnelContext.js";
-import type { ResolvedSet } from "./resolveSet.js";
 import { UNIVERSE_LABEL } from "./universe.js";
 import { leafCount, refsOf } from "./expr.js";
 import { setDisplayName } from "./label.js";
 import { textInput } from "./ui.js";
 
-/**
- * 건수 표기 한 곳 — 줄과 관리 판이 **같은 말**을 해야 한다(두 자리가 다른 수를 적으면 어느 쪽이
- * 진짜냐가 생긴다). 이 리졸버는 **종단 집합만** 푼다 — 하루 집합의 건수는 여기서 셀 수 없다(날짜가
- * 있어야 한다). "0건"이라고 적으면 조건이 아무것도 못 걸었다는 거짓말이 된다.
- */
-const countLabel = (r: ResolvedSet): string =>
-    r.otherUniverse ? "하루 · 셀" : r.broken ? "—" : `${r.items.length.toLocaleString("ko-KR")}건`;
 
 const smallBtn = (tone: "normal" | "accent" | "danger" = "normal", on = false): React.CSSProperties => ({
     flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 9.5, padding: "0 5px", borderRadius: 3, lineHeight: 1.6,
@@ -63,14 +55,13 @@ export function SetRow(): JSX.Element {
     const name = observed
         ? setDisplayName(observed, v.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)")
         : "(지워진 집합)";
-    const count = observed ? countLabel(v.resolveSet(observed.id)) : "—";
-
+    
     return (
         <div style={{ display: "flex", alignItems: "center", height: 30, padding: "0 8px", flexShrink: 0 }}>
             <HeaderPopover width={320} align="start" closeOnOutside
                 trigger={(open, toggleOpen) => (
                     <button onClick={toggleOpen} style={rootChip}
-                        title={`집합 목록 — ${name} · 조건 ${observed ? leafCount(observed.expr) : 0}개 · ${count}\n누르면 ${UNIVERSE_LABEL[mode]} 집합만 섭니다`}>
+                        title={`집합 목록 — ${name} · 조건 ${observed ? leafCount(observed.expr) : 0}개\n누르면 ${UNIVERSE_LABEL[mode]} 집합만 섭니다`}>
                         {name} {open ? "▴" : "▾"}
                     </button>
                 )}>
@@ -171,7 +162,7 @@ function SetManager({ onClose }: { onClose: () => void }): JSX.Element {
                     <button onClick={() => { editSet(f.id); onClose(); }} disabled={opened}
                         title={opened ? "지금 열려 있는 집합입니다"
                             : other ? `다른 우주(${UNIVERSE_LABEL[f.universe]})의 집합입니다 — 지금 모드와 어긋나 있습니다`
-                                : `${nm} — 조건 ${leafCount(f.expr)}개 · ${countLabel(v.resolveSet(f.id))}\n클릭 = 이 집합 열기`}
+                                : `${nm} — 조건 ${leafCount(f.expr)}개\n클릭 = 이 집합 열기`}
                         style={{
                             flex: 1, minWidth: 0, textAlign: "left", border: "none", background: "transparent",
                             // 자동 이름(묶음)은 흐리게 — 손 이름 집합이 먼저 눈에 걸린다.

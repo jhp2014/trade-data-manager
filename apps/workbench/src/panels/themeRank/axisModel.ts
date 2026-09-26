@@ -10,7 +10,7 @@
 //    떨어진 점은 가장자리 접힘 배지(개수)가 말한다 — foldedBelowCount.
 //
 // 두 판(조건판·관찰판)이 이 자 하나를 같이 본다 — 도메인 상수의 집은 여기다(패널이 아니라).
-import { formatAxisValue } from "../../lib/computedAxis.js";
+import { formatValue } from "../../lib/format.js";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { sectionAtMinute, valuesAtMinute, windowedAmountsAt, windowedRanksAt } from "./sectionSeries.js";
 
@@ -153,9 +153,9 @@ export interface PlotBox {
 }
 
 const fmtRank = (v: number): string => `${Math.round(v)}위`;
-/** 대금(원) 표기 — 억 단위로 접는 기존 단위 규칙(formatAxisValue)을 그대로 쓴다(1조부터 "4.3조"). */
-const fmtWon = (v: number): string => formatAxisValue(v / 1e8, { suffix: "억", decimals: v < 1e9 ? 1 : 0, signed: false });
-const fmtRate = (v: number): string => formatAxisValue(v, { suffix: "%", decimals: 1, signed: true });
+/** 대금(원) 표기 — 억 단위로 접는 기존 단위 규칙(formatValue)을 그대로 쓴다(1조부터 "4.3조"). */
+const fmtWon = (v: number): string => formatValue(v / 1e8, { suffix: "억", decimals: v < 1e9 ? 1 : 0, signed: false });
+const fmtRate = (v: number): string => formatValue(v, { suffix: "%", decimals: 1, signed: true });
 
 /** 서수 축(가로) — **1위 = 오른쪽**(2026-09-17 반전). dom 은 뷰 도메인(기본 = 200 창). */
 export function rankScaleX(dom: { x0: number; x1: number }, box: PlotBox, maxRank: number, windowMin: number | null): AxisScale {

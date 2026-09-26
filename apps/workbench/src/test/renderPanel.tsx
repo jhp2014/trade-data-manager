@@ -13,19 +13,18 @@ import { effectiveUniverse, universeOfExpr, type Universe } from "../panels/filt
 import type { SetExpr } from "../panels/filter/expr.js";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { ChartAnchor, ChartBundle, ComputedAxisFeed, DailyCommentListItem, DayReplay, LabeledPointFact, StockMeta, ThemeMember } from "@trade-data-manager/wire";
+import type { ChartAnchor, ChartBundle, DailyCommentListItem, DayReplay, StockMeta, ThemeMember } from "@trade-data-manager/wire";
 import { hmsToMinute, pointKeyOf, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
 import type { Group, GroupMembership, PointGroupMembership } from "../api/groups.js";
 import {
     dataDatesQuery,
-    allAnchorsQuery, allCommentsQuery, allThemeMembersQuery, chartQuery, computedAxesQuery,
-    groupMembershipsQuery, groupsQuery, labeledPointFactsQuery, pointGridsQuery, pointGroupMembershipsQuery, stockMasterQuery,
+    allAnchorsQuery, allCommentsQuery, allThemeMembersQuery, chartQuery,
+    groupMembershipsQuery, groupsQuery, pointGridsQuery, pointGroupMembershipsQuery, stockMasterQuery,
 } from "../api/queries.js";
 import type { DecodedPointGrids } from "../api/pointGrids.js";
 import { FunnelProvider } from "../panels/filter/FunnelContext.js";
 import { GroupsProvider } from "../lib/GroupsContext.js";
 import { LiveSnapshotProvider } from "../lib/LiveSnapshotContext.js";
-import { RankAxesProvider } from "../lib/RankAxesContext.js";
 import { PointGridsProvider } from "../lib/PointGridsContext.js";
 import { StockNamesProvider } from "../lib/StockNamesContext.js";
 
@@ -109,7 +108,6 @@ export interface Seed {
     pointMemberships?: PointGroupMembership[];
     /** 그날 복기 파생(정규화 패널의 테마·거래대금 재료 — useDaySnapshot 키). */
     daySnapshot?: { date: string; data: DayReplay };
-    computedAxes?: ComputedAxisFeed[];
     /**
      * 차트 번들(원주가 분봉 + 2년 일봉) — **캔들 오버레이의 재료**. 종목·날짜별이라 목록으로 받는다.
      * 안 심고 캔들을 켜면 setup 의 네트워크 그물에 걸린다(그게 의도다 — 빈 캔들로 통과하지 않게).
@@ -119,8 +117,6 @@ export interface Seed {
     dataDates?: string[];
     /** 자동 타점 격자(디코딩 후 형태 — usePointGrids 재료). 안 주면 빈 번들(자동 Point 0). */
     pointGrids?: DecodedPointGrids;
-    /** 좌표 봉 사실 — 안 주면 라벨 좌표를 격자 사건 봉에서 자동 유도한다(seededClient 주석). */
-    pointFacts?: LabeledPointFact[];
     /** 시트 테마 멤버십 전량(테마 인덱스 재료). 안 주면 빈 목록. */
     themeMembers?: ThemeMember[];
     /**
@@ -169,19 +165,11 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(groupsQuery().queryKey, groupsFinal);
     qc.setQueryData(groupMembershipsQuery().queryKey, seed.memberships ?? []);
     qc.setQueryData(pointGroupMembershipsQuery().queryKey, allLabels);
-    qc.setQueryData(computedAxesQuery().queryKey, seed.computedAxes ?? []);
     // 거래일 목록(날짜 경계 넘기의 재료) — 탐색판·작업 대상이 하루 우주에서 늘 당긴다.
     qc.setQueryData(dataDatesQuery().queryKey, seed.dataDates ?? []);
-    // 격자 — 명시 격자가 있으면 그대로, 없으면 seed.points 를 최소 격자로 번역한다(걷기·시뮬·격자 축 재료).
+    // 격자 — 명시 격자가 있으면 그대로, 없으면 seed.points 를 최소 격자로 번역한다(돌파 기준선 재료).
     const grids = seed.pointGrids ?? gridsFromPoints(seed.points ?? []);
     qc.setQueryData(pointGridsQuery().queryKey, grids);
-    // 좌표 봉 사실 — 라벨 분이 격자 사건 봉과 겹치면 **격자와 같은 값**(실서버의 회귀 게이트와 같은 계약).
-    // 겹치지 않는 좌표는 항목 없음 = pending(결과·시뮬 값이 안 선다 — 그게 실서비스의 정직한 상태다).
-    const facts: LabeledPointFact[] = seed.pointFacts ?? allLabels.flatMap((m) => {
-        const e = grids.byDate.get(m.date)?.get(m.stockCode)?.newHighs.find((nh) => nh.min === hmsToMinute(m.time));
-        return e ? [{ stockCode: m.stockCode, date: m.date, time: m.time, close: e.close, high: e.high }] : [];
-    });
-    qc.setQueryData(labeledPointFactsQuery().queryKey, { facts });
     qc.setQueryData(allThemeMembersQuery().queryKey, seed.themeMembers ?? []);
     qc.setQueryData(stockMasterQuery().queryKey, seed.stockNames ?? namesFromFeeds(seed));
     if (seed.daySnapshot) qc.setQueryData(["day-replay-lru", seed.daySnapshot.date], seed.daySnapshot.data);
@@ -195,12 +183,10 @@ export function Providers({ client, children }: { client: QueryClient; children:
             <StockNamesProvider>
                 <GroupsProvider>
                     <PointGridsProvider>
-                        <RankAxesProvider>
                             {/* 실시간 스냅샷 — jsdom 엔 EventSource 가 없어 연결 없이 null 스냅샷(Provider 내부 가드). */}
                             <LiveSnapshotProvider>
                                 <FunnelProvider>{children}</FunnelProvider>
                             </LiveSnapshotProvider>
-                        </RankAxesProvider>
                     </PointGridsProvider>
                 </GroupsProvider>
             </StockNamesProvider>

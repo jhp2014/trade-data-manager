@@ -26,7 +26,17 @@ import { useFunnel } from "./FunnelContext.js";
 import { setDisplayName } from "./label.js";
 import { DAY_SET_OPTS, useCellSet } from "./useCellSet.js";
 import { UNIVERSE_LABEL, type Universe } from "./universe.js";
-import type { ViewedSet } from "./useSetViews.js";
+
+/** 보는 집합의 항목 뷰 — 소비자 계약(옛 useSetViews 소유 — 2026-09-26 종단 은퇴로 이리 이사). */
+export interface ViewedSet {
+    /** 거르고 있나 — false = 제한 없음(소비자가 전 우주를 그린다). */
+    isFiltering: boolean;
+    /** 값을 모르는 상태(로딩·결손) — 빈 목록을 "0건"으로 읽으면 안 된다. */
+    broken: boolean;
+    viewedItems: readonly FunnelItem[];
+    viewedChartKeys: ReadonlySet<string>;
+    viewedPointRefs: readonly { stockCode: string; date: string; time: string }[];
+}
 
 
 /** 하루 집합일 때만 뜻이 있는 상태 — 화면이 상한·결손·로딩을 말할 재료. */
@@ -54,8 +64,6 @@ export interface BoundSet {
     day: DaySetState;
 }
 
-/** 쓰이지 않는 갈래(종단일 때의 하루 뷰 등) — 아무것도 안 거른다. */
-const EMPTY_VIEW: ViewedSet = { isFiltering: false, broken: false, viewedItems: [], viewedChartKeys: new Set(), viewedPointRefs: [] };
 /**
  * **아직 값을 모르는 하루** — 빈 집합이되 `isFiltering: true`(거르고 있다) · `broken: true`(이유가 있다).
  *
@@ -94,7 +102,6 @@ export function useBoundSet(_panelId: string): BoundSet {
     const cellSet = useCellSet(daily && mismatch === null ? funnel.slowExpr : null, funnel.slowSets, focusDate, DAY_SET_OPTS);
 
     const dayView = useMemo<ViewedSet>(() => {
-        if (!daily) return EMPTY_VIEW;
         // 조건이 없거나 재료가 아직 없다 = **값을 모른다**(0건이 아니다). 빈 결과를 그대로 흘리면
         // 이 코드베이스에서 언제나 "조건에 다 걸렸다"로 읽힌다.
         // 산출물이 실제로 나왔을 때만 믿는다(`ready`) — `isLoading` 만 보면 react-query `paused` 처럼
@@ -112,7 +119,7 @@ export function useBoundSet(_panelId: string): BoundSet {
             // 하루 우주의 항목은 **전부 좌표**다(전개할 하루 항목이 없다).
             viewedPointRefs: items.map((i) => ({ stockCode: i.stockCode, date: i.date, time: i.time ?? "" })),
         };
-    }, [daily, cellSet.evaluable, cellSet.ready, cellSet.isLoading, cellSet.error, cellSet.tooWide, cellSet.items]);
+    }, [cellSet.evaluable, cellSet.ready, cellSet.isLoading, cellSet.error, cellSet.tooWide, cellSet.items]);
 
     // 이름만 — **우주 뱃지는 라벨 컴포넌트가 따로 그린다**(색·툴팁이 다른 채널이고, 같은 이름의
     // 집합이 두 우주에 있을 수 있다).
@@ -124,7 +131,8 @@ export function useBoundSet(_panelId: string): BoundSet {
     }, [savedSets, observedId, funnel.labelLook]);
 
     return {
-        view: mismatch !== null ? UNRESOLVED_VIEW : daily ? dayView : funnel.view,
+        // 종단 은퇴(2026-09-26) — 하루 뷰 하나다. 하루가 아니면(과도기) 모름으로.
+        view: mismatch !== null || !daily ? UNRESOLVED_VIEW : dayView,
         label,
         universe,
         day: {

@@ -5,7 +5,6 @@ import "./styles/theme.css";
 import { App } from "./App.js";
 import { GroupsProvider } from "./lib/GroupsContext.js";
 import { LiveSnapshotProvider } from "./lib/LiveSnapshotContext.js";
-import { RankAxesProvider } from "./lib/RankAxesContext.js";
 import { PointGridsProvider } from "./lib/PointGridsContext.js";
 import { StockNamesProvider } from "./lib/StockNamesContext.js";
 import { useWorkbench } from "./store/workbench.js";
@@ -31,11 +30,9 @@ createRoot(root).render(
             <StockNamesProvider>
                 <GroupsProvider>
                     <PointGridsProvider>
-                    <RankAxesProvider>
                         <LiveSnapshotProvider>
                             <App />
                         </LiveSnapshotProvider>
-                    </RankAxesProvider>
                     </PointGridsProvider>
                 </GroupsProvider>
             </StockNamesProvider>

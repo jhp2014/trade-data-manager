@@ -11,10 +11,8 @@ import { fetchLiveConditions } from "./liveConditions.js";
 import { fetchTapeThemes } from "./liveTape.js";
 import { fetchMirrorStatus } from "./curation.js";
 import { fetchAllChartAnchors } from "./chartAnchors.js";
-import { fetchComputedAxes } from "./rank.js";
 import { fetchPointGrids } from "./pointGrids.js";
 import { fetchGroups, fetchGroupMemberships, fetchPointGroupMemberships } from "./groups.js";
-import { fetchLabeledPointFacts } from "./pointFacts.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext, fetchAllThemeMembers } from "./themes.js";
 import { fetchAllDailyComments } from "./comment.js";
@@ -90,12 +88,6 @@ export const allAnchorsQuery = () =>
 export const allCommentsQuery = () =>
     queryOptions({ queryKey: ["all-comments"], queryFn: ({ signal }) => fetchAllDailyComments(signal), staleTime: IMMUTABLE , meta: CURATION });
 
-// 순위 배치 — 축 목록 + 전 축 줄(placements). 편집형(place/unplace mutation 이 invalidate)이라 staleTime ∞.
-// 계산 축(수식 축)의 하루별 수치 — **키 하나**(모든 소비자가 전축을 본다). 앵커·그룹 mutation 이 무효화한다.
-// 서버가 축당 파일 캐시로 증분 계산한다.
-export const computedAxesQuery = () =>
-    queryOptions({ queryKey: ["rank-axes-computed"], queryFn: ({ signal }) => fetchComputedAxes(signal), staleTime: IMMUTABLE , meta: CURATION });
-
 // 자동 타점 격자 번들 — **키 하나**. 기대집합·기준선 승자가 앵커(큐레이션) 파생이라 앵커 mutation
 // (chartAnchorHooks.invalidate)과 미러 동기화(CURATION)가 무효화한다. Point 판정은 클라 파생(usePointGrids).
 export const pointGridsQuery = () =>
@@ -114,11 +106,6 @@ export const groupMembershipsQuery = () =>
 
 export const pointGroupMembershipsQuery = () =>
     queryOptions({ queryKey: ["group-members-point"], queryFn: ({ signal }) => fetchPointGroupMemberships(signal), staleTime: IMMUTABLE , meta: CURATION });
-
-// 좌표 봉 사실(라벨 좌표의 종가·고가) — 라벨 행의 결과 걷기 분모·걷기 시그널 재료. 라벨 토글이
-// 무효화한다(useGroups onSettled — 멤버십 피드와 같은 마지막-한-건 규칙). 수백 건짜리 작은 페이로드.
-export const labeledPointFactsQuery = () =>
-    queryOptions({ queryKey: ["labeled-point-facts"], queryFn: ({ signal }) => fetchLabeledPointFacts(signal), staleTime: IMMUTABLE , meta: CURATION });
 
 /**
  * 종목 마스터 전량(코드·이름·시장) — 이름 사전의 **단일 출처**. 키가 상수라 어느 화면에서 불러도 한 벌이다.

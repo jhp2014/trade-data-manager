@@ -1,111 +1,36 @@
-// 깔때기 배선 — 조각 넷을 실제 데이터로 잇는 단 하나의 자리.
-//   유니버스(후보 하루) → 표시 알갱이로 펼치기 → 단계별 3치 판정 → 정산(전 단계 AND)
+// 깔때기 배선 — **평가의 박자**(늦은 식·저장물)와 이름 사전을 한 자리에서 낸다.
 //
-// 순수 조각들(stage·evaluate·core/funnel)은 이 훅 없이도 테스트되고, 여기서는 **재료를 꽂는 일만** 한다.
-// 그래서 저장 방식이 바뀌면 이 파일만 바뀐다. 시선 쪽(참조 풀기·보는 집합)은 useSetViews 가 잇는다 —
-// 여기는 재료와 정산까지, 저쪽은 그 위의 뷰(수명이 다르다: 재료는 사전을, 시선은 클릭을 따라 산다).
-//
-// ⚠ **사전이 오기 전에는 아무것도 정하지 않는다.** 알갱이 판정이 사전을 보는데, 로딩 중의 "모름"은
-// "없음"이 아니라 "곧 옴"이다. 그때 해상도를 확정하면 사전이 도착하는 순간 화면이 통째로 다시 그려지고,
-// 더 나쁘게는 그 사이의 숫자가 전부 미배치로 부풀어 사용자가 그걸 사실로 읽는다.
-import { useCallback, useMemo } from "react";
-import {
-    expandUniverse, tallyFunnel, type FunnelItem, type FunnelResult, type PointDefinition,
-} from "@trade-data-manager/market/domain";
-import { usePointRows } from "../../lib/usePointRows.js";
-import { useCandidateDays } from "../../lib/useCandidateDays.js";
+// 2026-09-26 종단 폐기: 옛 종단 정산(유니버스 전개 → 3치 판정 → 정산)·리졸버(resolveSet)·뷰
+// (useSetViews)는 전부 은퇴했다 — 하루 평가(useCellSet)가 유일한 평가기다. 이 훅이 남는 이유는
+// **박자 하나**다: 편집은 즉시 저장되고, 평가(하루 우주 0.25~0.47초 + /day-replay 13MB)만 손을
+// 멈춘 뒤 따라온다. 하루 소비자 전부(조건판 수·작업 대상·차트 ◇·탐색판)가 같은 늦은 한 벌을 봐야
+// 수가 안 갈린다.
+import { useMemo } from "react";
 import { useGroups } from "../../lib/GroupsContext.js";
-import { useRankAxes } from "../../lib/RankAxesContext.js";
-import { useHotCounts, useOutcomeSlices, usePointGrids } from "../../lib/PointGridsContext.js";
-import { defDerivedFor } from "../../lib/defDerived.js";
-import { judgeKeyOf } from "../../lib/pointDef.js";
-import { computedAxisView } from "../../lib/computedAxis.js";
-import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
-import type { OutcomesView } from "../../lib/useOutcomes.js";
-import type { HotCounts } from "../../lib/hotPoints.js";
-import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
-import { unionNames } from "../../lib/groupIndex.js";
-import { selectObservedExpr, selectObservedSetId, useWorkbench } from "../../store/workbench.js";
+import { selectObservedExpr, useWorkbench } from "../../store/workbench.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { useDebounced, EVAL_DEBOUNCE_MS } from "../../lib/useDebounced.js";
-import { buildAxisOrderIndex, buildAxisOrderIndexes } from "./axisLookup.js";
-import { resolveBound, toFunnelStage, type EvalLookup } from "./evaluate.js";
-import { activeExpr, leavesOf, type SetExpr } from "./expr.js";
+import { leavesOf, type SetExpr } from "./expr.js";
 import type { LabelLookup } from "./label.js";
-import { refGrainOf, refMembersOf, type DefMaterials, type ResolvedSet, type SetResolveCtx } from "./resolveSet.js";
-import { useSetViews, type ViewedSet } from "./useSetViews.js";
-import {
-    activeStages, funnelOrder, isPredicateDead, resolveAutoGrain,
-    type FilterStage, type Grain, type GrainLookup, type OrderedStage,
-} from "./stage.js";
+import { isPredicateDead, type GrainLookup } from "./stage.js";
 
 export interface FunnelView {
-    /** 사전(그룹·축·후보·타점)이 다 오기 전 — 이때 숫자를 읽으면 안 된다. */
+    /** 사전(그룹)이 오기 전 — 이때 이름·판정을 읽으면 안 된다. */
     isLoading: boolean;
-    /** 표시 해상도 — **자동 하나**(걸린 단계 중 가장 가는 층위). 손잡이는 없다(stage.ts 주석 참고). */
-    grain: Grain;
-    /** 분모. **편집에 따라 조용히 변하므로 화면에 상시 띄운다**(앵커 하나 지우면 그 하루가 빠진다). */
-    universe: number;
-    /** 전 단계(빈 것·꺼진 것 포함) — 하루가 먼저, 층위 접힘 포함. 화면의 칸 나누기가 이걸 그대로 쓴다. */
-    stagesOrdered: OrderedStage[];
-    /** 평가에 실제로 들어간 단계 — stagesOrdered 에서 활성만 남긴 것(정산 인덱스와 1:1). */
-    active: FilterStage[];
-    // ⚠ "지금 보는 집합"(viewedItems 등)은 **계약에 없다** — `view` 로만 나간다. 로딩 가드와 시선
-    // 겹치기가 그 안에 들어 있어서, 직접 읽는 소비자가 생기면 그 화면만 가드를 빠뜨린다.
-    /** 정산 결과. 로딩 중이면 null. */
-    result: FunnelResult | null;
-    /** 죽은 참조(지워진 그룹·축)를 든 단계 id — 화면이 표시하고, 정리는 사용자가 결정한다. */
+    /** 죽은 참조(지워진 그룹)를 든 단계 id — 화면이 표시하고, 정리는 사용자가 결정한다. */
     deadStageIds: string[];
     /** 이름 조회 — 깔때기가 이미 사전을 들고 있으니 라벨을 만드는 자리마다 다시 조립하지 않게. */
     labelLook: LabelLookup;
-    // 축 재료(axes)는 **여기서 실어 나르지 않는다.** 한때 필드로 있었던 건 소비자가 useRankAxes 를
-    // 다시 부르면 계산 축 값 맵이 여러 벌 만들어졌기 때문인데, 이제 RankAxesProvider 가 한 벌을
-    // 보장하므로 그 이유가 사라졌다. 축이 필요한 화면은 useRankAxes() 를 직접 부른다 —
-    // 깔때기 계약에 남겨 두면 "축을 어디서 얻나"의 답이 둘이 된다.
-    // (blockedLabels — "이 항목을 어느 단계가 막았나" — 도 있었다: 결과 목록의 열이었는데 목록과
-    //  함께 갔다. 필요해지면 blockedBy(core)를 다시 감싸면 된다.)
     /**
-     * 저장 집합 하나 풀기 — 깔때기가 이미 들고 있는 재료(유니버스·사전·판정기)를 그대로 쓰므로
-     * **여기가 유일한 리졸버 자리**다(두 벌이면 딴 답을 낸다). 같은 id 는 캐시로 한 번만 푼다 —
-     * 재료가 바뀌면 캐시째 새로 선다. 로딩 중엔 빈 집합. 소비자는 집합 목록의 건수 하나다.
-     */
-    resolveSet: (setId: string) => ResolvedSet;
-    /**
-     * 구독 패널이 보는 집합 — **관측 집합(경로의 뿌리) 하나**(2026-09-22).
-     * 고를 것이 없어졌으므로 인자도 없다 — 다른 집합을 보려면 그 집합을 **열면**(`editSet`) 된다.
-     */
-    view: ViewedSet;
-    /**
-     * **평가가 보는 늦은 식과 저장물** — 종단(여기)과 하루(`useCellSet`)가 **같은 박자**를 써야 한다.
-     *
-     * ⚠ 하루 경로가 제 디바운스를 따로 걸면 두 우주의 수가 서로 다른 순간의 조건에서 나오고, 참조
-     * 해결(저장물)과 식이 어긋난 채 평가된다(2026-09-22 「계산」 관문을 걷으면서 생긴 자리 —
-     * 그 전에는 하루의 박자를 `evalSets` 스냅샷이 대신하고 있었다).
+     * **평가가 보는 늦은 식과 저장물** — 하루 평가(useCellSet) 소비자 전부가 이 한 벌을 쓴다.
+     * 소비자가 제 디바운스를 따로 걸면 두 화면의 수가 서로 다른 순간의 조건에서 나온다.
      */
     slowExpr: SetExpr;
     slowSets: readonly SavedSet[];
 }
 
-/** 재료 세대 일련번호 — 값 자체엔 뜻이 없고 "바뀌었다"만 말한다(발급은 아래 materialsEpoch). */
-let materialsSeq = 0;
-
-const hasOutcomePredicate = (stages: readonly FilterStage[]): boolean =>
-    stages.some((s) => s.predicates.some((p) => p.kind === "outcome" || p.kind === "outcomeRecovery"));
-
-const hasHotPredicate = (stages: readonly FilterStage[]): boolean =>
-    stages.some((s) => s.predicates.some((p) => p.kind === "hotPoints"));
-
-/** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). 두 번 부르면 정산이 두 벌 돈다. */
+/** ⚠ 직접 부르지 말 것 — FunnelProvider 가 유일한 호출자다(소비는 useFunnel). */
 export function useFilterFunnel(): FunnelView {
-    // 식(트리)은 평가가 쓰고, 잎 목록(stages)은 화면·재료 게이트가 쓴다 — 둘은 같은 저장물의 두 얼굴이다.
-    // ⚠ 셀렉터 안에서 파생 배열을 만들지 않는다(zustand 얕은 비교) — 항등 셀렉터로 받고 여기서 접는다.
-    /**
-     * 편집 중인 집합의 식 — **평가 경로는 전부 늦은 식(`slowExpr`)을 본다.**
-     *
-     * 저장은 즉시고 평가만 손을 멈춘 뒤 따라온다(아래 `useDebounced`). 화면의 조건 줄은 보드가
-     * 스토어를 직접 읽으므로 즉각 반응하고, 여기서 나오는 수(생존·낟알·목록)만 늦는다.
-     * ⚠ 둘을 섞으면 안 된다 — 낟알을 새 식으로, 정산을 옛 식으로 재면 항목과 판정이 어긋난다.
-     */
     const freshExpr = useWorkbench(selectObservedExpr);
     const freshSavedSets = useWorkbench((s) => s.savedSets);
     /**
@@ -116,285 +41,16 @@ export function useFilterFunnel(): FunnelView {
         useMemo(() => ({ expr: freshExpr, sets: freshSavedSets }), [freshExpr, freshSavedSets]),
         EVAL_DEBOUNCE_MS,
     );
-    const expr = slow.expr;
-    const savedSets = slow.sets;
-    const stages = useMemo(() => leavesOf(expr), [expr]);
 
     const gv = useGroups();
-    const ax = useRankAxes();
-    const cand = useCandidateDays(); // 복제본 파생 — 서버 왕복 없음(candidateDaysOf)
-    const pts = usePointRows(); // point 행 원천(라벨 좌표 한 벌 — 라벨=타점 진실) — 깔때기 모수가 여기서 온다
-    const grids = usePointGrids(); // 격자 번들 — 부품(저장 집합)의 자기-정의 파생(defDerived)의 재료
-    // 현재 정의의 **평가 키**(판정 6노브 — T 가 술어로 내려가 정의는 판정만 남았다). 문자열이라 값이 같으면 리렌더가 없다.
-    const curEvalKey = useWorkbench((s) => judgeKeyOf(s.pointDef));
-    const sliceAt = useOutcomeSlices(); // T 별 결과 단면 접근자 — outcome 술어가 자기 T 로 조회한다
-    // 결과 술어가 **어디에도 없으면**(활성 단계 ∪ 저장 집합) 재료를 상수로 끊는다 — 테마 재료의
-    // themeInUse 게이트와 같은 이유: 안 그러면 T 레일을 만질 때마다 결과와 무관한 화면 전체의
-    // 정산·저장 집합 캐시가 materialsEpoch 를 타고 통째 재계산된다.
-    const outcomeInUse = useMemo(
-        () => hasOutcomePredicate(stages) || freshSavedSets.some((f) => hasOutcomePredicate(leavesOf(f.expr))),
-        [stages, freshSavedSets],
-    );
-    const outcomesEff = outcomeInUse ? sliceAt : null;
-    // 급타점 재료 — 결과와 같은 게이트 규칙(안 쓰면 상수로 끊어 무관한 화면의 정산 재계산을 막는다).
-    const hotAt = useHotCounts();
-    const hotInUse = useMemo(
-        () => hasHotPredicate(stages) || freshSavedSets.some((f) => hasHotPredicate(leavesOf(f.expr))),
-        [stages, freshSavedSets],
-    );
-    const hotEff = hotInUse ? hotAt : null;
+    const isLoading = gv.isLoading;
 
-    const isLoading = gv.isLoading || ax.isLoading || cand.isLoading || pts.isLoading;
-
-
-    // ── 색인 ── 조립 규칙과 그 함정은 axisLookup 에(순수·테스트됨).
-    const placements = useMemo(() => buildAxisOrderIndexes(ax.linesByAxis), [ax.linesByAxis]);
-
-    /** 후보 하루 → 그 하루의 타점 시각들. 타점 0인 하루는 빈 배열(항목 하나로 남는다). */
-    const timesByChart = useMemo(() => {
-        const m = new Map<string, string[]>();
-        for (const p of pts.points) {
-            const k = chartKey(p);
-            const list = m.get(k);
-            if (list) list.push(p.time);
-            else m.set(k, [p.time]);
-        }
-        return m;
-    }, [pts.points]);
-
-    const axisScopes = useMemo(() => new Map(ax.axes.map((a) => [a.key, a.scope as Grain])), [ax.axes]);
-
-    // ── 조회기 ────────────────────────────────────────────────────────────
     const grainLook = useMemo<GrainLookup>(
-        () => ({
-            hasGroup: (id) => gv.groupByName.has(id),
-            axisScope: (id) => axisScopes.get(id),
-        }),
-        [gv.groupByName, axisScopes],
+        () => ({ hasGroup: (id) => gv.groupByName.has(id), axisScope: () => undefined }),
+        [gv.groupByName],
     );
 
-    /**
-     * 판정 조회기 공장 — **한 벌의 규칙**(키 폴백·3치)을 현재 정의와 부품 정의가 같이 쓴다. 갈리는 건
-     * 정의-종속 재료 셋(격자 축 줄·격자 축 값·결과 단면)뿐이라 그 셋만 주입받는다.
-     */
-    const makeEvalLook = useCallback(
-        (over: {
-            placementOf: (axisId: string) => Map<string, number> | undefined;
-            valuesOf: (axisId: string) => Map<string, number> | undefined;
-            /** T 별 게으름 — 결과 술어가 실제 평가될 때, **그 술어의 T 단면만** 돈다(outcomeInUse 게이트의 부품판). */
-            outcomesOf: (t: number) => OutcomesView | null;
-            /** (W,r) 별 게으름 — 급타점 술어가 실제 평가될 때 그 단면만 돈다(결과와 같은 결). */
-            hotOf: (w: number, r: number) => HotCounts | null;
-        }): EvalLookup => ({
-            // 적용 집합 — grain 으로 세 갈래를 합친다(그룹 필터 kind 는 하나, decisions.md 「그룹 편집 출구」):
-            //   · day(하루 그룹): 직접 ∪ 계층 조상 — "테마" 필터가 "테마 ▸ 2차전지" 소속도 잡는다.
-            //   · point 항목: + 그 좌표의 라벨(직접 ∪ 조상). 하루 그룹은 층위 상속(day→point ∀)으로 이미 위에 있다.
-            //   · day 항목: + **∃ 상향** — 그날 좌표 라벨들의 그룹 합집합("라벨 타점을 하나라도 가진 날").
-            // 라벨 없는 날/타점이 대다수라 한쪽이 비면 다른 쪽 참조 그대로(unionNames — 순수·테스트됨).
-            groupNamesOf: (i) =>
-                unionNames(
-                    gv.appliedGroupNamesOf({ stockCode: i.stockCode, date: i.date }),
-                    i.time === undefined
-                        ? gv.pointNamesAtDay({ stockCode: i.stockCode, date: i.date })
-                        : gv.appliedPointGroupNamesOf({ stockCode: i.stockCode, date: i.date, time: i.time }),
-                ),
-            // "그룹 없음"은 **하루 직접 소속 0개**를 센다(@none:day 저장물 승계 — point 라벨만 있는 날도 "그룹 없음").
-            anyGroupAt: (i) => gv.anyGroupAt({ stockCode: i.stockCode, date: i.date }),
-            hasGroup: (id) => gv.groupByName.has(id),
-            orderKeyOf: (axisId, i) => {
-                const idx = over.placementOf(axisId);
-                if (!idx) return undefined; // 지워진 축 — 판단 불가
-                // 타점 항목은 타점 키 → 차트 키 폴백(day 축 행 = 차트) · 하루 항목은 차트 키만.
-                return i.time === undefined
-                    ? idx.get(chartKey(i))
-                    : (idx.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time })) ?? idx.get(chartKey(i)));
-            },
-            // 경계 앵커 키는 그 축의 행 키다. 옛 저장물(day 축인데 타점 키)은 시각을 벗겨 흡수(rowKeyToChartKey).
-            bandBoundOrderKey: (axisKey, point) => {
-                const idx = over.placementOf(axisKey);
-                return idx?.get(point) ?? idx?.get(rowKeyToChartKey(point));
-            },
-            // 값 맵의 키 = 행 키. 타점 항목은 폴백으로 day 축 행(차트)에 닿고, 하루 항목은 차트 키로 직접.
-            // point 축을 하루 항목이 만나는 일은 없다(단계에 point 축이 있으면 해상도가 타점).
-            axisValueOf: (axisId, i) => {
-                const values = over.valuesOf(axisId);
-                if (!values) return undefined;
-                return i.time === undefined
-                    ? values.get(chartKey(i))
-                    : (values.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time })) ?? values.get(chartKey(i)));
-            },
-            boundValue: (axisId, b) => resolveBound(b, over.valuesOf(axisId)),
-            // 결과 술어(기본 허용 T1 평가) — 무눌림의 낙폭·격자 미도착은 레코드에 없어 그대로 3치의 undefined 가 된다.
-            outcomeEvalOf: (metric, t, i) => {
-                const oc = over.outcomesOf(t);
-                return oc === null || i.time === undefined ? undefined
-                    : oc.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.eval[metric];
-            },
-            outcomeRailValues: (metric, t) => over.outcomesOf(t)?.railValues.get(metric),
-            outcomeRecoveredOf: (t, i) => {
-                const oc = over.outcomesOf(t);
-                if (oc === null || i.time === undefined) return undefined;
-                const r = oc.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }))?.slice.recovered;
-                return r === null ? undefined : r; // 무눌림(저가 없음) = 결손
-            },
-            // 급타점 수 — 값에 결손이 없으므로(0 도 사실) undefined 는 **재료 미도착**일 때뿐이다.
-            hotCountOf: (w, r, i) => {
-                const h = over.hotOf(w, r);
-                return h === null || i.time === undefined ? undefined
-                    : h.byKey.get(pointKey({ stockCode: i.stockCode, date: i.date, time: i.time }));
-            },
-            hotRailValues: (w, r) => {
-                const h = over.hotOf(w, r);
-                return h === null ? undefined : (h.byKey as Map<string, number>);
-            },
-        }),
-        [gv],
-    );
-
-    // 현재 정의의 조회기 — T 변경은 outcomesEff 참조를 갈아 evalLook → materialsEpoch 까지 자동 무효
-    // (의도 — T 는 결과를 바꾼다). 결과 술어가 없으면 outcomesEff = null(상수)이라 그 무효화가 안 돈다(위 게이트).
-    const evalLook = useMemo<EvalLookup>(
-        () => makeEvalLook({
-            placementOf: (id) => placements.get(id),
-            valuesOf: (id) => ax.computedValues.get(id),
-            outcomesOf: (t) => outcomesEff?.(t) ?? null,
-            hotOf: (w, r) => hotEff?.(w, r) ?? null,
-        }),
-        [makeEvalLook, placements, ax.computedValues, outcomesEff, hotEff],
-    );
-
-    // ── 정산 ── 화면 순서는 하루 먼저(funnelOrder). 결과는 순서와 무관하지만(3치 AND 교환법칙)
-    //    목록과 정산이 같은 목록을 보게 두면 "필터 N"과 화면이 어긋날 일이 없다.
-    const stagesOrdered = useMemo(() => funnelOrder(stages, grainLook), [stages, grainLook]);
-    const active = useMemo(() => activeStages(stagesOrdered.map((e) => e.stage)), [stagesOrdered]);
-    /**
-     * 평가에 들어가는 식 — 꺼졌거나 빈 조건은 걷힌다.
-     *
-     * ⚠ **손을 멈춘 뒤에 따라온다**(디바운스). 편집이 곧 저장이라 한 글자마다 식이 바뀌는데,
-     * 하루 우주는 평가 한 번이 0.25~0.47초 + `/day-replay` 13MB 다. 저장은 즉시고 평가만 늦춘다
-     * (편집 버퍼를 되살리는 대신 — decisions).
-     */
-    const evalExprMemo = useMemo(() => activeExpr(expr), [expr]);
-
-    /** 현재 정의의 타점 시각 — 유니버스 전개·setCtx.timesOf·materialsFor(현재)가 같은 실물을 문다. */
-    const timesOfCur = useCallback(
-        (c: { stockCode: string; date: string }): readonly string[] => timesByChart.get(chartKey(c)) ?? [],
-        [timesByChart],
-    );
-
-    /**
-     * 재료 세대 — 정산의 재료(유니버스·타점·사전·축 값·로딩) **전부**를 의존성으로 발급하는 토큰.
-     * 리졸버의 세션 캐시가 이 토큰으로 낡음을 판정한다: 세대가 같으면 저장 집합의 정산을 재사용하고
-     * (무관한 깔때기 편집이 목록 카운트를 전부 다시 돌리지 않게), 재료가 바뀌면 반드시 무효가 된다.
-     * evalLook(그룹·배치·계산 축 값)·grainLook(scope 사전)이 각자의 재료 변경마다 새로 서므로 둘을
-     * 물면 축 값·사전 변경이 전부 잡힌다.
-     */
-    /**
-     * 정의 → 판정 재료(materialsFor) — 저장 집합의 자기-정의 평가의 실물. 현재 정의(키 일치)나 정의 없는
-     * 옛 저장물은 **현재 재료 그대로**(비용 0·평가 동일성). 다른 정의는 defDerived 캐시를 딛고 정의-종속
-     * 재료(격자 축 줄·값·급타점 단면)만 그 정의 것으로 덮어쓴다.
-     *
-     * 2026-09-18 B: **행(times)·결과 단면은 정의 무관이 됐다** — 행 = 라벨 좌표(정의가 못 가른다)라
-     * 부품도 현재 timesOf·전역 결과 단면(sliceAt)을 그대로 쓴다. 정의가 가르는 건 격자 축·급타점뿐.
-     */
-    const materialsFor = useMemo(() => {
-        const current: DefMaterials = { timesOf: timesOfCur, evalLook, grainLook };
-        const cache = new Map<string, DefMaterials>();
-        const gridSet = new Set(GRID_AXIS_IDS);
-        return (def: PointDefinition | undefined): DefMaterials => {
-            if (def === undefined) return current;
-            const key = judgeKeyOf(def);
-            if (key === curEvalKey) return current;
-            const byDate = grids.byDate;
-            if (byDate === null) return current; // 격자 로딩 전 — isLoading 가드가 어차피 숫자를 막는다
-            const hit = cache.get(key);
-            if (hit) return hit;
-            const derived = defDerivedFor(byDate, def);
-            const views = derived.feeds().map(computedAxisView);
-            const oPlace = new Map(views.map((v) => [v.axis.key, buildAxisOrderIndex(v.line)]));
-            const oValues = new Map(views.map((v) => [v.axis.key, v.values]));
-            // 부품 정의의 급타점 단면 — 모수가 "그 부품의 정의로 뽑은 타점"이라 쌍도 그쪽 것이어야 한다.
-            const hotOf = (w: number, r: number): HotCounts => derived.hot(w, r);
-            const made: DefMaterials = {
-                timesOf: timesOfCur, // 행은 라벨 — 정의 무관(위 주석)
-                grainLook, // 층위 사전은 정의 무관(그룹 scope·축 scope 는 정의가 안 바꾼다)
-                evalLook: makeEvalLook({
-                    placementOf: (id) => (gridSet.has(id) ? oPlace.get(id) : placements.get(id)),
-                    valuesOf: (id) => (gridSet.has(id) ? oValues.get(id) : ax.computedValues.get(id)),
-                    outcomesOf: (t) => outcomesEff?.(t) ?? null, // 걷기도 라벨 위 전역 한 벌
-                    hotOf,
-                }),
-            };
-            cache.set(key, made);
-            return made;
-        };
-    }, [timesOfCur, evalLook, grainLook, curEvalKey, grids.byDate, makeEvalLook, placements, ax.computedValues, outcomesEff]);
-
-    const materialsEpoch = useMemo(
-        () => `e${++materialsSeq}`,
-        [cand.candidates, timesByChart, evalLook, grainLook, isLoading, materialsFor],
-    );
-
-    /**
-     * 리졸버 재료 — **정산(result) 없이** 서는 벌. 작업 깔때기의 정산이 참조를 풀려면 리졸버가 먼저
-     * 있어야 하고(참조 = 저장 집합의 정산), 리졸버 ctx 는 그 정산을 `activeFilter` 로 문다 — 그 순환을
-     * 여기서 끊는다. 저장 집합의 풀이는 `activeFilter` 를 안 보므로 이 벌만으로 온전하다.
-     */
-    const baseCtx = useMemo<SetResolveCtx>(
-        () => ({
-            candidates: cand.candidates,
-            timesOf: timesOfCur,
-            activeStages: stages,
-            workingExpr: expr,
-            savedSetOf: (id) => savedSets.find((f) => f.id === id),
-            materialsFor,
-            materialsEpoch,
-            evalLook,
-            grainLook,
-        }),
-        [cand.candidates, timesOfCur, evalLook, grainLook, stages, savedSets, materialsFor, materialsEpoch],
-    );
-
-    /** 작업 식의 참조를 푸는 손 — 저장 집합 경로와 **같은 자**를 쓴다(두 벌이면 언젠가 다른 답을 낸다). */
-    const workingRefs = useMemo(() => refMembersOf(baseCtx, null), [baseCtx]);
-
-    // 사전이 온 뒤에만 해상도를 확정한다 — 로딩 중의 모름은 "없음"이 아니다.
-    // 낟알은 잎과 **참조 둘 다**가 정한다 — 참조를 빼면 잎 없는 조립(`OR(참조…)`)이 day 로 떨어져
-    // 타점 행이 차트 행으로 조용히 뭉개진다(resolveSet.refGrainOf 의 주석과 같은 자리).
-    const grain: Grain = isLoading
-        ? "day"
-        : (resolveAutoGrain(stages, grainLook) === "point" || refGrainOf(evalExprMemo, baseCtx, null) === "point"
-            ? "point"
-            : "day");
-
-    const items = useMemo<FunnelItem[]>(() => {
-        if (isLoading) return [];
-        return expandUniverse(cand.candidates, grain, timesOfCur);
-    }, [isLoading, cand.candidates, grain, timesOfCur]);
-
-    // ⚠ 단계는 **하나**다(식 전체) — 잎마다 한 단계로 쪼개면 정산의 AND 가 한 번 더 걸려
-    //   OR 묶음이 틀린 답을 낸다(트리의 접기는 evalExpr 하나가 진다).
-    // ⚠ 참조 해결자를 **반드시 넘긴다** — 기본값(늘 null)으로 두면 승격(이름 붙이기) 직후 작업 식의
-    //   참조가 전부 모름이 되어 루트 AND 가 전량 미배치가 된다(저장하면 제대로 풀려 "같은 식이
-    //   작업 중과 저장 후에 다른 답"이 되던 자리).
-    const result = useMemo<FunnelResult | null>(
-        () => (isLoading ? null : tallyFunnel(items, [toFunnelStage(evalExprMemo, evalLook, workingRefs)])),
-        [isLoading, items, evalExprMemo, evalLook, workingRefs],
-    );
-
-    /**
-     * 리졸버 재료 한 벌 — **재료가 하나라도 바뀌면 새로 선다.** useSetViews 의 리졸버·뷰 캐시 수명이
-     * 이 객체의 참조 동일성에 매여 있다(낡은 ctx 로 캐시가 살아남으면 낡은 집합을 돌려준다).
-     * 작업 깔때기의 정산(result)을 activeFilter 로 그대로 꽂는다 — 이유는 SetResolveCtx 필드 주석 참조.
-     */
-    const setCtx = useMemo<SetResolveCtx>(
-        () => (result === null ? baseCtx : { ...baseCtx, activeFilter: { grain, active, tally: result } }),
-        [baseCtx, grain, active, result],
-    );
-
-    const observedId = useWorkbench(selectObservedSetId);
-    const { resolveSet, view } = useSetViews(result, setCtx, observedId);
-
+    const stages = useMemo(() => leavesOf(slow.expr), [slow.expr]);
     const deadStageIds = useMemo(
         () => (isLoading ? [] : stages.filter((s) => s.predicates.some((p) => isPredicateDead(p, grainLook))).map((s) => s.id)),
         [isLoading, stages, grainLook],
@@ -403,30 +59,14 @@ export function useFilterFunnel(): FunnelView {
     const labelLook = useMemo<LabelLookup>(
         () => ({
             groupName: (id) => gv.groupByName.get(id)?.name,
-            axisName: (id) => ax.axes.find((a) => a.key === id)?.name,
+            // 계산 축은 2026-09-26 종단 폐기로 은퇴 — 옛 축 조건은 ①-3 이주가 걷는다(그때 이 필드도 죽는다).
+            axisName: () => undefined,
         }),
-        [gv.groupByName, ax.axes],
+        [gv.groupByName],
     );
 
-    const universe = items.length;
-
-    // 계약 객체는 필드가 실제로 바뀔 때만 새로 선다 — Provider 로 나가는 값이라, 매 렌더 새 객체면
-    // FunnelContext 구독자 전부가 아무 변화 없이도 리렌더된다.
     return useMemo<FunnelView>(
-        () => ({
-            isLoading,
-            grain,
-            universe,
-            stagesOrdered,
-            active,
-            result,
-            deadStageIds,
-            labelLook,
-            resolveSet,
-            view,
-            slowExpr: expr,
-            slowSets: savedSets,
-        }),
-        [isLoading, grain, universe, stagesOrdered, active, result, deadStageIds, labelLook, resolveSet, view, expr, savedSets],
+        () => ({ isLoading, deadStageIds, labelLook, slowExpr: slow.expr, slowSets: slow.sets }),
+        [isLoading, deadStageIds, labelLook, slow],
     );
 }

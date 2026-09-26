@@ -11,7 +11,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BASELINE_PARAM, chartAnchorKey, IGNORE_CANDLE_PARAM } from "@trade-data-manager/market/domain";
 import { addChartAnchor, removeChartAnchor, type AddChartAnchorInput, type AnchorField, type AnchorMarket, type ChartAnchor, type RemoveChartAnchorInput } from "../api/chartAnchors.js";
-import { allAnchorsQuery, computedAxesQuery, pointGridsQuery } from "../api/queries.js";
+import { allAnchorsQuery, pointGridsQuery } from "../api/queries.js";
 import { resolveChartAnchorLines, type RenderLine } from "./chartFrame.js";
 import { buildMarks, type AnchorMark } from "./anchorMarks.js";
 import type { ChartBundle } from "../api/chart.js";
@@ -52,7 +52,6 @@ function useChartAnchors(code: string, date: string): { anchors: ChartAnchor[]; 
 
     const invalidate = (param?: string): void => {
         void qc.invalidateQueries({ queryKey: allAnchorsQuery().queryKey }); // 복제본 앵커 테이블 — 차트·작업셋·배지가 전부 이 키
-        void qc.invalidateQueries({ queryKey: computedAxesQuery().queryKey }); // 앵커는 축 입력 — 즉시 재굽기
         // 격자는 **기준선 앵커만** 재료 — 무시 캔들 편집이 2.5MB 재다운로드+전 파생 재계산을 물지 않게 가린다.
         // 순위 단면은 **여기서 안 비운다**(2026-09-18 A2) — 그 모수가 좌표 라벨로 좁아져 앵커와 무관해졌다
         // (라벨 토글이 그 채널 — useGroups.pointToggleMut).

@@ -35,8 +35,12 @@ import {
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr, renameGroupInExpr } from "../rank/groupFilter.js";
 import { DEFAULT_THEME_ZONE, anyThemeCondOn, parseThemeZoneParams } from "@trade-data-manager/market/domain";
-import { isOutcomeMetric, type OutcomeMetric } from "../../lib/outcomeMetric.js";
-import { isHotR, isHotW } from "../../lib/hotPoints.js";
+// (2026-09-26 종단 은퇴 과도기) 결과·급타점 술어의 파서 재료 — kind 자체가 ①-3에서 은퇴하면 같이 죽는다.
+export type OutcomeMetric = "extHigh" | "dropFromHigh" | "dropFromClose";
+const OUTCOME_METRICS: readonly OutcomeMetric[] = ["extHigh", "dropFromHigh", "dropFromClose"];
+const isOutcomeMetric = (v: unknown): v is OutcomeMetric => OUTCOME_METRICS.includes(v as OutcomeMetric);
+const isHotW = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 5 && v <= 240;
+const isHotR = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0.5 && v <= 15;
 
 // 판정 알갱이 — 도메인 공용 어휘(그룹 scope·축 scope·깔때기 Grain 이 전부 같은 타입). 여기서 재수출해
 // 필터 모듈들은 stage 만 본다(도메인 경로가 바뀌어도 한 줄).

@@ -6,7 +6,8 @@
 import { CANDLE_SHAPE_LABEL, CELL_VALUE_FIELDS, TRANSITION_LABEL } from "@trade-data-manager/market/domain";
 import { NONE_LABEL, isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { shortDate } from "../../lib/date.js";
-import { OUTCOME_METRIC_NAME } from "../../lib/outcomeMetric.js";
+// (2026-09-26 종단 은퇴 과도기 — kind 와 함께 ①-3에서 죽는다)
+const OUTCOME_METRIC_NAME = { extHigh: "연장 고점", dropFromHigh: "고점 낙폭", dropFromClose: "종가 낙폭" } as const;
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 import { breakoutText } from "../breakout/chainChecks.js";
 

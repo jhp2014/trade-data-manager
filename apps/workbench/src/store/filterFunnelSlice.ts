@@ -20,11 +20,6 @@ import { applyRailToExpr, type RailKey } from "../panels/filter/stageBinding.js"
 import { committingUniverse, universeOfExpr, type Universe } from "../panels/filter/universe.js";
 import { persistSavedSets, refUniverse, switchSeat, type SavedSet } from "./savedSetsSlice.js";
 import { loadFilterMode, saveFilterMode } from "./filterMode.js";
-import { loadJson, saveJson } from "./persist.js";
-import { parsePresenceDnf, type PresenceDnf } from "../lib/presence.js";
-
-/** 작업셋 로컬 시절의 키를 승계 — 옛 절-하나 형식도 parsePresenceDnf 가 [절] 로 읽는다. */
-const GAZE_PRESENCE_KEY = "wb.workset.presenceFilter.v2"; // v2: 골격 존재 리터럴 리셋
 
 /**
  * v2: **묶음이 곧 집합**(2026-09-20 — 식 1층화). 옛 키(v1·`wb.filterStages.*`·슬롯)는 **안 읽는다**.
@@ -91,19 +86,6 @@ export interface FilterFunnelSlice {
      */
     filterMode: Universe;
     setFilterMode: (u: Universe) => void;
-    /**
-     * 월 시선 — 전역 하나(작업셋 월 줄이 주인, 구독 패널은 viewOf 를 거쳐 자동으로 따른다). null = 전체.
-     * 집합 포인터와 같은 성질(시선이지 조건이 아니다)이라 영속하지 않는다. 기본 = 전체(사용자 확정).
-     */
-    gazeMonths: string[] | null;
-    setGazeMonths: (months: string[] | null) => void;
-    /**
-     * 존재(curation) 필터 시선 — 월과 함께 전역 시선의 세 번째 성분(보는 집합 = 집합 ∩ 월 ∩ 존재필터).
-     * 주인은 작업셋 필터 줄. 월과 달리 **영속한다**(작업 국면은 재시작을 건너 살아야 한다 — 사용자 확정),
-     * 키는 작업셋 로컬이던 시절 것을 그대로 승계(무손실).
-     */
-    gazePresence: PresenceDnf;
-    setGazePresence: (dnf: PresenceDnf) => void;
     addFilterStage: (predicates?: FilterPredicate[]) => void;
     /**
      * 보드에서 레일을 그은 결과 — 그 레일의 필터를 만들거나 갈아끼우거나(술어) 지운다(null).
@@ -204,14 +186,9 @@ const crossesMode = (mode: Universe, preds: readonly FilterPredicate[]): boolean
 
 export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], FilterFunnelSlice> = (set) => {
     return {
-    gazeMonths: null, // 기본 = 전체(2026-08-22 사용자 확정 — 목록은 가상화라 전 모수가 상한이 아니다)
-    gazePresence: loadJson(GAZE_PRESENCE_KEY, parsePresenceDnf) ?? [],
     filterMode: loadFilterMode(),
     // 모드를 바꾸면 **자리도 같이 갈아 끼운다** — 그 모드에 집합이 없으면 그때 빈 집합을 만든다.
     setFilterMode: (u) => set((s) => (u === s.filterMode ? {} : { filterMode: saveFilterMode(u), ...switchSeat(s, u) })),
-
-    setGazeMonths: (months) => set(() => ({ gazeMonths: months })),
-    setGazePresence: (dnf) => set(() => { saveJson(GAZE_PRESENCE_KEY, dnf); return { gazePresence: dnf }; }),
 
     // ⚠ 쓰기 API 의 **주소는 조건 id**(= `stage.id`)다 — 시그니처가 안 바뀌어 소비자가 그대로다.
     //   바뀐 건 쓰는 자리뿐: 독립 저장물 → **편집 중인 집합의 식**(putExpr 이 그 한 곳).
