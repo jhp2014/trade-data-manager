@@ -16,15 +16,24 @@ import { DEFAULT_THEME_ZONE } from "../themeZone.js";
 describe("parseCellPredicate", () => {
     it("세 종류를 왕복한다", () => {
         const preds = [
-            { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] },
+            { kind: "cellValue", field: "cumAmountEok", ranges: [{ from: { kind: "value", value: 100 } }] },
             { kind: "priorHighBreak", days: 20 },
             { kind: "time", ranges: [{ from: "09:00", to: "10:30" }] },
         ];
         for (const p of preds) expect(parseCellPredicate(JSON.parse(JSON.stringify(p)))).toEqual(p);
     });
 
+    it("옛 % 셀 값 → 캔들 축 이주: ratePct → rate, minuteHighPct → highRate(첫 구간의 값 경계만)", () => {
+        expect(parseCellPredicate({ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 }, to: { kind: "value", value: 12 } }, { from: { kind: "value", value: 20 } }] }))
+            .toEqual({ kind: "candle", axes: { rate: { on: true, from: 5, to: 12 } } });
+        expect(parseCellPredicate({ kind: "cellValue", field: "minuteHighPct", ranges: [{ from: { kind: "value", value: 5 } }] }))
+            .toEqual({ kind: "candle", axes: { highRate: { on: true, from: 5 } } });
+        // 값 경계가 없으면(빈 구간·타점 앵커 경계) 축이 켜지되 조건 없음 = 빈 술어(정직한 결과).
+        expect(isCellPredicateEmpty(parseCellPredicate({ kind: "cellValue", field: "ratePct", ranges: [] })!)).toBe(true);
+    });
+
     it("옛 전이 저장물 — 술어에서 벗기고, theme 의 처음으로·직전 대비 상승만 enter 로 잇는다", () => {
-        const stripped = parseCellPredicate({ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }], transition: "firstOfDay" })!;
+        const stripped = parseCellPredicate({ kind: "cellValue", field: "cumAmountEok", ranges: [{ from: { kind: "value", value: 5 } }], transition: "firstOfDay" })!;
         expect("transition" in stripped).toBe(false);
         const migrated = parseCellPredicate({ kind: "theme", ...DEFAULT_THEME_ZONE, transition: "improve" });
         expect(migrated).toMatchObject({ kind: "theme", enter: true });
@@ -53,18 +62,16 @@ describe("parseCellPredicate", () => {
     });
 
     it("타점 앵커 경계는 **받아들인다** — 하루 우주에선 평가에서 결손이지 파싱 실패가 아니다", () => {
-        const p = parseCellPredicate({ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "point", point: "A|2026-09-16|09:00:00" } }] });
+        const p = parseCellPredicate({ kind: "cellValue", field: "cumAmountEok", ranges: [{ from: { kind: "point", point: "A|2026-09-16|09:00:00" } }] });
         expect(p).toMatchObject({ kind: "cellValue", ranges: [{ from: { kind: "point" } }] });
     });
 
     it("빈 구간(from·to 둘 다 없음)은 버리고, days 는 1 이상 정수로 다듬는다", () => {
-        expect(parseCellPredicate({ kind: "cellValue", field: "ratePct", ranges: [{}, { from: { kind: "value", value: 1 } }] }))
+        expect(parseCellPredicate({ kind: "cellValue", field: "cumAmountEok", ranges: [{}, { from: { kind: "value", value: 1 } }] }))
             .toMatchObject({ ranges: [{ from: { kind: "value", value: 1 } }] });
         expect(parseCellPredicate({ kind: "priorHighBreak", days: 0.4 })).toMatchObject({ days: 1 });
     });
 
-    it("전이 값이 모르는 문자열이면 전이 없음으로 떨군다(조용히 다른 뜻이 되지 않게)", () => {
-    });
 });
 
 describe("parseCellConditions", () => {
@@ -82,9 +89,9 @@ describe("parseCellConditions", () => {
         const got = parseCellConditions([
             { id: "", predicates: [] }, // id 없음
             { id: "a", predicates: "nope" }, // 술어가 배열이 아님
-            { id: "b", enabled: false, predicates: [{ kind: "candleShape", shape: "bull" }, { kind: "모름" }] },
+            { id: "b", enabled: false, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }, { kind: "모름" }] },
         ]);
-        expect(got).toEqual([{ id: "b", enabled: false, predicates: [{ kind: "candleShape", shape: "bull" }] }]);
+        expect(got).toEqual([{ id: "b", enabled: false, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }] }]);
     });
 
     it("enabled 부재는 켬으로 승계한다", () => {
@@ -95,13 +102,19 @@ describe("parseCellConditions", () => {
 describe("비용 등급·빈 판정·재료 사용 여부", () => {
     it("theme 만 tier 2, 격자·전고는 tier 1, 나머지는 tier 0", () => {
         expect(costTierOf({ kind: "theme", ...DEFAULT_THEME_ZONE })).toBe(2);
-        expect(costTierOf({ kind: "cellValue", field: "ratePct", ranges: [] })).toBe(0);
+        expect(costTierOf({ kind: "cellValue", field: "cumAmountEok", ranges: [] })).toBe(0);
+        expect(costTierOf({ kind: "candle", axes: { rate: { on: true, from: 5 } } }), "캔들은 tier 0").toBe(0);
+        expect(costTierOf({ kind: "candle", axes: { baseline: { on: true, from: 0 } } }), "기준선 축이 켜지면 tier 1").toBe(1);
         expect(costTierOf({ kind: "time", ranges: [] })).toBe(0);
         expect(costTierOf({ kind: "priorHighBreak", days: 20 })).toBe(1);
     });
 
     it("빈 구간 술어는 '무제한'이 아니라 빈 것이다", () => {
-        expect(isCellPredicateEmpty({ kind: "cellValue", field: "ratePct", ranges: [] })).toBe(true);
+        expect(isCellPredicateEmpty({ kind: "cellValue", field: "cumAmountEok", ranges: [] })).toBe(true);
+        expect(isCellPredicateEmpty({ kind: "candle", axes: {} }), "켜진 축 없음 = 빈 술어").toBe(true);
+        expect(isCellPredicateEmpty({ kind: "candle", axes: { rate: { on: true } } }), "경계 없는 축은 조건이 아니다").toBe(true);
+        expect(isCellPredicateEmpty({ kind: "candle", axes: { rate: { on: false, from: 5 } } }), "끈 축은 조건이 아니다").toBe(true);
+        expect(isCellPredicateEmpty({ kind: "candle", axes: { rate: { on: true, from: 5 } } })).toBe(false);
         expect(isCellPredicateEmpty({ kind: "time", ranges: [] })).toBe(true);
     });
 
@@ -132,10 +145,17 @@ describe("돌파 생성기 · 캔들 모양", () => {
                     firstK: null,
                 },
             },
-            { kind: "candleShape", shape: "bull" },
+            { kind: "candle", axes: { rate: { on: true, from: 5 }, openClose: { on: false, from: 0.01 }, baseline: { on: true, from: -2, to: 3 } } },
             { kind: "cellValue", field: "minuteAmountEok", ranges: [{ from: { kind: "value", value: 30 } }] },
         ];
         for (const p of preds) expect(parseCellPredicate(JSON.parse(JSON.stringify(p)))).toEqual(p);
+    });
+
+    it("옛 candleShape → 캔들 시가→종가 축(0.01% = 옛 엄격 부등호의 등가)", () => {
+        expect(parseCellPredicate({ kind: "candleShape", shape: "bull" }))
+            .toEqual({ kind: "candle", axes: { openClose: { on: true, from: 0.01 } } });
+        expect(parseCellPredicate({ kind: "candleShape", shape: "bear" }))
+            .toEqual({ kind: "candle", axes: { openClose: { on: true, to: -0.01 } } });
     });
 
     it("노브 범위 밖은 **클램프**, 빠진 필드는 기본값 — 술어를 버리지 않는다", () => {
@@ -173,7 +193,7 @@ describe("돌파 생성기 · 캔들 모양", () => {
         expect(parseCellPredicate({ kind: "candleShape", shape: "doji" })).toBeNull();
     });
 
-    it("비용 등급 — 돌파 1 · 캔들 0, 둘 다 비어 있지 않다", () => {
+    it("비용 등급 — 돌파 1 · 캔들(기준선 축 없음) 0, 둘 다 비어 있지 않다", () => {
         const b = parseCellPredicate({ kind: "breakout" })!;
         const c = parseCellPredicate({ kind: "candleShape", shape: "bear" })!;
         expect([costTierOf(b), costTierOf(c)]).toEqual([1, 0]);

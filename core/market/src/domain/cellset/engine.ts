@@ -27,9 +27,10 @@
 // "코드 오름차순 앞 종목만 남는" 편향이 생긴다. 평가를 실제로 멈추는 건 HARD_CAP 그물 하나뿐이다
 // (조건이 사실상 전부일 때 19만 셀 × 분 단면 = 프리즈를 막는 2차 방어선. 1차는 "조건 없음 = 안 보여줌").
 import { minuteOfDayOf, type MinuteDerived } from "../replay/dayReplay.js";
-import { breakoutOfStock, type BreakoutChainResult } from "./breakoutChain.js";
-import { chainCandidatesOf } from "./chainFilter.js";
+import { baselinePctOf, breakoutOfStock, type BreakoutChainResult } from "./breakoutChain.js";
+import { chainCandidatesOf, movePct } from "./chainFilter.js";
 import {
+    CANDLE_AXES,
     breakoutKeyOf,
     breakoutStructKeyOf,
     costTierOf,
@@ -38,9 +39,12 @@ import {
     unknownCellPredicate,
     type CellConditions,
     type CellExpr,
+    type CandleAxis,
+    type CandleAxisCond,
     type CellPredicate,
     type CellValueField,
     type CellValueRange,
+    candleAxisActive,
 } from "./predicate.js";
 import { themeZoneKeyOf, type ThemeAnswer, type ThemeZoneParams } from "./themeZone.js";
 
@@ -122,6 +126,8 @@ interface StockPrecomputed {
     priorHighOf(days: number): number | null;
     /** 돌파 후보 키 → 후보 분(자정기준). */
     breakouts: ReadonlyMap<string, ReadonlySet<number>>;
+    /** 확정 기준선의 %(분봉과 같은 식·같은 반올림 — baselinePctOf). 캔들 기준선 축이 켜졌을 때만 계산. */
+    baselinePct: number | null;
 }
 
 /**
@@ -150,6 +156,7 @@ function precompute(
     mat: CellMaterials,
     needDays: readonly number[],
     needBreakout: ReadonlyMap<string, BreakoutPred>,
+    needBaselinePct: boolean,
 ): StockPrecomputed {
     const highs = new Map<number, number | null>();
     for (const days of needDays) {
@@ -163,22 +170,42 @@ function precompute(
     return {
         priorHighOf: (days) => highs.get(days) ?? null,
         breakouts,
+        baselinePct: needBaselinePct ? baselinePctOf(mat.baselineOf?.(s.code) ?? null, s.basePrice.un) : null,
     };
 }
 
-/** 셀의 값 — cellValue 술어의 밑값(전부 셀 배열 O(1)). */
+/** 셀의 값 — cellValue 술어의 밑값(전부 셀 배열 O(1)). % 필드들은 캔들 축으로 이주(2026-09-27). */
 function valueOf(field: CellValueField, s: CellStock, i: number): number | null {
     switch (field) {
-        case "ratePct":
-            return s.rate[i] ?? null;
         case "cumAmountEok":
             return (s.cumAmount[i] ?? 0) / KRW_PER_EOK;
         case "minuteAmountEok":
             return ((s.cumAmount[i] ?? 0) - (i > 0 ? (s.cumAmount[i - 1] ?? 0) : 0)) / KRW_PER_EOK;
-        case "minuteHighPct":
-            return s.minuteHigh[i] ?? null;
     }
 }
+
+/**
+ * 캔들 축 하나의 값(%) — 결손(재료 없음·기준선 없음)은 null(지어내지 않는다).
+ * 시가 기점 셋과 기준선 대비는 가격 비(`movePct`)로 잰다 — predicate.ts 캔들 절 참조.
+ */
+function candleAxisValueOf(axis: CandleAxis, s: CellStock, i: number, baselinePct: number | null): number | null {
+    const open = s.minuteOpen[i];
+    const close = s.rate[i];
+    const high = s.minuteHigh[i];
+    const low = s.minuteLow[i];
+    switch (axis) {
+        case "rate": return close ?? null;
+        case "highRate": return high ?? null;
+        case "openHigh": return open === undefined || high === undefined ? null : movePct(open, high);
+        case "openLow": return open === undefined || low === undefined ? null : movePct(open, low);
+        case "openClose": return open === undefined || close === undefined ? null : movePct(open, close);
+        case "baseline": return baselinePct === null || close === undefined ? null : movePct(baselinePct, close);
+    }
+}
+
+/** 축 경계 판정 — 양끝 포함(사슬 필터 inRange 와 같은 부동소수 여유). */
+const inCandleBounds = (v: number, c: CandleAxisCond): boolean =>
+    (c.from === undefined || v >= c.from - 1e-9) && (c.to === undefined || v <= c.to + 1e-9);
 
 /** 구간 판정 — 종단 axisValue 와 같은 규칙(OR, 양끝 포함, 뒤집힌 구간은 스왑, point 경계는 결손). */
 function inRanges(v: number, ranges: readonly CellValueRange[]): boolean {
@@ -291,11 +318,14 @@ function runNode(c: Compiled, ctx: CellCtx): boolean {
                 raw = ctx.pre.breakouts.get(c.breakoutKey!)?.has(ctx.min) === true;
                 break;
             }
-            case "candleShape": {
-                // 거래 없는 봉(시가 = 종가)은 어느 쪽도 아니다.
-                const o = ctx.s.minuteOpen[ctx.i];
-                const c = ctx.s.rate[ctx.i];
-                raw = o !== undefined && c !== undefined && (p.shape === "bull" ? c > o : c < o);
+            case "candle": {
+                raw = true;
+                for (const axis of CANDLE_AXES) {
+                    const cond = p.axes[axis];
+                    if (!candleAxisActive(cond)) continue;
+                    const v = candleAxisValueOf(axis, ctx.s, ctx.i, ctx.pre.baselinePct);
+                    if (v === null || !inCandleBounds(v, cond)) { raw = false; break; }
+                }
                 break;
             }
             case "time":
@@ -368,12 +398,14 @@ export function evaluateCellsExpr(
     // 재면 묶음 안의 격자·전고 술어를 못 보고, 그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**.
     const needDays: number[] = [];
     let needTheme = false;
+    let needBaselinePct = false;
     const needBreakout = new Map<string, BreakoutPred>();
     const scan = (e: CellExpr): void => {
         if (e.kind === "pred") {
             if (e.pred.kind === "priorHighBreak" && !needDays.includes(e.pred.days)) needDays.push(e.pred.days);
             if (e.pred.kind === "breakout") needBreakout.set(breakoutKeyOf(e.pred), e.pred);
             if (e.pred.kind === "theme") needTheme = true;
+            if (e.pred.kind === "candle" && candleAxisActive(e.pred.axes.baseline)) needBaselinePct = true;
             return;
         }
         for (const c of e.of) scan(c);
@@ -387,7 +419,7 @@ export function evaluateCellsExpr(
     outer: for (const s of stocks) {
         const n = s.times.length;
         if (n === 0) continue;
-        const pre = precompute(s, mat, needDays, needBreakout);
+        const pre = precompute(s, mat, needDays, needBreakout, needBaselinePct);
 
         for (let i = 0; i < n; i++) {
             const min = minuteOfDayOf(s.times[i]);

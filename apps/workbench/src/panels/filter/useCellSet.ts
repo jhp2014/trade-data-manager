@@ -16,6 +16,7 @@
 // 함께 낸다**(칸 상태 `deficient` + 이유). 화면이 그걸 말할 책임을 진다.
 import { useMemo } from "react";
 import {
+    candleAxisActive,
     evaluateCellsExpr,
     minuteToHms,
     type CellEvalOptions,
@@ -322,7 +323,9 @@ export function useCellSet(
     const needsTheme = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "theme"), [narrowed]);
     // 돌파 생성기 — 기준선(/point-grids)을 이름표 재료로 쓴다. 안 쓰면 게이트도 안 선다.
     // 오늘은 /point-grids 가 기준선을 안 굽는다 → 이름표가 전부 「고가 돌파」(복기만 쓴다 — decisions).
-    const needsBaseline = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "breakout"), [narrowed]);
+    // 기준선 재료가 필요한 술어 = 돌파 사슬 ∪ **기준선 축이 켜진 캔들**(2026-09-27).
+    const needsBaseline = useMemo(() => usesCellPred(narrowed.expr,
+        (p) => p.kind === "breakout" || (p.kind === "candle" && candleAxisActive(p.axes.baseline))), [narrowed]);
     const pointGrids = usePointGrids();
     const limit = opts?.limit;
     const hardCap = opts?.hardCap;

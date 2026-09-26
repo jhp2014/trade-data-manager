@@ -46,7 +46,7 @@ const snapshot: DayReplay = {
 
 /** 등락 ≥ N 인 셀 전부(전이 없음) — 한 종목에 여러 행이 서야 순회 검사가 뜻이 있다. */
 const wideStage = (from: number): FilterStage =>
-    ({ id: "wide", name: "전부", enabled: true, predicates: [{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: from } }] }] });
+    ({ id: "wide", name: "전부", enabled: true, predicates: [{ kind: "candle", axes: { rate: { on: true, from } } }] });
 
 /** 날짜 목록은 **명시로 심는다** — 하루 우주에서만 켜지는 쿼리라 안 심으면 setup 의 네트워크 그물에 걸린다. */
 const renderDaily = (stages: FilterStage[], data: DayReplay = snapshot, dates: string[] = [DATE]): void => {

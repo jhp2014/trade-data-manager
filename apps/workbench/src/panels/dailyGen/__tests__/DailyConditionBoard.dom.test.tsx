@@ -1,4 +1,4 @@
-// 일별 타점[조건] 조건 보드 — 옛 「집합 편성」 ConditionBoard 의 **관리소 규약**을 하루 보드로 옮긴 것.
+// 일별 타점 [생성] 조건 보드 — 옛 「집합 편성」 ConditionBoard 의 **관리소 규약**을 하루 보드로 옮긴 것.
 //   ① 걸린 것이 전부 **한 줄에 칩으로** 선다 ② 칩을 누르면 그 내용이 **아랫줄**에 열린다(편집면은 한 곳)
 //   ③ 이름 클릭 = 그 종류의 편집면(시각·테마·돌파 = 그 자리 팝오버 — 2026-09-26 격자판·연동 은퇴)
 //   ④ ＋ 조건 = 하루 종류만(생성기 돌파 + 후보 필터) ⑤ 연산자·괄호·NOT·묶음 쌓임은 옛 보드와 같은 식 문법
@@ -53,7 +53,7 @@ const pickItem = (c: HTMLElement, text: string): void => {
     act(() => { fireEvent.click(it); });
 };
 
-const RATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "cellValue" as const, field: "ratePct" as const, ranges: [{ from: { kind: "value" as const, value: 5 } }] }] };
+const RATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "candle" as const, axes: { rate: { on: true, from: 5 } } }] };
 const BO_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "breakout" as const, zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 } }] };
 const TIME_STAGE = { id: "tm", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: "09:00", to: "10:30" }] }] };
 const RESET = { funnelSelection: null, savedSets: [], editingSetId: "edit", editPath: ["edit"], sessionUi: {}, filterMode: "daily" as const };
@@ -64,7 +64,7 @@ describe("한 줄 — 종류를 가리지 않고 걸린 것이 전부 칩으로 
     it("셀 값 조건도, 돌파 생성기도 같은 줄에 칩으로 선다", () => {
         seedEditing(exprOfStages([RATE_STAGE, BO_STAGE]));
         const { container } = renderBoard();
-        expect(chipByText(container, "등락률 ≥5%"), "셀 값 요약").toBeDefined();
+        expect(chipByText(container, "캔들 등락률≥5%"), "셀 값 요약").toBeDefined();
         expect(chipByText(container, "돌파 2%/0.5%"), "생성기 칩 — 요약 라벨(테마 칩과 같은 문법)").toBeDefined();
         expect(rows(container), "줄은 하나 — 내려간 게 없다").toHaveLength(1);
     });
@@ -166,8 +166,8 @@ describe("＋ 조건 — 생성 입구 하나", () => {
     it("팔레트는 하루 종류뿐이다 — 날짜·계산 축·결과·그룹·격자 Point 입구가 없다(테마는 하루 술어로 합류)", () => {
         const { container, baseElement } = renderBoard();
         openMenu(container);
-        for (const t of ["돌파", "분봉 대금", "양봉", "시각", "등락률", "테마", "전고 돌파"]) expect(byText(baseElement, t), t).toBeDefined();
-        for (const t of ["날짜", "계산 축", "결과", "그룹", "테마 강도", "격자 Point", "급타점", "존순위"]) expect(byText(baseElement, t), t).toBeUndefined();
+        for (const t of ["돌파 사슬", "캔들", "분봉 대금", "누적대금", "전고 돌파", "시각", "테마"]) expect(byText(baseElement, t), t).toBeDefined();
+        for (const t of ["날짜", "계산 축", "결과", "그룹", "테마 강도", "격자 Point", "급타점", "존순위", "양봉", "분봉고가"]) expect(byText(baseElement, t), t).toBeUndefined();
     });
 
     it("돌파 = 기본값 행이 서고 **곧바로 팝오버**가 뜬다(값의 편집면이 팝오버 하나라서)", () => {
@@ -186,6 +186,35 @@ describe("＋ 조건 — 생성 입구 하나", () => {
         expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "cellValue", field: "minuteAmountEok" });
     });
 
+    it("캔들 = 기본값(양봉) 행이 서고 곧바로 팝오버 — 스위치·From·To 가 payload 를 만진다", () => {
+        const { container, baseElement } = renderBoard();
+        openMenu(container);
+        act(() => { fireEvent.click(byText(baseElement, "캔들")!); });
+        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "candle", axes: { openClose: { on: true, from: 0.01 } } });
+        // 팝오버가 곧바로 뜬다 — 축 6줄.
+        expect(baseElement.textContent).toContain("캔들 조건");
+        for (const t of ["등락률", "고가 등락률", "시가→고가", "시가→저가", "시가→종가", "기준선 대비"]) {
+            expect(baseElement.textContent, t).toContain(t);
+        }
+        // 등락률 축 켜기(스위치) → From 입력(blur 커밋).
+        act(() => { fireEvent.click([...baseElement.querySelectorAll("button")].find((b) => b.title === "이 축 켜기")!); });
+        const axesOn = () => (stages()[0]!.predicates[0] as { kind: "candle"; axes: Record<string, { on: boolean; from?: number }> }).axes;
+        expect(axesOn().rate?.on, "첫 「끔」 축 = 등락률이 켜진다").toBe(true);
+        // 축 줄 순서 = CANDLE_AXES(등락률이 첫 줄) — 첫 From 칸(placeholder ↓)이 등락률의 것이다.
+        const from = [...baseElement.querySelectorAll("input")].find((i) => i.placeholder === "↓")!;
+        act(() => {
+            fireEvent.change(from, { target: { value: "7" } });
+            fireEvent.blur(from);
+        });
+        expect(axesOn().rate).toMatchObject({ on: true, from: 7 });
+        // From 을 비우면 그쪽 경계가 걷힌다(null 커밋).
+        act(() => {
+            fireEvent.change(from, { target: { value: "" } });
+            fireEvent.blur(from);
+        });
+        expect(axesOn().rate?.from, "빈 칸 = 경계 없음").toBeUndefined();
+    });
+
 });
 
 // ⚠ 순서는 결과가 아니라 **서술**을 정한다(어느 필터가 무엇을 죽였나) — 그래서 표시 순서와 store
@@ -195,14 +224,14 @@ describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
     it("칩 우클릭으로 끄고, 우클릭으로 지운다 — 아랫줄에는 그 손잡이가 없다", () => {
         seedEditing(exprOfStages([RATE_STAGE]));
         const { container } = renderBoard();
-        openChip(container, "등락률 ≥5%");
+        openChip(container, "캔들 등락률≥5%");
         expect(buttons(container).some((b) => b.title === "이 조건 지우기"), "아랫줄에 지우기가 없다").toBe(false);
 
-        rightClick(chipByText(container, "등락률 ≥5%")!);
+        rightClick(chipByText(container, "캔들 등락률≥5%")!);
         pickItem(container, "끄기");
         expect(stages()[0]!.enabled).toBe(false);
 
-        rightClick(chipByText(container, "등락률 ≥5%")!);
+        rightClick(chipByText(container, "캔들 등락률≥5%")!);
         pickItem(container, "지우기");
         expect(stages()).toHaveLength(0);
     });
@@ -295,7 +324,7 @@ describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
     it("항 부정 — 칩 우클릭으로 NOT 이 식에 실린다", () => {
         seedEditing(exprOfStages([RATE_STAGE]));
         const { container } = renderBoard();
-        rightClick(chipByText(container, "등락률 ≥5%")!);
+        rightClick(chipByText(container, "캔들 등락률≥5%")!);
         pickItem(container, "NOT");
         expect(selectEditingExpr(useWorkbench.getState()).of[0]!.neg).toBe(true);
     });
@@ -324,11 +353,11 @@ describe("줄 쌓임 — 내려가면 줄이 하나 는다", () => {
         seedEditing(exprOfStages([RATE_STAGE]));
         const { container } = renderBoard();
         expect(rows(container)).toHaveLength(1);
-        expect(chipByText(container, "등락률"), "뿌리의 조건이 칩으로 선다").toBeDefined();
+        expect(chipByText(container, "캔들 등락률≥5%"), "뿌리의 조건이 칩으로 선다").toBeDefined();
 
         act(() => { fireEvent.click(byText(container, "＋ 묶음")!); });
         expect(rows(container), "줄이 하나 는다").toHaveLength(2);
-        expect(chipByText(container, "등락률"), "윗줄은 그대로").toBeDefined();
+        expect(chipByText(container, "캔들 등락률≥5%"), "윗줄은 그대로").toBeDefined();
     });
 
     it("윗줄의 칩을 누르면 그 층이 다시 편집 대상이 된다 — 빵부스러기 없이", () => {
@@ -338,7 +367,7 @@ describe("줄 쌓임 — 내려가면 줄이 하나 는다", () => {
         act(() => { fireEvent.click(byText(container, "＋ 묶음")!); });
         expect(useWorkbench.getState().editingSetId).not.toBe(outer);
 
-        openChip(container, "등락률"); // 윗줄의 조건 칩
+        openChip(container, "캔들 등락률≥5%"); // 윗줄의 조건 칩
         expect(useWorkbench.getState().editingSetId).toBe(outer);
         expect(useWorkbench.getState().editPath).toEqual([outer]);
     });
@@ -550,7 +579,7 @@ describe("＋ 집합 — 세 칸 판", () => {
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(byText(container, "＋ 묶음")!); });
         const inner = useWorkbench.getState().editingSetId;
-        openChip(container, "등락률"); // 뿌리로 올라온다
+        openChip(container, "캔들 등락률≥5%"); // 뿌리로 올라온다
         expect(useWorkbench.getState().editingSetId).toBe(outer);
 
         act(() => { fireEvent.click(byText(container, "＋ 집합")!); });

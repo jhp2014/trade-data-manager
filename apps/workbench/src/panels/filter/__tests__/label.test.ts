@@ -21,8 +21,8 @@ describe("predicateLabel", () => {
 describe("kindLabel", () => {
     it("종류를 사람 말로", () => {
         expect(kindLabel("time")).toBe("시간");
-        expect(kindLabel("breakout")).toBe("타점");
-        expect(kindLabel("candleShape")).toBe("캔들");
+        expect(kindLabel("breakout")).toBe("돌파 사슬");
+        expect(kindLabel("candle")).toBe("캔들");
         expect(kindLabel("theme")).toBe("테마"); // 컴파일러가 안 잡는 자리(default "") — 빠지면 빈 라벨로 조용히 뜬다
         expect(kindLabel(undefined)).toBe("");
     });
@@ -56,7 +56,7 @@ describe("stageLabel", () => {
 // 재료(이름 사전)가 스토어 동기 초기화 시점엔 없었기 때문이다(지금은 이름이 전부 payload).
 describe("setDisplayName — 손 이름이 없으면 내용에서 만든다", () => {
     const st = (id: string, from: number): FilterStage =>
-        ({ id, enabled: true, predicates: [{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: from } }] }] });
+        ({ id, enabled: true, predicates: [{ kind: "cellValue", field: "cumAmountEok", ranges: [{ from: { kind: "value", value: from } }] }] });
 
     it("손 이름이 있으면 그대로", () => {
         expect(setDisplayName({ name: "아침 돌파", expr: exprOfStages([st("a", 5)]) })).toBe("아침 돌파");
@@ -112,12 +112,12 @@ describe("돌파 생성기 라벨 = breakoutText 요약(2026-09-26 — 옛 「�
                 firstK: null,
             },
         };
-        const c: FilterPredicate = { kind: "candleShape", shape: "bear" };
+        const c: FilterPredicate = { kind: "candle", axes: { openClose: { on: true, to: -0.01 }, rate: { on: true, from: 5, to: 12 }, openLow: { on: false, from: -2 } } };
         expect(predicateLabel(a)).toBe("돌파 2%/0.5% · 처음 1개");
         expect(predicateLabel(b)).toBe(breakoutText(b as BreakoutPred));
         expect(breakoutText(a as BreakoutPred)).toBe("돌파 2%/0.5% · 처음 1개");
         expect(breakoutText(b as BreakoutPred)).toBe("돌파 3%/1% · 봉 대금 ≥ 50억 · 처음 1 AND (세션 고가 돌파 OR NOT 기준선 돌파) · 처음 2 · 전부");
-        expect(predicateLabel(c)).toBe("음봉");
-        expect(kindLabel("breakout")).toBe("타점");
+        expect(predicateLabel(c), "활성 축만·선언 순서").toBe("캔들 등락률5~12% 시가→종가≤-0.01%");
+        expect(kindLabel("breakout")).toBe("돌파 사슬");
     });
 });

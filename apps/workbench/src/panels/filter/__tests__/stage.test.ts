@@ -14,11 +14,13 @@ const stage = (id: string, predicates: FilterPredicate[], enabled = true): Filte
 describe("isPredicateEmpty — 빈 조건은 평가에서 빠져야 한다", () => {
     it("빈 배열·전부 꺼진 테마 컷은 비었다", () => {
         expect(isPredicateEmpty({ kind: "time", ranges: [] })).toBe(true);
-        expect(isPredicateEmpty({ kind: "cellValue", field: "ratePct", ranges: [{}] })).toBe(true);
+        expect(isPredicateEmpty({ kind: "cellValue", field: "cumAmountEok", ranges: [{}] })).toBe(true);
+        expect(isPredicateEmpty({ kind: "candle", axes: {} })).toBe(true);
+        expect(isPredicateEmpty({ kind: "candle", axes: { rate: { on: true, from: 5 } } })).toBe(false);
     });
 
     it("한쪽 경계만 있어도 조건이다(반열림)", () => {
-        expect(isPredicateEmpty({ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] })).toBe(false);
+        expect(isPredicateEmpty({ kind: "cellValue", field: "cumAmountEok", ranges: [{ from: { kind: "value", value: 5 } }] })).toBe(false);
     });
 });
 
@@ -142,6 +144,7 @@ describe("돌파 생성기·캔들 모양 — 저장물 왕복(savedSets 영속)
 
     it("캔들 모양이 왕복한다", () => {
         const back = parseStages([{ id: "c", enabled: true, predicates: [{ kind: "candleShape", shape: "bear" }] }])!;
-        expect(back[0]!.predicates[0]).toEqual({ kind: "candleShape", shape: "bear" });
+        // 옛 양봉/음봉 → 캔들 시가→종가 축 이주(2026-09-27).
+        expect(back[0]!.predicates[0]).toEqual({ kind: "candle", axes: { openClose: { on: true, to: -0.01 } } });
     });
 });

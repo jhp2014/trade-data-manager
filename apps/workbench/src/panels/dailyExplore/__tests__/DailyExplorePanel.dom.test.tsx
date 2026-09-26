@@ -1,4 +1,4 @@
-// 일별 타점[탐색] — 머리(날짜·조건 그룹)와 조건 그룹 고르기 판. 평가 자체(●/·)는 순수부 테스트가 잠근다.
+// 일별 타점 [탐색] — 머리(날짜·조건 그룹)와 조건 그룹 고르기 판. 평가 자체(●/·)는 순수부 테스트가 잠근다.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";

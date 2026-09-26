@@ -46,6 +46,8 @@ backupRawOnce("wb.savedSets.v6", "pre-theme");
 backupRawOnce("wb.savedSets.v6", "pre-longitudinal");
 // 전이 은퇴(2026-09-27) — 벗기기·enter 이주 전 원문 1회 백업.
 backupRawOnce("wb.savedSets.v6", "pre-transition");
+// 캔들 술어 도입(2026-09-27) — candleShape·ratePct·minuteHighPct 이주 전 원문 1회 백업.
+backupRawOnce("wb.savedSets.v6", "pre-candle");
 
 /** 이번 로드에 폐기한 종단 집합 수 — 아래 loadSavedSets 가 로그로 낸다. */
 let droppedLongitudinal = 0;

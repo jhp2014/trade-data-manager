@@ -28,13 +28,13 @@ function stock(code: string, over: Partial<CellStock> & { n?: number } = {}): Ce
 
 const NO_MAT: CellMaterials = { themeAt: () => null };
 
-/** 등락률 ≥ r 칸 하나. */
+/** 등락률 ≥ r 칸 하나(캔들 rate 축 — 옛 ratePct 셀 값의 후신). */
 const rateCond = (r: number): CellConditions => [
     {
         id: "c",
         enabled: true,
         predicates: [
-            { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: r } }] },
+            { kind: "candle", axes: { rate: { on: true, from: r } } },
         ],
     },
 ];
@@ -50,20 +50,20 @@ describe("evaluateCells — 기본", () => {
     it("조건이 없거나 전부 꺼져 있으면 빈 목록 — '조건 없음 = 전부'가 아니다", () => {
         const s = stock("A", { rate: [9, 9, 9, 9, 9] });
         expect(evaluateCells([s], NO_MAT, []).hits).toEqual([]);
-        expect(evaluateCells([s], NO_MAT, [{ id: "c", enabled: false, predicates: [{ kind: "candleShape", shape: "bull" }] }]).hits).toEqual([]);
+        expect(evaluateCells([s], NO_MAT, [{ id: "c", enabled: false, predicates: [{ kind: "candle", axes: { openClose: { on: true, from: 0.01 } } }] }]).hits).toEqual([]);
     });
 
     it("빈 술어만 든 칸은 '무제한'이 아니라 빠진다 — 19만 셀을 통째로 통과시키지 않는다", () => {
         const s = stock("A", { rate: [9, 9, 9, 9, 9] });
-        expect(evaluateCells([s], NO_MAT, [{ id: "c", enabled: true, predicates: [{ kind: "cellValue", field: "ratePct", ranges: [] }] }]).hits).toEqual([]);
+        expect(evaluateCells([s], NO_MAT, [{ id: "c", enabled: true, predicates: [{ kind: "candle", axes: {} }] }]).hits).toEqual([]);
     });
 
     it("같은 셀에 두 칸이 걸리면 한 항목에 조건 id 둘, 정렬은 분↑ → 코드↑", () => {
         const a = stock("B", { rate: [6, 0, 0, 0, 0] });
         const b = stock("A", { rate: [0, 6, 0, 0, 0] });
         const conds: CellConditions = [
-            { id: "x", enabled: true, predicates: [{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] }] },
-            { id: "y", enabled: true, predicates: [{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 1 } }] }] },
+            { id: "x", enabled: true, predicates: [{ kind: "candle", axes: { rate: { on: true, from: 5 } } }] },
+            { id: "y", enabled: true, predicates: [{ kind: "candle", axes: { rate: { on: true, from: 1 } } }] },
         ];
         const r = evaluateCells([a, b], NO_MAT, conds);
         expect(r.hits.map((h) => `${h.code}@${h.min - MIN0}`)).toEqual(["B@0", "A@1"]);
@@ -75,10 +75,32 @@ describe("evaluateCells — 기본", () => {
     });
 
     it("값 구간은 양끝 포함·OR·뒤집힘 스왑, 타점 앵커 경계는 결손(그 구간만 무시)", () => {
-        const s = stock("A", { rate: [1, 5, 7, 9, 11] });
+        const s = stock("A", { cumAmount: [1e8, 5e8, 7e8, 9e8, 11e8] });
         const ranges = [{ from: { kind: "value" as const, value: 9 }, to: { kind: "value" as const, value: 5 } }, { from: { kind: "point" as const, point: "p" } }];
-        const r = evaluateCells([s], NO_MAT, [{ id: "c", enabled: true, predicates: [{ kind: "cellValue", field: "ratePct", ranges }] }]);
+        const r = evaluateCells([s], NO_MAT, [{ id: "c", enabled: true, predicates: [{ kind: "cellValue", field: "cumAmountEok", ranges }] }]);
         expect(mins(r)).toEqual([1, 2, 3]);
+    });
+
+    it("캔들 축 — From·To 양끝 포함 AND, 두 축이 한 술어에서 같이 걸린다", () => {
+        const s = stock("A", { rate: [1, 6, 8, 12, 6], minuteOpen: [0, 5, 8, 9, 7] });
+        // rate 6~12 ∧ 시가→종가 ≥ 0 — 0분(rate 1)은 첫 축에서, 4분(시가 7 → 종가 6, 음봉)은 둘째 축에서
+        // 떨어진다. 2분(시가 = 종가, 0%)은 From 0 에 **포함**된다(양끝 포함).
+        const conds: CellConditions = [{ id: "c", enabled: true, predicates: [{ kind: "candle", axes: {
+            rate: { on: true, from: 6, to: 12 },
+            openClose: { on: true, from: 0 },
+        } }] }];
+        expect(mins(evaluateCells([s], NO_MAT, conds))).toEqual([1, 2, 3]);
+    });
+
+    it("캔들 기준선 축 — 종가 기준, 기준선 없으면 결손(미발화)", () => {
+        // 기준선 1000 = 기준가와 같아 baselinePct 0%. 종가 %: [−1, 0, 2] → 기준선 대비 [−1, 0, +2]%.
+        const s = stock("A", { rate: [-1, 0, 2], n: 3, basePrice: { krx: null, un: 1000 } });
+        const conds: CellConditions = [{ id: "c", enabled: true, predicates: [{ kind: "candle", axes: {
+            baseline: { on: true, from: 0 },
+        } }] }];
+        const withBase: CellMaterials = { themeAt: () => null, baselineOf: () => 1000 };
+        expect(mins(evaluateCells([s], withBase, conds))).toEqual([1, 2]);
+        expect(evaluateCells([s], NO_MAT, conds).hits, "기준선 없음 = 결손").toEqual([]);
     });
 
     it("시각 술어는 HH:MM 양끝 포함", () => {
@@ -98,7 +120,7 @@ describe("evaluateCells — 게으름·상한", () => {
                 enabled: true,
                 predicates: [
                     { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, zoneRankOn: true, zoneRankMax: 3 },
-                    { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] },
+                    { kind: "candle", axes: { rate: { on: true, from: 5 } } },
                 ],
             },
         ];
@@ -129,7 +151,7 @@ describe("evaluateCells — 게으름·상한", () => {
         const four: CellConditions = ["a", "b", "c", "d"].map((id) => ({
             id,
             enabled: true,
-            predicates: [{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] }],
+            predicates: [{ kind: "candle", axes: { rate: { on: true, from: 5 } } }],
         }));
         // 칸 4개라 발화 수는 240 이지만 셀은 60 — hardCap 100 에 안 걸려야 한다(발화 수로 세면 걸린다).
         const r = evaluateCells(stocks, NO_MAT, four, { limit: 1000, hardCap: 100 });
@@ -188,7 +210,7 @@ describe("evaluateCells — 종목 그룹째 자르기(limitBy)", () => {
 
 describe("evaluateCellsExpr — 루트의 부정", () => {
     const rate5 = (id: string): CellExpr =>
-        ({ kind: "pred", id, pred: { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] } });
+        ({ kind: "pred", id, pred: { kind: "candle", axes: { rate: { on: true, from: 5 } } } });
     const s = stock("A", { n: 5, rate: [0, 9, 9, 0, 9] });
 
     // ⚠ 루트 OR 은 태그를 달려고 **가지를 직접 돈다**(byCondition·tags 가 화면 재료라서). 그때
@@ -227,7 +249,7 @@ describe("돌파 생성기 + 캔들·분봉 대금 필터", () => {
     const all = cf(null);
     const label = (l: "baseline" | "high"): ChainCond => ({ kind: "label", label: l });
     const and = (...of: CellExpr[]): CellExpr => ({ kind: "and", id: "a", of });
-    const bull: CellExpr = { kind: "pred", id: "c", pred: { kind: "candleShape", shape: "bull" } };
+    const bull: CellExpr = { kind: "pred", id: "c", pred: { kind: "candle", axes: { openClose: { on: true, from: 0.01 } } } };
 
     it("기본(처음 1개) = 사슬 첫 봉, 전부 = 사슬 봉 전부", () => {
         expect(mins(evaluateCellsExpr([s], NO_MAT, bo()))).toEqual([0]);
@@ -301,7 +323,7 @@ describe("theme 술어 — payload 파라미터·게으름·hit 존순위", () =
         const conds: CellConditions = [{
             id: "c", enabled: true,
             predicates: [
-                { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] },
+                { kind: "candle", axes: { rate: { on: true, from: 5 } } },
                 { kind: "theme", ...TP },
             ],
         }];

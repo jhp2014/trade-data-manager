@@ -53,3 +53,53 @@ export function NumField({ label, suffix, value, min, onCommit, title, normalize
         </label>
     );
 }
+
+/**
+ * 빈 값을 허용하는 숫자 칸 — **빈 칸 = null 커밋**(그쪽 경계 없음). From·To 전면 규칙(2026-09-27)의
+ * 반쪽 경계 편집이 이걸 쓴다. NumField 와 같은 blur/Enter 커밋 규약이고, 무효 문자열만 되돌린다.
+ */
+export function OptNumField({ label, suffix, value, min, onCommit, title, placeholder }: {
+    label: string;
+    suffix: string;
+    value: number | null;
+    min?: number;
+    onCommit: (v: number | null) => void;
+    title?: string;
+    placeholder?: string;
+}): JSX.Element {
+    const [draft, setDraft] = useState(value === null ? "" : String(value));
+    useEffect(() => setDraft(value === null ? "" : String(value)), [value]);
+    const commit = (): void => {
+        if (draft.trim() === "") { onCommit(null); return; }
+        const raw = Number(draft);
+        if (Number.isFinite(raw) && (min === undefined || raw >= min)) {
+            onCommit(raw);
+            setDraft(String(raw));
+        } else setDraft(value === null ? "" : String(value));
+    };
+    return (
+        <label title={title} style={{ display: "inline-flex", alignItems: "center", gap: 2, whiteSpace: "nowrap" }}>
+            {label !== "" && <span>{label}</span>}
+            <input
+                type="number"
+                value={draft}
+                placeholder={placeholder}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") commit();
+                }}
+                style={{
+                    width: 44,
+                    fontSize: 11,
+                    padding: "1px 3px",
+                    border: "1px solid var(--border-default)",
+                    borderRadius: 3,
+                    background: "var(--bg-primary)",
+                    color: "var(--text-primary)",
+                }}
+            />
+            {suffix !== "" && <span style={{ color: "var(--text-tertiary)" }}>{suffix}</span>}
+        </label>
+    );
+}

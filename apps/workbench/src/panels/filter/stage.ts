@@ -11,7 +11,7 @@ import {
     type CellPredicate,
     type Grain,
 } from "@trade-data-manager/market/domain";
-import { anyThemeCondOn, DEFAULT_THEME_ZONE, parseThemeZoneParams } from "@trade-data-manager/market/domain";
+import { anyCandleAxisOn, anyThemeCondOn, DEFAULT_THEME_ZONE, parseThemeZoneParams } from "@trade-data-manager/market/domain";
 
 // 판정 알갱이 — 도메인 공용 어휘 재수출(필터 모듈들은 stage 만 본다).
 export type { Grain };
@@ -26,9 +26,9 @@ export type FilterPredicate =
     | { kind: "time"; ranges: TimeRange[] }
     | Extract<CellPredicate, { kind: "cellValue" }>
     | Extract<CellPredicate, { kind: "priorHighBreak" }>
-    // Daily 타점 생성기(돌파 사슬)와 캔들 모양 필터(decisions 「Daily 타점 생성 = 돌파 사슬」).
+    // Daily 타점 생성기(돌파 사슬)와 캔들 술어(축 6개 — 옛 candleShape·% 셀 값의 후신, 2026-09-27).
     | Extract<CellPredicate, { kind: "breakout" }>
-    | Extract<CellPredicate, { kind: "candleShape" }>
+    | Extract<CellPredicate, { kind: "candle" }>
     // 테마 존(2026-09-26) — 옛 종단 themeStrength·존순위 셀 값의 후신. 판정·파서는 core themeZone 한 벌.
     | Extract<CellPredicate, { kind: "theme" }>;
 
@@ -68,8 +68,8 @@ export function isPredicateEmpty(p: FilterPredicate): boolean {
         case "time": return p.ranges.length === 0;
         case "cellValue": return p.ranges.every((r) => !r.from && !r.to);
         case "priorHighBreak": return false; // 창 하나라 항상 조건이다
-        case "breakout":
-        case "candleShape": return false; // 노브가 전부 기본값을 가져 항상 조건이다
+        case "breakout": return false; // 노브가 전부 기본값을 가져 항상 조건이다
+        case "candle": return !anyCandleAxisOn(p.axes); // 켜진 축이 없거나 경계가 없으면 조건이 아니다
         case "theme": return !anyThemeCondOn(p); // 활성 하위 조건 0 = 무제한 통과(core 빈 판정과 같은 자)
         default: return unknownPredicate(p); // 자물쇠 — 빠뜨리면 그 종류가 "무제한 통과"로 샌다
     }
@@ -192,10 +192,17 @@ function parsePredicate(o: unknown): FilterPredicate | typeof RETIRED | null {
         case "priorHighBreak":
         case "breakout":
         case "candleShape":
+        case "candle":
         case "theme": {
             const t = (o as { transition?: unknown }).transition;
             const migrates = p.kind === "theme" && (t === "firstTrue" || t === "improve");
             if (t !== undefined && !migrates) strippedTransitions += 1;
+            // 옛 % 셀 값의 다중 OR 구간은 캔들 축이 첫 구간만 잇는다(core) — 잃는 수를 로그로 남긴다.
+            const cv = o as { kind?: unknown; field?: unknown; ranges?: unknown };
+            if (cv.kind === "cellValue" && (cv.field === "ratePct" || cv.field === "minuteHighPct")
+                && Array.isArray(cv.ranges) && cv.ranges.length > 1) {
+                console.info(`[stage] 캔들 이주: ${String(cv.field)} 의 OR 구간 ${cv.ranges.length - 1}개는 첫 구간만 남습니다`);
+            }
             return parseCellPredicate(o) as FilterPredicate | null;
         }
         default:

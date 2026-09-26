@@ -67,7 +67,7 @@ export interface BoundSet {
  */
 const UNRESOLVED_VIEW: ViewedSet = { isFiltering: true, broken: true, viewedItems: [], viewedChartKeys: new Set(), viewedPointRefs: [] };
 
-const NO_CONDITION = "하루 우주에는 조건이 있어야 합니다 — 일별 타점[조건]에서 조건을 거세요";
+const NO_CONDITION = "하루 우주에는 조건이 있어야 합니다 — 일별 타점 [생성]에서 조건을 거세요";
 export function useBoundSet(_panelId: string): BoundSet {
     const funnel = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);

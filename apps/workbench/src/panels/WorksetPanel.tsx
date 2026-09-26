@@ -233,7 +233,7 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
             {/* ① 컨트롤 줄 — 좌측 상태 텍스트, 우측 레지스트리. */}
             <PanelHeader chrome={false} gap={6} style={{ borderBottom: "1px solid var(--border-default)" }}>
                 <button onClick={goToFunnelPanel}
-                    title={`지금 보는 집합: ${setLabel} — 일별 타점[조건]이 정한다(클릭 = 그 패널로)`}
+                    title={`지금 보는 집합: ${setLabel} — 일별 타점 [생성]이 정한다(클릭 = 그 패널로)`}
                     style={{
                         flexShrink: 0, cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 700, padding: "0 7px",
                         borderRadius: 9, border: "0.5px solid transparent", background: PIN, color: "#fff", whiteSpace: "nowrap",

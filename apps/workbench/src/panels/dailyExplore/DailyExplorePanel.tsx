@@ -1,4 +1,4 @@
-// 일별 타점[탐색] — 하루 후보를 **날짜 단위로 걷는** 전용 뷰(2026-09-26). 작업 대상(시선·큐레이션 브라우징)과
+// 일별 타점 [탐색] — 하루 후보를 **날짜 단위로 걷는** 전용 뷰(2026-09-26). 작업 대상(시선·큐레이션 브라우징)과
 // 다른 몫: 행 = 보는 집합의 그날 후보(기본 **종목순** — 종목 머리줄 아래 시간순, 토글로 시간순),
 // 열 = **조건 그룹**(고른 저장 집합 4~5개)의 통과 ●/·.
 // "어느 조건 덕에 나왔나"는 조건판이 아니라 이 뷰의 책임이다(사용자 확정).
@@ -18,6 +18,7 @@ import { RowNavBadge } from "../../components/RowNavBadge.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { usePublishRowNav } from "../../lib/rowNav.js";
 import { useDayReplayPrefetch } from "../../lib/useDaySnapshot.js";
+import { useDock } from "../../store/dock.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { AnchoredPopover } from "../../ui/Dialog.js";
@@ -36,7 +37,14 @@ const EMPTY_DATES: string[] = [];
 const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"] as const;
 const fmtEok = (won: number): string => `${(won / 1e8).toFixed(won >= 1e10 ? 0 : 1)}억`;
 
-export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element {
+export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; baseTitle?: string }): JSX.Element {
+    // 탭 제목 = 카탈로그 이름 — 옛 저장 배치의 「일별 타점[탐색]」을 되돌린다(생성판 선례).
+    useEffect(() => {
+        if (!baseTitle) return;
+        const p = useDock.getState().api?.getPanel(panelId);
+        if (p && p.title !== baseTitle) p.api.setTitle(baseTitle);
+    }, [panelId, baseTitle]);
+
     const funnel = useFunnel();
     const { nameOf } = useStockNamesDict();
     const isDaily = true;

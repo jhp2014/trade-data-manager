@@ -24,7 +24,7 @@ export function railKeyOf(p: FilterPredicate): RailKey | null {
         case "cellValue":
         case "priorHighBreak":
         case "breakout":
-        case "candleShape": return null;
+        case "candle": return null;
         // 자물쇠 — 빠뜨리면 그은 컷이 그 행에 조용히 안 붙는다(stage.ts).
         default: return unknownPredicate(p);
     }

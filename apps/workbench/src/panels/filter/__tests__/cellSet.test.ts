@@ -11,7 +11,7 @@ const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, 
 const stage = (id: string, predicates: FilterStage["predicates"], extra: Partial<FilterStage> = {}): FilterStage =>
     ({ id, enabled: true, predicates, ...extra });
 
-const cell = stage("c1", [{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }] }]);
+const cell = stage("c1", [{ kind: "candle", axes: { rate: { on: true, from: 5 } } }]);
 
 const leafIds = (e: SetExpr): string[] => {
     const { expr } = toCellExpr(e);
@@ -89,7 +89,7 @@ describe("toCellExpr — 돌파 줄은 항상 계산", () => {
 describe("toCellExpr — 꺼짐·빈 술어는 부재다", () => {
     it("꺼진 잎·빈 술어 잎은 애초에 안 들어온다(status 에도 안 선다)", () => {
         const off = stage("off", cell.predicates, { enabled: false });
-        const empty = stage("empty", [{ kind: "cellValue", field: "ratePct", ranges: [] }]);
+        const empty = stage("empty", [{ kind: "candle", axes: {} }]);
         const { expr, stages } = toCellExpr(exprOfStages([off, empty]));
         expect(expr).toBeNull();
         expect(stages).toEqual([]);
@@ -225,7 +225,7 @@ describe("toCellExpr — 빈 집합 참조는 **부재**지 결손이 아니다"
 // ⚠ 괄호는 **한 층 더인 묶음**일 뿐이라 3치 규칙(결손 오염 / 부재 / 술어)이 그대로 내려가야 한다.
 //   2026-09-21 리뷰가 "괄호 있는 식이 번역 검사에 하나도 없다"로 잡은 자리다.
 describe("괄호 — 3치 규칙이 한 층 더 내려간다", () => {
-    const cell2 = stage("c2", [{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 9 } }] }]);
+    const cell2 = stage("c2", [{ kind: "candle", axes: { rate: { on: true, from: 9 } } }]);
 
     /** `a AND (b OR c)` — 괄호 안이 OR. */
     const withParen = (terms: SetTerm[]): SetExpr =>

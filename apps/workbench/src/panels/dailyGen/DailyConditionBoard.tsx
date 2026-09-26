@@ -1,4 +1,4 @@
-// 일별 타점[조건]의 조건 보드 — 옛 「집합 편성」 ConditionBoard 의 **하루 부분만** 새로 지은 것
+// 일별 타점 [생성]의 조건 보드 — 옛 「집합 편성」 ConditionBoard 의 **하루 부분만** 새로 지은 것
 // (2026-09-24, decisions 「Daily 타점 생성 = 돌파 사슬」). 줄 쌓임·칩·아랫줄 편집면의 문법은 그대로다 —
 // 규칙 전문은 decisions 「집합 편성 — 가로 드릴다운 줄」.
 //
@@ -9,7 +9,7 @@
 // 테마 줄과 같은 문법: 칩 = 요약 라벨(breakoutText — predicateLabel 이 짓는다), 클릭 = 팝오버.
 // 값의 주인은 줄(집합) — 팝오버는 stageId 로 최신 술어를 스토어에서 읽고 그 줄에 바로 쓴다.
 import { useCallback, useMemo, useState } from "react";
-import { DEFAULT_BREAKOUT, DEFAULT_THEME_ZONE, type CellPredicate, type CellValueRange } from "@trade-data-manager/market/domain";
+import { DEFAULT_BREAKOUT, DEFAULT_CANDLE, DEFAULT_THEME_ZONE, type CellPredicate, type CellValueRange } from "@trade-data-manager/market/domain";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
 import { allStagesOf, selectEditingExpr, selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { CellStageFields } from "../filter/CellPredicateFields.js";
@@ -20,6 +20,7 @@ import { activeExpr, hasCycle, idOf, leavesOf, mapLeaves, negateGroupAt, negateT
 import { setDisplayName, stageLabel } from "../filter/label.js";
 import { stageKind, type FilterPredicate, type FilterStage } from "../filter/stage.js";
 import { BreakoutCondEditor } from "./BreakoutCondEditor.js";
+import { CandleCondEditor } from "./CandleCondEditor.js";
 import { ThemeCondEditor } from "./ThemeCondEditor.js";
 import { FAIL, PIN } from "../../styles/palette.js";
 import { LinkIcon } from "../../components/icons.js";
@@ -44,9 +45,10 @@ export function DailyConditionBoard(): JSX.Element {
     const editingSetId = useWorkbench((s) => s.editingSetId);
 
     const [railEditor, setRailEditor] = useState<RailEditor | null>(null);
-    /** 테마·돌파 팝오버 — 줄에서 연다(값의 편집면, 2026-09-26). stageId 로 최신 술어를 스토어에서 읽는다. */
+    /** 테마·돌파·캔들 팝오버 — 줄에서 연다(값의 편집면, 2026-09-26). stageId 로 최신 술어를 스토어에서 읽는다. */
     const [themeEdit, setThemeEdit] = useState<{ stageId: string; x: number; y: number } | null>(null);
     const [breakoutEdit, setBreakoutEdit] = useState<{ stageId: string; x: number; y: number } | null>(null);
+    const [candleEdit, setCandleEdit] = useState<{ stageId: string; x: number; y: number } | null>(null);
     const [picked, setPicked] = useState<string | null>(null);
 
     /** 조건 만들기의 **유일한 입구** — 만든 조건 id 를 돌려준다(돌파·테마는 곧바로 팝오버를 편다). */
@@ -68,8 +70,11 @@ export function DailyConditionBoard(): JSX.Element {
             case "breakout":
                 setBreakoutEdit({ stageId: stage.id, x: e.clientX, y: e.clientY });
                 return;
+            case "candle":
+                setCandleEdit({ stageId: stage.id, x: e.clientX, y: e.clientY });
+                return;
             default:
-                return; // 셀 값·캔들 등 — 줄 안에서 만진다.
+                return; // 셀 값·전고 — 줄 안에서 만진다.
         }
     };
 
@@ -204,6 +209,10 @@ export function DailyConditionBoard(): JSX.Element {
                                 const made = addStageHere([{ kind: "theme", ...DEFAULT_THEME_ZONE }]);
                                 if (made) setThemeEdit({ stageId: made, x: e.clientX, y: e.clientY });
                             }}
+                            onCandle={(e) => {
+                                const made = addStageHere([{ kind: "candle", axes: { ...DEFAULT_CANDLE.axes } }]);
+                                if (made) setCandleEdit({ stageId: made, x: e.clientX, y: e.clientY });
+                            }}
                         />
                         {/* 새로 만드는 손(조건·묶음)이 앞, 있는 것을 가져오는 손(집합)이 뒤다. */}
                         <button onClick={() => addGroupTerm()} title="새 묶음 — 빈 집합을 만들어 이 식에 붙이고 그 안으로 내려갑니다" style={addBtn}>
@@ -305,6 +314,16 @@ export function DailyConditionBoard(): JSX.Element {
                 return (
                     <ThemeCondEditor at={themeEdit} pred={pred} onClose={() => setThemeEdit(null)}
                         onWrite={(next) => setPredicates(st.id, st.predicates.map((x) => (x.kind === "theme" ? next : x)))} />
+                );
+            })()}
+
+            {candleEdit !== null && (() => {
+                const st = stages.find((x) => x.id === candleEdit.stageId);
+                const pred = st?.predicates.find((x): x is Extract<FilterPredicate, { kind: "candle" }> => x.kind === "candle");
+                if (!st || !pred) return null; // 줄이 지워졌으면 조용히 닫힌다
+                return (
+                    <CandleCondEditor at={candleEdit} pred={pred} onClose={() => setCandleEdit(null)}
+                        onWrite={(next) => setPredicates(st.id, st.predicates.map((x) => (x.kind === "candle" ? next : x)))} />
                 );
             })()}
 
@@ -417,39 +436,44 @@ const menuItem: React.CSSProperties = {
  * ＋ 조건 — 하루 종류만. 생성기(돌파)가 맨 위, 그 아래가 후보에 거는 필터들이다(필터는 구조를 안 바꾼다).
  * ⚠ 판은 **포털 + fixed**(HeaderPopover) — 스크롤 컨테이너 안 absolute 는 탭 스트립에 덮였다(2026-09-19 실측).
  */
-function AddCondition({ onCell, onBreakout, onTheme }: {
+function AddCondition({ onCell, onBreakout, onTheme, onCandle }: {
     onCell: (p: FilterPredicate) => void;
     onBreakout: (e: React.MouseEvent) => void;
     onTheme: (e: React.MouseEvent) => void;
+    onCandle: (e: React.MouseEvent) => void;
 }): JSX.Element {
     const atLeast = (value: number): CellValueRange => ({ from: { kind: "value", value } });
+    // 항목 = 이름 + **설명 한 줄**(항상 보인다 — 툴팁이 아니라 판에 적는다. 2026-09-27 팔레트 재편).
     const item = (close: () => void, label: string, hint: string, run: (e: React.MouseEvent) => void): JSX.Element => (
-        <button key={label} onClick={(e) => { close(); run(e); }} title={hint} style={menuItem}>{label}</button>
+        <button key={label} onClick={(e) => { close(); run(e); }} style={{ ...menuItem, padding: "4px 10px" }}>
+            <span style={{ display: "block" }}>{label}</span>
+            <span style={{ display: "block", fontSize: 9.5, color: "var(--text-tertiary)", whiteSpace: "normal", lineHeight: 1.35 }}>{hint}</span>
+        </button>
     );
-    const head = (text: string): JSX.Element => (
-        <div style={{ padding: "4px 10px 1px", fontSize: 10, color: "var(--text-tertiary)" }}>{text}</div>
+    const head = (text: string, first = false): JSX.Element => (
+        <div style={{ padding: "4px 10px 1px", fontSize: 10, fontWeight: 600, color: "var(--text-tertiary)", ...(first ? {} : { borderTop: "0.5px solid var(--border-subtle)", marginTop: 3, paddingTop: 6 }) }}>{text}</div>
     );
     return (
         <div style={{ padding: "6px 2px 2px" }}>
-            <HeaderPopover width={230} align="start" closeOnOutside
+            <HeaderPopover width={264} align="start" closeOnOutside
                 trigger={(open, toggle) => (
-                    <button onClick={toggle} title="조건 만들기 — 생성기(돌파)와 후보 필터" style={addBtn}>
+                    <button onClick={toggle} title="조건 만들기 — 생성기(돌파 사슬)와 후보 필터" style={addBtn}>
                         ＋ 조건 {open ? "▴" : "▾"}
                     </button>
                 )}>
                 {(close) => (
-                    <div style={{ overflowY: "auto", padding: "3px 0" }}>
-                        {head("생성기")}
-                        {item(close, "돌파", "돌파 사슬 후보 — 고가(와 기준선) 밴드 사건에서 사슬이 서고, 눌림(zigzag) 전까지 대금이 커진 봉이 후보. 값은 팝오버에서", onBreakout)}
-                        {head("후보 필터")}
+                    <div style={{ maxHeight: 340, overflowY: "auto", padding: "3px 0" }}>
+                        {head("생성기 — 후보를 만든다", true)}
+                        {item(close, "돌파 사슬", "고가(와 기준선) 밴드 사건에서 사슬이 서고, 눌림 전까지 대금이 커진 봉이 후보 — 값은 팝오버에서", onBreakout)}
+                        {head("봉 — 그 분 봉 하나의 성질")}
+                        {item(close, "캔들", "등락률·고가·시가→고/저/종·기준선 대비, 축 6개 — 값은 팝오버에서", onCandle)}
                         {item(close, "분봉 대금", "그 분 봉 자신의 거래대금(억) — 돌파 대금 필터", () => onCell({ kind: "cellValue", field: "minuteAmountEok", ranges: [atLeast(30)] }))}
-                        {item(close, "양봉", "캔들 모양 — 종가 > 시가(줄에서 음봉으로 바꿀 수 있다)", () => onCell({ kind: "candleShape", shape: "bull" }))}
-                        {item(close, "시각", "장중 시각 창 — 09:00~10:30 처럼", () => onCell({ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }))}
-                        {item(close, "등락률", "그 분의 등락률(UN %) — 값은 줄에서 만집니다", () => onCell({ kind: "cellValue", field: "ratePct", ranges: [atLeast(5)] }))}
+                        {head("세션 — 하루 안 흐름")}
                         {item(close, "누적대금", "그 분까지의 세션 누적 거래대금(억)", () => onCell({ kind: "cellValue", field: "cumAmountEok", ranges: [atLeast(100)] }))}
-                        {item(close, "분봉고가", "그 분 봉의 고가(UN %)", () => onCell({ kind: "cellValue", field: "minuteHighPct", ranges: [atLeast(5)] }))}
-                        {item(close, "테마", "테마 존(대금·등락 상위 무리) 판정 — 분 단면을 굽는 비싼 재료입니다. 값은 팝오버에서", onTheme)}
                         {item(close, "전고 돌파", "직전 W 거래일 고가를 분봉 고가가 넘는 분(당일 제외)", () => onCell({ kind: "priorHighBreak", days: 20 }))}
+                        {item(close, "시각", "장중 시각 창 — 09:00~10:30 처럼", () => onCell({ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }))}
+                        {head("시장 — 종목 밖 단면")}
+                        {item(close, "테마", "테마 존(대금·등락 상위 무리) 판정 — 분 단면을 굽는 비싼 재료. 값은 팝오버에서", onTheme)}
                     </div>
                 )}
             </HeaderPopover>

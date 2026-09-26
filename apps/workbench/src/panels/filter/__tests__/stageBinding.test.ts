@@ -15,8 +15,8 @@ const applyRailPredicate = (stages: FilterStage[], key: RailKey, predicate: Filt
 describe("railKeyOf — 시각만 레일이다", () => {
     it("시각은 종류로, 팝오버 종류(테마·돌파)와 셀 술어는 null", () => {
         expect(railKeyOf(time("09:00", "10:30"))).toEqual({ kind: "time" });
-        expect(railKeyOf({ kind: "candleShape", shape: "bull" })).toBeNull();
-        expect(railKeyOf({ kind: "cellValue", field: "ratePct", ranges: [] })).toBeNull();
+        expect(railKeyOf({ kind: "candle", axes: { openClose: { on: true, from: 0.01 } } })).toBeNull();
+        expect(railKeyOf({ kind: "cellValue", field: "cumAmountEok", ranges: [] })).toBeNull();
     });
 });
 
@@ -27,7 +27,7 @@ describe("sameRailKey", () => {
 });
 
 describe("stagesFor · predicateFor", () => {
-    const stages = [stage("s1", [time("09:00", "10:30")]), stage("s2", [{ kind: "candleShape", shape: "bull" }]), stage("s3", [time("13:00", "14:00")])];
+    const stages = [stage("s1", [time("09:00", "10:30")]), stage("s2", [{ kind: "candle", axes: { openClose: { on: true, from: 0.01 } } }]), stage("s3", [time("13:00", "14:00")])];
 
     it("그 레일에 매인 필터를 순서대로", () => {
         expect(stagesFor(stages, TIME).map((s) => s.id)).toEqual(["s1", "s3"]);
@@ -35,7 +35,7 @@ describe("stagesFor · predicateFor", () => {
 
     it("레일이 그리는 건 첫 필터의 조건", () => {
         expect(predicateFor(stages, TIME)).toEqual(time("09:00", "10:30"));
-        expect(predicateFor([stage("s2", [{ kind: "candleShape", shape: "bull" }])], TIME)).toBeUndefined();
+        expect(predicateFor([stage("s2", [{ kind: "candle", axes: { openClose: { on: true, from: 0.01 } } }])], TIME)).toBeUndefined();
     });
 });
 

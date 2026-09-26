@@ -26,8 +26,12 @@ import { DEFAULT_THEME_ZONE, anyThemeCondOn, parseThemeZoneParams, type ThemeZon
 //  하나였고 그건 테마 술어의 `enter` 노브(themeZone)가 판정 층에서 잇는다. 엔진의 종목별 상태
 //  기계가 통째로 사라져 셀 판정이 다시 무상태가 됐다.)
 
-/** 셀 값 필드 — 한 셀(종목·분)에서 읽히는 스칼라(전부 셀 배열 O(1)). 옛 `zoneRank` 는 theme 술어로 이주(2026-09-26). */
-export type CellValueField = "ratePct" | "cumAmountEok" | "minuteAmountEok" | "minuteHighPct";
+/**
+ * 셀 값 필드 — 한 셀(종목·분)에서 읽히는 스칼라(전부 셀 배열 O(1)). **대금 둘만 남았다**:
+ * 옛 `zoneRank` 는 theme 술어로(2026-09-26), `ratePct`·`minuteHighPct` 는 캔들 술어의 축으로
+ * 이주했다(2026-09-27 — % 값들은 봉 하나의 성질이라 캔들 팝오버 한 곳에서 만진다).
+ */
+export type CellValueField = "cumAmountEok" | "minuteAmountEok";
 
 export interface CellValueFieldMeta {
     label: string;
@@ -35,11 +39,9 @@ export interface CellValueFieldMeta {
 }
 
 export const CELL_VALUE_FIELDS: Record<CellValueField, CellValueFieldMeta> = {
-    ratePct: { label: "등락률", suffix: "%" },
     cumAmountEok: { label: "누적대금", suffix: "억" },
     // 그 분 봉 자신의 대금 — 돌파 후보의 「돌파 대금 ≥ n」 필터가 이것이다(생성기 밖 — 필터는 구조를 안 바꾼다).
     minuteAmountEok: { label: "분봉 대금", suffix: "억" },
-    minuteHighPct: { label: "분봉고가", suffix: "%" },
 };
 
 /**
@@ -75,9 +77,46 @@ export const DEFAULT_BREAKOUT: { zigzagPct: number; bandPct: number; chain: Chai
     chain: DEFAULT_CHAIN_FILTER,
 };
 
-/** 캔들 모양 — 봉 자체의 성질(돌파 후보에 AND 로 건다). 꼬리 등은 여기로 늘린다. */
-export type CandleShape = "bull" | "bear";
-export const CANDLE_SHAPE_LABEL: Record<CandleShape, string> = { bull: "양봉", bear: "음봉" };
+// ── 캔들 술어(2026-09-27) — 옛 candleShape(양봉/음봉 이지선다)·ratePct·minuteHighPct 셀 값의 후신 ──
+//
+// 봉 하나의 성질을 **축 6개 × From·To 구간**으로 잰다. 값은 전부 등락률 공간(%)이다:
+// rate·highRate 는 기준가(전일 UN 종가) 대비 %(셀 배열 그대로), 시가 기점 셋과 기준선 대비는
+// **가격 비**로 잰다(`movePct` — 사슬 필터 openHigh/openClose 와 같은 식. %끼리의 차는 기준가가
+// 다른 봉끼리 비교가 안 된다). 기준선 축은 종가 기준이고 기준선 % 변환은 `baselinePctOf` 한 벌
+// (돌파 사슬과 같은 반올림 — 다르면 같은 가격이 다른 답을 낸다).
+export type CandleAxis = "rate" | "highRate" | "openHigh" | "openLow" | "openClose" | "baseline";
+
+export const CANDLE_AXES: readonly CandleAxis[] = ["rate", "highRate", "openHigh", "openLow", "openClose", "baseline"];
+
+export const CANDLE_AXIS_LABEL: Record<CandleAxis, string> = {
+    rate: "등락률",
+    highRate: "고가 등락률",
+    openHigh: "시가→고가",
+    openLow: "시가→저가",
+    openClose: "시가→종가",
+    baseline: "기준선 대비",
+};
+
+/**
+ * 축 하나의 조건 — ON/OFF + From·To(%). 끈 축의 값이 살아 있어야 다시 켤 때 제자리로 돌아온다
+ * (테마 컷과 같은 규칙). **켜져 있어도 경계가 둘 다 없으면 조건이 아니다**(활성 축 판정 한 곳 — candleAxisActive).
+ */
+export interface CandleAxisCond {
+    on: boolean;
+    from?: number;
+    to?: number;
+}
+
+export type CandleAxes = Partial<Record<CandleAxis, CandleAxisCond>>;
+
+/** 활성 축 판정 — 평가·빈 판정·라벨이 같은 자를 쓴다. */
+export const candleAxisActive = (c: CandleAxisCond | undefined): c is CandleAxisCond =>
+    c !== undefined && c.on && (c.from !== undefined || c.to !== undefined);
+
+export const anyCandleAxisOn = (axes: CandleAxes): boolean => CANDLE_AXES.some((a) => candleAxisActive(axes[a]));
+
+/** 팔레트의 「캔들」 기본값 — 양봉(시가→종가 ≥ 0.01%). 옛 candleShape bull 이주와 같은 모양. */
+export const DEFAULT_CANDLE: { axes: CandleAxes } = { axes: { openClose: { on: true, from: 0.01 } } };
 
 /** 셀 술어 하나 — 전부 시점 술어다(전이 은퇴 2026-09-27 · 진입 판정은 theme 의 `enter` payload). */
 export type CellPredicate =
@@ -85,7 +124,7 @@ export type CellPredicate =
     | { kind: "priorHighBreak"; days: number }
     /** 돌파 사슬 후보(생성기) — 기준선은 `/point-grids` 의 확정 기준선(없으면 이름표가 전부 「고가 돌파」). */
     | { kind: "breakout"; zigzagPct: number; bandPct: number; chain: ChainFilter }
-    | { kind: "candleShape"; shape: CandleShape }
+    | { kind: "candle"; axes: CandleAxes }
     | { kind: "time"; ranges: CellTimeRange[] }
     /** 테마 존(2026-09-26 — 옛 종단 themeStrength·존순위 셀 값의 후신). 판정 한 벌은 themeZone.ts. */
     | ({ kind: "theme" } & ThemeZoneParams);
@@ -115,8 +154,9 @@ export function costTierOf(p: CellPredicate): 0 | 1 | 2 {
         case "priorHighBreak":
         case "breakout":
             return 1;
-        case "candleShape":
-            return 0;
+        case "candle":
+            // 기준선 축이 켜지면 종목당 기준선 확정(재료 호출)이 필요하다 — 격자·돌파와 같은 층.
+            return candleAxisActive(p.axes.baseline) ? 1 : 0;
         case "theme":
             return 2; // 분 단면 + 멤버십 — 단락 뒤에만
         default:
@@ -189,8 +229,9 @@ export function isCellPredicateEmpty(p: CellPredicate): boolean {
             return p.ranges.length === 0;
         case "priorHighBreak":
         case "breakout":
-        case "candleShape":
             return false;
+        case "candle":
+            return !anyCandleAxisOn(p.axes);
         case "theme":
             // 활성 하위 조건 0 = 조건 없음(존은 시선 도구) — 평가에서 빼야 "전부 통과"가 뜻대로 선다.
             return !anyThemeCondOn(p);
@@ -250,6 +291,16 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
     if (!isObj(raw)) return null;
     switch (raw.kind) {
         case "cellValue": {
+            // 옛 % 필드 → 캔들 축 이주(2026-09-27): ratePct → rate, minuteHighPct → highRate.
+            // 값 경계는 **첫 구간만** 옮긴다(다중 OR 구간은 새 모양에 없다 — 수는 로그, stage.ts).
+            if (raw.field === "ratePct" || raw.field === "minuteHighPct") {
+                const ranges = parseRanges(raw.ranges) ?? [];
+                const r = ranges[0];
+                const from = r?.from?.kind === "value" ? { from: r.from.value } : {};
+                const to = r?.to?.kind === "value" ? { to: r.to.value } : {};
+                const axis: CandleAxis = raw.field === "ratePct" ? "rate" : "highRate";
+                return { kind: "candle", axes: { [axis]: { on: true, ...from, ...to } } };
+            }
             // 옛 존순위 필드 → theme 술어 이주(2026-09-26). 값 상한만 존순위 컷으로 옮긴다 — 하한 구간은
             // 새 모양에 없다(decisions). 존 정의·재적은 옛날에도 payload 가 아니라 공용 노브(사실상 기본값)였다.
             if (raw.field === "zoneRank") {
@@ -287,8 +338,24 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
                 // 아예 없으면 처음 1개(전부로 읽으면 하루 수만 봉이 쏟아진다).
                 chain: parseChainFilter(raw.chain, raw.label),
             };
+        // 옛 양봉/음봉 이지선다 → 캔들 시가→종가 축(0.01% 경계 = 옛 엄격 부등호 「종가 > 시가」의 등가).
         case "candleShape":
-            return raw.shape === "bull" || raw.shape === "bear" ? { kind: "candleShape", shape: raw.shape } : null;
+            return raw.shape === "bull" ? { kind: "candle", axes: { openClose: { on: true, from: 0.01 } } }
+                : raw.shape === "bear" ? { kind: "candle", axes: { openClose: { on: true, to: -0.01 } } }
+                : null;
+        case "candle": {
+            const axesRaw = isObj(raw.axes) ? raw.axes : {};
+            const axes: CandleAxes = {};
+            for (const a of CANDLE_AXES) {
+                const c = axesRaw[a];
+                if (!isObj(c)) continue;
+                const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+                const from = num(c.from);
+                const to = num(c.to);
+                axes[a] = { on: c.on === true, ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}) };
+            }
+            return { kind: "candle", axes };
+        }
         case "time": {
             if (!Array.isArray(raw.ranges)) return null;
             const ranges: CellTimeRange[] = [];

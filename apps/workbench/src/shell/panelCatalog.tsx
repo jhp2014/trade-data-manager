@@ -91,17 +91,17 @@ export const PANEL_TYPES: PanelType[] = [
     //  그 패널이 곧 후보 순회 목록이다. 저장 레이아웃의 `component: "probe"` 는 sanitizeLayout 이
     //  미등록으로 걷어낸다(map·rankSkeleton 선례) — 사용자 화면의 그 탭은 다음 로드에 사라진다.)
     { idBase: "history", component: "recentHistory", title: "최근 탐색", plane: "eod", render: () => <RecentHistoryPanel /> },
-    // 일별 타점[조건] — 하루 조건 묶음(집합)이 태어나는 자리(다른 패널은 그 집합을 구독만 한다).
+    // 일별 타점 [생성] — 하루 조건 묶음(집합)이 태어나는 자리(다른 패널은 그 집합을 구독만 한다).
     // 옛 「집합 편성」(2026-09-24 은퇴)의 idBase·component 를 **승계**한다 — 저장 배치·프리셋의 자리가 그대로
     // 새 패널이 되고(테마 [조건]판 선례), 두 패널 공존이 원리적으로 불가능하다. 옛 제목은 패널이 정규화한다.
-    { idBase: "filter-funnel", component: "filterFunnel", title: "일별 타점[조건]", plane: "eod", render: (id) => <DailyGenPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
+    { idBase: "filter-funnel", component: "filterFunnel", title: "일별 타점 [생성]", plane: "eod", render: (id) => <DailyGenPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
     // (격자판 「일별 타점[조건: 격자]」은 2026-09-26 은퇴 — 돌파 편집은 조건판 팝오버.
     //  저장 배치·프리셋의 daily-grid 칸은 sanitizeLayout 이 걷는다 — 테마 [조건]판 선례.)
-    // 일별 타점[탐색] — 하루 후보를 날짜 단위로 걷는 뷰(행 = 그날 후보, 열 = 조건 그룹 ●/·).
+    // 일별 타점 [탐색] — 하루 후보를 날짜 단위로 걷는 뷰(행 = 그날 후보, 열 = 조건 그룹 ●/·).
     // 작업 대상과 다른 몫: 저긴 시선·큐레이션 브라우징, 여긴 조건 그룹 통과를 보며 걷는 하루 전용 판.
     // ⚠ duplicable 아님 — w/s 순회(usePublishRowNav)가 **후보 패널 각 1개** 전제의 모듈 전역 단일 소유다
     //   (rowNav 머리 주석). 복제가 필요해지면 rowNav 소유를 인스턴스 낟알로 바꾸는 일이 먼저다.
-    { idBase: "daily-explore", component: "dailyExplore", title: "일별 타점[탐색]", plane: "eod", render: (id) => <DailyExplorePanel panelId={id} /> },
+    { idBase: "daily-explore", component: "dailyExplore", title: "일별 타점 [탐색]", plane: "eod", render: (id) => <DailyExplorePanel panelId={id} baseTitle={slotTitleOf(id)} /> },
     // (종단 트랙 전면 폐기, 2026-09-26 — 시트(rankSheet)·시그널 결과(outcomeRails)·급타점(hotPoints)·
     //  트레이드 시뮬(tradeSim)·타점 정의(pointDef)·정규화 [타점](normPoint) 여섯 판 은퇴. 통계는 나중에
     //  "그룹 → 서버 리포트"로 재설계(decisions 「종단 트랙 전면 폐기」). 저장 배치의 그 칸들은 sanitizeLayout 이 걷는다.)

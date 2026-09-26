@@ -44,7 +44,7 @@ const snapshot: DayReplay = {
 
 const wideStage: FilterStage = {
     id: "wide", name: "전부", enabled: true,
-    predicates: [{ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 1 } }] }],
+    predicates: [{ kind: "candle", axes: { rate: { on: true, from: 1 } } }],
 };
 
 /** 훅 하나를 그대로 읽는 발판 — 패널을 통째로 그리지 않고 계약만 본다. */

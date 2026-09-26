@@ -63,7 +63,7 @@ describe("chainSourceRowsOf — 켜진 돌파 줄 전부, 이름 = 요약 라벨
     it("꺼진 줄·돌파 아닌 줄만 빠진다(평가와 같은 집합 — 보이는 것 = 도는 것)", () => {
         const stages = [
             bo("a"), bo("b"), bo("d", false),
-            { id: "e", enabled: true, predicates: [{ kind: "candleShape" as const, shape: "bull" as const }] },
+            { id: "e", enabled: true, predicates: [{ kind: "candle" as const, axes: { openClose: { on: true, from: 0.01 } } }] },
         ];
         const rows = chainSourceRowsOf(stages);
         expect(rows.map((r) => r.stageId)).toEqual(["a", "b"]);

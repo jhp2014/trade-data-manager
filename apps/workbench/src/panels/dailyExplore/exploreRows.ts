@@ -1,5 +1,5 @@
-// 일별 타점[탐색]의 **순수부** — 행 세우기·조건 그룹 열의 멤버십·자동 그룹 제안.
-// 규칙: .claude/decisions.md 「일별 타점[탐색]」. 훅 없는 함수만 둔다(테스트 표면).
+// 일별 타점 [탐색]의 **순수부** — 행 세우기·조건 그룹 열의 멤버십·자동 그룹 제안.
+// 규칙: .claude/decisions.md 「일별 타점 [탐색]」. 훅 없는 함수만 둔다(테스트 표면).
 import type { CellHit } from "@trade-data-manager/market/domain";
 import { minuteToHms } from "@trade-data-manager/market/domain";
 import type { SetExpr } from "../filter/expr.js";

@@ -1,4 +1,4 @@
-// 일별 타점[조건] — **줄 0 = 열린 집합 하나**라는 배치 규약(옛 집합 편성에서 승계)과 하루 고정 머리글.
+// 일별 타점 [생성] — **줄 0 = 열린 집합 하나**라는 배치 규약(옛 집합 편성에서 승계)과 하루 고정 머리글.
 //
 // 여기서 재는 건 조건 판정이 아니라 **자리**다: 줄 0 에 지금 열린 집합 하나가 서는가, 목록과
 // 관리(새 집합·열기·이름·삭제)가 그 칩의 판 **하나**에 사는가, 모드 토글·종단 정산이 없는가.
@@ -217,7 +217,7 @@ describe("집합 관리 판 — 한 목록 · 🔗쓰는 곳", () => {
 describe("머리글 — 하루 고정", () => {
     const cellStage = {
         id: "c1", enabled: true,
-        predicates: [{ kind: "cellValue" as const, field: "ratePct" as const, ranges: [{ from: { kind: "value" as const, value: 5 } }] }],
+        predicates: [{ kind: "candle" as const, axes: { rate: { on: true, from: 5 } } }],
     };
 
     // 조건을 **꺼 둔다** — 켜진 셀 조건이면 머리글의 수(useBoundSet)가 그날 분봉을 당겨 하네스가 네트워크를 막는다.

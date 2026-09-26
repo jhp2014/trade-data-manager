@@ -1,6 +1,6 @@
 // 단계·술어의 표시 이름(순수). 화면 폭이 좁아 **짧게** 말해야 한다.
 // (옛 LabelLookup — 그룹·축 이름 사전 — 은 2026-09-26 종단 폐기로 은퇴: 남은 종류는 이름 재료가 전부 payload 다.)
-import { CANDLE_SHAPE_LABEL, CELL_VALUE_FIELDS } from "@trade-data-manager/market/domain";
+import { CANDLE_AXES, CANDLE_AXIS_LABEL, CELL_VALUE_FIELDS, candleAxisActive } from "@trade-data-manager/market/domain";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 import { breakoutText } from "../breakout/chainChecks.js";
 
@@ -17,7 +17,7 @@ export function predicateLabel(p: FilterPredicate): string {
         case "priorHighBreak": return `전고 돌파 (${p.days}일)`;
         // 요약 라벨(breakoutText) — 돌파 줄이 여럿이면 이 요약이 서로를 가른다.
         case "breakout": return breakoutText(p);
-        case "candleShape": return CANDLE_SHAPE_LABEL[p.shape];
+        case "candle": return candleLabel(p);
     }
 }
 
@@ -28,6 +28,17 @@ function cellValueLabel(p: Extract<FilterPredicate, { kind: "cellValue" }>): str
     const bound = r?.from?.kind === "value" ? `≥${r.from.value}` : r?.to?.kind === "value" ? `≤${r.to.value}` : "";
     const more = p.ranges.length > 1 ? ` 외 ${p.ranges.length - 1}구간` : "";
     return `${meta.label} ${bound}${meta.suffix}${more}`;
+}
+
+/** 캔들 술어 한 줄 — 활성 축만 `축 f~t%` 로. 축이 없으면 이름만(빈 술어 — 평가에서 빠진다). */
+export function candleLabel(p: Extract<FilterPredicate, { kind: "candle" }>): string {
+    const parts = CANDLE_AXES.filter((a) => candleAxisActive(p.axes[a])).map((a) => {
+        const c = p.axes[a]!;
+        const b = c.from !== undefined && c.to !== undefined ? `${c.from}~${c.to}`
+            : c.from !== undefined ? `≥${c.from}` : `≤${c.to}`;
+        return `${CANDLE_AXIS_LABEL[a]}${b}%`;
+    });
+    return parts.length === 0 ? "캔들" : `캔들 ${parts.join(" ")}`;
 }
 
 /** 테마 존 술어 한 줄 — 존(창·대금 N·등락 축) + 켜진 컷만. 보드 행·막대·패널 칩이 같은 표기를 쓴다. */
@@ -50,8 +61,8 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         case "theme": return "테마";
         case "cellValue": return "셀 값";
         case "priorHighBreak": return "전고";
-        case "breakout": return "타점";
-        case "candleShape": return "캔들";
+        case "breakout": return "돌파 사슬";
+        case "candle": return "캔들";
         default: {
             // 자물쇠 — 옛 `default: return ""` 는 종류를 빠뜨려도 컴파일이 통과하고 증상이 조용했다
             // (보드 줄의 종류 라벨만 빈칸). `never` 대입이 그 구멍을 컴파일 에러로 바꾼다.

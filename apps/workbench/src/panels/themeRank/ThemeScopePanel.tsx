@@ -74,8 +74,8 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
                     {() => <AxisControls axes={axes} onChange={setAxesRaw} />}
                 </HeaderPopover>
                 <span style={{ ...label, color: "var(--text-tertiary)" }}
-                    title="빨간 점선 = 깔때기 첫 테마 조건(읽기 전용 — 축·창이 일치하는 변만). 수정은 일별 타점[조건]의 테마 팝오버">
-                    {overlay !== null ? "조건 겹침(읽기 전용)" : "관찰 — 판정 없음(조건은 일별 타점[조건])"}
+                    title="빨간 점선 = 깔때기 첫 테마 조건(읽기 전용 — 축·창이 일치하는 변만). 수정은 일별 타점 [생성]의 테마 팝오버">
+                    {overlay !== null ? "조건 겹침(읽기 전용)" : "관찰 — 판정 없음(조건은 일별 타점 [생성])"}
                 </span>
                 {subject && (
                     <span style={{ ...label, color: "var(--text-tertiary)" }}>
