@@ -78,7 +78,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 우클릭 메뉴의 기준 시장 — 선 줄이 따른다. 패널에 남겨(sticky) 오염 회피로 KRX 를 보는 중에
     // 봉마다 다시 누르지 않게 한다. 분봉·KRX 부재 봉에서는 메뉴가 UN 으로 되돌린다(없는 시장은 못 지목).
     const [menuMarket, setMenuMarket] = usePanelUi<"un" | "krx">(panelId, "menuMarket", "un");
-    // 사슬 층(돌파 사슬 띠·▼, 선택으로 ① 밴드 선) — 출처 = 보는 집합의 「돌파」 줄(패널에 고른 것 → 격자판 연동 줄 → 첫 줄).
+    // 사슬 층(돌파 사슬 띠·▼, 선택으로 ① 밴드 선) — 출처 = 보는 집합의 켜진 「돌파」 줄(패널에 고른 것 → 첫 줄).
     const [showChain, setShowChain] = usePanelUi(panelId, "showChain", true);
     const [chainBands, setChainBands] = usePanelUi(panelId, "chainBands", false);
     const [chainSource, setChainSource] = usePanelUi(panelId, "chainSource", "");
@@ -193,8 +193,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         publishChartWalk({ code, date: viewDate, times: unionPoints.map((u) => u.hms) });
     }, [code, viewDate, unionPoints]);
 
-    // ◇ 로 남은 봉 — 사슬 층이 후보 세로 줄의 진하기를 가른다. 평가 중이거나 **평가 못 하면**(결손 — 미연동 돌파
-    // 줄이 AND 를 오염시킨 집합 등) 모름(null — 전부 연하게). 빈 Set 으로 두면 전부 "탈락"으로 칠한다.
+    // ◇ 로 남은 봉 — 사슬 층이 후보 세로 줄의 진하기를 가른다. 평가 중이거나 **평가 못 하면**(결손 — 종단
+    // 참조·전부 꺼짐 등) 모름(null — 전부 연하게). 빈 Set 으로 두면 전부 "탈락"으로 칠한다.
     const keptTimes = useMemo<ReadonlySet<number> | null>(
         // 라벨도 "남은 타점"으로 친다 — 표식이 한 줄(라벨 ∪ 후보)이 된 뒤로 사슬 층의 진하기도 같은 집합을 본다.
         () => (cellExpr === null || cellSet.isLoading || !cellSet.evaluable || !cellSet.ready ? null : new Set(unionPoints.map((a) => a.time))),
@@ -255,7 +255,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         legMarkControl(showLegMarks, () => setShowLegMarks((v) => !v)),
         {
             kind: "action", id: "chainLayer", name: "사슬", group: "마커", activeColor: BREAKOUT_HIGH, on: showChain,
-            help: `돌파 사슬 — 누르면 판(사슬·밴드 켜기, 격자 고르기)${chain.source ? ` · ${chain.source.full}` : ""}${chain.why ? ` — ${chain.why}` : ""}`,
+            help: `돌파 사슬 — 누르면 판(사슬·밴드 켜기, 돌파 줄 고르기)${chain.source ? ` · ${chain.source.text}` : ""}${chain.why ? ` — ${chain.why}` : ""}`,
             run: (at) => setChainMenuAt({ x: at.clientX, y: at.clientY }),
         },
         {

@@ -58,7 +58,7 @@ describe("groupColStateOf — 모름은 ●/· 가 아니다", () => {
         // 잘림도 모름이다 — 종목째 잘린 편향 표본(2026-09-26 실측: 시각-only 그룹이 ● 0개로 떨어졌다).
         expect(groupColStateOf({ ...base, truncated: true }).kind).toBe("unknown");
         expect(groupColStateOf({ ...base, error: new Error("x") }).kind).toBe("unknown");
-        // 평가할 게 없는 그룹(전부 꺼짐·미연동 돌파·종단 참조) — ready 가 영영 안 서므로 "…" 가 아니라 모름.
+        // 평가할 게 없는 그룹(전부 꺼짐·종단 참조) — ready 가 영영 안 서므로 "…" 가 아니라 모름.
         expect(groupColStateOf({ ...base, evaluable: false, ready: false }).kind).toBe("unknown");
         // 존 순위 재료(테마 멤버십)가 아직이면 모름 — · 로 찍으면 탈락처럼 보인다.
         expect(groupColStateOf({ ...base, themesReady: false }).kind).toBe("loading");

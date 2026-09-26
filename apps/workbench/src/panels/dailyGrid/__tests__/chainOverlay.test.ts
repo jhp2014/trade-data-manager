@@ -58,15 +58,15 @@ describe("chainOverlayInputOf", () => {
     });
 });
 
-describe("chainSourceRowsOf — 켜지고 연동된 돌파 줄만, 이름 = 판 이름", () => {
+describe("chainSourceRowsOf — 켜진 돌파 줄 전부, 이름 = 요약 라벨(2026-09-26 연동 은퇴)", () => {
     const bo = (id: string, enabled = true) => ({ id, enabled, predicates: [{ kind: "breakout" as const, zigzagPct: 2, bandPct: 0.5, chain: DEFAULT_CHAIN_FILTER }] });
-    it("미연동·소멸된 판·꺼진 줄·돌파 아닌 줄은 빠진다(평가도 안 하는 줄을 차트만 그리지 않게)", () => {
+    it("꺼진 줄·돌파 아닌 줄만 빠진다(평가와 같은 집합 — 보이는 것 = 도는 것)", () => {
         const stages = [
-            bo("a"), bo("b"), bo("c"), bo("d", false),
+            bo("a"), bo("b"), bo("d", false),
             { id: "e", enabled: true, predicates: [{ kind: "candleShape" as const, shape: "bull" as const }] },
         ];
-        const rows = chainSourceRowsOf(stages, { a: "daily-grid-2", c: "daily-grid-9", d: "daily-grid-1" }, ["daily-grid-1", "daily-grid-2"]);
-        expect(rows.map((r) => [r.stageId, r.text, r.gridPanel])).toEqual([["a", "격자 2", "daily-grid-2"]]);
-        expect(rows[0]!.full).toContain("돌파 2%/0.5%");
+        const rows = chainSourceRowsOf(stages);
+        expect(rows.map((r) => r.stageId)).toEqual(["a", "b"]);
+        expect(rows[0]!.text).toContain("돌파 2%/0.5%");
     });
 });

@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { toCellExpr, usesCellPred } from "../useCellSet.js";
 import { exprOfStages, type SetExpr, type SetTerm } from "../expr.js";
 import type { FilterStage } from "../stage.js";
-import { UNLINKED_GRID, gridLinkDeficiency } from "../../dailyGen/gridLink.js";
 
 /** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
 const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
@@ -75,32 +74,22 @@ describe("toCellExpr — 결손", () => {
     });
 });
 
-// 값의 주인은 줄, 판은 창(2026-09-25) — 미연동 돌파 줄은 값을 든 채 **미완성**이다(옛 값으로 조용히 돌지 않는다).
-describe("toCellExpr — 미연동 돌파 줄 = 미완성", () => {
+// 돌파 줄은 연동 개념 없이 항상 계산한다(2026-09-26 — 옛 미연동=미완성 결손 은퇴, 값의 주인=줄은 그대로).
+describe("toCellExpr — 돌파 줄은 항상 계산", () => {
     const bo = stage("b1", [{ kind: "breakout", zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 } }]);
 
-    it("판이 살아 있으면 평가, 없으면(미연동·소멸된 판) 결손 — AND 를 오염시켜 수가 안 선다", () => {
-        const e = exprOfStages([cell, bo]);
-        const live = toCellExpr(e, undefined, gridLinkDeficiency({ b1: "daily-grid-1" }, ["daily-grid-1"]));
-        expect(live.expr).not.toBeNull();
-        expect(live.stages.find((x) => x.stageId === "b1")).toMatchObject({ counted: true });
-        for (const [bindings, slots] of [[{}, ["daily-grid-1"]], [{ b1: "daily-grid-9" }, ["daily-grid-1"]]] as const) {
-            const r = toCellExpr(e, undefined, gridLinkDeficiency(bindings, slots));
-            expect(r.expr).toBeNull();
-            expect(r.stages.find((x) => x.stageId === "b1")).toMatchObject({ counted: false, reasons: [UNLINKED_GRID] });
-        }
+    it("돌파 줄이 있으면 그대로 평가에 들어간다 — 결손 없이 counted", () => {
+        const r = toCellExpr(exprOfStages([cell, bo]));
+        expect(r.expr).not.toBeNull();
+        expect(r.stages.find((x) => x.stageId === "b1")).toMatchObject({ counted: true, reasons: [] });
     });
 
-    it("참조한 집합 안의 미연동 돌파 줄도 같은 문을 지난다", () => {
+    it("참조한 집합 안의 돌파 줄도 같다", () => {
         const inner = exprOfStages([bo]);
         const e = mk("and", "root", [{ kind: "cond", stage: cell }, { kind: "ref", id: "r1", setId: "s1" }]);
-        const r = toCellExpr(e, () => ({ expr: inner, universe: "daily" }), gridLinkDeficiency({}, ["daily-grid-1"]));
-        expect(r.expr).toBeNull();
-        expect(r.stages.find((x) => x.stageId === "b1")).toMatchObject({ counted: false, reasons: [UNLINKED_GRID] });
-    });
-
-    it("돌파가 아닌 줄은 연동과 무관하다", () => {
-        expect(toCellExpr(exprOfStages([cell]), undefined, gridLinkDeficiency({}, [])).expr).not.toBeNull();
+        const r = toCellExpr(e, () => ({ expr: inner, universe: "daily" }));
+        expect(r.expr).not.toBeNull();
+        expect(r.stages.find((x) => x.stageId === "b1")).toMatchObject({ counted: true });
     });
 });
 

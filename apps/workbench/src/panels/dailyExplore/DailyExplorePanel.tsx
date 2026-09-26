@@ -147,7 +147,7 @@ export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element
 
     const note = !isDaily ? "하루 모드에서만 섭니다"
         : cellSet.error !== null ? `재료 조회 실패 — ${cellSet.error.message}`
-        : !cellSet.evaluable ? "평가할 조건이 없습니다 — 조건판에서 조건을 걸거나 미연동 돌파 줄을 연결하세요"
+        : !cellSet.evaluable ? "평가할 조건이 없습니다 — 조건판에서 조건을 거세요"
         : cellSet.tooWide ? `${cellSet.matched.toLocaleString("ko-KR")}+ 너무 넓음 — 조건을 좁히세요`
         : cellSet.isLoading || !cellSet.ready ? "불러오는 중…"
         : rows.length === 0 ? "이 날은 후보가 없습니다"

@@ -8,7 +8,6 @@
 // 고치는 창이고, 조건판은 줄에 **판 이름**만 보인다. 미연동 줄은 값을 든 채 **계산하지 않는다**(미완성 —
 // 보이는 것 = 도는 것). 다시 연결하면 그 줄의 값이 판에 뜬다.
 import { parseSlotId } from "../../shell/panelSlots.js";
-import type { FilterStage } from "../filter/stage.js";
 import { DAILY_GRID_BASE } from "./dailyPanelIds.js";
 
 export function liveGridPanelOf(
@@ -22,12 +21,3 @@ export function liveGridPanelOf(
 
 /** 칩·차트 목록에 서는 짧은 판 이름 — 슬롯 번호만(탭 제목 「일별 타점[조건: 격자] 2」 의 끝 번호와 같다). */
 export const gridShortName = (panelId: string): string => `격자 ${parseSlotId(panelId)?.n ?? "?"}`;
-
-export const isBreakoutStage = (s: FilterStage): boolean => s.predicates.some((p) => p.kind === "breakout");
-
-export const UNLINKED_GRID = "격자판 미연동 — 돌파 줄은 연동된 격자판이 있어야 계산합니다(값은 줄에 남아 있습니다)";
-
-/** 미연동 돌파 줄 = 미완성 — 평가(`toCellExpr`)에 결손 이유로 싣는다(조용히 옛 값으로 돌지 않게). */
-export const gridLinkDeficiency = (bindings: Readonly<Record<string, string>>, slots: readonly string[]) =>
-    (s: FilterStage): readonly string[] =>
-        (isBreakoutStage(s) && liveGridPanelOf(bindings, slots, s.id) === undefined ? [UNLINKED_GRID] : []);

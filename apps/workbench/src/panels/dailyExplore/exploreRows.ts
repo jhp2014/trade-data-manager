@@ -84,9 +84,9 @@ export type GroupColState =
 
 /** 그룹 열 하나의 상태 — 판정을 한 곳에 모은다(패널·테스트가 같은 자). */
 export function groupColStateOf(v: { evaluable: boolean; ready: boolean; isLoading: boolean; tooWide: boolean; truncated: boolean; themesReady: boolean; error: Error | null; hits: readonly CellHit[] }): GroupColState {
-    // 평가할 게 없는 그룹(전부 꺼짐·미연동 돌파·종단 참조)은 재료를 안 당겨 ready 가 영영 안 선다 —
+    // 평가할 게 없는 그룹(전부 꺼짐·종단 참조)은 재료를 안 당겨 ready 가 영영 안 선다 —
     // "…" 로 두면 계산 중인 척이 된다(리뷰가 잡은 자리).
-    if (!v.evaluable) return { kind: "unknown", why: "평가할 조건이 없다 — 꺼짐·미연동 돌파·종단 참조뿐인 그룹" };
+    if (!v.evaluable) return { kind: "unknown", why: "평가할 조건이 없다 — 꺼짐·종단 참조뿐인 그룹" };
     if (v.error !== null) return { kind: "unknown", why: "재료 조회 실패" };
     if (v.tooWide) return { kind: "unknown", why: "너무 넓음 — 그물에 걸려 멤버십을 못 믿는다" };
     if (v.truncated) return { kind: "unknown", why: "상한 잘림 — 종목째 잘린 편향 표본이라 ●/· 를 못 믿는다(그룹 조건을 좁히세요)" };
