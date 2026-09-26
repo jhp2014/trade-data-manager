@@ -130,9 +130,10 @@ export const PANEL_TYPES: PanelType[] = [
     // ⚠ duplicable 아님 — 순서·숨김(wb.pointInfoOrder/Hidden)이 usePointInfoPrefs 의 **전역 단일 소유 키**라
     //   인스턴스-안전화 조건("영속 키 전부 panelId 낟알")을 못 지킨다. 복제하려면 그 저장물 모양부터.
     { idBase: "rank-point", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },
-    // 테마 순위 — 판 하나(2026-09-26, 옛 조건판/관찰판 이원화 개정): View 전용, 깔때기 테마 조건은 읽기
+    // 시장 단면(옛 테마 순위 — 2026-09-26 개명: 실체 = 어느 분의 전 종목 단면 산점 + 테마 동료 강조. id 불변)
+    // — 판 하나(옛 조건판/관찰판 이원화 개정): View 전용, 깔때기 테마 조건은 읽기
     // 전용 겹침. 옛 [조건]판(component "themeRank")은 은퇴 — sanitizeLayout 이 저장 배치에서 걷어낸다.
-    { idBase: "theme-scope", component: "themeScope", title: "테마 순위", plane: "eod", duplicable: true, render: (id) => <ThemeScopePanel panelId={id} baseTitle={slotTitleOf(id)} /> },
+    { idBase: "theme-scope", component: "themeScope", title: "시장 단면", plane: "eod", duplicable: true, render: (id) => <ThemeScopePanel panelId={id} baseTitle={slotTitleOf(id)} /> },
     // (옛 그룹 목록 패널("groupList")은 2026-09-10 은퇴 — 그룹 편집은 배정 팝오버가 유일 표면.
     //  옛 맵 패널("map")과 같은 길: 저장 프리셋의 그 칸은 sanitizeLayout 이 걷어낸다.)
     { idBase: "hts-news", component: "htsNews", title: "HTS뉴스", plane: "eod", render: () => <NewsPanel plane="replay" /> },

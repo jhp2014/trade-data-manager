@@ -15,8 +15,8 @@ import { useDisplayT } from "./outcome/outcomeLink.js";
 import { minuteToHms, sliceOutcome, walkOutcome } from "@trade-data-manager/market/domain";
 import { unionMarkPoints, type AutoPointInput } from "../chart/minuteOverlays.js";
 import { BREAKOUT_HIGH } from "../styles/palette.js";
-import { useChainOverlay } from "./dailyGrid/useChainOverlay.js";
-import { ChainLayerMenu } from "./dailyGrid/ChainLayerMenu.js";
+import { useChainOverlay } from "./breakout/useChainOverlay.js";
+import { ChainLayerMenu } from "./breakout/ChainLayerMenu.js";
 
 /** 집합 평가를 끄는 상수 — 빈 배열 리터럴이면 매 렌더 새 참조라 memo 가 헛돈다. */
 

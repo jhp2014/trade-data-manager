@@ -1,4 +1,4 @@
-// 관찰판(테마 순위 [관찰]) — 축 자유·연동 원리적 부재의 배선. 기하는 실측 몫이고 여기선:
+// 시장 단면 판(옛 테마 순위) — 축 자유·연동 원리적 부재의 배선. 기하는 실측 몫이고 여기선:
 // 축 ▾ 팝오버 왕복(임의 분 입력 → panelUi 영속), 연동/판정 UI 가 아예 없다는 사실.
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { act, fireEvent, render } from "@testing-library/react";

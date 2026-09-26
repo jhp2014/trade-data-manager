@@ -1,6 +1,6 @@
 // 테마 술어의 **편집면** — 조건판 테마 줄에서 여는 팝오버(2026-09-26, 옛 "편집면 = 테마 순위 패널·연동"
 // 폐지). 값은 술어 payload 에 산다 — 판이 아니라 줄에서 열리므로 "어느 행을 비추나" 주소 문제가 없다.
-// 분포를 보며 굵게 잡는 손 = 테마 순위 판의 자유 자 + 「자 값 가져오기」(연동이 아니라 **값 복사**).
+// 분포를 보며 굵게 잡는 손 = 시장 단면 판의 자유 자 + 「자 값 가져오기」(연동이 아니라 **값 복사**).
 import { useMemo, useRef } from "react";
 import { THEME_WINDOW_MAX_MIN, type CellPredicate } from "@trade-data-manager/market/domain";
 import { NumField } from "../../components/NumField.js";
@@ -26,7 +26,7 @@ export function ThemeCondEditor({ at, pred, onWrite, onClose }: {
     useDismiss(ref, onClose, true);
     const w = (patch: Partial<ThemePred>): void => onWrite({ ...pred, ...patch });
 
-    // 자 값 가져오기 — 열린 테마 순위 판 중 **최소 슬롯** 하나(카운트 단일 인스턴스의 선례).
+    // 자 값 가져오기 — 열린 시장 단면 판 중 **최소 슬롯** 하나(카운트 단일 인스턴스의 선례).
     const slots = useDock((s) => s.slots);
     const panelUi = useWorkbench((s) => s.panelUi);
     const ruler = useMemo(() => {
@@ -88,8 +88,8 @@ export function ThemeCondEditor({ at, pred, onWrite, onClose }: {
                         });
                     }}
                     title={ruler === null
-                        ? "테마 순위 판에서 자유 자(십자선)를 한 번 움직이면 그 값을 가져올 수 있습니다"
-                        : "테마 순위 판의 자 값을 복사 — 창·대금 N·등락 축이 그 자리로(연동이 아니라 복사)"}
+                        ? "시장 단면 판에서 자유 자(십자선)를 한 번 움직이면 그 값을 가져올 수 있습니다"
+                        : "시장 단면 판의 자 값을 복사 — 창·대금 N·등락 축이 그 자리로(연동이 아니라 복사)"}
                     style={{
                         marginLeft: "auto", fontSize: 10.5, padding: "1px 8px", borderRadius: 4,
                         border: "1px dashed var(--border-strong)", background: "transparent",

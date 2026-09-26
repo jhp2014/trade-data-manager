@@ -3,7 +3,7 @@ import { groupExprLabel, kindLabel, predicateLabel, setDisplayName, stageLabel, 
 import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
 import { exprOfStages, type SetExpr, type SetTerm } from "../expr.js";
-import { breakoutText } from "../../dailyGrid/chainChecks.js";
+import { breakoutText } from "../../breakout/chainChecks.js";
 
 type BreakoutPred = Parameters<typeof breakoutText>[0];
 

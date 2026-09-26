@@ -8,7 +8,7 @@ import { NONE_LABEL, isNoneLiteral, type GroupExpr } from "../rank/groupFilter.j
 import { shortDate } from "../../lib/date.js";
 import { OUTCOME_METRIC_NAME } from "../../lib/outcomeMetric.js";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
-import { breakoutText } from "../dailyGrid/chainChecks.js";
+import { breakoutText } from "../breakout/chainChecks.js";
 
 export interface LabelLookup {
     groupName: (id: string) => string | undefined;

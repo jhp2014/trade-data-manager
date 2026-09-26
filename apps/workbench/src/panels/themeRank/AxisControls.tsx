@@ -49,7 +49,7 @@ export function AxisControls({ axes, onChange }: { axes: ThemeRankAxes; onChange
             {modeRow("대금", "xMode")}
             {modeRow("등락", "yMode")}
             <span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>
-                조건으로 걸 수 있는 창은 당일·60분뿐(서버가 구운 공간) — 그건 조건판·편성 보드의 몫이다.
+                여기는 보기 축일 뿐 — 조건은 조건판 테마 팝오버에서(창 T 자유, 클라 즉석 계산).
             </span>
         </div>
     );

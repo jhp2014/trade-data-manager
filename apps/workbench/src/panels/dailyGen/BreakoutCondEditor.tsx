@@ -19,9 +19,9 @@ import {
 import { NumField } from "../../components/NumField.js";
 import { useDismiss } from "../../ui/useDismiss.js";
 import { Item, Panel } from "../filter/ExprRow.js";
-import { ChainCondEditor } from "../dailyGrid/ChainCondEditor.js";
-import { ChainExprRow, RankPick } from "../dailyGrid/ChainExprRow.js";
-import { COND_HINT, COND_NAME, defaultCond } from "../dailyGrid/chainChecks.js";
+import { ChainCondEditor } from "../breakout/ChainCondEditor.js";
+import { ChainExprRow, RankPick } from "../breakout/ChainExprRow.js";
+import { COND_HINT, COND_NAME, defaultCond } from "../breakout/chainChecks.js";
 
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
 
