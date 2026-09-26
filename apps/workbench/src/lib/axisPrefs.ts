@@ -1,4 +1,4 @@
-// 축 순서 pref 의 공용 셈 — 지금 소비자는 시트(`useRankAxes.reorder`) 하나다(레일 패널은 2026-09-19 철거).
+// 축 순서 pref 의 공용 셈 — 지금 소비자는 시트(`pointInfo/prefs.reorder`) 하나다(레일 패널은 2026-09-19 철거).
 // panels 안에 두면 lib(시트 축 훅)가 panels 를 물게 되므로 여기(lib)가 집이다(useThemeProjection 과 같은 이유).
 
 /**

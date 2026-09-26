@@ -92,6 +92,20 @@ describe("evaluateCells — 기본", () => {
         expect(mins(evaluateCells([s], NO_MAT, conds))).toEqual([1, 2, 3]);
     });
 
+    it("캔들 시가 기점 축(시→고·시→저)·고가 등락률 — 가격 비(movePct)로 잰다", () => {
+        // 분 0: 시가 0, 고가 3, 저가 −2, 종가 1. movePct(0,3)=3, movePct(0,−2)=−2.
+        const s = stock("A", { n: 1, minuteOpen: [0], minuteHigh: [3], minuteLow: [-2], rate: [1] });
+        const one = (axes: Record<string, { on: boolean; from?: number; to?: number }>): CellConditions =>
+            [{ id: "c", enabled: true, predicates: [{ kind: "candle", axes }] }];
+        expect(mins(evaluateCells([s], NO_MAT, one({ openHigh: { on: true, from: 2.5 } })))).toEqual([0]);
+        expect(mins(evaluateCells([s], NO_MAT, one({ openHigh: { on: true, from: 3.5 } })))).toEqual([]);
+        expect(mins(evaluateCells([s], NO_MAT, one({ openLow: { on: true, from: -2.5 } })))).toEqual([0]);
+        expect(mins(evaluateCells([s], NO_MAT, one({ openLow: { on: true, from: -1.5 } })))).toEqual([]);
+        expect(mins(evaluateCells([s], NO_MAT, one({ highRate: { on: true, from: 3, to: 3 } })))).toEqual([0]);
+        // 뒤집힌 구간은 스왑(셀 값 inRanges 와 같은 규칙 — 리뷰 M2).
+        expect(mins(evaluateCells([s], NO_MAT, one({ highRate: { on: true, from: 4, to: 2 } })))).toEqual([0]);
+    });
+
     it("캔들 기준선 축 — 종가 기준, 기준선 없으면 결손(미발화)", () => {
         // 기준선 1000 = 기준가와 같아 baselinePct 0%. 종가 %: [−1, 0, 2] → 기준선 대비 [−1, 0, +2]%.
         const s = stock("A", { rate: [-1, 0, 2], n: 3, basePrice: { krx: null, un: 1000 } });

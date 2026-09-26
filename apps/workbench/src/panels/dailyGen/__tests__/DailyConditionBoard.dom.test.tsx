@@ -56,7 +56,7 @@ const pickItem = (c: HTMLElement, text: string): void => {
 const RATE_STAGE = { id: "d1", enabled: true, predicates: [{ kind: "candle" as const, axes: { rate: { on: true, from: 5 } } }] };
 const BO_STAGE = { id: "t1", enabled: true, predicates: [{ kind: "breakout" as const, zigzagPct: 2, bandPct: 0.5, chain: { expr: { id: "chain", of: [], ops: [], groups: [] }, firstK: 1 } }] };
 const TIME_STAGE = { id: "tm", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: "09:00", to: "10:30" }] }] };
-const RESET = { funnelSelection: null, savedSets: [], editingSetId: "edit", editPath: ["edit"], sessionUi: {}, filterMode: "daily" as const };
+const RESET = { savedSets: [], editingSetId: "edit", editPath: ["edit"], sessionUi: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
@@ -213,6 +213,25 @@ describe("＋ 조건 — 생성 입구 하나", () => {
             fireEvent.blur(from);
         });
         expect(axesOn().rate?.from, "빈 칸 = 경계 없음").toBeUndefined();
+    });
+
+    it("캔들 핸들 드래그 — 기준이 얼어 있어 같은 자리에서 값이 안 발산하고, 커밋은 pointerup 한 번이다(H1·M4)", () => {
+        const { container, baseElement } = renderBoard();
+        openMenu(container);
+        act(() => { fireEvent.click(byText(baseElement, "캔들")!); });
+        const svg = baseElement.querySelector("svg")!;
+        // 핸들 순서 = 렌더 순서: highRate, openHigh, rate, openClose, openLow, baseline.
+        const openCloseHandle = baseElement.querySelectorAll("circle")[3]!;
+        const axesOn = () => (stages()[0]!.predicates[0] as { kind: "candle"; axes: Record<string, { on: boolean; from?: number }> }).axes;
+        act(() => { fireEvent.pointerDown(openCloseHandle, { pointerId: 1, clientY: 100 }); });
+        act(() => { fireEvent.pointerMove(svg, { pointerId: 1, clientY: 50 }); });
+        expect(axesOn().openClose?.from, "드래그 중엔 저장물이 안 바뀜다(draft)").toBe(0.01);
+        // 같은 자리에서 포인터를 흔들어도(이벤트 반복) 값이 누적되지 않는다 — H1 회귀.
+        act(() => { fireEvent.pointerMove(svg, { pointerId: 1, clientY: 50 }); });
+        act(() => { fireEvent.pointerMove(svg, { pointerId: 1, clientY: 50 }); });
+        act(() => { fireEvent.pointerUp(svg, { pointerId: 1 }); });
+        const committed = axesOn().openClose?.from;
+        expect(committed, "pointerup 에 한 번 커밋").toBe(3);
     });
 
 });

@@ -66,8 +66,8 @@ describe("parseStages — 반쯤 살아난 조건은 없느니만 못하다", ()
     });
 });
 
-describe("은퇴 kind 이주(2026-09-26 종단 폐기) — 통째 폐기가 아니라 그 술어만 걷는다", () => {
-    it("은퇴 술어만 걷히고 나머지는 산다 — AND 형제가 있던 칸은 느슨해진 채 남는다(로그 몫)", () => {
+describe("은퇴 kind 이주(2026-09-26 종단 폐기) — 저장본 통째 폐기가 아니라 **그 칸만** 걷는다", () => {
+    it("은퇴 술어가 든 칸은 AND 형제가 있어도 **칸째** 걷힌다 — 느슨해진 AND 를 남기지 않는다(2026-09-27 리뷰)", () => {
         takeRetiredPredicateCount();
         const raw = [{
             id: "a", enabled: true,
@@ -75,8 +75,11 @@ describe("은퇴 kind 이주(2026-09-26 종단 폐기) — 통째 폐기가 아�
                 { kind: "date", ranges: [{ from: "2026-07-01", to: "2026-07-31" }] },
                 { kind: "time", ranges: [{ from: "09:00", to: "10:30" }] },
             ],
+        }, {
+            id: "b", enabled: true,
+            predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }],
         }];
-        expect(parseStages(raw)).toEqual([{ id: "a", name: undefined, enabled: true, predicates: [timePred] }]);
+        expect(parseStages(raw)).toEqual([{ id: "b", name: undefined, enabled: true, predicates: [timePred] }]);
         expect(takeRetiredPredicateCount()).toBe(1);
     });
 

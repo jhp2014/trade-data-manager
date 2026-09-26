@@ -1,4 +1,4 @@
-// 일별 타점 [생성] 머리글 — 날짜·수·상태(어긋남·죽은 참조)와 손잡이 줄.
+// 일별 타점 [생성] 머리글 — 날짜·수·상태(죽은 참조)와 손잡이 줄.
 // 모드 토글은 없다 — 작업면은 하루로 고정이다(main.tsx 가 부팅 때 한 번 고정, decisions).
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
@@ -45,12 +45,11 @@ export function DailyGenHeader({ panelId }: { panelId: string }): JSX.Element {
                     후보 {count}
                 </span>
             )}
-            {/* 조건 수 — **편집 집합의 잎**을 센다(`v.active` 는 종단 깔때기의 것이라 하루에선 늘 0). 참조 항은 수에 안 든다. */}
+            {/* 조건 수 — **편집 집합의 잎**을 센다. 참조 항은 수에 안 든다. */}
             <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}>
                 조건 {on}{all > on ? ` / ${all}` : ""}
             </span>
-            {/* 열린 집합이 종단 조건을 품고 있다(옛 저장물) — 모드를 바꾸는 손은 없다(종단 보류). 사실만 말한다. */}
-                        <HeaderControls controls={controls} storageKey="wb.headerPins.funnel" />
+            <HeaderControls controls={controls} storageKey="wb.headerPins.funnel" />
         </PanelHeader>
     );
 }

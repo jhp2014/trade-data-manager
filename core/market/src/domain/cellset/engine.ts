@@ -56,10 +56,10 @@ export type CellStock = Pick<
 
 /** 주입 재료 — 기존 단일 출처의 어댑터. 계산 규칙을 여기로 들이지 말 것(서수 출처 단일화 불변식). */
 export interface CellMaterials {
-    /** 격자 파생 Point 의 시각(분) 목록 — 없으면 빈 배열. (클라: useAutoPoints/defDerived) */
     /**
      * 테마 술어의 답(판정 + 존 순위 best) — 파라미터가 payload 라 술어마다 다르다. null = 재료 없음(모름 →
-     * 미발화). ⚠ 단락 뒤에만 불린다. (클라: sectionSeries.themeSectionAt + themeZone.themeAnswerOf)
+     * 미발화). ⚠ 단락 뒤에만 불린다. enter(진입) 비교까지 재료 층 몫이다.
+     * (클라: sectionSeries.themeSectionAt + themeZone.themeAnswerAt)
      */
     themeAt(code: string, min: number, p: ThemeZoneParams): ThemeAnswer | null;
     /**
@@ -203,11 +203,15 @@ function candleAxisValueOf(axis: CandleAxis, s: CellStock, i: number, baselinePc
     }
 }
 
-/** 축 경계 판정 — 양끝 포함(사슬 필터 inRange 와 같은 부동소수 여유). */
-const inCandleBounds = (v: number, c: CandleAxisCond): boolean =>
-    (c.from === undefined || v >= c.from - 1e-9) && (c.to === undefined || v <= c.to + 1e-9);
+/** 축 경계 판정 — 양끝 포함·뒤집힌 구간은 스왑(셀 값 inRanges 와 같은 규칙 — 화면 규칙이 갈리면 안 된다). */
+const inCandleBounds = (v: number, c: CandleAxisCond): boolean => {
+    const lo = c.from ?? -Infinity;
+    const hi = c.to ?? Infinity;
+    const [a, b] = lo <= hi ? [lo, hi] : [hi, lo];
+    return v >= a - 1e-9 && v <= b + 1e-9;
+};
 
-/** 구간 판정 — 종단 axisValue 와 같은 규칙(OR, 양끝 포함, 뒤집힌 구간은 스왑, point 경계는 결손). */
+/** 구간 판정 — OR, 양끝 포함, 뒤집힌 구간은 스왑, point 경계는 결손(옛 종단 axisValue 에서 승계한 규칙). */
 function inRanges(v: number, ranges: readonly CellValueRange[]): boolean {
     for (const r of ranges) {
         if (!r.from && !r.to) continue;

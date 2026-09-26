@@ -254,7 +254,8 @@ export function themeAnswerOf(code: string, section: ThemeSectionRanks, p: Theme
  * 타점(종목·분) 하나의 답 — **enter(진입 시만)까지 본** 판정. 엔진 재료(`CellMaterials.themeAt`)가
  * 이걸 그대로 배선한다: pass(min) ∧ ¬pass(min−1). min−1 단면은 공급자(sectionOf)가 대는데,
  * 분당 캐시(sectionSeries)라 이웃 분 평가에서 재사용된다 — 진입 노브의 비용은 "단면 하나 더"다.
- * 첫 분(min ≤ 0 또는 min−1 재료 없음 → pass(min−1)=false)은 진입으로 친다.
+ * 세션 첫 분은 자연히 진입이다 — min−1 에 재료가 없으면 서수가 전부 결손이라 pass(min−1)=false.
+ * (min ≤ 0 가드는 자정 경계의 안전핀일 뿐 실데이터에선 안 닿는다 — 세션은 08:00 이후다.)
  */
 export function themeAnswerAt(
     code: string,

@@ -39,7 +39,7 @@ const btnByTitle = (c: HTMLElement, prefix: string): HTMLElement => {
 const chipByText = (c: HTMLElement, text: string): HTMLElement | undefined =>
     [...c.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(text));
 
-const RESET = { savedSets: [], panelUi: {}, filterMode: "daily" as const };
+const RESET = { savedSets: [], panelUi: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 

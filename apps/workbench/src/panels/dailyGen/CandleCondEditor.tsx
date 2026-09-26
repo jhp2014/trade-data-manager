@@ -5,8 +5,13 @@
 //
 // 그림의 규약 — 캔들은 **표본 하나**다(조건의 경계값들로 세운 그림이지 실제 봉이 아니다):
 //  · 시가 O 는 rate(종가)·openClose 에서 역산한다(rate 가 꺼져 있으면 표본 종가 5%).
-//  · rate·highRate·baseline 핸들은 등락률 공간의 절대 위치, 시가→X 셋은 시가 기점 상대 위치에 선다.
+//  · rate·highRate 핸들은 등락률 공간의 절대 위치, 시가→X 셋은 시가 기점, 기준선은 종가 기점이다.
 //  · 드래그는 **From 만** 만진다(핸들 = 대표 경계). To 는 숫자 칸에서 — 양끝 조건은 폼이 정확하다.
+//
+// ⚠ 드래그의 좌표 기준(시가·종가·y 스케일)은 **pointerdown 순간에 얼린다** — 살아 있는 값으로 매
+// 이동마다 다시 재면 "시가 = 종가 − 시가→종가" 역산이 제 꼬리를 물어 값이 발산한다(2026-09-27 리뷰
+// H1). 커밋도 pointerup 에서 한 번 — 이동마다 저장하면 localStorage 직렬화와 깔때기 디바운스가
+// 매 픽셀 다시 돈다(같은 리뷰 M4). 드래그 중 그림·배지는 로컬 draft 를 본다.
 import { useRef, useState } from "react";
 import {
     CANDLE_AXES,
@@ -37,6 +42,21 @@ const AXIS_HINT: Record<CandleAxis, string> = {
 const SAMPLE = { rate: 5, openClose: 1.5, openHigh: 2.5, openLow: -1, highRate: 6, baseline: 0.5 };
 
 const fromOf = (c: CandleAxisCond | undefined, fb: number): number => c?.from ?? c?.to ?? fb;
+const hasBound = (c: CandleAxisCond | undefined): boolean => c?.from !== undefined || c?.to !== undefined;
+
+/** 드래그 문맥 — 기준(시가·종가)과 y 스케일을 pointerdown 에 얼린 것 + 커밋 전 draft. */
+interface Drag {
+    axis: CandleAxis;
+    open: number;
+    rate: number;
+    mid: number;
+    span: number;
+    draft: CandlePred;
+}
+
+const H = 190;
+const PAD = 14;
+const W = 150;
 
 export function CandleCondEditor({ at, pred, onWrite, onClose }: {
     at: { x: number; y: number };
@@ -53,75 +73,81 @@ export function CandleCondEditor({ at, pred, onWrite, onClose }: {
     };
     useDismiss(ref, close, true);
 
-    const axes = pred.axes;
+    const [drag, setDrag] = useState<Drag | null>(null);
+    const shown = drag?.draft ?? pred; // 그림·배지는 드래그 중 draft, 평시엔 저장물
+    const axes = shown.axes;
     const wAxis = (a: CandleAxis, patch: Partial<CandleAxisCond>): void =>
-        onWrite({ ...pred, axes: { ...axes, [a]: { on: axes[a]?.on ?? false, ...axes[a], ...patch } } });
+        onWrite({ ...pred, axes: { ...pred.axes, [a]: { on: pred.axes[a]?.on ?? false, ...pred.axes[a], ...patch } } });
 
     // ── 표본 캔들의 좌표(등락률 공간) — 경계값들로 세운 그림 ──
-    const rate = fromOf(axes.rate, SAMPLE.rate);
+    const rate = drag?.rate ?? fromOf(axes.rate, SAMPLE.rate);
     const oc = fromOf(axes.openClose, SAMPLE.openClose);
-    const open = rate - oc; // 시가 = 종가 − 시가→종가(등락률 공간 근사 — 그림용)
+    const open = drag?.open ?? rate - oc; // 시가 = 종가 − 시가→종가(그림용 역산 — 드래그 중엔 얼린 값)
     const geom = {
-        rate,
+        rate: fromOf(axes.rate, SAMPLE.rate),
         highRate: fromOf(axes.highRate, Math.max(rate, open) + 1),
         openHigh: open + fromOf(axes.openHigh, SAMPLE.openHigh),
         openLow: open + fromOf(axes.openLow, SAMPLE.openLow),
-        openClose: rate, // 시가→종가 핸들은 몸통 끝(종가 자리)에 선다 — 값은 시가 기점 상대값
+        openClose: open + oc,
         baseline: rate - fromOf(axes.baseline, SAMPLE.baseline),
     } satisfies Record<CandleAxis, number>;
 
-    // y 스케일 — 등장하는 값 전부를 품고 여유를 준다(핸들이 붙어 겹치지 않게 최소 폭 8%).
-    const H = 190;
-    const PAD = 14;
+    // y 스케일 — 등장하는 값 전부를 품고 여유(최소 폭 8%). 드래그 중엔 얼린 스케일(기어오름 방지 — L3).
     const values = [open, ...CANDLE_AXES.map((a) => geom[a])];
     const lo = Math.min(...values) - 1.5;
     const hi = Math.max(...values) + 1.5;
-    const span = Math.max(hi - lo, 8);
-    const mid = (hi + lo) / 2;
+    const span = drag?.span ?? Math.max(hi - lo, 8);
+    const mid = drag?.mid ?? (hi + lo) / 2;
     const yOf = (v: number): number => PAD + (H - 2 * PAD) * (1 - (v - (mid - span / 2)) / span);
     const vOf = (y: number): number => (mid - span / 2) + span * (1 - (y - PAD) / (H - 2 * PAD));
 
-    // 드래그 — From 하나를 쥔다. 시가 기점 축은 시가를 빼서 상대값으로 되돌린다.
-    const [drag, setDrag] = useState<CandleAxis | null>(null);
     const svgRef = useRef<SVGSVGElement>(null);
+    const startDrag = (a: CandleAxis, e: React.PointerEvent): void => {
+        (e.target as Element).setPointerCapture?.(e.pointerId);
+        setDrag({ axis: a, open, rate, mid, span, draft: shown });
+    };
     const onMove = (e: React.PointerEvent): void => {
         if (drag === null || svgRef.current === null) return;
         const box = svgRef.current.getBoundingClientRect();
         const v = Math.round(vOf(e.clientY - box.top) * 10) / 10;
-        const rel = drag === "openHigh" || drag === "openLow" ? Math.round((v - open) * 10) / 10
-            : drag === "openClose" ? Math.round((v - open) * 10) / 10
-            : drag === "baseline" ? Math.round((rate - v) * 10) / 10
+        const a = drag.axis;
+        // 축의 기준으로 되돌린다 — 전부 **얼린** 시가·종가 기준(살아 있는 값이면 역산이 꼬리를 문다).
+        const rel = a === "openHigh" || a === "openLow" || a === "openClose" ? Math.round((v - drag.open) * 10) / 10
+            : a === "baseline" ? Math.round((drag.rate - v) * 10) / 10
             : v;
-        wAxis(drag, { from: rel });
+        setDrag({ ...drag, draft: { ...drag.draft, axes: { ...drag.draft.axes, [a]: { ...drag.draft.axes[a], on: true, from: rel } } } });
+    };
+    const endDrag = (): void => {
+        if (drag === null) return;
+        onWrite(drag.draft); // 커밋은 pointerup 한 번(M4)
+        setDrag(null);
     };
 
-    const W = 150;
     const cx = 56;
-    const bodyTop = yOf(Math.max(open, rate));
-    const bodyBot = yOf(Math.min(open, rate));
-    const bull = rate >= open;
+    const bodyTop = yOf(Math.max(open, geom.openClose));
+    const bodyBot = yOf(Math.min(open, geom.openClose));
+    const bull = geom.openClose >= open;
 
     /** 핸들 한 벌 — 선 + 잡이 + 값 배지. 끈 축은 회색·드래그 불가("끈 컷 = 줄 흐림 + 핸들 회색"). */
     const handle = (a: CandleAxis, y: number, color: string, dash?: string): JSX.Element => {
-        const on = axes[a]?.on === true;
+        const cond = axes[a];
+        const on = cond?.on === true;
         const c = on ? color : "var(--text-tertiary)";
         const v = a === "openHigh" || a === "openLow" || a === "openClose"
-            ? fromOf(axes[a], a === "openClose" ? oc : a === "openHigh" ? SAMPLE.openHigh : SAMPLE.openLow)
-            : a === "baseline" ? fromOf(axes.baseline, SAMPLE.baseline)
+            ? fromOf(cond, a === "openClose" ? oc : a === "openHigh" ? SAMPLE.openHigh : SAMPLE.openLow)
+            : a === "baseline" ? fromOf(cond, SAMPLE.baseline)
             : geom[a];
+        // 켜져 있어도 경계가 없으면 조건이 아니다 — 표본값 배지는 "걸려 있다"로 읽히므로 진실을 쓴다(L2).
+        const badge = on && !hasBound(cond) ? "경계 없음" : `${v > 0 ? "+" : ""}${Math.round(v * 10) / 10}`;
         return (
             <g key={a} opacity={on ? 1 : 0.45}>
                 <line x1={10} x2={W - 46} y1={y} y2={y} stroke={c} strokeWidth={1} strokeDasharray={dash} />
                 <circle cx={W - 46} cy={y} r={4.5} fill={c}
                     style={{ cursor: on ? "ns-resize" : "default", touchAction: "none" }}
-                    onPointerDown={(e) => {
-                        if (!on) return;
-                        (e.target as Element).setPointerCapture(e.pointerId);
-                        setDrag(a);
-                    }}
-                    onPointerUp={() => setDrag(null)} />
+                    onPointerDown={(e) => { if (on) startDrag(a, e); }}
+                    onPointerUp={endDrag} />
                 <text x={W - 38} y={y + 3} fontSize={9} fill={c}>
-                    {CANDLE_AXIS_LABEL[a].replace("시가→", "→")} {v > 0 ? "+" : ""}{Math.round(v * 10) / 10}
+                    {CANDLE_AXIS_LABEL[a].replace("시가→", "→")} {badge}
                 </text>
             </g>
         );
@@ -134,7 +160,7 @@ export function CandleCondEditor({ at, pred, onWrite, onClose }: {
             borderRadius: 8, boxShadow: "0 8px 30px rgba(0,0,0,0.25)", padding: "8px 12px 10px",
             display: "flex", gap: 10,
         }}>
-            <svg ref={svgRef} width={W} height={H} onPointerMove={onMove} onPointerUp={() => setDrag(null)}
+            <svg ref={svgRef} width={W} height={H} onPointerMove={onMove} onPointerUp={endDrag} onPointerLeave={endDrag}
                 style={{ flexShrink: 0, background: "var(--bg-secondary)", borderRadius: 6 }}>
                 {/* 표본 캔들 — 심지(고가~저가) + 몸통(시가~종가). 값이 아니라 조건의 그림이다. */}
                 <line x1={cx} x2={cx} y1={yOf(geom.openHigh)} y2={yOf(geom.openLow)} stroke="var(--text-tertiary)" strokeWidth={1.5} />

@@ -120,9 +120,10 @@ export function takeStrippedTransitionCount(): number {
 /**
  * 저장본 파싱 — 형태가 안 맞는 항목은 **통째로 버린다**(부분 복구 안 함). 반쯤 살아난 조건은
  * 화면에 멀쩡히 뜨면서 다른 걸 세기 때문에, 없는 편이 낫다.
- * ⚠ 예외 = **은퇴 kind**: 그 술어만 걷어낸다(통째 폐기하면 이주 한 번에 사용자 집합이 전멸한다 —
- * decisions 「저장물 모양이 바뀌는 커밋은 하나로 모은다」). 술어가 다 걷힌 칸은 칸째 사라진다
- * (parseExpr 가 그 잎을 떨구고 연산자·괄호를 되짚는다 — expr.ts 한 벌).
+ * ⚠ 예외 = **은퇴 kind**: 저장본을 통째 폐기하지 않고 **그 칸만** 걷는다(통째 폐기하면 이주 한 번에
+ * 사용자 집합이 전멸한다). 걷는 단위가 술어가 아니라 **칸**인 이유: `[gridPoint, 대금≥N]` 에서
+ * 은퇴 술어만 빼면 남은 AND 가 **사용자가 건 적 없는 더 넓은 조건**이 되어 OR 가지에 조용히
+ * 합류한다(2026-09-27 리뷰). 칸이 빠지면 parseExpr 가 그 잎을 떨구고 연산자·괄호를 되짚는다.
  */
 export function parseStages(o: unknown): FilterStage[] | null {
     if (!Array.isArray(o)) return null;
@@ -138,7 +139,7 @@ export function parseStages(o: unknown): FilterStage[] | null {
             if (!parsed) return null;
             predicates.push(parsed);
         }
-        if (predicates.length === 0 && dropped > 0) continue; // 은퇴 술어뿐이던 칸 — 칸째 걷는다
+        if (dropped > 0) continue; // 은퇴 술어가 든 칸은 칸째 걷는다(느슨해진 AND 를 남기지 않는다)
         // 칸 전이 이주(전이 은퇴 2026-09-27) — 「처음으로/직전 대비 상승」은 뜻이 "진입"이라 칸의 테마
         // 술어 enter 로 잇는다. 테마가 없거나 「하루 처음」이면 벗긴다(수는 로그로 — 조용히 사라지지 않게).
         const t = (raw as { transition?: unknown }).transition;
@@ -195,7 +196,9 @@ function parsePredicate(o: unknown): FilterPredicate | typeof RETIRED | null {
         case "candle":
         case "theme": {
             const t = (o as { transition?: unknown }).transition;
-            const migrates = p.kind === "theme" && (t === "firstTrue" || t === "improve");
+            // zoneRank 셀 값도 theme 로 이주하므로(core) 그 전이도 enter 가 된다 — 벗김 수에서 뺀다.
+            const toTheme = p.kind === "theme" || (p.kind === "cellValue" && (o as { field?: unknown }).field === "zoneRank");
+            const migrates = toTheme && (t === "firstTrue" || t === "improve");
             if (t !== undefined && !migrates) strippedTransitions += 1;
             // 옛 % 셀 값의 다중 OR 구간은 캔들 축이 첫 구간만 잇는다(core) — 잃는 수를 로그로 남긴다.
             const cv = o as { kind?: unknown; field?: unknown; ranges?: unknown };

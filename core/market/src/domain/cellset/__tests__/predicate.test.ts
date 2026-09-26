@@ -28,6 +28,9 @@ describe("parseCellPredicate", () => {
             .toEqual({ kind: "candle", axes: { rate: { on: true, from: 5, to: 12 } } });
         expect(parseCellPredicate({ kind: "cellValue", field: "minuteHighPct", ranges: [{ from: { kind: "value", value: 5 } }] }))
             .toEqual({ kind: "candle", axes: { highRate: { on: true, from: 5 } } });
+        // 옛 inRanges 는 뒤집힌 구간을 스왑해 통과시켰다 — 이주도 스왑해야 뜻이 보존된다(리뷰 M2).
+        expect(parseCellPredicate({ kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 9 }, to: { kind: "value", value: 5 } }] }))
+            .toEqual({ kind: "candle", axes: { rate: { on: true, from: 5, to: 9 } } });
         // 값 경계가 없으면(빈 구간·타점 앵커 경계) 축이 켜지되 조건 없음 = 빈 술어(정직한 결과).
         expect(isCellPredicateEmpty(parseCellPredicate({ kind: "cellValue", field: "ratePct", ranges: [] })!)).toBe(true);
     });

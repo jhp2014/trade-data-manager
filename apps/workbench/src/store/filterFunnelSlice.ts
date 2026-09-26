@@ -89,7 +89,7 @@ export interface FilterFunnelSlice {
     removeFilterStage: (id: string) => void;
     toggleFilterStage: (id: string) => void;
     setFilterStagePredicates: (id: string, predicates: FilterPredicate[]) => void;
-    /** 칸 통째 교체 — 칸 수준 필드(전이)까지 한 번에 가는 편집면이 쓴다(셀 술어 인라인 편집). */
+    /** 칸 통째 교체 — 술어 여러 개를 한 번에 가는 편집면이 쓴다(셀 술어 인라인 편집·팝오버). */
     setFilterStage: (next: FilterStage) => void;
     renameFilterStage: (id: string, name: string) => void;
     clearFilterStages: () => void;

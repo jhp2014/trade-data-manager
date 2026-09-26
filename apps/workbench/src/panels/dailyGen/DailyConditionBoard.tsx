@@ -319,11 +319,13 @@ export function DailyConditionBoard(): JSX.Element {
 
             {candleEdit !== null && (() => {
                 const st = stages.find((x) => x.id === candleEdit.stageId);
-                const pred = st?.predicates.find((x): x is Extract<FilterPredicate, { kind: "candle" }> => x.kind === "candle");
+                // 이주로 한 칸에 캔들 술어가 둘일 수 있다(옛 [양봉, 등락률] 칸) — 편집도 쓰기도 **첫 것 하나만**.
+                const at = st?.predicates.findIndex((x) => x.kind === "candle") ?? -1;
+                const pred = at >= 0 ? (st!.predicates[at] as Extract<FilterPredicate, { kind: "candle" }>) : undefined;
                 if (!st || !pred) return null; // 줄이 지워졌으면 조용히 닫힌다
                 return (
                     <CandleCondEditor at={candleEdit} pred={pred} onClose={() => setCandleEdit(null)}
-                        onWrite={(next) => setPredicates(st.id, st.predicates.map((x) => (x.kind === "candle" ? next : x)))} />
+                        onWrite={(next) => setPredicates(st.id, st.predicates.map((x, i) => (i === at ? next : x)))} />
                 );
             })()}
 

@@ -62,8 +62,8 @@ export interface BoundSet {
  *
  * ⚠ `isFiltering: false` 로 두면 계약상 "제한 없음"이라 소비자가 **전 우주**를 그린다: 시트가 라벨
  * 좌표 전량을 세우고 시뮬 모수가 전 시그널이 된다. 2026-09-22 에 「계산」 관문이 걷히면서 이 자리가
- * **넓어졌다** — 예전엔 `computed` 가 막던 구간(재료 로딩·조건 0개)이 이제 모드 전환·날짜 이동·
- * 조건 편집마다 생긴다. 그래서 하루는 **재료가 없는 동안 여기로 떨어진다**.
+ * **넓어졌다** — 예전엔 `computed` 가 막던 구간(재료 로딩·조건 0개)이 이제 날짜 이동·
+ * 조건 편집마다 생긴다. 그래서 **재료가 없는 동안 여기로 떨어진다**.
  */
 const UNRESOLVED_VIEW: ViewedSet = { isFiltering: true, broken: true, viewedItems: [], viewedChartKeys: new Set(), viewedPointRefs: [] };
 
@@ -74,8 +74,7 @@ export function useBoundSet(_panelId: string): BoundSet {
     const observedId = useWorkbench(selectObservedSetId);
     const focusDate = useWorkbench((s) => s.focus.date);
 
-    // 하루가 아니면 빈 식을 넘긴다 — `useCellSet` 이 **재료조차 안 당긴다**(조건 0건 = /day-replay
-    // 미조회). 훅은 조건부로 못 부르므로 이 형태가 유일한 길이다.
+    // 조건이 없으면 `useCellSet` 이 **재료조차 안 당긴다**(조건 0건 = /day-replay 미조회).
     const cellSet = useCellSet(funnel.slowExpr, funnel.slowSets, focusDate, DAY_SET_OPTS);
 
     const dayView = useMemo<ViewedSet>(() => {

@@ -121,8 +121,8 @@ const loadSavedSets = (): SavedSet[] => {
     const retiredPreds = takeRetiredPredicateCount();
     const strippedTrans = takeStrippedTransitionCount();
     if (droppedLongitudinal > 0 || retiredPreds > 0 || strippedTrans > 0) {
-        // 이주 보고 — 백업 키(pre-longitudinal·pre-transition)가 원문을 든다. 조용히 사라졌다는 인상을 안 남긴다.
-        console.info(`[savedSets] 이주: 종단 집합 ${droppedLongitudinal}개 폐기 · 은퇴 술어 ${retiredPreds}개 걷음 · 전이 ${strippedTrans}개 벗김(테마는 진입으로 이주) (백업: wb.savedSets.v6.backup.*)`);
+        // 이주 보고 — 백업 키(pre-longitudinal·pre-transition·pre-candle)가 원문을 든다. 조용히 사라졌다는 인상을 안 남긴다.
+        console.info(`[savedSets] 이주: 종단 집합 ${droppedLongitudinal}개 폐기 · 은퇴 술어 든 칸 ${retiredPreds}곳 걷음 · 전이 ${strippedTrans}개 벗김(테마는 진입으로 이주) (백업: wb.savedSets.v6.bak.*)`);
     }
     const withDefault = sets.length > 0 ? sets : [...sets, blankSet()];
     // 이주 결과를 곧바로 굳힌다 — 다음 로드부터는 걷어낼 것이 없다(로그도 한 번만).
@@ -253,7 +253,6 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     ...putSeat(seat.id, seat.path),
 
     // 갈아타기만 한다 — **사본을 안 뜬다**(편집 = 저장이라 사본이 곧 "저장 안 한 변경"이다).
-    // 정의(pointDef)는 그 집합의 것으로 되돌린다 — 없는 집합은 현재 정의 유지(관대 병합 규칙).
     editSet: (id) => set((s) => {
         if (!s.savedSets.some((x) => x.id === id)) return {};
         // 목록에서 고른 건 **새 뿌리**다 — 경로를 물려받지 않는다.

@@ -1,23 +1,15 @@
-// 셀 술어 — **하루·셀 우주**(그날 전 (종목,분))의 판정 어휘. 규칙: .claude/decisions.md 「집합 = (낟알, 우주, 조건)」.
+// 셀 술어 — **하루·셀 우주**(그날 전 (종목,분))의 판정 어휘. 유일한 우주다(종단 트랙은 2026-09-27 폐기).
 //
 // ## 생성과 필터를 문법으로 가르지 않는다
-// 옛 probe 로직 4종은 전부 `시점 술어 (+전이)` 로 환원된다 — 그래서 "후보 로직"이라는 개념이 없다.
-// **조건 묶음(CellCondition) 하나가 곧 로직 하나**고, 로직 추가는 코드 추가가 아니라 조건 저장이다.
-// 코드가 느는 건 새 **재료**(술어 종류)가 필요할 때뿐이다.
+// "후보 로직"이라는 개념이 없다 — **조건 묶음(칸) 하나가 곧 로직 하나**고, 로직 추가는 코드 추가가
+// 아니라 조건 저장이다. 코드가 느는 건 새 **재료**(술어 종류)가 필요할 때뿐이다.
 //
-// ## 종단 술어(filter/stage.ts FilterPredicate)와 **동형**이되, 아직 한 타입이 아니다
-// kind 이름·payload 모양·평가 규칙을 깔때기와 같은 자로 맞춘다(`time` 은 payload 가 글자까지 같다).
-// 그런데 ① 에서 타입을 합치지는 **않는다**: `parseStages` 가 "모양 안 맞으면 저장본 **통째 폐기**" 라,
-// 종단 술어 합집합을 넓히는 손이 미끄러지는 순간 사용자의 savedSets·filterStages 가 전멸한다.
-// 물리 합류는 ②(우주 선언 승격)에서 한 번에 한다 — 그때 첫 번째로 합쳐질 종류가 `time` 이다.
-//
-// ## 파서 규칙이 종단과 **반대**다 — 폐기가 아니라 시드 폴백
-// 하루 우주의 조건은 진실이 아니라 **로컬 설정**이다(진실은 라벨뿐). 그래서 깨진 저장물을 버리고
-// 시드로 되돌아가도 잃는 게 없고, 오히려 되돌아가는 편이 안전하다. parseCellConditions 는
-// **항목 단위로 건너뛰고**(성한 편집은 보존) 배열이 아닐 때만 null 을 돌려 호출자가 시드로 폴백한다.
+// ## 술어 어휘의 단일 출처 — 깔때기(filter/stage.ts FilterPredicate)가 이 유니온을 흡수한다
+// 검증(파서)도 core 한 벌 — stage.ts 는 time 만 자기 소유고 나머지는 parseCellPredicate 를 그대로 쓴다.
+// 옛 저장물 이주(zoneRank→theme·candleShape/ratePct/minuteHighPct→candle·전이→enter)도 전부 이 파서다.
 //
 // 값의 기준은 UN 한 벌이다 — rate·minuteHigh·trailingHighs.un 이 전부 "전일 종가 대비 %" 라
-// 같은 공간에서 비교된다(probe 의 전례 그대로).
+// 같은 공간에서 비교된다.
 
 import { DEFAULT_CHAIN_FILTER, chainFilterKey, parseChainFilter, type ChainFilter } from "./chainFilter.js";
 import { DEFAULT_THEME_ZONE, anyThemeCondOn, parseThemeZoneParams, type ThemeZoneParams } from "./themeZone.js";
@@ -296,10 +288,12 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
             if (raw.field === "ratePct" || raw.field === "minuteHighPct") {
                 const ranges = parseRanges(raw.ranges) ?? [];
                 const r = ranges[0];
-                const from = r?.from?.kind === "value" ? { from: r.from.value } : {};
-                const to = r?.to?.kind === "value" ? { to: r.to.value } : {};
+                let from = r?.from?.kind === "value" ? r.from.value : undefined;
+                let to = r?.to?.kind === "value" ? r.to.value : undefined;
+                // 옛 inRanges 는 뒤집힌 구간을 스왑해 통과시켰다 — 이주가 그대로 옮기면 영영 불발.
+                if (from !== undefined && to !== undefined && from > to) [from, to] = [to, from];
                 const axis: CandleAxis = raw.field === "ratePct" ? "rate" : "highRate";
-                return { kind: "candle", axes: { [axis]: { on: true, ...from, ...to } } };
+                return { kind: "candle", axes: { [axis]: { on: true, ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}) } } };
             }
             // 옛 존순위 필드 → theme 술어 이주(2026-09-26). 값 상한만 존순위 컷으로 옮긴다 — 하한 구간은
             // 새 모양에 없다(decisions). 존 정의·재적은 옛날에도 payload 가 아니라 공용 노브(사실상 기본값)였다.
