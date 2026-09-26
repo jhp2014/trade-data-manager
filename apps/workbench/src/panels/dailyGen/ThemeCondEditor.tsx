@@ -23,7 +23,14 @@ export function ThemeCondEditor({ at, pred, onWrite, onClose }: {
     onClose: () => void;
 }): JSX.Element {
     const ref = useRef<HTMLDivElement>(null);
-    useDismiss(ref, onClose, true);
+    // 닫기 전 blur — NumField 커밋 규약(blur/Enter) 때문에, 바깥 클릭으로 바로 언마운트되면 입력하던
+    // 값이 사라진다(BreakoutCondEditor 와 같은 처방).
+    const close = (): void => {
+        const el = ref.current;
+        if (el && el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+        onClose();
+    };
+    useDismiss(ref, close, true);
     const w = (patch: Partial<ThemePred>): void => onWrite({ ...pred, ...patch });
 
     // 자 값 가져오기 — 열린 시장 단면 판 중 **최소 슬롯** 하나(카운트 단일 인스턴스의 선례).

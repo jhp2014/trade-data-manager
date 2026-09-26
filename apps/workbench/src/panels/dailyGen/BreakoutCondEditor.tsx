@@ -34,7 +34,14 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
     onClose: () => void;
 }): JSX.Element {
     const ref = useRef<HTMLDivElement>(null);
-    useDismiss(ref, onClose, true);
+    // 닫기 전 blur — NumField 는 blur/Enter 커밋이라, 바깥 클릭/Esc 로 바로 언마운트되면 입력하던 값이
+    // 조용히 사라진다(옛 격자판은 도킹 판이라 바깥 클릭 = blur 커밋이었다 — 그 회귀를 여기서 막는다).
+    const close = (): void => {
+        const el = ref.current;
+        if (el && el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+        onClose();
+    };
+    useDismiss(ref, close, true);
     const setExpr = (expr: ChainExpr): void => onWrite({ ...pred, chain: { ...pred.chain, expr } });
 
     // 아랫줄에 열린 칩 — 지워졌으면 닫힌다(수명은 팝오버와 같다 — 호출부의 key={stageId}).
@@ -49,10 +56,12 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
     };
     const hasInnerRank = pred.chain.expr.of.some((t) => t.firstK !== undefined) || pred.chain.expr.groups.some((g) => g.firstK !== undefined);
 
+    const top = Math.min(at.y + 6, window.innerHeight - 320);
     return (
         <div ref={ref} role="dialog" style={{
-            position: "fixed", top: Math.min(at.y + 6, window.innerHeight - 320), left: Math.min(at.x - 6, window.innerWidth - 420),
-            zIndex: 300, width: 400, maxHeight: Math.max(240, window.innerHeight - 60), overflowY: "auto",
+            position: "fixed", top, left: Math.min(at.x - 6, window.innerWidth - 420),
+            // maxHeight 는 top 기준 — innerHeight 기준으로 두면 아래쪽에서 열릴 때 「식 전체」 줄이 화면 밖으로 나간다.
+            zIndex: 300, width: 400, maxHeight: window.innerHeight - top - 8, overflowY: "auto",
             background: "var(--bg-primary)", border: "1px solid var(--border-default)",
             borderRadius: 8, boxShadow: "0 8px 30px rgba(0,0,0,0.25)", padding: "8px 12px 10px",
             display: "flex", flexDirection: "column", gap: 8, fontSize: 12,

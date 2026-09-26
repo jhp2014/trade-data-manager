@@ -2,7 +2,7 @@
 //
 // 셋 다 **이미 다른 화면이 당기고 있는 파생**이라 이 패널이 여는 것만으로 새 요청이 생기면 안 된다
 // (그게 생기면 배선이 틀린 것): 축 = `useRankAxes`, 결과·시뮬 = `PointGridsContext`, 테마 =
-// `useDaySnapshot`(react-query 캐시 — 테마 순위 판·깔때기가 이미 당기는 같은 키) + sectionSeries
+// `useDaySnapshot`(react-query 캐시 — 시장 단면 판·깔때기가 이미 당기는 같은 키) + sectionSeries
 // 공용 단면 캐시 + 멤버십 투영. 스냅샷이 아직 없으면 테마 줄을 안 세운다(없는 값을 지어내지 않는다).
 import { useMemo } from "react";
 import { useRankAxes } from "../../lib/RankAxesContext.js";
@@ -45,7 +45,7 @@ export function usePointInfoRows(point: PointRef | null): PointInfoRowsView {
     const sim = useTradeSim();
 
     // ── 테마 — 기준은 "지금 보는 존 기준"(useThemeReadParams: 첫 켜진 theme 조건 → 기본값, 2026-09-26).
-    //    단면은 하루 스냅샷 즉석 계산(테마 순위 판·깔때기와 같은 sectionSeries 캐시 — /rank-sections 은퇴 수순).
+    //    단면은 하루 스냅샷 즉석 계산(시장 단면 판·깔때기와 같은 sectionSeries 캐시 — /rank-sections 은퇴 수순).
     //    스냅샷은 시선 날짜라 대개 차트·깔때기가 이미 당겨 둔 RQ 캐시를 나눠 쓴다(추가 왕복 0이 보통).
     const themeParams = useThemeReadParams();
     const snapQ = useDaySnapshot(point?.date ?? null);

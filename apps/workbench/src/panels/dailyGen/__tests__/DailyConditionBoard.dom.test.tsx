@@ -122,7 +122,8 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(chipByText(container, "돌파")!); });
         const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
-        const zigzag = [...dialog.querySelectorAll("input")].find((el) => (el.closest("label")?.textContent ?? "").includes("zigzag")) ?? dialog.querySelectorAll("input")[1]!;
+        const zigzag = [...dialog.querySelectorAll("input")].find((el) => (el.closest("label")?.textContent ?? "").includes("zigzag"))!;
+        expect(zigzag, "zigzag 입력칸").toBeDefined();
         act(() => {
             fireEvent.change(zigzag, { target: { value: "5" } });
             fireEvent.blur(zigzag);
@@ -130,10 +131,13 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "breakout", zigzagPct: 5, bandPct: 0.5 });
     });
 
-    it("팝오버 안 「＋ 조건 ▾」 판 — 항목 클릭이 팝오버를 닫지 않는다(판은 팝오버 DOM 안)", () => {
+    it("팝오버 안 「＋ 조건 ▾」 판 — 항목 클릭이 팝오버를 닫지 않는다(판은 팝오버 DOM 안)", async () => {
         seedEditing(exprOfStages([BO_STAGE]));
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(chipByText(container, "돌파")!); });
+        // ⚠ useDismiss 는 setTimeout(0) 뒤에야 리스너를 단다 — 안 기다리면 이 테스트는 아무것도 안 잰다
+        //   (headerPopover.dom.test 선례).
+        await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
         const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
         const add = [...dialog.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("＋ 조건"))!;
         act(() => { fireEvent.mouseDown(add); fireEvent.click(add); });

@@ -1,6 +1,6 @@
 // 셀 재료 어댑터 — core 엔진(`evaluateCells`)이 요구하는 콜백 둘을 **기존 단일 출처**에 잇는다.
 // 계산 규칙은 여기 없다(core 소유). 재계산기를 새로 쓰면 그 순간 "같은 화면에서 숫자가 둘"이 된다:
-//  · 서수/존 순위 = `sectionAtMinute`(테마 순위 패널과 같은 stocks 배열 참조 → WeakMap 단면 캐시 공유)
+//  · 서수/존 순위 = `sectionAtMinute`(시장 단면 판과 같은 stocks 배열 참조 → WeakMap 단면 캐시 공유)
 //    + core `themeZone.themeAnswerOf`(타점 정보 패널과 같은 판정식).
 //  · 격자 Point = `useAutoPoints`(defDerived 단일 파생 캐시)의 산출물.
 //  · 돌파 사슬의 기준선 = `/point-grids` 의 `grid.base`(서버 리졸버 산출 — 기준선 편집 시 이미 무효화된다).
@@ -30,7 +30,7 @@ export function cellMaterialsOf(
         ...(baselineOf ? { baselineOf } : {}),
         gridMinutesOf: (code) => autoPointsOfChart(auto, code, date).map((p) => p.min),
         // 테마 술어 — 판정은 core themeAnswerOf 하나(계산 규칙을 여기 두지 않는다). 단면은 sectionSeries
-        // 공용 캐시라 표시(테마 순위 판)와 같은 물건을 본다. 파라미터는 payload 로 술어마다 온다.
+        // 공용 캐시라 표시(시장 단면 판)와 같은 물건을 본다. 파라미터는 payload 로 술어마다 온다.
         themeAt: (code, min, p) => themeAnswerOf(code, themeSectionAt(stocks, date, min, p.window), p, proj),
     };
 }

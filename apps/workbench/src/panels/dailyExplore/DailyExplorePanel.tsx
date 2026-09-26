@@ -185,10 +185,10 @@ export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element
                                 {sortMode === "time" && <Th>종목</Th>}
                                 <Th style={{ textAlign: "right", width: 56 }}>대금</Th>
                                 {groupCols.map((c) => (
-                                    <th key={c.setId} style={{ ...thBase, textAlign: "center", maxWidth: 76, cursor: c.state.kind === "ready" ? "pointer" : "default", color: narrowId === c.setId ? c.color : "var(--text-tertiary)", borderBottom: narrowId === c.setId ? `2px solid ${c.color}` : thBase.borderBottom }}
+                                    <th key={c.setId} style={{ ...thBase, textAlign: "center", maxWidth: 96, cursor: c.state.kind === "ready" ? "pointer" : "default", color: narrowId === c.setId ? c.color : "var(--text-tertiary)", borderBottom: narrowId === c.setId ? `2px solid ${c.color}` : thBase.borderBottom }}
                                         title={`${c.name}${c.state.kind === "ready" ? ` — 그날 통과 ${c.state.member.size.toLocaleString("ko-KR")}\n클릭 = 이 그룹 통과 행만(다시 = 해제)` : c.state.kind === "loading" ? " — 계산 중" : ` — ${c.state.why}`}`}
                                         onClick={() => { if (c.state.kind === "ready") setNarrowId((v) => (v === c.setId ? null : c.setId)); }}>
-                                        <span style={{ display: "inline-block", maxWidth: 68, overflow: "hidden", textOverflow: "ellipsis", verticalAlign: "bottom" }}>{c.name}</span>
+                                        <span style={{ display: "inline-block", maxWidth: 88, overflow: "hidden", textOverflow: "ellipsis", verticalAlign: "bottom" }}>{c.name}</span>
                                     </th>
                                 ))}
                             </tr>

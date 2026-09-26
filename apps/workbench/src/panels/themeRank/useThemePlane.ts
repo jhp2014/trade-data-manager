@@ -1,9 +1,9 @@
-// 테마 순위 평면의 공용 뷰모델 — 조건판(ThemeRankPanel)·관찰판(ThemeScopePanel)이 나눠 쓰는
-// **판정 무관** 층 전부: 시선·전역 시각·스냅샷·단면·좌표(planeSliceAt)·동료/렌즈/색·뷰 도메인
-// (서수 zoom·값 vdom)·스케일·꼬리·캔버스 레이어·집기(nearestAt)·이동(navigate)·브레드크럼 앵커.
+// 시장 단면 평면의 뷰모델(ThemeScopePanel 이 쓴다) — **판정 무관** 층 전부: 시선·전역 시각·스냅샷·
+// 단면·좌표(planeSliceAt)·동료/렌즈/색·뷰 도메인(서수 zoom·값 vdom)·스케일·꼬리·캔버스 레이어·
+// 집기(nearestAt)·이동(navigate)·브레드크럼 앵커.
 //
-// 판정(컷·존·✓/✗·카운트·재적 띠)은 여기 없다 — 조건판 전용이고, 종류 분리가 "관찰판에서 판정이
-// 조용히 도는" 경로를 코드 구조로 막는 게 설계다(decisions.md 「테마 순위는 판이 둘이다」).
+// 판정(컷·존·✓/✗)은 여기 없다 — View 전용 판이라서다(수정은 조건판 테마 팝오버,
+// decisions.md 「테마 순위는 판 하나다 — 이름은 시장 단면」).
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { minuteOfDayOf } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../../store/workbench.js";

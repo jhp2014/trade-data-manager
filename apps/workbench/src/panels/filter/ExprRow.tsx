@@ -178,7 +178,8 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                             {/* ⚠ 조건에는 `▼` 를 안 단다 — 펼쳐진 내용이 있는 게 아니라 값을 고치는 중이다.
                                 `▼` 의 뜻은 **"층이 하나 늘었다"** 하나로 남는다(묶음 전용). */}
                             {p.neg && <span style={{ color: isOpen ? "#fff" : FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
-                            {p.label}
+                            {/* 돌파 요약 라벨은 길다 — 칩 폭 상한 + 말줄임(전문은 hover). */}
+                            <span style={{ display: "inline-block", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }}>{p.label}</span>
                         </button>
                     );
                 }
@@ -204,7 +205,7 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                         }}>
                         {isOpen && <span style={{ fontSize: 8, marginRight: 5, verticalAlign: 1 }}>▼</span>}
                         {p.neg && <span style={{ color: isOpen ? "#fff" : FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
-                        {info.name}
+                        <span style={{ display: "inline-block", maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", verticalAlign: "bottom" }}>{info.name}</span>
                         {info.usedBy >= 2 && <span style={{ opacity: 0.7, marginLeft: 4 }}>·{info.usedBy}</span>}
                     </button>
                 );

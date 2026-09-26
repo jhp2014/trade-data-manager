@@ -8,7 +8,7 @@
 // (앰버 = LEG_HIGH, 조건 빨강 금지). 2026-09-09 인스턴스화 이후 T 는 **조건마다 하나**이고, 이 판은
 // 한 번에 한 T 를 본다: 칩 스트립이 결과 조건들을 세우고 연동된 것의 T 가 곧 표시 T 다(연동이 없으면
 // 탐색 T). 아래 지표 레일들은 그 표시 T 단면을 그리고, 그으면 (지표 × 표시 T) 자리의 조건이 된다 —
-// **서로 다른 T 의 조건은 칩을 갈아 끼우며 만든다**(테마 순위 패널의 연동 거울과 같은 관용구).
+// **서로 다른 T 의 조건은 칩을 갈아 끼우며 만든다**(시장 단면 패널의 연동 거울과 같은 관용구).
 import { useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { OUTCOME_METRIC_NAME, type OutcomeMetric } from "../../lib/outcomeMetric.js";
@@ -141,7 +141,7 @@ export function OutcomePanel({ panelId = "outcome-rails" }: { panelId?: string }
                 <HeaderControls controls={controls} storageKey="wb.headerPins.outcome" />
             </PanelHeader>
 
-            {/* 칩 스트립 = 결과 조건 목록의 파생 뷰(테마 순위 패널과 같은 관용구) — 클릭 = 연동 전환.
+            {/* 칩 스트립 = 결과 조건 목록의 파생 뷰(시장 단면 패널과 같은 관용구) — 클릭 = 연동 전환.
                 연동된 칩의 T 가 곧 표시 T 이고, 아래 레일들이 그 단면을 그린다. "탐색" = 연동 해제
                 (조건이 아닌 T 로 둘러보기 — 그으면 그 T 의 조건이 새로 선다). */}
             <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 10px", borderBottom: "1px solid var(--border-subtle)", overflowX: "auto", whiteSpace: "nowrap" }} className="no-scrollbar">

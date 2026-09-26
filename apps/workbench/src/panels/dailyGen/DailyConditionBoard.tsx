@@ -253,7 +253,7 @@ export function DailyConditionBoard(): JSX.Element {
                                             // 칩 클릭과 같은 손짓 — 그 묶음을 연다. 빼기는 칩 우클릭(구조 손은 우클릭).
                                             <button key={f.id} role="menuitem" onClick={() => { rowHandlers.onDrill(editingSetId, f.id); close(); }}
                                                 title={`${refInfo(f.id).name} — 이미 이 식에 붙어 있습니다. 누르면 그 묶음을 엽니다(빼기는 칩 우클릭)`} style={row}>
-                                                {check(true)}<span style={{ color: PIN }}>{refInfo(f.id).name}</span>{used(f.id)}
+                                                {check(true)}<span style={{ ...pickName, color: PIN }}>{refInfo(f.id).name}</span>{used(f.id)}
                                             </button>
                                         ))}
                                         {broken.map((id) => (
@@ -282,7 +282,7 @@ export function DailyConditionBoard(): JSX.Element {
                                                         : `${refInfo(f.id).name} — 이 식에 한 항으로 붙입니다`}
                                                     style={row}>
                                                     {check(false)}
-                                                    <span style={unnamed ? { color: PIN, opacity: 0.65, borderBottom: `1px dashed ${PIN}` } : { color: PIN }}>{refInfo(f.id).name}</span>
+                                                    <span style={{ ...pickName, ...(unnamed ? { color: PIN, opacity: 0.65, borderBottom: `1px dashed ${PIN}` } : { color: PIN }) }}>{refInfo(f.id).name}</span>
                                                     {unnamed && <span style={{ fontSize: 9.5, color: "var(--text-tertiary)" }}>이름 없음</span>}
                                                     {used(f.id)}
                                                 </button>
@@ -292,7 +292,7 @@ export function DailyConditionBoard(): JSX.Element {
                                         {blocked.map(({ set: f, why }) => (
                                             <button key={f.id} role="menuitem" disabled title={BLOCK_HINT[why]}
                                                 style={{ ...row, cursor: "default", color: "var(--text-tertiary)" }}>
-                                                {check(false)}<span>{refInfo(f.id).name}</span>
+                                                {check(false)}<span style={pickName}>{refInfo(f.id).name}</span>
                                                 <span style={{ marginLeft: "auto", paddingLeft: 8, fontSize: 9.5 }}>{BLOCK_TEXT[why]}</span>
                                             </button>
                                         ))}
@@ -408,6 +408,9 @@ function NameAndAttach({ autoName, taken, onAttach, onCancel }: {
         </div>
     );
 }
+
+/** ＋ 집합 판의 이름 칸 — 돌파 요약이 든 자동 이름이 길어 줄바꿈으로 🔗N·사유가 밀리지 않게 자른다. */
+const pickName: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 };
 
 const addBtn: React.CSSProperties = {
     fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent",
