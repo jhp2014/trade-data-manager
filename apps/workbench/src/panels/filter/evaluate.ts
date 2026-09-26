@@ -15,7 +15,6 @@
 import { and3, funnelKey, not3, or3, type FunnelItem, type Grain, type Verdict } from "@trade-data-manager/market/domain";
 import { rowKeyToChartKey } from "../../lib/pointKey.js";
 import type { OutcomeMetric } from "../../lib/outcomeMetric.js";
-import { passesPoint, type SectionRanks, type ThemeProjection } from "../../lib/themeStrength.js";
 import { isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { isPredicateEmpty, unknownPredicate, type AxisBound, type FilterPredicate, type FilterStage } from "./stage.js";
 import { foldExpr, isFoldedNode, type FoldedNode, type SetExpr, type SetTerm } from "./expr.js";
@@ -48,9 +47,7 @@ export interface EvalLookup {
     /** 값 구간 경계 해석 — 타점 앵커면 그 타점의 값, 리터럴이면 그 수. 앵커가 사라졌으면 undefined. */
     boundValue: (axisId: string, bound: AxisBound) => number | undefined;
     /** (날짜, 시각) → 순위 단면. 재료 미도착·단면 없음(pending·미수집)은 null = 판단 불가(탈락 아님). */
-    sectionRanksAt: (date: string, time: string) => SectionRanks | null;
     /** 테마 멤버십 투영(읽기 시점 — 굽지 않는다). 재료 미도착이면 null. */
-    themeProj: ThemeProjection | null;
     /**
      * 결과 술어값(**그 술어 자신의 허용 폭 T** 단면, 전부 정확 — 세션 최고가 굽기 이후 하한 기계 철거) —
      * 무눌림의 낙폭 2종·격자 미도착은 undefined(3치). T 가 인자인 이유: 조건마다 T 가 다를 수 있다.
@@ -153,14 +150,6 @@ export function evalPredicate3(p: FilterPredicate, item: FunnelItem, look: EvalL
 
         case "theme":
             return undefined; // 하루 술어 — 종단 평가기엔 판정기가 없다(결손, universe 결손 지도와 같은 말)
-        case "themeStrength": {
-            // 시각 없는 항목(타점 없는 후보 하루)은 단면을 지목할 수 없다 — time 술어와 같은 결.
-            if (item.time === undefined) return undefined;
-            if (look.themeProj === null) return undefined; // 멤버십 재료 미도착
-            const section = look.sectionRanksAt(item.date, item.time);
-            if (section === null) return undefined; // 단면 없음(pending·미수집) = 결손이지 탈락이 아니다
-            return passesPoint(item.stockCode, section, p.params, look.themeProj);
-        }
 
         case "axisValue": {
             // 앵커가 사라진 구간은 버린다(옛 resolveRanges 규칙). 남는 게 없으면 조건이 뜻을 잃어 판단 불가.

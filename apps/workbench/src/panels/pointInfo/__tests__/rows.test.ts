@@ -3,7 +3,7 @@ import type { SimResult } from "@trade-data-manager/market/domain";
 import type { AxisRef } from "../../../lib/computedAxis.js";
 import type { AxisPlacement } from "../../../lib/rankIndex.js";
 import type { OutcomeRecord } from "../../../lib/useOutcomes.js";
-import type { ThemeVerdict } from "../../../lib/themeStrength.js";
+import type { ThemeZoneVerdict as ThemeVerdict } from "@trade-data-manager/market/domain";
 import { pointInfoRows, slotOf, type PointInfoSources } from "../rows.js";
 
 const axis = (key: string, name = key): AxisRef => ({ key, name, scope: "point" });

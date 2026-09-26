@@ -3,6 +3,7 @@ import { exprOfStages, type SetExpr, type SetTerm } from "../expr.js";
 import { evalExpr, evalGroupExpr3, evalPredicate3, evalStage, toFunnelStage, type EvalLookup } from "../evaluate.js";
 import { NONE_GROUP, type GroupExpr } from "../../rank/groupFilter.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 import type { FunnelItem } from "@trade-data-manager/market/domain";
 
 /** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
@@ -20,8 +21,6 @@ const base: EvalLookup = {
     bandBoundOrderKey: (axisId, slotId) => (axisId === "a1" ? ({ lo: 10, hi: 90 } as Record<string, number>)[slotId] : undefined),
     axisValueOf: (axisId) => (axisId === "c1" ? 7 : undefined),
     boundValue: (_axisId, b) => (b.kind === "value" ? b.value : undefined),
-    sectionRanksAt: () => null,
-    themeProj: null,
     outcomeEvalOf: () => undefined,
     outcomeRailValues: () => undefined,
     outcomeRecoveredOf: () => undefined,
@@ -218,41 +217,13 @@ describe("evalStage / toFunnelStages — 단계는 술어들의 AND", () => {
     });
 });
 
-describe("evalPredicate3 — 테마 강도 묶음", () => {
-    // 단면: s(1,1)·m1(2,2) 존 안(30/40), 테마 T = {s, m1}.
-    const section = {
-        ranksOf: (code: string) => (({ s: { rate: 1, amount: 1 }, m1: { rate: 2, amount: 2 } }) as Record<string, { rate: number; amount: number }>)[code] ?? null,
-    };
-    const proj = {
-        themesByCode: new Map([["s", ["T"]], ["m1", ["T"]]]),
-        codesByTheme: new Map([["T", ["s", "m1"]]]),
-    };
-    const themed = (over: Partial<EvalLookup> = {}): EvalLookup =>
-        look({ sectionRanksAt: () => section, themeProj: proj, ...over });
-    const pred = (countMin: number): FilterPredicate => ({
-        kind: "themeStrength",
-        params: { zoneRateN: 30, zoneAmountN: 40, zoneAmountWindow: 0, basis: "rate", countOn: true, countMin, baseRankOn: false, baseRankMax: 3, zoneRankOn: false, zoneRankMax: 2 },
-    });
+describe("evalPredicate3 — 테마(하루 술어)", () => {
     const sItem: FunnelItem = { stockCode: "s", date: "2025-07-01", time: "09:21:00" };
 
-    it("통과/탈락 — passesPoint 규약 그대로(자신 포함 셈)", () => {
-        expect(evalPredicate3(pred(2), sItem, themed())).toBe(true);
-        expect(evalPredicate3(pred(3), sItem, themed())).toBe(false);
-    });
-
-    it("시각 없는 항목(후보 하루)은 판단 불가 — 단면을 지목할 수 없다", () => {
-        expect(evalPredicate3(pred(1), dayItem, themed())).toBeUndefined();
-    });
-
-    it("재료 미도착(테마 투영 null)·단면 없음(pending)은 판단 불가 — 탈락이 아니다", () => {
-        expect(evalPredicate3(pred(1), sItem, themed({ themeProj: null }))).toBeUndefined();
-        expect(evalPredicate3(pred(1), sItem, themed({ sectionRanksAt: () => null }))).toBeUndefined();
-    });
-
-    it("활성 하위 조건 0 = 빈 술어 = 무제한 통과", () => {
-        const base = pred(1) as Extract<FilterPredicate, { kind: "themeStrength" }>;
-        const off: FilterPredicate = { kind: "themeStrength", params: { ...base.params, countOn: false } };
-        expect(evalPredicate3(off, sItem, themed({ themeProj: null }))).toBe(true); // 재료 없어도 — 조건이 없으니까
+    it("theme 술어 — 종단 평가기에선 결손(undefined): 하루 판정기의 몫이다", () => {
+        const p: FilterPredicate = { kind: "theme", ...DEFAULT_THEME_ZONE };
+        expect(evalPredicate3(p, sItem, look())).toBeUndefined();
+        expect(evalPredicate3(p, dayItem, look())).toBeUndefined();
     });
 });
 

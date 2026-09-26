@@ -1,5 +1,5 @@
 // 타점 정의 파서 — 영속 슬라이스(wb.pointDef.v1)와 SavedSet payload 가 **같은 유효성 정의**를 본다
-// (themeStrength 의 parseThemeStrengthParams 선례 — 갈리면 저장 집합이 남의 값으로 평가된다).
+// (테마 존 파서(core themeZone) 선례 — 갈리면 저장 집합이 남의 값으로 평가된다).
 // 관대한 병합: 필드 누락·오염은 그 필드만 기본값 — null 반환으로 통째 폐기하지 않는다(옛 저장물 호환).
 import {
     APPROACH_MAX_PCT,

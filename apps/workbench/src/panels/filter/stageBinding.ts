@@ -38,7 +38,6 @@ export function railKeyOf(p: FilterPredicate): RailKey | null {
         case "time": return { kind: "time" };
         case "hotPoints": return { kind: "hotPoints", w: p.w, r: p.r }; // 급타점 패널의 레일
         case "group": return null;
-        case "themeStrength": return null; // 레일이 아니다 — 보드 테마 칸의 목록 행(그룹과 동형)
         case "theme": return null; // 편집면은 조건판 팝오버 하나
         case "outcomeRecovery": return null; // 명목값 — 레일이 아니라 결과 패널 머리글 칩이 편집 입구
         // 셀 술어 — 하루 우주의 레일(분포 스트립)은 아직 없다. 켤 때 어댑터 하나로 붙는다.

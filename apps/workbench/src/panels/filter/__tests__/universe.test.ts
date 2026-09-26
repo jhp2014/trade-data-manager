@@ -12,11 +12,11 @@ const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, 
 const AVAILABLE: Record<Universe, PredicateKind[]> = {
     // ⚠ theme 는 **종류 층 중립**(양쪽 가용)이다 — 종단 결손은 payload 층(predicateDeficiency)이 말한다.
     //   종류 층에 두면 themeStrength → theme 이주 때 종단 저장 집합의 우주 파생이 뒤집힌다(decisions 2026-09-26).
-    longitudinal: ["group", "axisBand", "axisValue", "date", "time", "themeStrength", "outcome", "outcomeRecovery", "hotPoints", "theme"],
+    longitudinal: ["group", "axisBand", "axisValue", "date", "time", "outcome", "outcomeRecovery", "hotPoints", "theme"],
     daily: ["time", "cellValue", "priorHighBreak", "gridPoint", "breakout", "candleShape", "theme"],
 };
 const ALL_KINDS: PredicateKind[] = [
-    "group", "axisBand", "axisValue", "date", "time", "themeStrength",
+    "group", "axisBand", "axisValue", "date", "time",
     "outcome", "outcomeRecovery", "hotPoints", "cellValue", "priorHighBreak", "gridPoint",
     "breakout", "candleShape", "theme",
 ];

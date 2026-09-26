@@ -58,8 +58,6 @@ const evalLook: EvalLookup = {
     bandBoundOrderKey: () => undefined,
     axisValueOf: () => undefined,
     boundValue: () => undefined,
-    sectionRanksAt: () => null,
-    themeProj: null,
     outcomeEvalOf: () => undefined,
     outcomeRailValues: () => undefined,
     outcomeRecoveredOf: () => undefined,

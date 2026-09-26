@@ -9,7 +9,7 @@
 //   · 진단(✓/✗) — 그 테마 **단독**으로 활성 조건을 다 만족하나. 재료는 themeVerdicts 하나(∃ 접기 전).
 // 렌즈는 **조건이 아니다** — 깔때기·저장 집합에 안 들어가고 헤더 카운트를 건드리지 않는다(순수 시선 도구).
 import type { CSSProperties } from "react";
-import type { ThemeVerdict } from "../../lib/themeStrength.js";
+import type { ThemeZoneVerdict as ThemeVerdict } from "@trade-data-manager/market/domain";
 import { FILTER, STRONG } from "../../styles/palette.js";
 
 export function ThemeLensStrip({ themes, lens, onPick, verdicts, colorOf, status }: {

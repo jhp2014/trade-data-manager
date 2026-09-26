@@ -9,7 +9,7 @@
 import type { AxisRef } from "../../lib/computedAxis.js";
 import type { AxisPlacement } from "../../lib/rankIndex.js";
 import type { OutcomeRecord } from "../../lib/useOutcomes.js";
-import type { ThemeVerdict } from "../../lib/themeStrength.js";
+import type { ThemeZoneVerdict as ThemeVerdict } from "@trade-data-manager/market/domain";
 import type { SimResult } from "@trade-data-manager/market/domain";
 import { outcomeCellView, OUTCOME_COL_IDS, OUTCOME_COL_META, type OutcomeColId } from "../rank/outcomeColumns.js";
 import { toneColor, toneOf } from "../rank/sheetCell.js";

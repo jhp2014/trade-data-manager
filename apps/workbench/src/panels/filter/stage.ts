@@ -34,8 +34,7 @@ import {
 } from "@trade-data-manager/market/domain";
 import type { GroupExpr } from "../rank/groupFilter.js";
 import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr, renameGroupInExpr } from "../rank/groupFilter.js";
-import { DEFAULT_THEME_STRENGTH, anyConditionOn, parseThemeStrengthParams, type ThemeStrengthParams } from "../../lib/themeStrength.js";
-import { anyThemeCondOn } from "@trade-data-manager/market/domain";
+import { DEFAULT_THEME_ZONE, anyThemeCondOn, parseThemeZoneParams } from "@trade-data-manager/market/domain";
 import { isOutcomeMetric, type OutcomeMetric } from "../../lib/outcomeMetric.js";
 import { isHotR, isHotW } from "../../lib/hotPoints.js";
 
@@ -79,9 +78,6 @@ export type FilterPredicate =
     // `time` 은 **한 종류로 합쳐졌다** — payload 가 글자까지 같아 새 kind 를 만들 이유가 없었다.
     // 전이는 하루 우주에서만 뜻이 있고 종단에선 결손이다(universe.ts).
     | { kind: "time"; ranges: TimeRange[]; transition?: Transition }
-    // 테마 강도 묶음 — **파라미터가 payload 안에 산다**(SavedSet 이 stages 를 통째 복사하므로
-    // 외부 참조로 두면 집합의 자립이 깨진다). 전 파라미터는 보드 행(레일·칩)에서 직접 편집한다.
-    | { kind: "themeStrength"; params: ThemeStrengthParams }
     // 시그널 결과(미래 값) — **허용 폭 T 를 술어가 든다**(2026-09-09 인스턴스화: 옛 "T 는 정의 상태"를
     // 뒤집음). T 는 모수도 행의 시각·가격도 안 바꾸고 결과 값만 바꾸므로 값만 바꾸는 전제 = 술어 payload
     // 규칙에 따라 여기 산다 — 그래서 **서로 다른 T 의 조건이 한 집합 안에서 AND 로 공존한다**
@@ -160,7 +156,6 @@ export function isPredicateEmpty(p: FilterPredicate): boolean {
         case "axisValue": return p.ranges.length === 0;
         case "date": return p.ranges.length === 0;
         case "time": return p.ranges.length === 0;
-        case "themeStrength": return !anyConditionOn(p.params); // 활성 하위 조건 0 = 무제한 통과
         case "outcome": return p.ranges.length === 0;
         case "outcomeRecovery": return false; // boolean 하나라 항상 조건이다
         case "hotPoints": return p.ranges.length === 0;
@@ -217,7 +212,6 @@ export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | u
         case "axisBand":
         case "axisValue": return look.axisScope(p.axisId);
         case "group": return p.scope;
-        case "themeStrength": return "point"; // 단면 조회에 시각이 필수 — 행 정체성은 타점(보드 테마 칸은 UI 그룹핑)
         case "outcome": return "point"; // 결과 걷기의 앵커가 시그널(타점)이다 — 시각 없이는 판정 불가
         case "outcomeRecovery": return "point";
         case "hotPoints": return "point"; // 쌍을 세는 자가 타점이다 — 행 정체성도 타점
@@ -470,12 +464,13 @@ function parsePredicate(o: unknown): FilterPredicate | null {
             return typeof p.recovered === "boolean" && isTolerance(p.t)
                 ? { kind: "outcomeRecovery", recovered: p.recovered, t: p.t } : null;
         case "themeStrength": {
-            // 관대한 병합 — 필드가 늘어도 옛 저장물이 통째 안 죽는다. payload 자체가 누락·오염이어도
-            // **조건-off 로 살린다**: 이 파서의 null 은 저장본 한 벌 통째 폐기라, 지어낸 활성 조건(기본값)보다
-            // "조건 없음"으로 보이는 빈 술어가 정직하고 덜 파괴적이다.
-            const params = parseThemeStrengthParams(p.params)
-                ?? { ...DEFAULT_THEME_STRENGTH, countOn: false, baseRankOn: false, zoneRankOn: false };
-            return { kind: "themeStrength", params };
+            // 옛 종단 테마 강도 → theme 이주(2026-09-26) — core 파서가 옛 params 모양(zoneRateN·0|60 창)을
+            // 그대로 읽는다. payload 누락·오염은 **조건-off theme** 로 살린다(옛 규칙 그대로: null 은
+            // 저장본 통째 폐기라, 빈 술어가 정직하고 덜 파괴적이다).
+            const params = parseThemeZoneParams(p.params);
+            return params !== null
+                ? { kind: "theme", ...params }
+                : { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, baseRankOn: false, zoneRankOn: false };
         }
         case "group": {
             const expr = parseGroupExpr(p.expr); // 팔레트 저장본과 같은 검증 한 벌 — 여기만 느슨하면 안 된다

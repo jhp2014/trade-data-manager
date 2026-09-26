@@ -7,7 +7,6 @@ import { CANDLE_SHAPE_LABEL, CELL_VALUE_FIELDS, TRANSITION_LABEL } from "@trade-
 import { NONE_LABEL, isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
 import { shortDate } from "../../lib/date.js";
 import { OUTCOME_METRIC_NAME } from "../../lib/outcomeMetric.js";
-import type { ThemeStrengthParams } from "../../lib/themeStrength.js";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 
 export interface LabelLookup {
@@ -46,7 +45,6 @@ export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
             return p.ranges.length === 1
                 ? `${p.ranges[0]!.from}~${p.ranges[0]!.to}`
                 : `시간 ${p.ranges.length}구간`;
-        case "themeStrength": return themeStrengthLabel(p.params);
         case "theme": return themeZoneLabel(p);
         // T 를 라벨에 싣는다 — 같은 지표의 조건이 T 별로 여러 줄 설 수 있어(2026-09-09 인스턴스화)
         // T 가 없으면 보드 목록에서 두 줄이 같은 이름으로 보인다.
@@ -92,17 +90,6 @@ export function themeZoneLabel(p: Extract<FilterPredicate, { kind: "theme" }>): 
     return `테마 ${win} 대금≤${p.zoneAmountN}·${rate}${cuts ? ` ${cuts}` : ""}`;
 }
 
-export function themeStrengthLabel(p: ThemeStrengthParams): string {
-    const conds = [
-        p.countOn ? `동료≥${p.countMin}` : null,
-        p.baseRankOn ? `기본≤${p.baseRankMax}` : null,
-        p.zoneRankOn ? `존순위≤${p.zoneRankMax}` : null,
-    ].filter((s): s is string => s !== null);
-    const basis = p.basis === "amount" ? "대금" : "등락";
-    // 창 표기 — 60분 창 행이 당일 행과 같은 이름이 되면 어느 자로 재는지 못 읽는다(hotPoints 의 (W,r) 과 같은 이유).
-    const win = p.zoneAmountWindow === 60 ? " · 60분" : "";
-    return `존 ${p.zoneRateN}/${p.zoneAmountN}${win} · ${basis}${conds.length > 0 ? ` · ${conds.join(" · ")}` : ""}`;
-}
 
 /** 단계가 무슨 도구인가 — 막대 아래 한 줄. 한 단계는 한 종류라 첫 술어가 곧 단계의 종류다. */
 export function kindLabel(kind: PredicateKind | undefined): string {
@@ -113,7 +100,6 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         case "axisValue": return "축";
         case "date": return "날짜";
         case "time": return "시간";
-        case "themeStrength": return "테마";
         case "theme": return "테마";
         case "outcome":
         case "outcomeRecovery": return "결과";

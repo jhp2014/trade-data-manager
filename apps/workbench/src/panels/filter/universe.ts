@@ -146,8 +146,6 @@ export function kindDeficiency(k: PredicateKind, u: Universe): string | null {
             return "격자 파생 축(좌표 축)이라 셀에는 값이 없다";
         case "group":
             return "좌표 라벨 재료는 있으나 하루 엔진에 아직 안 물렸다(라벨 층에서 켜진다)";
-        case "themeStrength":
-            return "분 단면 재료는 있다 — 지금은 '존순위' 셀 값 술어가 같은 일을 한다";
         default:
             return null;
     }
@@ -182,7 +180,6 @@ export function predicateDeficiency(p: FilterPredicate, u: Universe): string[] {
         case "group":
         case "axisBand":
         case "date":
-        case "themeStrength":
         case "outcomeRecovery":
             break;
         case "theme":

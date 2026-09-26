@@ -5,7 +5,7 @@ import { act, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
-import { DEFAULT_THEME_STRENGTH } from "../../../lib/themeStrength.js";
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 import { ThemeScopePanel } from "../ThemeScopePanel.js";
 
 const SEED: Seed = { points: [] };
@@ -22,12 +22,18 @@ afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
 describe("관찰판 — 연동·판정이 원리적으로 없다", () => {
     it("테마 행+바인딩이 있어도 연동 배지·조건 ▾·카운트가 안 선다(이 판은 목록 밖)", () => {
-        act(() => useWorkbench.getState().addFilterStage([{ kind: "themeStrength", params: DEFAULT_THEME_STRENGTH }]));
+        act(() => useWorkbench.getState().addFilterStage([{ kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, baseRankOn: false, zoneRankOn: false }]));
         const { container } = renderPanel();
         expect(container.textContent).toContain("관찰 — 판정 없음");
         expect(container.textContent).not.toContain("조건 ▾");
         expect(container.textContent).not.toContain("통과");
         expect(container.textContent).not.toContain("미연동"); // "미연동"조차 조건판의 말이다
+    });
+
+    it("켜진 테마 조건이 있으면 읽기 전용 겹침 배지가 선다(축 일치 변만 — 수정은 팝오버)", () => {
+        act(() => useWorkbench.getState().addFilterStage([{ kind: "theme", ...DEFAULT_THEME_ZONE }]));
+        const { container } = renderPanel();
+        expect(container.textContent).toContain("조건 겹침(읽기 전용)");
     });
 });
 

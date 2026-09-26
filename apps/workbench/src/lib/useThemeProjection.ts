@@ -7,7 +7,7 @@
 // 그래서 인덱스를 제 손으로 `buildThemeIndex` 해서 만드는 소비자가 있으면 안 된다.
 import { useMemo } from "react";
 import type { ThemeIndex } from "@trade-data-manager/market/domain";
-import { themeProjectionOf, type ThemeProjection } from "./themeStrength.js";
+import { themeProjectionOf, type ThemeProjection } from "@trade-data-manager/market/domain";
 import { useThemeIndex, type ThemeIndexView } from "./useThemeIndex.js";
 
 let cache: { index: ThemeIndex; proj: ThemeProjection } | null = null;

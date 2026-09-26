@@ -16,6 +16,7 @@ import { ThemePlaneView } from "./ThemePlaneView.js";
 import { parseThemeRankAxes, windowLabel } from "./axisModel.js";
 import { useThemeReadParams } from "../filter/themeLink.js";
 import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
+import { isPredicateEmpty } from "../filter/stage.js";
 import { fmtMin, useThemePlane } from "./useThemePlane.js";
 
 export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseTitle?: string }): JSX.Element {
@@ -44,7 +45,11 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
     // (창까지 같아야 대금 선이 선다 — 다른 창의 N 을 이 축에 그으면 거짓말이다). 수정은 조건판 팝오버.
     const stages = useWorkbench(selectEditingStages);
     const readParams = useThemeReadParams();
-    const hasThemeCond = useMemo(() => stages.some((s) => s.enabled && s.predicates.some((p) => p.kind === "theme")), [stages]);
+    // 빈 술어(활성 컷 0)는 조건이 아니다 — 겹침을 세우면 "걸린 것"처럼 읽혀 거짓말이 된다.
+    const hasThemeCond = useMemo(
+        () => stages.some((s) => s.enabled && s.predicates.some((p) => p.kind === "theme" && !isPredicateEmpty(p))),
+        [stages],
+    );
     const overlay = useMemo(() => {
         if (!hasThemeCond) return null;
         const x = axes.xMode === "rank" && axes.windowMin === readParams.window ? readParams.zoneAmountN : null;

@@ -23,9 +23,6 @@ import { computedAxisView } from "../../lib/computedAxis.js";
 import { GRID_AXIS_IDS } from "../../lib/gridFeatures.js";
 import type { OutcomesView } from "../../lib/useOutcomes.js";
 import type { HotCounts } from "../../lib/hotPoints.js";
-import { useRankSections } from "../../lib/useRankSections.js";
-import { useThemeIndex } from "../../lib/useThemeIndex.js";
-import { projectionOf } from "../../lib/useThemeProjection.js";
 import { chartKey, pointKey, rowKeyToChartKey } from "../../lib/pointKey.js";
 import { unionNames } from "../../lib/groupIndex.js";
 import { selectObservedExpr, selectObservedSetId, useWorkbench } from "../../store/workbench.js";
@@ -93,10 +90,7 @@ export interface FunnelView {
 let materialsSeq = 0;
 
 /** 테마 재료가 필요 없는 상태의 고정 참조 — 재료 refetch 가 epoch 를 안 올리게 하는 열쇠. */
-const NO_SECTION = (): null => null;
 
-const hasThemePredicate = (stages: readonly FilterStage[]): boolean =>
-    stages.some((s) => s.predicates.some((p) => p.kind === "themeStrength"));
 
 const hasOutcomePredicate = (stages: readonly FilterStage[]): boolean =>
     stages.some((s) => s.predicates.some((p) => p.kind === "outcome" || p.kind === "outcomeRecovery"));
@@ -155,25 +149,6 @@ export function useFilterFunnel(): FunnelView {
 
     const isLoading = gv.isLoading || ax.isLoading || cand.isLoading || pts.isLoading;
 
-    // 테마 강도 재료 — **전역 게이트(isLoading)에 안 넣는다.** 테마 술어가 없는 화면까지 이 로딩을
-    // 기다리게 할 이유가 없고, 술어 판정이 3치라 재료 미도착은 그 술어만 미배치 칸으로 세어진다(탈락 아님).
-    // ready(데이터 실도착)로 접는다 — isLoading 만 보면 paused 류에서 빈 인덱스가 "전부 탈락"으로 위장한다.
-    const sections = useRankSections();
-    const themes = useThemeIndex();
-    // 투영은 **공용 모듈 캐시**(인덱스 참조 키) — 제 사본을 만들면 전 테마 × 전 종목 배열이 앱에 두 벌 산다.
-    const themeProj = useMemo(
-        () => (!themes.ready || themes.error !== null ? null : projectionOf(themes.index)),
-        [themes.ready, themes.error, themes.index],
-    );
-    // 테마 술어가 **어디에도 없으면**(활성 단계 ∪ 저장 집합) 재료를 상수로 끊는다 — 안 그러면 30분
-    // stale 의 멤버십 refetch 가 evalLook → materialsEpoch 를 올려, 테마와 무관한 화면 전체의
-    // 정산·저장 집합 캐시가 주기적으로 통째 재계산된다.
-    const themeInUse = useMemo(
-        () => hasThemePredicate(stages) || freshSavedSets.some((f) => hasThemePredicate(leavesOf(f.expr))),
-        [stages, freshSavedSets],
-    );
-    const sectionRanksAt = themeInUse ? sections.sectionAt : NO_SECTION;
-    const themeProjEff = themeInUse ? themeProj : null;
 
     // ── 색인 ── 조립 규칙과 그 함정은 axisLookup 에(순수·테스트됨).
     const placements = useMemo(() => buildAxisOrderIndexes(ax.linesByAxis), [ax.linesByAxis]);
@@ -253,8 +228,6 @@ export function useFilterFunnel(): FunnelView {
             },
             boundValue: (axisId, b) => resolveBound(b, over.valuesOf(axisId)),
             // 순위 단면(구운 번들) — 로딩·오류면 sectionAt 이 null 을 줘 테마 술어가 미배치로 선다.
-            sectionRanksAt,
-            themeProj: themeProjEff,
             // 결과 술어(기본 허용 T1 평가) — 무눌림의 낙폭·격자 미도착은 레코드에 없어 그대로 3치의 undefined 가 된다.
             outcomeEvalOf: (metric, t, i) => {
                 const oc = over.outcomesOf(t);
@@ -279,7 +252,7 @@ export function useFilterFunnel(): FunnelView {
                 return h === null ? undefined : (h.byKey as Map<string, number>);
             },
         }),
-        [gv, sectionRanksAt, themeProjEff],
+        [gv],
     );
 
     // 현재 정의의 조회기 — T 변경은 outcomesEff 참조를 갈아 evalLook → materialsEpoch 까지 자동 무효

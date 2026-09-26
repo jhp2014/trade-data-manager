@@ -8,7 +8,10 @@
 // 가 같은 derived.snapshot(date).stocks[].minutes 를 쓴다.
 import type { RankSection } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
-import type { SectionRanks } from "../../lib/themeStrength.js";
+/** 옛 lib/themeStrength 의 단면 모양 — 이 파일의 산출물 계약으로만 남는다(소비자 정리 시 함께 은퇴). */
+interface SectionRanks {
+    ranksOf(code: string): { rate: number | null; amount: number | null; amount60?: number | null } | null;
+}
 import { sectionAtMinute } from "./sectionSeries.js";
 
 /** 재계산 단면 + O(1) 조회 — themeStrength 의 SectionRanks 를 충족(번들 단면과 같은 함수에 들어간다). */

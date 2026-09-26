@@ -277,29 +277,24 @@ describe("밴드 경계 이관 — 옛 slotId 는 열린 경계로 떨군다", (
     });
 });
 
-describe("themeStrength 술어 — 저장 왕복·빈 판정", () => {
-    const params = { zoneRateN: 12, zoneAmountN: 34, zoneAmountWindow: 0 as const, basis: "amount" as const, countOn: true, countMin: 5, baseRankOn: false, baseRankMax: 3, zoneRankOn: true, zoneRankMax: 2 };
+describe("themeStrength → theme 이주 골든(2026-09-26 — 종류 은퇴)", () => {
+    const params = { zoneRateN: 12, zoneAmountN: 34, zoneAmountWindow: 60 as const, basis: "amount" as const, countOn: true, countMin: 5, baseRankOn: false, baseRankMax: 3, zoneRankOn: true, zoneRankMax: 2 };
 
-    it("parseStages 왕복이 테마 파라미터를 보존한다 — 파서 누락은 저장본 한 벌 통째 폐기라 여기가 회귀 방지선", () => {
-        const stages: FilterStage[] = [{ id: "t1", enabled: true, predicates: [{ kind: "themeStrength", params }] }];
-        const back = parseStages(JSON.parse(JSON.stringify(stages)));
-        expect(back).toEqual(stages);
-    });
-
-    it("깨진 params 는 관대한 병합 — 저장본 전체를 폐기하지 않는다(필드 증설 호환)", () => {
-        const raw = [{ id: "t1", enabled: true, predicates: [{ kind: "themeStrength", params: { zoneRateN: 7, basis: "nasdaq" } }] }];
+    it("옛 저장물이 theme 로 사상돼 읽힌다 — 폐기 0(파라미터 사상 정확)", () => {
+        const raw = [{ id: "t1", enabled: true, predicates: [{ kind: "themeStrength", params }] }];
         const back = parseStages(raw)!;
-        const p = back[0].predicates[0] as Extract<FilterPredicate, { kind: "themeStrength" }>;
-        expect(p.params.zoneRateN).toBe(7);
-        expect(p.params.basis).toBe("rate"); // 깨진 유니온 → 기본값
-        expect(p.params.zoneAmountN).toBeGreaterThan(0); // 빠진 필드 → 기본값
+        const p = back[0]!.predicates[0] as Extract<FilterPredicate, { kind: "theme" }>;
+        expect(p).toMatchObject({
+            kind: "theme", window: 60, zoneAmountN: 34, rate: { mode: "rank", max: 12 },
+            basis: "amount", countOn: true, countMin: 5, zoneRankOn: true, zoneRankMax: 2,
+        });
     });
 
-    it("활성 하위 조건 0 = 빈 술어 · grain 은 point 고정", () => {
-        const off = { ...params, countOn: false, zoneRankOn: false };
-        expect(isPredicateEmpty({ kind: "themeStrength", params: off })).toBe(true);
-        expect(isPredicateEmpty({ kind: "themeStrength", params })).toBe(false);
-        expect(predicateGrain({ kind: "themeStrength", params }, { hasGroup: () => false, axisScope: () => undefined })).toBe("point");
+    it("깨진 params 는 조건-off theme — 저장본 전체를 폐기하지 않는다", () => {
+        const back = parseStages([{ id: "t1", enabled: true, predicates: [{ kind: "themeStrength", params: "x" }] }])!;
+        const p = back[0]!.predicates[0] as Extract<FilterPredicate, { kind: "theme" }>;
+        expect(p.kind).toBe("theme");
+        expect(isPredicateEmpty(p)).toBe(true);
     });
 });
 

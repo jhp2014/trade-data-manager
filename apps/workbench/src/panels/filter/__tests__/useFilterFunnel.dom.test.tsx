@@ -1,3 +1,4 @@
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 // 깔때기 배선 — 조각 넷(유니버스·펼치기·3치 판정·정산)을 실제 데이터로 잇는 단 하나의 자리.
 //
 // 순수 조각들은 각자 덮여 있고(stage·evaluate·axisLookup·core/funnel), **재료를 꽂는 일**은 아무도
@@ -322,56 +323,19 @@ describe("죽은 참조 — 화면이 표시하고 정리는 사용자가 정한
     });
 });
 
-describe("테마 강도 배선 — 실제 시드(번들·멤버십)로 판정까지", () => {
-    // 단면: D1 09:30 에 A(1,1)·B(2,2) — 존(30/40) 안. 09:35 단면은 **없다**(그 타점은 미배치가 돼야 한다).
-    const rankSections: Seed["rankSections"] = {
-        version: 2,
-        dates: [{
-            date: D1, sealed: true, codes: [A, B],
-            sections: [
-                { time: "09:30", n: 2, rows: [0, 1, 1, 1, 1, 2, 2, 2] }, // stride 4
-                { time: "10:00", n: 2, rows: [0, 2, 2, 2, 1, 1, 1, 1] },
-            ],
-        }],
-        pending: [],
-    };
-    const themeMembers: Seed["themeMembers"] = [
-        { theme: "반도체", code: A },
-        { theme: "반도체", code: B },
-    ];
-    const themeStage = (countMin: number): FilterStage => ({
+describe("theme 술어 — 종단 깔때기에선 결손(하루 판정기의 몫)", () => {
+    const themeStage: FilterStage = {
         id: "th1", enabled: true,
-        predicates: [{
-            kind: "themeStrength",
-            params: { zoneRateN: 30, zoneAmountN: 40, zoneAmountWindow: 0, basis: "rate", countOn: true, countMin, baseRankOn: false, baseRankMax: 3, zoneRankOn: false, zoneRankMax: 2 },
-        }],
-    });
+        predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE }],
+    };
 
-    it("테마 단계가 서면 해상도가 타점으로 내려가고, HH:MM:SS 타점이 HH:MM 단면에 맞물려 판정된다", () => {
-        setStages([themeStage(2)]);
-        const v = read({ ...SEED, rankSections, themeMembers });
+    it("grain 은 타점으로 내려가되 전부 미배치 — 결손이 탈락으로 새지 않는다", () => {
+        setStages([themeStage]);
+        const v = read();
         expect(v.grain).toBe("point");
-        expect(v.universe).toBe(4); // 타점 3 + 타점 0인 하루(C@D2) 1
-        // A@09:30·B@10:00 은 단면 有 → 동료 2(자신 포함) 통과. A@09:35 는 단면 無 → 미배치.
         const t = v.result!;
-        expect(t.survivors).toHaveLength(2);
-        expect(t.pendingCount).toBe(2); // 단면 없는 A@09:35 + 시각 없는 C@D2 하루 항목
-        // 탈락 = 유니버스 − 생존 − 미배치. 0 이어야 한다 — 결손이 탈락으로 새지 않는다는 것이
-        // 이 테스트의 존재 이유다(5칸 은퇴 뒤에도 같은 것을 세 수의 차로 잰다).
-        expect(v.universe - t.survivors.length - t.pendingCount).toBe(0)
-    });
-
-    it("멤버십 재료가 아직 없으면(미도착) 전부 미배치 — 빈 인덱스가 '전부 탈락'으로 위장하지 않는다", () => {
-        setStages([themeStage(1)]);
-        vi.stubGlobal("fetch", () => new Promise(() => {})); // 영원히 도착하지 않는 응답 = pending 상태
-        const client = seededClient({ ...SEED, rankSections });
-        client.removeQueries({ queryKey: ["theme-members-all"] }); // 도착 전 상태를 흉내
-        const { result } = renderHook(() => useFilterFunnel(), {
-            wrapper: ({ children }: { children: ReactNode }): JSX.Element => <Providers client={client}>{children}</Providers>,
-        });
-        const t = result.current.result!;
         expect(t.survivors).toHaveLength(0);
-        // 전부 미배치 = 탈락 0 — 빈 인덱스가 "전부 탈락"으로 위장하지 않는다.
-        expect(t.pendingCount).toBe(result.current.universe);
+        expect(t.pendingCount).toBe(v.universe);
     });
 });
+
