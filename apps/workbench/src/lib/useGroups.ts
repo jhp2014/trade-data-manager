@@ -118,7 +118,7 @@ export interface GroupsView {
     /** 이 그룹의 좌표 라벨 사용 건수. day countOf 와 **합산하지 않는다** — 뜻이 다른 두 수다. */
     pointCountOf: (groupName: string) => number;
     /**
-     * 이 차트의 좌표 라벨 전부(시각 오름차순) — 차트의 라벨 표식(◆, 라벨=타점)이 이걸 그린다.
+     * 이 차트의 좌표 라벨 전부(시각 오름차순) — 차트 표식 ◇ 합집합(라벨 ∪ 후보)의 라벨 쪽 재료다.
      * "지워진 그룹 떨구기" 규칙 포함(pointGroupsOf 와 같은 사정 — 호출부마다 복제 금지). 없으면 고정 참조.
      */
     pointLabelsOf: (chart: ChartGroupRef) => readonly PointLabel[];

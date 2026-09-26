@@ -21,11 +21,24 @@ export interface AutoPointInput {
     label: string;
 }
 
-/** 좌표 라벨 입력(스냅 전) — 라벨=타점(그룹 배정 좌표)의 ◆ 표식. color = 첫 그룹의 groupColor. */
-export interface LabelPointInput {
-    time: number;
-    label: string;
-    color: string;
+/**
+ * 표식 합집합 — ◇ 한 줄 = 라벨 ∪ 조건 후보(2026-09-26, ◆ 줄 폐지). 같은 분이면 후보 항이 이기고
+ * 라벨 이름은 뒤에 덧붙는다. ⚠ 입력을 **고치지 않는다** — 윗단 memo 의 객체를 그대로 담아 두고
+ * label 을 제자리에서 이어붙이면 렌더마다 "라벨: A · 라벨: A" 로 불어난다(리뷰가 잡은 자리).
+ */
+export function unionMarkPoints<T extends { time: number; label: string }>(
+    auto: readonly T[],
+    labels: readonly { time: number; hms: string; text: string }[],
+    mk: (l: { time: number; hms: string; text: string }) => T,
+): T[] {
+    const byTime = new Map<number, T>();
+    for (const a of auto) byTime.set(a.time, a);
+    for (const l of labels) {
+        const prev = byTime.get(l.time);
+        if (prev) byTime.set(l.time, { ...prev, label: `${prev.label} · 라벨: ${l.text}` });
+        else byTime.set(l.time, mk(l));
+    }
+    return [...byTime.values()].sort((a, b) => a.time - b.time);
 }
 
 const NO_TIMES: readonly number[] = [];

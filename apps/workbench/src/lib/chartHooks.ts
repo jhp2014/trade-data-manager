@@ -14,9 +14,31 @@ import { useWorkbench } from "../store/workbench.js";
 import type { Command } from "../keymap/types.js";
 
 /**
+ * 차트가 그린 표식(◇ = 라벨 ∪ 조건 후보)의 시각 목록 — 「보이는 표식 = 걷는 표식」(2026-09-26).
+ * 게시자는 ChartPanel(집합의 날짜를 보는 차트만) — 이 훅은 App 전역이라 ◇ 의 재료(집합 평가)를 직접 못 든다.
+ * (code, date) 가 어긋나면(게시자가 없거나 낡음) 라벨 좌표로 물러선다 — 옛 동작 그대로.
+ */
+const chartWalk: { current: { code: string; date: string; times: readonly string[] } | null } = { current: null };
+export function publishChartWalk(v: { code: string; date: string; times: readonly string[] }): void {
+    chartWalk.current = v;
+}
+
+/** 걷기 목록 고르기(순수) — (종목,날짜)가 맞는 게시만 쓰고, 아니면 라벨 좌표 폴백. */
+export function resolveChartWalk(
+    pub: { code: string; date: string; times: readonly string[] } | null,
+    code: string,
+    date: string,
+    fallback: readonly string[],
+): readonly string[] {
+    return pub !== null && pub.code === code && pub.date === date ? pub.times : fallback;
+}
+
+
+/**
  * 차트 단축키 — **전역 1회 등록**(App). 패널별 등록이 아니라 focus 를 따라간다 → 차트 여러 개여도 커맨드 충돌 없고,
  * 패널 마운트/포커스 상태에 안 흔들린다(옛 패널별 등록의 "가끔 안 먹음" 버그 해결). 입력창 포커스 중 mod-less 는 디스패처가 가드.
- *   a/d=±1분봉 · shift+a/d=±jumpBars · ctrl+a/d=타점 순회 wrap · f=일봉+분봉 확대/축소(store chartZoom, 두 차트 동시).
+ *   a/d=±1분봉 · shift+a/d=±jumpBars · ctrl+a/d=타점 순회 wrap(표식 ◇ = 라벨 ∪ 조건 후보 — 아래 chartWalk) ·
+ *   f=일봉+분봉 확대/축소(store chartZoom, 두 차트 동시).
  * 그룹 부착은 골격 패널/분석 시트의 BulkGroupMenu 가 유일한 입구다.
  * 핸들러는 매 렌더 최신 클로저로 h.current 갱신(안정 ref), 등록 effect 는 1회.
  */
@@ -45,12 +67,14 @@ export function useChartHotkeys(): void {
     };
     h.current.jump = (dir) => h.current.moveBar(dir * jumpBars);
     h.current.navPoint = (dir) => {
-        if (pointTimes.length === 0) return;
+        // 표식과 같은 배열 — 차트가 게시한 ◇(라벨 ∪ 조건 후보)가 있으면 그걸 걷는다.
+        const walk = resolveChartWalk(chartWalk.current, code, date, pointTimes);
+        if (walk.length === 0) return;
         let target: string;
-        if (dir > 0) target = pointTimes.find((x) => (time ? x > time : true)) ?? pointTimes[0];
+        if (dir > 0) target = walk.find((x) => (time ? x > time : true)) ?? walk[0]!;
         else {
-            const prevs = pointTimes.filter((x) => (time ? x < time : true));
-            target = prevs.length ? prevs[prevs.length - 1] : pointTimes[pointTimes.length - 1];
+            const prevs = walk.filter((x) => (time ? x < time : true));
+            target = prevs.length ? prevs[prevs.length - 1]! : walk[walk.length - 1]!;
         }
         useWorkbench.getState().goToPoint({ date, code, time: target });
     };

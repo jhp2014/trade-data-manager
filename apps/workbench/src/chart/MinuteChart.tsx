@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { CrosshairMode, LineStyle } from "lightweight-charts";
 import { kstHHmm } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
@@ -12,19 +12,17 @@ import type { ChainOverlayInput } from "./chainLayer.js";
 import { useMinuteSeries, useMinuteSeriesData } from "./minuteSeries.js";
 import { useMinuteVisibleRange } from "./minuteFraming.js";
 import {
-    snapPoints,
     useChainLayer,
     useLegMarks,
     useMarkerOverlay,
     useMarkerVertLines,
     usePercentPriceLines,
     type AutoPointInput,
-    type LabelPointInput,
 } from "./minuteOverlays.js";
 import { useMinuteInteraction, GROUP_MARKER_ATTR } from "./minuteInteraction.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
-import { MARK_BAND_H, MARK_HIT_W, MARK_ROW_GAP, MarkDiamond, MarkTriangle } from "./markerGlyphs.js";
+import { MARK_BAND_H, MARK_HIT_W, MarkDiamond, MarkTriangle } from "./markerGlyphs.js";
 
 /**
  * 세로선(x) 우측에 붙이는 오버레이 박스 — 우측 공간이 모자라면 좌측으로 뒤집는다.
@@ -78,21 +76,18 @@ const MARKER_BOX = { w: MARK_HIT_W, h: MARK_BAND_H } as const;
 
 // prop 기본값은 모듈 상수로 — `= []` 인라인이면 렌더마다 새 참조라 오버레이 effect 가 매 렌더 발화한다.
 const NO_AUTO: AutoPointInput[] = [];
-const NO_LABELS: LabelPointInput[] = [];
 
 /**
- * 표식 한 칸의 자리. `row` 로 윗줄(◆ 라벨·시간선 ▼)·아랫줄(◇ 후보)을 가르고 **높이도 그 줄만큼만** 준다 —
- * 두 상자가 다 밴드 높이(18)를 먹으면 아랫줄 상자가 윗줄의 아래 절반을 덮어, 같은 분에 ◇·◆ 가
- * 함께 선 좌표에서 윗줄 아래쪽에 커서를 올려도 hover 카드가 안 뜬다(리뷰가 잡은 자리).
- * 줄 순서(2026-09-24): 라벨(진실 — 사람이 붙인 것)이 맨 위, 후보(규칙이 낸 것)가 그 아래.
+ * 표식 한 칸의 자리 — 줄은 하나다(◇ = 라벨 ∪ 후보 · ▼ 시간선, 2026-09-26 ◆ 줄 폐지).
+ * 높이는 밴드 전체(18) — 두 줄 시절의 반쪽 상자(MARK_ROW_GAP)로 두면 클릭·hover 손이 절반이 된다.
  */
-function markerBoxStyle(x: number, zIndex: number, row: 0 | 1 = 0): CSSProperties {
+function markerBoxStyle(x: number, zIndex: number): CSSProperties {
     return {
         position: "absolute",
         left: x - MARKER_BOX.w / 2,
-        top: row === 0 ? 0 : MARK_ROW_GAP,
+        top: 0,
         width: MARKER_BOX.w,
-        height: row === 0 ? MARK_ROW_GAP : MARKER_BOX.h - MARK_ROW_GAP,
+        height: MARKER_BOX.h,
         display: "flex",
         justifyContent: "center",
         alignItems: "flex-start",
@@ -115,7 +110,6 @@ export function MinuteChart({
     pctBase,
     markerTime = null,
     autoPoints = NO_AUTO,
-    labelPoints = NO_LABELS,
     legHighTimes,
     legBand = null,
     showPointInfo = false,
@@ -138,10 +132,9 @@ export function MinuteChart({
     base: number | null; // % 기준가(당일 원주가) — 캔들·M/A 선·가격 캡처 분모
     pctBase: number | null; // % 기준가(수정주가 전일종가) — D 선 분모
     markerTime?: number | null; // 현재 타점 세로선(unix초). null = 없음.
-    /** 자동 Point(격자 파생, unix초+라벨). ◇ 마커 + 청록 세로선 + hover 카드 — 안 넘기면 없음(실시간 차트가 그렇다). */
+    /** 표식 ◇(unix초+라벨) — **라벨 ∪ 조건 후보 한 줄**(2026-09-26, ◆/◇ 구분 폐지 — 합치는 손은 ChartPanel).
+     *  ◇ 마커 + 청록 세로선 + hover 카드 — 안 넘기면 없음(실시간 차트가 그렇다). */
     autoPoints?: AutoPointInput[];
-    /** 좌표 라벨(그룹 배정 좌표 — 라벨=타점, 진실). ◆ 마커(윗줄 — ◇ 는 그 아래) — 안 넘기면 없음(실시간 차트). */
-    labelPoints?: LabelPointInput[];
     /** 고점 렌즈의 다리 고점 봉(unix초) — 고가 위 드롭 캡. 안 넘기면 없음(갱신 렌즈·실시간 차트). */
     legHighTimes?: readonly number[];
     /** 선택한 시그널의 다리 띠(unix초 구간, 시그널 봉→고점 봉) — 하나만. null = 띠 없음. */
@@ -234,11 +227,6 @@ export function MinuteChart({
     const overlay = useMarkerOverlay(chartRef, series, pointMapRef, autoSnapped, currentSnapped);
     const autoLabelOf = (time: number): string => autoSnapped.find((a) => a.time === time)?.label ?? "자동 Point";
 
-    // 좌표 라벨 ◆ — 라벨=타점(진실). ◇ 와 같은 스냅 자(snapPoints)를 쓰되 세로선은 긋지 않는다(표식만).
-    const labelSnapped = useMemo(() => snapPoints(points, labelPoints), [labelPoints, points]);
-    const labelOverlay = useMarkerOverlay(chartRef, series, pointMapRef, labelSnapped, null);
-    const labelMetaOf = (time: number): LabelPointInput | undefined => labelSnapped.find((l) => l.time === time);
-
     // 오버레이 박스 우/좌 판정용 컨테이너 폭 + 현재 hover 중인 타점.
     const containerWidth = containerRef.current?.clientWidth ?? 0;
     const hoveredCard = hoveredAuto != null ? overlay.marks.find((a) => a.time === hoveredAuto) ?? null : null;
@@ -250,7 +238,8 @@ export function MinuteChart({
             style={{ position: "relative", width: "100%", height: "100%" }}
         >
             <AnchorMarkLayer layout={markLayout} onGoTo={markArgs.goTo} />
-            {/* 자동 Point ◇ — 클릭 = 시간선 이동, title = 요약. 손 타점 ▼ 줄은 2026-09-01 폐지. */}
+            {/* 표식 ◇ 한 줄(라벨 ∪ 조건 후보 — 구분 없음) — 클릭 = 시간선 이동, 우클릭 = 배정, title = 요약.
+                손 타점 ▼ 줄은 2026-09-01, ◆ 라벨 줄은 2026-09-26 폐지(라벨은 ◇ 에 합류·hover 가 말한다). */}
             {overlay.marks.map((a) => {
                 if (a.x < 0) return null;
                 return (
@@ -266,38 +255,14 @@ export function MinuteChart({
                             if (a.point && onMarkContext) onMarkContext(a.point.tradeTime, { x: e.clientX, y: e.clientY });
                         }}
                         title={autoLabelOf(a.time)}
-                        style={{ ...markerBoxStyle(a.x, 7, 1), cursor: "pointer" }}
+                        style={{ ...markerBoxStyle(a.x, 7), cursor: "pointer" }}
                     >
                         <MarkDiamond filled={false} active={hoveredAuto === a.time} now={a.time === currentSnapped} />
                     </div>
                 );
             })}
-            {/* 좌표 라벨 ◆ — 윗줄에 서고 ◇ 는 그 아래 줄(MARK_ROW_GAP)이라 같은 분에 둘 다 있어도 겹치지 않는다.
-                **셋은 슬롯 조합이 말한다**: 윗줄만 = 라벨 · 아랫줄만 = 후보 · 둘 다 = 둘이 보인다.
-                손은 ◇ 와 동일: 좌클릭 = 시간선 이동, 우클릭 = 배정 팝오버(라벨 편집). */}
-            {labelOverlay.marks.map((l) => {
-                if (l.x < 0) return null;
-                const meta = labelMetaOf(l.time);
-                return (
-                    <div
-                        key={`label-${l.time}`}
-                        {...{ [GROUP_MARKER_ATTR]: "" }}
-                        onClick={() => l.point && onMovePoint(l.point.tradeTime)}
-                        onContextMenu={(e) => {
-                            e.preventDefault();
-                            if (l.point && onMarkContext) onMarkContext(l.point.tradeTime, { x: e.clientX, y: e.clientY });
-                        }}
-                        title={meta ? `라벨: ${meta.label}` : "좌표 라벨"}
-                        style={{ ...markerBoxStyle(l.x, 7, 0), cursor: "pointer" }}
-                    >
-                        <MarkDiamond filled color={meta?.color ?? "#8b93a7"} active={hoveredAuto === l.time} />
-                    </div>
-                );
-            })}
-            {/* 시간선 ▼ — 타점도 라벨도 아닌 자리에서만. ◇ 가 서면 그 ◇ 가 MARKER_NOW 로 칠해지고, ◆ 가 서면(▼ 와 같은
-                윗줄이라 덮는다) 세로선이 "지금"을 말한다. */}
-            {overlay.current && !overlay.marks.some((a) => a.time === currentSnapped)
-                && !labelOverlay.marks.some((l) => l.time === currentSnapped) && overlay.current.x >= 0 && (
+            {/* 시간선 ▼ — 표식이 없는 자리에서만. ◇ 가 서면 그 ◇ 가 MARKER_NOW 로 칠해진다. */}
+            {overlay.current && !overlay.marks.some((a) => a.time === currentSnapped) && overlay.current.x >= 0 && (
                 <div title="현재 시간선" style={{ ...markerBoxStyle(overlay.current.x, 7), pointerEvents: "none" }}>
                     <MarkTriangle />
                 </div>

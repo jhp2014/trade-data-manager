@@ -20,14 +20,18 @@ export interface ExploreRow {
 /** 행의 좌표 키 — 그룹 멤버십(`membershipOf`)과 같은 자를 쓴다. */
 export const cellKeyOf = (code: string, min: number): string => `${code}|${min}`;
 
+export type ExploreSort = "stock" | "time";
+
 /**
- * 후보 → 시간순 행. 분 대금은 누적대금의 차분(첫 봉은 누적 그대로) — 재료(스냅샷)의 분 배열에서 찾는다.
+ * 후보 → 행. 분 대금은 누적대금의 차분(첫 봉은 누적 그대로) — 재료(스냅샷)의 분 배열에서 찾는다.
  * `minuteOf` 가 재료의 (code, unix초 배열)을 분으로 바꾸는 일은 호출자가 안다(시간대 셈을 여기 안 들인다).
+ * 정렬: 기본 = **종목순**(종목 안 시간순 — 대부분 종목 단위로 걷는다, 사용자 확정) · "time" = 장 흐름.
  */
 export function exploreRowsOf(
     hits: readonly CellHit[],
     stockOf: (code: string) => { times: readonly number[]; cumAmount: readonly number[] } | undefined,
     minuteOf: (unixSec: number) => number,
+    sort: ExploreSort = "stock",
 ): ExploreRow[] {
     /** code → (분 → 배열 인덱스) — 종목당 한 번만 걷는다(행 300 × 분 400 정찰을 피함). */
     const idx = new Map<string, Map<number, number>>();
@@ -49,8 +53,10 @@ export function exploreRowsOf(
             : s.cumAmount[i]! - s.cumAmount[i - 1]!;
         return { code: h.code, min: h.min, time: minuteToHms(h.min), amount };
     });
-    // 시간순 고정(같은 분이면 종목코드) — 장 흐름대로 걷는 판이다.
-    return rows.sort((a, b) => a.min - b.min || (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
+    const byCode = (a: ExploreRow, b: ExploreRow): number => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
+    return sort === "stock"
+        ? rows.sort((a, b) => byCode(a, b) || a.min - b.min)
+        : rows.sort((a, b) => a.min - b.min || byCode(a, b));
 }
 
 /** 그룹 하나의 그날 결과 → 멤버십 — 행의 ●/· 판정. */

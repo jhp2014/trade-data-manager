@@ -1,18 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { selectObservedStages, useWorkbench, type ChartView } from "../store/workbench.js";
 import { DAY_SET_OPTS, useCellSet } from "./filter/useCellSet.js";
 import { useFunnel } from "./filter/FunnelContext.js";
+import { GroupChipCard } from "./dailyExplore/GroupChipCard.js";
 import type { FilterStage } from "./filter/stage.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { usePlaneBus } from "../store/usePlaneBus.js";
 import { useChartBundle } from "../lib/useChartBundle.js";
 import { kstToUnix } from "../lib/derive.js";
 import { useChartViews } from "../lib/chartFrame.js";
+import { publishChartWalk } from "../lib/chartHooks.js";
 import { autoPointsOfChart, useAutoPoints, usePointGrids } from "../lib/PointGridsContext.js";
 import { useDisplayT } from "./outcome/outcomeLink.js";
 import { minuteToHms, sliceOutcome, walkOutcome } from "@trade-data-manager/market/domain";
-import type { AutoPointInput, LabelPointInput } from "../chart/minuteOverlays.js";
-import { BREAKOUT_HIGH, groupColor } from "../styles/palette.js";
+import { unionMarkPoints, type AutoPointInput } from "../chart/minuteOverlays.js";
+import { BREAKOUT_HIGH } from "../styles/palette.js";
 import { useChainOverlay } from "./dailyGrid/useChainOverlay.js";
 import { ChainLayerMenu } from "./dailyGrid/ChainLayerMenu.js";
 
@@ -122,13 +124,14 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 식·저장물은 깔때기의 **늦은 한 벌**을 그대로 쓴다 — 박자가 갈리면 목록과 ◇ 가 다른 순간을 그린다.
     const cellExpr = setUniverse === "daily" && !drifted ? funnel.slowExpr : null;
     const cellSet = useCellSet(cellExpr, funnel.slowSets, viewDate, DAY_SET_OPTS);
-    const autoPoints = useMemo<AutoPointInput[]>(() => {
+    const autoPoints = useMemo<(AutoPointInput & { hms: string })[]>(() => {
         // 평가 중에는 안 그린다 — 표식 층의 계산이 캔들(시선의 소비자)을 지연시키면 안 된다.
         if (cellExpr === null || cellSet.isLoading) return [];
         return cellSet.hits
             .filter((h) => h.code === code)
             .map((h) => ({
                 time: kstToUnix(viewDate, minuteToHms(h.min)),
+                hms: minuteToHms(h.min),
                 // hover 카드 재료가 "어느 조건에 걸렸나"로 바뀌었다(옛 격자 요약 대신).
                 label: `${h.tags.map((t) => stageNameOf(funnelStages, t)).join(" · ")}${h.ratePct !== null ? ` · ${h.ratePct.toFixed(1)}%` : ""}${h.cumAmount !== null ? ` · ${(h.cumAmount / 1e8).toFixed(0)}억` : ""}${h.zoneRank !== null ? ` · ${h.zoneTheme ?? ""} ${h.zoneRank}위` : ""}`,
             }));
@@ -166,27 +169,43 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         return high === undefined ? null : { from: sig, to: high };
     }, [time, viewDate, legHighBySignal]);
 
+
+    // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
+    const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
+
+    // 표식 ◇ 한 줄 = **라벨 ∪ 조건 후보**(2026-09-26 — ◆/◇ 구분 폐지). 후보만 두면 라벨 조건 종류가
+    // 합류하기 전까지 "라벨 달았는데 조건에 안 걸린" 타점이 차트에서 사라진다 — 합집합이 그 구멍을 막는다.
+    // 같은 분에 둘 다면 후보 항이 이긴다(hover 에 걸린 조건이 서고, 라벨 이름은 뒤에 덧붙는다).
+    const chartLabels = pointLabelsOf({ stockCode: code, date: viewDate });
+    const unionPoints = useMemo<(AutoPointInput & { hms: string })[]>(
+        () => unionMarkPoints(
+            autoPoints,
+            chartLabels.map((l) => ({ time: kstToUnix(viewDate, l.time), hms: l.time, text: l.names.join(" · ") })),
+            (l) => ({ time: l.time, hms: l.hms, label: `라벨: ${l.text}` }),
+        ),
+        [autoPoints, chartLabels, viewDate],
+    );
+
+    // ctrl+a/d 걷기 목록 게시 — 「보이는 표식 = 걷는 표식」. **상시** 게시한다: 게이트로 건너뛰면 옛 게시가
+    // 남아, 모드를 바꾼 뒤 같은 (종목,날짜)에서 화면에 없는 후보를 걷는다(리뷰가 잡은 자리). 하루 모드가
+    // 아니거나 드리프트한 차트의 합집합은 어차피 라벨뿐이라 폴백과 같은 값이다.
+    useEffect(() => {
+        publishChartWalk({ code, date: viewDate, times: unionPoints.map((u) => u.hms) });
+    }, [code, viewDate, unionPoints]);
+
     // ◇ 로 남은 봉 — 사슬 층이 후보 세로 줄의 진하기를 가른다. 평가 중이거나 **평가 못 하면**(결손 — 미연동 돌파
     // 줄이 AND 를 오염시킨 집합 등) 모름(null — 전부 연하게). 빈 Set 으로 두면 전부 "탈락"으로 칠한다.
     const keptTimes = useMemo<ReadonlySet<number> | null>(
-        () => (cellExpr === null || cellSet.isLoading || !cellSet.evaluable || !cellSet.ready ? null : new Set(autoPoints.map((a) => a.time))),
-        [cellExpr, cellSet.isLoading, cellSet.evaluable, cellSet.ready, autoPoints],
+        // 라벨도 "남은 타점"으로 친다 — 표식이 한 줄(라벨 ∪ 후보)이 된 뒤로 사슬 층의 진하기도 같은 집합을 본다.
+        () => (cellExpr === null || cellSet.isLoading || !cellSet.evaluable || !cellSet.ready ? null : new Set(unionPoints.map((a) => a.time))),
+        [cellExpr, cellSet.isLoading, cellSet.evaluable, cellSet.ready, unionPoints],
     );
+
     const chain = useChainOverlay({
         on: showChain, showBands: chainBands, sourceId: chainSource, code, date: anchorDate,
         onSetDate: !drifted, ownBars: ownBundle(minuteQ.data, code) !== undefined, chartBase: minuteView?.base ?? null,
         keptTimes,
     });
-
-    // Focus.time(HH:MM:SS) → 분봉 세로선 unix초. null 이면 세로선 없음. 검색날짜(viewDate) 기준.
-    const markerTime = useMemo(() => (time && viewDate ? kstToUnix(viewDate, time) : null), [time, viewDate]);
-
-    // 좌표 라벨 ◆(라벨=타점, 진실) — 이 차트(검색날짜)의 그룹 배정 좌표. 색 = 첫 그룹의 groupColor.
-    const chartLabels = pointLabelsOf({ stockCode: code, date: viewDate });
-    const labelPoints = useMemo<LabelPointInput[]>(
-        () => chartLabels.map((l) => ({ time: kstToUnix(viewDate, l.time), label: l.names.join(" · "), color: groupColor(l.names[0] ?? "") })),
-        [chartLabels, viewDate],
-    );
 
     const dailyLines = lines.dLines;
     const minuteLines = lines.resolvedLines;
@@ -315,6 +334,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                         }
                         minute={
                             minuteView.points.length > 0 ? (
+                                <div style={{ position: "relative", width: "100%", height: "100%" }}>
                                 <MinuteChart
                                     points={minuteView.points}
                                     frameKey={minuteFrameKey}
@@ -323,8 +343,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     base={minuteView.base}
                                     pctBase={pctBase}
                                     markerTime={markerTime}
-                                    autoPoints={autoPoints}
-                                    labelPoints={labelPoints}
+                                    autoPoints={unionPoints}
                                     legHighTimes={legHighTimes}
                                     legBand={legBand}
                                     showPointInfo={showPointInfo}
@@ -338,6 +357,14 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     anchorMarks={minuteMarks}
                                     chainOverlay={chain.input}
                                 />
+                                {/* 조건 그룹 고스트 칩 — **지금 타점**(시간선이 ◇ 위)이 통과한 그룹(탐색판의 그룹·같은 훅 한 벌).
+                                    ⚠ unionPoints 가 빈 날은 평가를 안 돈다 — 날짜 자동 스킵이 지나는 빈 날마다
+                                    그룹 5벌(0.25~0.47초씩)을 물지 않게(탐색판의 rows>0 보호와 같은 몫). */}
+                                <GroupChipCard code={code} date={viewDate} time={time}
+                                    active={setUniverse === "daily" && !drifted && ownBundle(minuteQ.data, code) !== undefined
+                                        && unionPoints.length > 0 && time !== null}
+                                    isPoint={time !== null && unionPoints.some((u) => u.hms === time)} />
+                                </div>
                             ) : null
                         }
                     />
@@ -377,7 +404,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     assign={
                         candleMenu.candle?.time
                             ? {
-                                  // ◇/◆ 우클릭 직행(onMarkContext)과 같은 목적지 — 팝오버 한 벌(store/groupAssign).
+                                  // ◇ 우클릭 직행(onMarkContext)과 같은 목적지 — 팝오버 한 벌(store/groupAssign).
                                   onAssign: () =>
                                       useGroupAssign.getState().open(
                                           { stockCode: code, name: name ?? undefined, date: candleMenu.candle!.date, time: candleMenu.candle!.time! },

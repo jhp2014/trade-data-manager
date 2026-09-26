@@ -1,5 +1,6 @@
 // 일별 타점[탐색] — 하루 후보를 **날짜 단위로 걷는** 전용 뷰(2026-09-26). 작업 대상(시선·큐레이션 브라우징)과
-// 다른 몫: 행 = 보는 집합의 그날 후보(시간순), 열 = **조건 그룹**(고른 저장 집합 4~5개)의 통과 ●/·.
+// 다른 몫: 행 = 보는 집합의 그날 후보(기본 **종목순** — 종목 머리줄 아래 시간순, 토글로 시간순),
+// 열 = **조건 그룹**(고른 저장 집합 4~5개)의 통과 ●/·.
 // "어느 조건 덕에 나왔나"는 조건판이 아니라 이 뷰의 책임이다(사용자 확정).
 //
 // · 날짜 넘기 = 작업 대상과 같은 기계(useDayCrossing) — 목록 끝 w/s·◀▶ 로 이전/다음 거래일, 빈 날 스킵,
@@ -9,7 +10,7 @@
 // · 잘리거나(그물) 오류인 그룹은 열 전체 "—" — 모름을 통과/탈락으로 찍지 않는다(exploreRows.groupColStateOf).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { minuteOfDayOf, type CellEvalOptions } from "@trade-data-manager/market/domain";
+import { minuteOfDayOf } from "@trade-data-manager/market/domain";
 import { dataDatesQuery } from "../../api/queries.js";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
@@ -17,28 +18,20 @@ import { RowNavBadge } from "../../components/RowNavBadge.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { usePublishRowNav } from "../../lib/rowNav.js";
 import { useDayReplayPrefetch } from "../../lib/useDaySnapshot.js";
-import { selectObservedSetId, useWorkbench } from "../../store/workbench.js";
+import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { AnchoredPopover } from "../../ui/Dialog.js";
 import { PIN } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { DAY_SET_OPTS, useCellSet } from "../filter/useCellSet.js";
-import { setDisplayName } from "../filter/label.js";
-import { leavesOf, type SetExpr } from "../filter/expr.js";
+import { leavesOf } from "../filter/expr.js";
 import { neighborDates } from "../workset/dayCrossing.js";
 import { useDayCrossing } from "../workset/useDayCrossing.js";
 import { stepWithin, type NavKey } from "../workset/rows.js";
-import { MAX_GROUPS, autoGroupIds, cellKeyOf, exploreRowsOf, groupColStateOf, type GroupColState } from "./exploreRows.js";
+import { MAX_GROUPS, cellKeyOf, exploreRowsOf, type ExploreSort } from "./exploreRows.js";
+import { useConditionGroups } from "./useConditionGroups.js";
 
 const EMPTY_DATES: string[] = [];
-/**
- * 그룹 멤버십 평가의 옵션 — **목록이 아니라 진릿값**이라 상한(300)을 안 건다(그물 50,000만 남긴다).
- * 2026-09-26 실측: 상한을 걸면 넓은 그룹이 종목째 잘려 ● 이 통째로 어긋난다(첫 판은 전 열이 "—"였다).
- * 보는 집합(행 목록)은 계속 DAY_SET_OPTS — 그건 하류(목록·순회)를 보호하는 산출물 상한이다.
- */
-const GROUP_OPTS: CellEvalOptions = { limit: 50_000 };
-/** 그룹 열 색 — 자리(0~4) 고정. 종류색과 겹치지 않게 중간 채도로 다섯. */
-const GROUP_COLORS = ["#1d9e75", "#7f77dd", "#ba7517", "#2f7fd0", "#c2557e"] as const;
 const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"] as const;
 const fmtEok = (won: number): string => `${(won / 1e8).toFixed(won >= 1e10 ? 0 : 1)}억`;
 
@@ -51,45 +44,19 @@ export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element
     const focusCode = useWorkbench((s) => s.focus.code);
     const focusTime = useWorkbench((s) => s.focus.time);
     const savedSets = useWorkbench((s) => s.savedSets);
-    const observedId = useWorkbench(selectObservedSetId);
 
     // ── 보는 집합의 그날 후보 — 차트 ◇·작업 대상과 같은 평가·같은 상한(300).
     const cellSet = useCellSet(isDaily ? funnel.slowExpr : null, funnel.slowSets, focusDate, DAY_SET_OPTS);
+    // 기본 = 종목순(종목 안 시간순) — 대부분 종목 단위로 걷는다(사용자 확정). 순회(w/s)도 이 순서 그대로다.
+    const [sortMode, setSortMode] = usePanelUi<ExploreSort>(panelId, "sortMode", "stock");
     const rows = useMemo(
-        () => (cellSet.tooWide ? [] : exploreRowsOf(cellSet.hits, (code) => cellSet.byCode.get(code), minuteOfDayOf)),
-        [cellSet.tooWide, cellSet.hits, cellSet.byCode],
+        () => (cellSet.tooWide ? [] : exploreRowsOf(cellSet.hits, (code) => cellSet.byCode.get(code), minuteOfDayOf, sortMode)),
+        [cellSet.tooWide, cellSet.hits, cellSet.byCode, sortMode],
     );
 
-    // ── 조건 그룹 — 저장물은 고른 id 목록 하나(null = 자동: 보는 집합의 최상위 참조 항).
-    const [picked, setPicked] = usePanelUi<string[] | null>(panelId, "exploreGroups", null);
-    // ⚠ 그룹 식은 **늦은 한 벌**(slowSets)에서 — 행과 같은 박자여야 하고, 살아 있는 savedSets 를 쓰면
-    //   조건판에서 그룹 집합을 만지는 키스트로크마다 전 시장 평가(0.25~0.47초)가 돈다(리뷰가 잡은 자리).
-    const observedExpr = useMemo<SetExpr | null>(() => funnel.slowSets.find((x) => x.id === observedId)?.expr ?? null, [funnel.slowSets, observedId]);
-    const groupSets = useMemo(() => {
-        const ids = picked ?? (observedExpr ? autoGroupIds(observedExpr) : []);
-        return ids.map((id) => funnel.slowSets.find((x) => x.id === id)).filter((x): x is NonNullable<typeof x> => x !== undefined && x.universe === "daily").slice(0, MAX_GROUPS);
-    }, [picked, observedExpr, funnel.slowSets]);
-    const groupName = useCallback(
-        (setId: string): string => {
-            const f = savedSets.find((x) => x.id === setId);
-            return f ? setDisplayName(f, funnel.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)";
-        },
-        [savedSets, funnel.labelLook],
-    );
-    // 훅은 개수가 고정이어야 한다 — 그룹 칸 5개를 늘 부르고, 빈 칸은 null 식(재료를 안 당긴다).
+    // ── 조건 그룹 — 선택·평가는 useConditionGroups 한 벌(기본 차트 고스트 칩과 공유).
     // ⚠ 행이 없는 날(빈 날·로딩·잘림)엔 그룹도 안 돈다 — 자동 스킵이 지나는 날마다 5벌 평가를 물지 않게.
-    const groupsActive = isDaily && rows.length > 0;
-    const gx = (i: number): SetExpr | null => (groupsActive ? groupSets[i]?.expr ?? null : null);
-    const g0 = useCellSet(gx(0), funnel.slowSets, focusDate, GROUP_OPTS);
-    const g1 = useCellSet(gx(1), funnel.slowSets, focusDate, GROUP_OPTS);
-    const g2 = useCellSet(gx(2), funnel.slowSets, focusDate, GROUP_OPTS);
-    const g3 = useCellSet(gx(3), funnel.slowSets, focusDate, GROUP_OPTS);
-    const g4 = useCellSet(gx(4), funnel.slowSets, focusDate, GROUP_OPTS);
-    const groupCols = useMemo<{ setId: string; name: string; color: string; state: GroupColState }[]>(() => {
-        const evals = [g0, g1, g2, g3, g4];
-        return groupSets.map((f, i) => ({ setId: f.id, name: groupName(f.id), color: GROUP_COLORS[i]!, state: groupColStateOf(evals[i]!) }));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [groupSets, groupName, g0.evaluable, g0.hits, g0.isLoading, g0.ready, g0.tooWide, g0.truncated, g0.themesReady, g0.error, g1.evaluable, g1.hits, g1.isLoading, g1.ready, g1.tooWide, g1.truncated, g1.themesReady, g1.error, g2.evaluable, g2.hits, g2.isLoading, g2.ready, g2.tooWide, g2.truncated, g2.themesReady, g2.error, g3.evaluable, g3.hits, g3.isLoading, g3.ready, g3.tooWide, g3.truncated, g3.themesReady, g3.error, g4.evaluable, g4.hits, g4.isLoading, g4.ready, g4.tooWide, g4.truncated, g4.themesReady, g4.error]);
+    const { picked, setPicked, groupSets, groupCols, groupName } = useConditionGroups(focusDate, isDaily && rows.length > 0);
 
     // ── 좁히기 — 열 머리 클릭 = 그 그룹 통과 행만(다시 = 해제). 세션 상태(시선이지 저장물이 아니다).
     const [narrowId, setNarrowId] = useState<string | null>(null);
@@ -157,6 +124,11 @@ export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element
     const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
     const controls = useMemo<ControlSpec[]>(() => [
         {
+            kind: "toggle", id: "sort", name: sortMode === "stock" ? "종목순" : "시간순", on: sortMode === "stock",
+            help: "종목순 = 종목 머리줄 아래 시간순(기본 — 한 종목을 다 걷고 다음 종목) · 시간순 = 장 흐름대로 평탄",
+            set: () => setSortMode((v) => (v === "stock" ? "time" : "stock")),
+        },
+        {
             kind: "toggle", id: "datePin", name: "날짜 고정", on: datePinned,
             help: "목록 끝에서 w/s·◀▶ 가 날짜를 안 넘긴다 — '이 날만 보겠다'는 선언",
             set: () => setDatePinned((v) => !v),
@@ -166,7 +138,7 @@ export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element
             help: "열로 세울 조건 그룹(저장 집합) 고르기 — 최대 5개. 기본은 보는 집합의 최상위 부품",
             run: (at) => setMenuAt((v) => (v === null ? { x: at.clientX, y: at.clientY } : null)),
         },
-    ], [datePinned, setDatePinned, groupCols.length, menuAt]);
+    ], [sortMode, setSortMode, datePinned, setDatePinned, groupCols.length, menuAt]);
 
     // ── 포커스 행 따라가기 — 걷는 행이 화면 밖으로 나가지 않게.
     const focusRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -209,7 +181,7 @@ export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element
                         <thead>
                             <tr>
                                 <Th style={{ width: 44 }}>시간</Th>
-                                <Th>종목</Th>
+                                {sortMode === "time" && <Th>종목</Th>}
                                 <Th style={{ textAlign: "right", width: 56 }}>대금</Th>
                                 {groupCols.map((c) => (
                                     <th key={c.setId} style={{ ...thBase, textAlign: "center", maxWidth: 76, cursor: c.state.kind === "ready" ? "pointer" : "default", color: narrowId === c.setId ? c.color : "var(--text-tertiary)", borderBottom: narrowId === c.setId ? `2px solid ${c.color}` : thBase.borderBottom }}
@@ -221,15 +193,31 @@ export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element
                             </tr>
                         </thead>
                         <tbody>
-                            {shownRows.map((r) => {
+                            {shownRows.map((r, i) => {
                                 const isFocus = r.code === focusCode && r.time === focusTime;
+                                // 종목순일 때만 종목 머리줄 — 이름만 싣는다(수·요약 없음, 사용자 확정). 클릭 = 그 종목 첫 타점.
+                                const head = sortMode === "stock" && (i === 0 || shownRows[i - 1]!.code !== r.code) ? (
+                                    <tr key={`head-${r.code}`}>
+                                        <td colSpan={2 + groupCols.length} style={{ padding: 0, borderBottom: "0.5px solid var(--border-subtle)" }}>
+                                            <button onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}
+                                                title="이 종목의 첫 타점으로"
+                                                style={{ display: "block", width: "100%", textAlign: "left", border: "none", cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 600, padding: "3px 8px", background: "var(--bg-secondary)", color: "var(--text-secondary)" }}>
+                                                {nameOf(r.code)}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ) : null;
                                 return (
-                                    <tr key={cellKeyOf(r.code, r.min)} ref={isFocus ? focusRowRef : undefined}
+                                    <FragmentRow key={cellKeyOf(r.code, r.min)} head={head}>
+                                    <tr ref={isFocus ? focusRowRef : undefined}
                                         onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}
                                         title="이 타점으로 시선 이동 — 차트가 따라온다"
                                         style={{ cursor: "pointer", background: isFocus ? "var(--accent-soft)" : "transparent" }}>
                                         <Td>{r.time.slice(0, 5)}</Td>
-                                        <Td style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{nameOf(r.code)}</Td>
+                                        {/* 종목순에선 열 자체를 접는다 — 머리줄이 이름을 말하는데 빈 열이 폭만 먹는다. */}
+                                        {sortMode === "time" && (
+                                            <Td style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>{nameOf(r.code)}</Td>
+                                        )}
                                         <Td style={{ textAlign: "right", color: "var(--text-secondary)" }}>{r.amount === null ? "—" : fmtEok(r.amount)}</Td>
                                         {groupCols.map((c) => (
                                             <Td key={c.setId} style={{ textAlign: "center" }}>
@@ -241,6 +229,7 @@ export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element
                                             </Td>
                                         ))}
                                     </tr>
+                                    </FragmentRow>
                                 );
                             })}
                         </tbody>
@@ -255,6 +244,14 @@ export function DailyExplorePanel({ panelId }: { panelId: string }): JSX.Element
         </div>
     );
 }
+
+/** 머리줄(있으면)과 본 줄을 한 키 아래 묶는 조각 — tbody 직계는 tr 이어야 해서 Fragment 로 잇는다. */
+const FragmentRow = ({ head, children }: { head: React.ReactNode; children: React.ReactNode }): JSX.Element => (
+    <>
+        {head}
+        {children}
+    </>
+);
 
 const thBase: React.CSSProperties = {
     position: "sticky", top: 0, zIndex: 1, background: "var(--bg-primary)", fontSize: 10, fontWeight: 400,
