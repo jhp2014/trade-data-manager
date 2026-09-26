@@ -6,11 +6,8 @@
 // 1만 객체가 화면 수만큼 복제되므로, 소비자(시트·깔때기·차트 마커)는 전부 이 훅의 산출물을 본다.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { chartKeyOf, type DerivedPoint, type PointGrid, type PointJudgeDef, type ReviewPointKey } from "@trade-data-manager/market/domain";
+import type { PointGrid } from "@trade-data-manager/market/domain";
 import { pointGridsQuery } from "../api/queries.js";
-import { useWorkbench } from "../store/workbench.js";
-import { defDerivedFor } from "./defDerived.js";
-import { qualifyKeyOf } from "./pointDef.js";
 
 export interface PointGridsView {
     isLoading: boolean;
@@ -37,58 +34,3 @@ export function usePointGridsValue(): PointGridsView {
         };
     }, [q.data, q.isLoading, q.error]);
 }
-
-/** 자동 Point 한 줄 — 타점 자연키(stockCode·date·time) + 판정 산출물. */
-export interface AutoPoint {
-    stockCode: string;
-    date: string;
-    /** "HH:MM:00" — 기존 타점 시각 표기와 같은 자(minuteToHms 한 벌). */
-    time: string;
-    point: DerivedPoint;
-}
-
-export interface AutoPointsView {
-    isLoading: boolean;
-    error: Error | null;
-    /** 전 자동 Point(시간순은 차트 안에서만 보장). 정의·번들이 바뀔 때만 재계산. */
-    points: AutoPoint[];
-    /**
-     * 행 원천용 키 목록 — 날짜 내림차순, 같은 날 시각 오름차순. **여기서 한 번만** 만든다:
-     * 소비자(시트·깔때기·작업셋·레일·통계)가 각자 정렬하면 1만 개짜리 배열이 화면 수만큼 복제되고,
-     * 참조가 갈려 파생 memo(useThemeProjection 모듈 캐시)가 통째로 헛돈다.
-     */
-    rows: readonly ReviewPointKey[];
-    /** 차트키(chartKeyOf) → 그 차트의 파생 Point 목록 — 차트 마커·per-chart 소비자용. */
-    byChart: ReadonlyMap<string, DerivedPoint[]>;
-}
-
-const EMPTY: DerivedPoint[] = [];
-
-/** ⚠ 직접 부르지 말 것 — PointGridsProvider 가 유일한 호출자다(파생이 인스턴스마다 복제된다). */
-export function useAutoPointsValue(): AutoPointsView {
-    const q = useQuery(pointGridsQuery());
-    // 판정 노브만 구독한다 — 허용 폭 T 는 `PointJudgeDef` 가 원리적으로 못 보는 필드라(행·행 시각 불변 계약)
-    // 통째 의존하면 T 드래그가 1만 Point 를 헛재파생하고 `points` 참조까지 갈아 하류 memo 를 무효화한다.
-    // ⚠ 판정 노브를 늘리면 여기 구조분해·deps **둘 다** 늘린다 — 빠뜨리면 노브를 돌려도 화면이 안 변한다.
-    const { baselineGateEok, renewalGateEok, qualifyWindows, mergeRisePct, bullOnly, approachPct } = useWorkbench((s) => s.pointDef);
-    // ⚠ 자격 창은 **배열**이라 deps 에 그대로 물리면 안 된다 — 파서가 매 커밋 새 배열을 만들어,
-    // 무관한 노브(T·시뮬)를 만질 때마다 1만 시그널 파생이 헛돈다. 내용을 문자열 키로 대신 문다.
-    const qualifyKey = qualifyKeyOf(qualifyWindows);
-    const def = useMemo<PointJudgeDef>(
-        () => ({ baselineGateEok, renewalGateEok, qualifyWindows, mergeRisePct, bullOnly, approachPct }),
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-        [baselineGateEok, renewalGateEok, qualifyKey, mergeRisePct, bullOnly, approachPct],
-    );
-    return useMemo<AutoPointsView>(() => {
-        if (!q.data) return { isLoading: q.isLoading, error: (q.error as Error | null) ?? null, points: [], byChart: new Map(), rows: [] };
-        // 파생은 정의별 캐시 한 곳(defDerived) — 정의를 오가도(집합 열기 A↔B) 같은 판정 키면 재파생이 없다.
-        const v = defDerivedFor(q.data.byDate, def).auto;
-        // 드문 갈래: 번들은 있는데 refetch 가 실패한 상태 — 캐시 산출물에 오류만 실어 낸다(참조가 갈리지만 오류 상태 자체가 드묾).
-        const err = (q.error as Error | null) ?? null;
-        return err ? { ...v, error: err } : v;
-    }, [q.data, q.isLoading, q.error, def]);
-}
-
-/** 차트 하나의 자동 Point — byChart 조회 헬퍼(없으면 빈 배열 고정 참조 — 렌더 루프에서 새 배열 금지). */
-export const autoPointsOfChart = (view: AutoPointsView, code: string, date: string): DerivedPoint[] =>
-    view.byChart.get(chartKeyOf({ stockCode: code, date })) ?? EMPTY;

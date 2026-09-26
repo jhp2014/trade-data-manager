@@ -110,8 +110,8 @@ export function WorksetPanel({ panelId }: { panelId?: string }): JSX.Element {
     // 이름 어휘는 집합 줄과 같은 한 벌(setDisplayName). 클릭 = 집합 편성 패널로(닫혀 있으면 연다).
     const setLabel = useMemo(() => {
         const f = savedSets.find((x) => x.id === observedId);
-        return f ? setDisplayName(f, funnel.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)";
-    }, [savedSets, observedId, funnel.labelLook]);
+        return f ? setDisplayName(f, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)";
+    }, [savedSets, observedId]);
     const goToFunnelPanel = (): void => openAndFocus(DAILY_GEN_PANEL_ID);
 
     // ── 목록 행 — **한 배열**이 목록과 순회의 공통 원천이다(두 벌이면 접힌 행을 순회가 밟는다).

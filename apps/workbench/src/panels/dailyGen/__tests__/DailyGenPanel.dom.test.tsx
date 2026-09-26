@@ -110,7 +110,7 @@ describe("집합 목록 — 줄 0 칩의 판 하나(새 집합·열기·이름·
 
     // 편집 = 저장이라 「저장」 버튼이 없다(2026-09-20) — 남은 손은 **＋ 새 집합** 하나다.
     it("＋ 새 집합 — 빈 집합이 생기고 그게 편집 대상이 된다(이름은 나중에)", () => {
-        seedEditing(exprOfStages([{ id: "st1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[0] }] }] }]), ONE);
+        seedEditing(exprOfStages([{ id: "st1", enabled: false, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }] }]), ONE);
         const before = useWorkbench.getState().savedSets.length;
         const { container, baseElement } = renderPanel();
         fireEvent.click(btnByTitle(container, "집합 목록"));
@@ -239,9 +239,4 @@ describe("머리글 — 하루 고정", () => {
         expect(container.textContent).toContain("조건 0 / 1");
     });
 
-    it("종단 조건을 품은 옛 집합을 열면 **평가 안 함**을 말한다(건너갈 손은 없다 — 종단 보류)", () => {
-        seedEditing(exprOfStages([{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATES[0], to: DATES[1] }] }] }]), [], "daily");
-        const { container } = renderPanel();
-        expect(container.textContent).toContain("종단 집합 — 평가 안 함");
-    });
 });

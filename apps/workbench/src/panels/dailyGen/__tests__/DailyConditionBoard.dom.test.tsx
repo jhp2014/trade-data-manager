@@ -213,9 +213,9 @@ describe("관리 — 켜기/끄기와 삭제는 보드가 진다", () => {
 // 연산자는 **경계마다 하나**고, 판을 열어 바꾼다. 섞이는 순간 괄호가 박히므로 화면에 "읽는 규칙을
 // 알아야 뜻이 정해지는 식"이 서지 않는다.
 describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
-    const stage2 = { id: "d2", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
-    const stage3 = { id: "d3", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[0], to: DATES[0] }] }] };
-    const stage4 = { id: "d4", enabled: true, predicates: [{ kind: "date" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
+    const stage2 = { id: "d2", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
+    const stage3 = { id: "d3", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: DATES[0], to: DATES[0] }] }] };
+    const stage4 = { id: "d4", enabled: true, predicates: [{ kind: "time" as const, ranges: [{ from: DATES[1], to: DATES[1] }] }] };
 
     it("항 사이에 연산자가 낱말로 선다 — AND 기본", () => {
         seedEditing(exprOfStages([RATE_STAGE, stage2]));

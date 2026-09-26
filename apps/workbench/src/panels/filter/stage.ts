@@ -1,109 +1,33 @@
-// 필터 단계 모델(순수) — 깔때기가 세는 **조건의 모양**. 판정도 정산도 여기 없다.
-//   · 정산(전 단계 3치 AND) = core/market 의 funnel — 술어를 모른다.
-//   · 판정(이 항목이 이 조건에 맞나) = 종류별 평가기 — 재료(멤버십·배치줄·날짜)를 안다.
-//   · 모양(무슨 조건이 몇 단계로 놓였나) = 여기.
+// 필터 단계 모델(순수) — 조건의 **모양**. 판정도 정산도 여기 없다(판정 = core cellset 엔진).
 //
-// **조건은 패널의 소유물이 아니다.** "그룹 A 소속"이 술어 객체가 되는 순간 그 조건은 배치 보드도 시트도
-// 아닌 한 곳에 모여 순서 변경·on/off·저장이 된다. 옛 모양(rankFilterSlice)은 차원별로 자리가 정해진
-// **평평한 가방**이라 순서라는 개념 자체가 없었다 — 깔때기가 요구하는 건 순서 있는 단계 리스트다.
+// 2026-09-26 종단 폐기: 옛 종단 술어 7종(그룹·축밴드·축값·날짜·결과 2종·급타점)과 gridPoint 가
+// 은퇴했다 — 남은 종류는 전부 하루·셀 우주(종목×분)의 술어고, 층위도 전부 타점이다.
+// 은퇴 kind 가 든 저장물은 파서가 그 술어만 걷어낸다(수는 로그 — decisions 「종단 트랙 전면 폐기」).
 //
-// ⚠ 알갱이(grain)는 **저장하지 않고 파생한다.** 저장하면 진실이 둘이 된다 — 저장된 알갱이와 실제 사전.
-// 어긋나는 순간 어느 쪽이 맞는지 판단할 근거가 없다(그룹·축의 scope 는 만들 때 정해지고 바뀌지 않지만,
-// **지워지기는 한다** — 단계는 로컬이고 축은 DB라 죽은 참조가 남는다. 계산 축에 day 알갱이가 들어오면
-// 저장본은 옛 값을 든 채 남는다). 파생하면 사전 하나뿐이라 어긋날 수가 없다.
-//
-// ⚠ 예외 하나 — **그룹 술어는 scope 를 저장한다**(2026-09-16, decisions.md 「그룹 편집 출구」).
-// 그룹의 grain 은 사전(스키마)에 없고 멤버십 관례뿐이라 "파생할 사전"이 애초에 없다 — 멤버십에서
-// 유도하면 빈 그룹 모호성·로딩 중 보류·멤버 변동에 따른 화면 해상도 뒤집힘 세 갈래가 생긴다.
-// scope 는 그룹의 성질이 아니라 **질문의 층위**다. 팔레트는 그 낟알의 그룹만 보여주지만(1:1, B안)
-// **평가는 scope 가 층위를 정한다** — 승계 저장물(scope 부재=day)에 point 그룹 리터럴이 남아 있어
-// day 질문의 ∃ 상향("라벨 타점을 하나라도 가진 날")이 평가 계약으로 유지된다(evaluate.ts).
-// 어긋남 걱정의 대상(지워짐)은 isPredicateDead 가 리터럴 단위로 따로 잰다.
-//
-// ⚠ 알갱이는 **3치**다: day · point · undefined(모름). "모른다"를 "하루다"로 뭉개면 사전이 로딩 중일 때도
-// 확답을 주게 되어, 사전이 도착하는 순간 해상도가 튀고 결과 목록이 통째로 다시 그려진다. 이 앱이 이미
-// 쓰는 규칙과 같다(evalPredicate·and3) — "아니다"와 "모른다"는 섞지 않는다. 모름을 어떻게 다룰지는
-// **사전 로드 여부를 아는 소비자**의 몫이다(로딩 중 = 보류 / 로드 끝났는데 없음 = 죽은 참조).
+// **조건은 패널의 소유물이 아니다.** "돌파 사슬" 같은 조건이 술어 객체가 되는 순간 그 조건은
+// 어느 판도 아닌 한 곳(식 트리)에 모여 순서 변경·on/off·저장이 된다.
 import {
     parseCellPredicate,
-    TOLERANCE_MAX_PCT,
-    TOLERANCE_MIN_PCT,
     type CellPredicate,
     type Grain,
     type Transition,
 } from "@trade-data-manager/market/domain";
-import type { GroupExpr } from "../rank/groupFilter.js";
-import { isGroupExprEmpty, isNoneLiteral, parseGroupExpr, renameGroupInExpr } from "../rank/groupFilter.js";
-import { DEFAULT_THEME_ZONE, anyThemeCondOn, parseThemeZoneParams } from "@trade-data-manager/market/domain";
-// (2026-09-26 종단 은퇴 과도기) 결과·급타점 술어의 파서 재료 — kind 자체가 ①-3에서 은퇴하면 같이 죽는다.
-export type OutcomeMetric = "extHigh" | "dropFromHigh" | "dropFromClose";
-const OUTCOME_METRICS: readonly OutcomeMetric[] = ["extHigh", "dropFromHigh", "dropFromClose"];
-const isOutcomeMetric = (v: unknown): v is OutcomeMetric => OUTCOME_METRICS.includes(v as OutcomeMetric);
-const isHotW = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 5 && v <= 240;
-const isHotR = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0.5 && v <= 15;
+import { anyThemeCondOn, DEFAULT_THEME_ZONE, parseThemeZoneParams } from "@trade-data-manager/market/domain";
 
-// 판정 알갱이 — 도메인 공용 어휘(그룹 scope·축 scope·깔때기 Grain 이 전부 같은 타입). 여기서 재수출해
-// 필터 모듈들은 stage 만 본다(도메인 경로가 바뀌어도 한 줄).
+// 판정 알갱이 — 도메인 공용 어휘 재수출(필터 모듈들은 stage 만 본다).
 export type { Grain };
 
-// ── 필터 차원의 모양 — 옛 rankFilterSlice 에서 이사 왔다(전역 필터 store 는 철거, 조건은 단계 안에만 산다).
-/**
- * 배치 축 밴드 — 양 경계를 **타점 앵커**(pointKey 문자열)로 든다. 계산 축 경계(AxisBound)와 같은 규칙:
- * 자리(orderKey)는 reindex·재계산이 다시 쓰는 값이라 들고 있으면 뜻이 조용히 바뀌고, slotId 는 그 자리가
- * 비면 GC 되어 경계가 끊긴다. 타점은 (종목·날짜·시각) 자연키라 둘 다 안 겪는다.
- */
-export interface RankBand {
-    lo?: string; // 이상 경계(작은 orderKey 쪽)에 선 타점의 pointKey
-    hi?: string; // 이하 경계(큰 orderKey 쪽)에 선 타점의 pointKey
-}
-export interface DateRange { from: string; to: string } // YYYY-MM-DD (양끝 포함)
 export interface TimeRange { from: string; to: string } // HH:MM (양끝 포함)
 
 /**
- * 계산 축 경계 — **타점 앵커가 기본**이고 값 직접 지정이 보조다.
- * 왜 앵커인가: 계산 축의 자리는 수식이 정한다. 수식을 고치면 모든 값이 움직이는데, 경계만 숫자로 굳어
- * 있으면 "이 타점보다 위"라는 원래 판단이 조용히 다른 뜻이 된다. 앵커로 두면 경계가 타점을 따라 움직인다.
- */
-export type AxisBound = { kind: "point"; point: string } | { kind: "value"; value: number };
-/** 한 구간. 한쪽이 없으면 반열림(그 방향 무제한) — "이 값 이상"이 자연스러운 조작이라. */
-export interface AxisValueRange { from?: AxisBound; to?: AxisBound }
-
-/**
- * 술어 하나. payload 는 기존 차원 타입을 **그대로 재사용**한다(밴드·값구간·날짜·시간·DNF) — 조건의
- * 뜻이 달라진 게 아니라 놓이는 자리가 달라진 것뿐이라, 여기서 새 표현을 발명하면 편집 UI 를 통째로 다시 짜야 한다.
+ * 술어 하나 — core `domain/cellset` 의 어휘를 **그대로** 흡수한다(2026-09-18 단계 ②).
+ * `time` 만 workbench 소유다(엔진에도 같은 kind 가 있어 payload 가 글자까지 같다).
  */
 export type FilterPredicate =
-    // 그룹 식 — **scope(질문의 층위) 필수**(머리 주석의 예외 항목). 옵셔널로 두면 "부재=day" 규칙이
-    // 파서 밖 여러 곳에서 각자 자라므로, 승계 흡수는 parsePredicate 한 곳에 두고 타입은 필수로 못 박는다.
-    | { kind: "group"; expr: GroupExpr; scope: Grain }
-    | { kind: "axisBand"; axisId: string; band: RankBand }
-    | { kind: "axisValue"; axisId: string; ranges: AxisValueRange[] }
-    | { kind: "date"; ranges: DateRange[] }
-    // `time` 은 **한 종류로 합쳐졌다** — payload 가 글자까지 같아 새 kind 를 만들 이유가 없었다.
-    // 전이는 하루 우주에서만 뜻이 있고 종단에선 결손이다(universe.ts).
     | { kind: "time"; ranges: TimeRange[]; transition?: Transition }
-    // 시그널 결과(미래 값) — **허용 폭 T 를 술어가 든다**(2026-09-09 인스턴스화: 옛 "T 는 정의 상태"를
-    // 뒤집음). T 는 모수도 행의 시각·가격도 안 바꾸고 결과 값만 바꾸므로 값만 바꾸는 전제 = 술어 payload
-    // 규칙에 따라 여기 산다 — 그래서 **서로 다른 T 의 조건이 한 집합 안에서 AND 로 공존한다**
-    // (decisions.md 「허용 폭 T 의 인스턴스화」). 경계는 axisValue 와 같은 AxisBound.
-    | { kind: "outcome"; metric: OutcomeMetric; t: number; ranges: AxisValueRange[] }
-    // 보고 저가의 회복 여부(그 저가 이후 직전 고가 재돌파 — 세션 최고가 판정, 볼륨 무관) — 명목값이라
-    // 레일이 아니라 결과 패널 머리글 칩이 편집 입구다. 무눌림(저가 없음)은 결손(3치 undefined).
-    // `slice.recovered` 가 T 단면의 산출물이라 **이쪽도 자기 T 를 든다**(안 그러면 이 조건만 표시 T 를 따른다).
-    | { kind: "outcomeRecovery"; recovered: boolean; t: number }
-    // 급타점 수 — **창 W·상승률 하한 r 을 술어가 든다**(테마·결과와 같은 규칙: 파라미터가 payload 안에
-    // 살아야 SavedSet 이 자립한다). 값은 격자 파생 축으로 나가지만(축 id = `c:hot:<stageId>`) 조건은
-    // 축 술어(axisValue)가 아니라 **자기 종류**다 — 파라미터가 조건에 실려 있어야 서로 다른 (W,r) 이
-    // 한 집합 안에서 AND 로 공존한다(decisions.md 「급타점 수 축」).
-    | { kind: "hotPoints"; w: number; r: number; ranges: AxisValueRange[] }
-    // ── 셀 술어(하루·셀 우주) — core `domain/cellset` 의 어휘를 **그대로** 흡수한다(2026-09-18 단계 ②).
-    // 합류 방향이 core → workbench 인 이유: 반대로 종단 술어를 core 로 올리면 `GroupExpr`·
-    // `ThemeStrengthParams`·`OutcomeMetric`(전부 workbench 어휘)이 core 에 딸려 들어간다.
-    // 종단 평가기에서 이 셋은 **결손(undefined)** 이고, 그 사실은 universe.ts 의 결손 지도가 말한다.
     | Extract<CellPredicate, { kind: "cellValue" }>
     | Extract<CellPredicate, { kind: "priorHighBreak" }>
-    | Extract<CellPredicate, { kind: "gridPoint" }>
-    // Daily 타점 생성기(돌파 사슬)와 캔들 모양 필터(2026-09-24 — decisions 「Daily 타점 생성 = 돌파 사슬」).
+    // Daily 타점 생성기(돌파 사슬)와 캔들 모양 필터(decisions 「Daily 타점 생성 = 돌파 사슬」).
     | Extract<CellPredicate, { kind: "breakout" }>
     | Extract<CellPredicate, { kind: "candleShape" }>
     // 테마 존(2026-09-26) — 옛 종단 themeStrength·존순위 셀 값의 후신. 판정·파서는 core themeZone 한 벌.
@@ -116,17 +40,15 @@ export type { Transition };
 
 /**
  * 술어 종류 스위치의 **자물쇠**. 이 레포는 `noImplicitReturns` 가 없어서, 반환형에 `undefined`/`null`
- * 이 있는 스위치는 case 를 빠뜨려도 컴파일이 통과한다 — 그리고 그때의 증상이 조용하다:
- * `evalPredicate3` 를 빠뜨리면 **모든 항목이 미배치로 세어져** 숫자는 나오는데 필터가 아무 일도 안 하고,
- * `predicateGrain` 을 빠뜨리면 그 조건이 보드에서 "(지워짐)"으로 보이며, `railKeyOf` 를 빠뜨리면
- * 그은 컷이 그 행에 안 붙는다. 그래서 그 세 자리는 default 에서 이 함수를 부른다 — 새 술어 종류를
- * 더하는 손이 **컴파일 에러로** 그 셋을 만나게 하는 것이 이 함수의 존재 이유 전부다.
+ * 이 있는 스위치는 case 를 빠뜨려도 컴파일이 통과한다 — 그때의 증상이 조용하다(그 종류가 "무제한
+ * 통과"로 새거나 보드에서 "(지워짐)"으로 보인다). 새 술어 종류를 더하는 손이 **컴파일 에러로**
+ * 이 스위치들을 만나게 하는 것이 이 함수의 존재 이유 전부다.
  */
 export function unknownPredicate(p: never): never {
     throw new Error(`알 수 없는 술어 종류: ${JSON.stringify(p)}`);
 }
 
-/** 단계 하나 — 술어들의 AND. 단계끼리도 AND 지만, 나뉘어 있어야 "어느 단계가 무엇을 죽였나"를 물을 수 있다. */
+/** 단계 하나 — 술어들의 AND. 단계끼리도 AND 지만, 나뉘어 있어야 따로 끄고 켤 수 있다. */
 export interface FilterStage {
     id: string;
     /** 손으로 준 이름. 없으면 조건에서 자동 라벨. */
@@ -135,37 +57,26 @@ export interface FilterStage {
     enabled: boolean;
     predicates: FilterPredicate[];
     /**
-     * **전이 수식어(칸 수준)** — 술어 AND 전체를 하나의 f 로 보고 그 엣지에서만 건다(2026-09-18 단계 ②).
-     * 문법이 칸인 이유: 줄 토글이면 `A(처음으로) ∧ B` 가 "A 가 처음 참이 된 분 ∧ 그 분에 B" 인데
-     * 사람이 원하는 건 "A∧B 가 처음 성립한 분"이다(옛 probe ② 가 정확히 후자다).
-     * 술어에도 같은 필드가 있고 **술어 하나짜리 칸에서 둘은 동치**다(core engine 테스트가 잠갔다) —
-     * 읽기는 양쪽을 흡수하고 쓰기만 여기로 한다. 하루·셀 우주에서만 뜻이 있다(종단은 결손).
+     * **전이 수식어(칸 수준)** — 술어 AND 전체를 하나의 f 로 보고 그 엣지에서만 건다.
+     * 술어에도 같은 필드가 있고 **술어 하나짜리 칸에서 둘은 동치**다(core engine 테스트가 잠갔다).
      */
     transition?: Transition;
 }
 
 /**
- * "무거운 조건"인가 — 날짜 자동 스킵 상한을 줄이는 자(격자·존/테마 분 단면). 옛날엔 WorksetPanel·
- * DailyExplorePanel 두 손 사본이었다(리뷰) — 한 벌로 모은다.
+ * "무거운 조건"인가 — 날짜 자동 스킵 상한을 줄이는 자(사슬·테마 분 단면). WorksetPanel·
+ * DailyExplorePanel 이 한 벌로 쓴다.
  */
 export function isHeavyCellPredicate(p: FilterPredicate): boolean {
-    return p.kind === "gridPoint" || p.kind === "breakout" || p.kind === "theme";
+    return p.kind === "breakout" || p.kind === "theme";
 }
 
-/** 조건이 하나도 없는 술어(빈 식·빈 배열·빈 밴드) — 평가에서 빼야 "무제한"이 "전부 미배치"로 안 뒤집힌다. */
+/** 조건이 하나도 없는 술어(빈 배열·전부 꺼진 컷) — 평가에서 빼야 "무제한"이 "전부 미배치"로 안 뒤집힌다. */
 export function isPredicateEmpty(p: FilterPredicate): boolean {
     switch (p.kind) {
-        case "group": return isGroupExprEmpty(p.expr);
-        case "axisBand": return !p.band.lo && !p.band.hi;
-        case "axisValue": return p.ranges.length === 0;
-        case "date": return p.ranges.length === 0;
         case "time": return p.ranges.length === 0;
-        case "outcome": return p.ranges.length === 0;
-        case "outcomeRecovery": return false; // boolean 하나라 항상 조건이다
-        case "hotPoints": return p.ranges.length === 0;
         case "cellValue": return p.ranges.every((r) => !r.from && !r.to);
         case "priorHighBreak": return false; // 창 하나라 항상 조건이다
-        case "gridPoint": return false;
         case "breakout":
         case "candleShape": return false; // 노브가 전부 기본값을 가져 항상 조건이다
         case "theme": return !anyThemeCondOn(p); // 활성 하위 조건 0 = 무제한 통과(core 빈 판정과 같은 자)
@@ -178,199 +89,13 @@ export function activeStages(stages: readonly FilterStage[]): FilterStage[] {
     return stages.filter((s) => s.enabled && s.predicates.some((p) => !isPredicateEmpty(p)));
 }
 
-/** 알갱이 판정에 필요한 바깥 지식 — 사전이 답한다(없는 id = 지워진 그룹·축). */
-export interface GrainLookup {
-    /**
-     * 사전에 있는 그룹인가 — 없으면 죽은 참조. 그룹의 알갱이는 저장된 scope 라 여기서 알갱이가
-     * 흔들리지는 않는다 — 이 조회의 소비자는 isPredicateDead(죽음 **표시**)뿐이다.
-     */
-    hasGroup: (groupId: string) => boolean;
-    axisScope: (axisId: string) => Grain | undefined;
-}
-
-/**
- * 여러 알갱이를 하나로 — **가장 가는 것**. point 를 만나면 즉시 확정된다(모름이 더 가늘게 만들 수는 없다).
- * point 가 없는데 모름이 섞였으면 모름 — 그 모름이 실은 point 였을 수 있어 day 라고 말할 수 없다.
- */
-function finest(grains: Iterable<Grain | undefined>): Grain | undefined {
-    let unknown = false;
-    for (const g of grains) {
-        if (g === "point") return "point";
-        if (g === undefined) unknown = true;
-    }
-    return unknown ? undefined : "day";
-}
-
-/**
- * 이 술어를 판정하려면 어느 알갱이까지 내려가야 하나. **모르면 모른다고 한다**(undefined).
- *   · 날짜 = 하루 · 시간 = 타점(시각 없이는 판정 자체가 불가)
- *   · 축 = 그 축의 scope. 사전에 없으면 모름 — 로딩 중인지 지워진 건지는 여기서 알 수 없다.
- *   · 그룹 = **저장된 scope 그대로**(머리 주석의 예외 — 질문의 층위라 사전과 무관하게 안다).
- *     리터럴이 지워졌어도 알갱이는 안 흔들린다: 죽음은 isPredicateDead 가 리터럴 단위로 따로 재고,
- *     그 덕에 그룹 조건 행은 로딩·삭제로 칸(층위)을 옮겨 다니지 않는다.
- */
-export function predicateGrain(p: FilterPredicate, look: GrainLookup): Grain | undefined {
-    switch (p.kind) {
-        case "date": return "day";
-        case "time": return "point";
-        case "axisBand":
-        case "axisValue": return look.axisScope(p.axisId);
-        case "group": return p.scope;
-        case "outcome": return "point"; // 결과 걷기의 앵커가 시그널(타점)이다 — 시각 없이는 판정 불가
-        case "outcomeRecovery": return "point";
-        case "hotPoints": return "point"; // 쌍을 세는 자가 타점이다 — 행 정체성도 타점
-        // 셀 = (종목,날짜,분) — 좌표와 같은 모양이라 층위도 타점이다.
-        case "theme":
-        case "cellValue":
-        case "priorHighBreak":
-        case "gridPoint":
-        case "breakout":
-        case "candleShape": return "point";
-        default: return unknownPredicate(p); // 자물쇠: 빠뜨리면 그 조건이 보드에서 "(지워짐)"으로 보인다
-    }
-}
-
-/** 식 안의 리터럴 id 전부(없음 리터럴 포함) — 죽은 참조 판정이 사전과 대조한다. */
-const literalIds = (expr: GroupExpr): string[] =>
-    expr.groups.flatMap((g) => g.literals.map((l) => l.groupId));
-
-/**
- * 그룹 개명 승계 — 단계들의 그룹 술어에서 옛 이름을 새 이름으로. 바뀐 게 없으면 **같은 배열 그대로**
- * (호출부가 참조 비교로 영속 여부를 정한다). 규칙의 이유는 renameGroupInExpr 주석에.
- */
-export function renameGroupInStages(stages: readonly FilterStage[], from: string, to: string): FilterStage[] {
-    let touched = false;
-    const out = stages.map((s) => {
-        let stageTouched = false;
-        const predicates = s.predicates.map((p) => {
-            if (p.kind !== "group") return p;
-            const expr = renameGroupInExpr(p.expr, from, to);
-            if (expr === p.expr) return p;
-            stageTouched = true;
-            return { ...p, expr };
-        });
-        if (!stageTouched) return s;
-        touched = true;
-        return { ...s, predicates };
-    });
-    return touched ? out : (stages as FilterStage[]);
-}
-
-/**
- * 사전이 로드된 뒤에도 판정 근거를 모르는 술어 = **죽은 참조**(지워진 그룹·축). 화면이 이걸 표시해야 한다.
- * 그룹은 알갱이(scope)가 저장돼 있어 predicateGrain 경유로는 죽음이 안 보인다 — 리터럴이 직접 사전을
- * 본다. 기준은 **하나라도**: 판정기(evaluate)가 리터럴 단위로 모름을 내므로 하나만 지워져도 그 절이
- * 실제로 미배치를 만든다 — 화면이 조용하면 숫자와 화면이 다른 이야기를 한다.
- */
-export function isPredicateDead(p: FilterPredicate, look: GrainLookup): boolean {
-    if (isPredicateEmpty(p)) return false;
-    if (p.kind === "group") return literalIds(p.expr).some((id) => !isNoneLiteral(id) && !look.hasGroup(id));
-    return predicateGrain(p, look) === undefined;
-}
-
-/** 단계의 알갱이 = 그 술어들 중 가장 가는 것. 빈 술어는 알갱이를 안 정한다. */
-export function stageGrain(s: FilterStage, look: GrainLookup): Grain | undefined {
-    return finest(s.predicates.filter((p) => !isPredicateEmpty(p)).map((p) => predicateGrain(p, look)));
-}
-
-/**
- * 결과 해상도(자동) — 걸린 단계 중 가장 가는 알갱이. 아무것도 안 걸렸으면 하루.
- * 아무 조건도 구분하지 못하는 타점 5개를 5행으로 펼치면 조건 열이 전부 같은 행 다섯이 되어
- * **없는 구조를 눈이 만든다**(가짜 정밀도). 그래서 자동이고 토글이 아니다.
- *
- * ⚠ `undefined` = 아직 못 정함. 소비자가 갈라야 한다 — 사전 로딩 중이면 **보류**(직전 해상도 유지),
- * 로드가 끝났는데도 모르면 그 술어는 죽은 참조이니 알갱이 계산에서 빼고 하루로 간다(`resolveAutoGrain`).
- */
-export function autoGrain(stages: readonly FilterStage[], look: GrainLookup): Grain | undefined {
-    return finest(activeStages(stages).map((s) => stageGrain(s, look)));
-}
-
-/**
- * 사전이 **로드된 뒤**의 자동 해상도 — 남은 모름은 전부 죽은 참조라 하루로 접는다.
- * 죽은 조건 하나가 화면 전체를 타점으로 끌어내리면 아무것도 구분 못 하는 행들이 펼쳐진다(가짜 정밀도).
- * 로딩 중에는 이걸 부르면 안 된다 — 그때의 모름은 "곧 올 것"이지 "없는 것"이 아니다.
- *
- * ⚠ 이 접기는 **축**의 이야기다 — 그룹은 scope 가 저장돼 있어 모름이 안 나오고, 죽은 point scope
- * 그룹 조건은 타점 해상도를 **유지한다**(조건 행이 층위 칸을 옮겨 다니지 않는 대가로, 전 항목 미배치
- * + 모수 타점 펼침이 생긴다 — 그 단서는 죽은 참조 배지가 진다).
- */
-export const resolveAutoGrain = (stages: readonly FilterStage[], look: GrainLookup): Grain =>
-    autoGrain(stages, look) ?? "day";
-
-/** 층위가 접힌 단계 하나 — 표시·정산이 같은 순서를 봐야 해서 접기(모름→하루)도 한 곳에서 한다. */
-export interface OrderedStage {
-    stage: FilterStage;
-    grain: Grain;
-}
-
-/**
- * 깔때기의 **표시 순서** — 하루 단계가 타점 단계보다 앞, 같은 층위 안에서는 저장 순서.
- *
- * ⚠ 순서는 이제 **표시만** 정한다(2026-09-19 5칸 진단 은퇴). 3치 AND 는 교환법칙이 성립해 결과가
- * 순서와 무관하고, 순서로 만들던 서술("어느 단계가 무엇을 죽였나")이 통째로 없어졌다. 층위로 묶어
- * 세우는 건 읽기 편의이고, 하루 우주의 **평가** 순서는 엔진이 비용 오름차순으로 따로 정한다.
- * 층위 모름(죽은 참조·로딩 중)은 하루 취급 — resolveAutoGrain 의 접기와 같은 방향.
- */
-export function funnelOrder(stages: readonly FilterStage[], look: GrainLookup): OrderedStage[] {
-    const entries = stages.map((stage) => ({ stage, grain: (stageGrain(stage, look) ?? "day") as Grain }));
-    return [...entries.filter((e) => e.grain === "day"), ...entries.filter((e) => e.grain === "point")];
-}
-
-// 표시 해상도는 **자동 하나**다(resolveAutoGrain — 걸린 조건 중 가장 가는 층위).
-// 한때 "타점으로 펼치기" 손잡이가 있었지만 걷어냈다: 결과 목록이 사라진 뒤 그 토글의 남은 효과는
-// 탤리 숫자의 단위뿐이었고(구독 패널은 viewOf 계약이 이미 하루→타점 전개를 한다), 같은 조건의
-// 같은 화면이 손잡이 하나로 다른 수를 보이는 대가만 남았다.
-// ⚠ 반대 방향(타점 → 하루)은 애초에 없었다 — 롤업 규칙("타점 3 통과·2 탈락인 하루는?")에 정답이 없고,
-// 어떻게 정하든 그 임의의 규칙이 집합의 크기에 조용히 섞인다.
-
-// ── 단계 구성 제약 — 한 단계는 **한 종류·한 층위** ──────────────────────────
-//
-// 정확성 요건이 아니다. `돌파(하루) AND 재돌파(타점)` 를 한 단계에 섞어도 판정 자체는 된다(타점으로
-// 내려가 하루 조건은 그 타점의 날짜에 적용). 그런데도 막는 이유:
-//   · **쪼개도 결과가 같다** — 단계 사이가 AND 라 섞인 단계를 둘로 나눠도 생존 집합이 동일하다. 대가가 0.
-//   · **쪼개면 따로 끌 수 있다** — 섞인 단계는 하루 조건만 빼보거나 타점 조건만 빼볼 수가 없다.
-//     조건 하나가 일을 하는지 보는 유일한 손짓이 끄기(◉/○)라, 그 손짓의 해상도가 곧 단계의 크기다.
-//   · **"하루 단계가 타점 단계보다 앞" 규칙이 비로소 성립한다** — 단계마다 층위가 하나여야 줄을 세운다.
-// ⚠ 모름(죽은 참조·로딩 중)은 **막지 않는다**. 알 수 없는 것을 근거로 손을 막으면 사전이 늦게 왔을 때
-// 멀쩡한 편집이 거부된다.
+// (알갱이 기계 — GrainLookup·predicateGrain·autoGrain·funnelOrder — 는 2026-09-26 종단 폐기로 은퇴했다.
+//  남은 술어는 전부 셀(종목×분) 위의 조건이라 층위가 타점 하나다.)
 
 /** 이 단계가 이미 정한 종류(빈 단계 = 아직 없음). 빈 술어도 종류는 말한다 — 편집 중인 자리라서. */
 export function stageKind(s: FilterStage): PredicateKind | undefined {
     return s.predicates[0]?.kind;
 }
-
-/**
- * 이 술어를 이 단계에 넣어도 되나 — 같은 종류이고, 알갱이가 충돌하지 않아야 한다.
- * 축은 종류가 둘(밴드·값구간)이지만 같은 축 도구라 서로 섞일 수 있다.
- *
- * ⚠ **"아직 층위를 안 정함"과 "하루로 정함"은 다르다.** 비어 있는 집합의 알갱이는 표시 기본값으로는
- * 하루지만(autoGrain), 제약 검사에서는 아직 아무 층위도 없는 것이다 — 그걸 하루로 읽으면 빈 단계가
- * 타점 조건을 거부한다. 그래서 알갱이를 묻기 전에 **층위를 정하는 게 하나라도 있는지** 먼저 본다.
- */
-export function canAddPredicate(s: FilterStage, p: FilterPredicate, look: GrainLookup): boolean {
-    const kind = stageKind(s);
-    if (kind !== undefined && !sameFamily(kind, p.kind)) return false;
-    if (s.predicates.every(isPredicateEmpty)) return true; // 아직 층위 없음
-    const mine = stageGrain(s, look);
-    const theirs = predicateGrain(p, look);
-    return mine === undefined || theirs === undefined || mine === theirs;
-}
-
-/** 축 밴드와 축 값구간은 같은 도구의 두 손잡이다 — 한 단계에 같이 놓는 게 자연스럽다. */
-const sameFamily = (a: PredicateKind, b: PredicateKind): boolean =>
-    a === b || (isAxisKind(a) && isAxisKind(b));
-
-const isAxisKind = (k: PredicateKind): boolean => k === "axisBand" || k === "axisValue";
-
-// (옛 canAddGroupLiteral 은 scope 저장으로 소멸 — "이 scope 에서 고를 수 있는 그룹인가"는 층위가
-//  아니라 멤버십 롤업의 질문이라 재료가 다르다. 팔레트가 lib/groupGrain 의 분류로 목록을 거른다.)
-
-// ── 편집 연산 ──────────────────────────────────────────────────────────────
-//
-// ⚠ 리스트 편집 연산(addStage·removeStage·toggleStage·setStagePredicates·replaceStage·renameStage)은
-//   2026-09-19 에 **지웠다**. 조건 한 벌이 리스트에서 식 트리가 된 뒤로 실물 구현은 `expr.ts` 의
-//   mapLeaves/filterLeaves/appendLeaf 와 그 위의 슬라이스 액션뿐이고, 같은 규칙을 두 벌로 들고 있으면
-//   언젠가 한쪽만 고쳐진다(빈 이름 = 자동 라벨 같은 규칙이 조용히 갈린다).
 
 export const newStageId = (): string => `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -381,9 +106,24 @@ export const newStage = (predicates: FilterPredicate[] = []): FilterStage =>
 
 // ── 영속 검증 ──────────────────────────────────────────────────────────────
 
+/** 은퇴 kind(종단 폐기 2026-09-26) — 이 술어는 저장물에서 **그 술어만** 걷어낸다(집합 통째 폐기 아님). */
+const RETIRED_KINDS = new Set(["group", "axisBand", "axisValue", "date", "outcome", "outcomeRecovery", "hotPoints", "gridPoint"]);
+const RETIRED = Symbol("retired-predicate");
+
+let retiredPredicates = 0;
+/** 이번 세션에 걷어낸 은퇴 술어 수 — 로드 직후 로그용(읽으면 0 으로 리셋). */
+export function takeRetiredPredicateCount(): number {
+    const n = retiredPredicates;
+    retiredPredicates = 0;
+    return n;
+}
+
 /**
  * 저장본 파싱 — 형태가 안 맞는 항목은 **통째로 버린다**(부분 복구 안 함). 반쯤 살아난 조건은
  * 화면에 멀쩡히 뜨면서 다른 걸 세기 때문에, 없는 편이 낫다.
+ * ⚠ 예외 = **은퇴 kind**: 그 술어만 걷어낸다(통째 폐기하면 이주 한 번에 사용자 집합이 전멸한다 —
+ * decisions 「저장물 모양이 바뀌는 커밋은 하나로 모은다」). 술어가 다 걷힌 칸은 칸째 사라진다
+ * (parseExpr 가 그 잎을 떨구고 연산자·괄호를 되짚는다 — expr.ts 한 벌).
  */
 export function parseStages(o: unknown): FilterStage[] | null {
     if (!Array.isArray(o)) return null;
@@ -392,11 +132,14 @@ export function parseStages(o: unknown): FilterStage[] | null {
         const s = raw as { id?: unknown; name?: unknown; enabled?: unknown; predicates?: unknown };
         if (typeof s?.id !== "string" || !Array.isArray(s.predicates)) return null;
         const predicates: FilterPredicate[] = [];
+        let dropped = 0;
         for (const p of s.predicates) {
             const parsed = parsePredicate(p);
+            if (parsed === RETIRED) { dropped += 1; retiredPredicates += 1; continue; }
             if (!parsed) return null;
             predicates.push(parsed);
         }
+        if (predicates.length === 0 && dropped > 0) continue; // 은퇴 술어뿐이던 칸 — 칸째 걷는다
         const t = (raw as { transition?: unknown }).transition;
         out.push({
             id: s.id,
@@ -409,39 +152,7 @@ export function parseStages(o: unknown): FilterStage[] | null {
     return out;
 }
 
-/**
- * 밴드 경계 이관 — 옛 저장본은 경계를 **slotId**(DB bigserial 문자열, 예 "52")로 들고 있다.
- * 지금은 **타점 앵커**(pointKey "코드|날짜|시각")라 옛 값은 영영 안 풀린다. 그냥 두면 그 조건이
- * 계속 "판단 불가"로 남아 화면에 이유 없이 아무것도 안 걸리는 상태가 되므로, 여기서 **열린 경계로 떨군다**.
- * 구분은 모양으로 한다 — 타점 키에는 구분자가 둘 있고 slotId 에는 없다.
- */
-const isPointAnchor = (v: unknown): v is string => typeof v === "string" && v.split("|").length === 3;
-
-function migrateBand(band: RankBand): RankBand {
-    const out: RankBand = {};
-    if (isPointAnchor(band.lo)) out.lo = band.lo;
-    if (isPointAnchor(band.hi)) out.hi = band.hi;
-    return out;
-}
-
-// ── 술어 payload 검증 — 겉껍데기(kind)만 보고 속을 캐스팅하면, 깨진 저장본이 화면에 멀쩡히 뜬 채
-// 평가기에서 터진다(expr:{} 가 groups.flatMap 에서 크래시). 속까지 모양을 확인하고, 안 맞으면 null
-// (= 그 저장본 통째 폐기 — 위 parseStages 원칙 그대로).
-
-const isBound = (o: unknown): o is AxisBound => {
-    if (typeof o !== "object" || o === null) return false;
-    const b = o as { kind?: unknown; point?: unknown; value?: unknown };
-    return (b.kind === "point" && typeof b.point === "string")
-        || (b.kind === "value" && typeof b.value === "number" && Number.isFinite(b.value));
-};
-
-const isAxisValueRange = (o: unknown): o is AxisValueRange => {
-    if (typeof o !== "object" || o === null) return false;
-    const r = o as { from?: unknown; to?: unknown };
-    return (r.from === undefined || isBound(r.from)) && (r.to === undefined || isBound(r.to));
-};
-
-/** 날짜·시간 구간 — 양끝 필수 문자열(반열림은 이 두 종류엔 없다). */
+/** 날짜·시간 구간 — 양끝 필수 문자열(반열림은 이 종류엔 없다). */
 const isFromToRange = (o: unknown): o is { from: string; to: string } => {
     if (typeof o !== "object" || o === null) return false;
     const r = o as { from?: unknown; to?: unknown };
@@ -452,67 +163,32 @@ const isFromToRange = (o: unknown): o is { from: string; to: string } => {
 const isTransitionValue = (v: unknown): v is Transition =>
     v === "firstOfDay" || v === "firstTrue" || v === "improve";
 
-/** 허용 폭 T 로 쓸 수 있는 값인가 — 도메인 [2,30]. 밖이면 그 술어는 폐기(파서 원칙: 반쯤 살리지 않는다). */
-const isTolerance = (v: unknown): v is number =>
-    typeof v === "number" && Number.isFinite(v) && v >= TOLERANCE_MIN_PCT && v <= TOLERANCE_MAX_PCT;
-
-function parsePredicate(o: unknown): FilterPredicate | null {
-    const p = o as { kind?: unknown; axisId?: unknown; ranges?: unknown; band?: unknown; expr?: unknown; scope?: unknown; params?: unknown; metric?: unknown; recovered?: unknown; t?: unknown; w?: unknown; r?: unknown };
+function parsePredicate(o: unknown): FilterPredicate | typeof RETIRED | null {
+    const p = o as { kind?: unknown };
     switch (p?.kind) {
-        case "outcome":
-            // t 는 **필수**다 — 없는 저장물은 T 가 정의에 살던 시절 것이라 그 기준을 복원할 수 없다
-            // (기존 저장물은 버린다는 확정에 따라 승계하지 않는다. 키 상향이 실제 방어선이고 이건 이중 가드).
-            return isOutcomeMetric(p.metric) && isTolerance(p.t) && Array.isArray(p.ranges) && p.ranges.every(isAxisValueRange)
-                ? { kind: "outcome", metric: p.metric, t: p.t, ranges: p.ranges } : null;
-        case "outcomeRecovery":
-            return typeof p.recovered === "boolean" && isTolerance(p.t)
-                ? { kind: "outcomeRecovery", recovered: p.recovered, t: p.t } : null;
         case "themeStrength": {
             // 옛 종단 테마 강도 → theme 이주(2026-09-26) — core 파서가 옛 params 모양(zoneRateN·0|60 창)을
-            // 그대로 읽는다. payload 누락·오염은 **조건-off theme** 로 살린다(옛 규칙 그대로: null 은
-            // 저장본 통째 폐기라, 빈 술어가 정직하고 덜 파괴적이다).
-            const params = parseThemeZoneParams(p.params);
+            // 그대로 읽는다. payload 누락·오염은 **조건-off theme** 로 살린다(빈 술어가 정직하고 덜 파괴적이다).
+            const params = parseThemeZoneParams((o as { params?: unknown }).params);
             return params !== null
                 ? { kind: "theme", ...params }
                 : { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, baseRankOn: false, zoneRankOn: false };
         }
-        case "group": {
-            const expr = parseGroupExpr(p.expr); // 팔레트 저장본과 같은 검증 한 벌 — 여기만 느슨하면 안 된다
-            // scope 승계는 여기 **한 곳**이다(작업 깔때기·저장 집합이 둘 다 parseStages 를 지난다).
-            // 부재·오염 = "day" — scope 없던 시절 저장물의 행동(point 그룹도 ∃ day)이 정확히 보존된다.
-            return expr ? { kind: "group", expr, scope: p.scope === "point" ? "point" : "day" } : null;
-        }
-        case "axisBand":
-            return typeof p.axisId === "string" && p.band && typeof p.band === "object"
-                ? { kind: "axisBand", axisId: p.axisId, band: migrateBand(p.band as RankBand) } : null;
-        case "axisValue":
-            return typeof p.axisId === "string" && Array.isArray(p.ranges) && p.ranges.every(isAxisValueRange)
-                ? { kind: "axisValue", axisId: p.axisId, ranges: p.ranges } : null;
-        case "hotPoints":
-            // w·r 은 **필수**다 — 파라미터가 없으면 이 조건이 무엇을 세는지 복원할 수 없다(결과 술어의 t 와 같은 결).
-            return isHotW(p.w) && isHotR(p.r) && Array.isArray(p.ranges) && p.ranges.every(isAxisValueRange)
-                ? { kind: "hotPoints", w: p.w, r: p.r, ranges: p.ranges } : null;
-        case "date":
-            return Array.isArray(p.ranges) && p.ranges.every(isFromToRange)
-                ? { kind: "date", ranges: p.ranges } : null;
         case "time": {
-            if (!Array.isArray(p.ranges) || !p.ranges.every(isFromToRange)) return null;
+            const t = o as { ranges?: unknown; transition?: unknown };
+            if (!Array.isArray(t.ranges) || !t.ranges.every(isFromToRange)) return null;
             // 전이는 옵셔널 — 모르는 값은 **떨군다**(조용히 다른 뜻이 되지 않게). 왕복 보존은 골든이 지킨다.
-            const t = (p as { transition?: unknown }).transition;
-            return { kind: "time", ranges: p.ranges, ...(isTransitionValue(t) ? { transition: t } : {}) };
+            return { kind: "time", ranges: t.ranges, ...(isTransitionValue(t.transition) ? { transition: t.transition } : {}) };
         }
         // 셀 술어는 **core 파서 한 벌**을 그대로 쓴다(검증 두 벌 금지). core 의 null 이 여기선
-        // "저장본 통째 폐기" 신호로 흐른다 — 종단 저장물의 all-or-nothing 규칙이 그대로 보존된다.
-        // (하루 우주의 패널 로컬 경로는 여전히 parseCellConditions 의 시드 폴백 규칙을 쓴다 —
-        //  저장물의 성질이 달라서 갈리는 것이고, 합류 뒤에도 그 둘은 갈린 채로 둔다.)
+        // "저장본 통째 폐기" 신호로 흐른다.
         case "cellValue":
         case "priorHighBreak":
-        case "gridPoint":
         case "breakout":
         case "candleShape":
         case "theme":
             return parseCellPredicate(o) as FilterPredicate | null;
         default:
-            return null;
+            return typeof p?.kind === "string" && RETIRED_KINDS.has(p.kind) ? RETIRED : null;
     }
 }

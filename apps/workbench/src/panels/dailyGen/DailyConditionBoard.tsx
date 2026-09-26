@@ -16,8 +16,6 @@ import { CellStageFields } from "../filter/CellPredicateFields.js";
 import { RailEditors, type RailEditor } from "../filter/ConditionEditors.js";
 import { ExprRow, type RowHandlers } from "../filter/ExprRow.js";
 import { FilterRow } from "../filter/FilterRow.js";
-import { useFunnel } from "../filter/FunnelContext.js";
-import { Note } from "../filter/grain.js";
 import { activeExpr, hasCycle, idOf, leavesOf, mapLeaves, negateGroupAt, negateTerm, refsOf, removeGroupAt, removeTerm, setOpAt, toggleBoundaryGroup, type SetExpr, type SetTerm } from "../filter/expr.js";
 import { setDisplayName, stageLabel } from "../filter/label.js";
 import { stageKind, type FilterPredicate, type FilterStage } from "../filter/stage.js";
@@ -31,7 +29,6 @@ const UNIVERSE = "daily" as const;
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
 
 export function DailyConditionBoard(): JSX.Element {
-    const v = useFunnel();
     const stages = useWorkbench(selectEditingStages);
     const setStage = useWorkbench((s) => s.setFilterStage);
     const setPredicates = useWorkbench((s) => s.setFilterStagePredicates);
@@ -81,20 +78,20 @@ export function DailyConditionBoard(): JSX.Element {
     // ── 칩 이름·참조 표시 — 옛 보드와 같은 자(두 곳이면 같은 조건이 두 이름으로 선다) ──
     const labelById = useMemo(() => {
         const m = new Map<string, string>();
-        for (const f of savedSets) for (const st of leavesOf(f.expr)) if (!m.has(st.id)) m.set(st.id, stageLabel(st, v.labelLook));
+        for (const f of savedSets) for (const st of leavesOf(f.expr)) if (!m.has(st.id)) m.set(st.id, stageLabel(st));
         return m;
-    }, [savedSets, v.labelLook]);
+    }, [savedSets]);
     const chipLabelOf = useCallback((id: string) => labelById.get(id) ?? "(지워진 조건)", [labelById]);
     const refInfo = useCallback((setId: string) => {
         const set = savedSets.find((x) => x.id === setId);
         const usedBy = savedSets.filter((x) => refsOf(x.expr).includes(setId)).length;
         return {
-            name: set ? setDisplayName(set, v.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)",
+            name: set ? setDisplayName(set, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)",
             named: set?.name !== undefined,
             broken: set === undefined,
             usedBy,
         };
-    }, [savedSets, v.labelLook]);
+    }, [savedSets]);
 
     /** ＋ 집합 판의 세 칸 — 올라와 있음 · 붙일 수 있음 · 붙일 수 없음(이유). 거절은 스토어가 한 번 더. */
     const setPicker = useMemo(() => setPickerOf(savedSets, editingSetId, expr, editPath), [savedSets, expr, editingSetId, editPath]);
@@ -171,8 +168,8 @@ export function DailyConditionBoard(): JSX.Element {
                 key={t.stage.id}
                 no={exprOfSet(editingSetId).of.findIndex((x) => idOf(x) === t.stage.id) + 1}
                 stage={t.stage}
-                label={stageLabel(t.stage, v.labelLook)}
-                dead={v.deadStageIds.includes(t.stage.id)}
+                label={stageLabel(t.stage)}
+                dead={false}
                 deficiency={stageDeficiency(t.stage, UNIVERSE)}
                 cellFields={<CellStageFields stage={t.stage} onPatch={setStage} />}
                 neg={t.neg === true}
@@ -184,8 +181,7 @@ export function DailyConditionBoard(): JSX.Element {
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "2px 8px 0" }}>
-                {v.isLoading && <Note>불러오는 중…</Note>}
-                {!v.isLoading && (
+                {(
                     <div style={{ marginBottom: 3 }}>
                         {rows.map((sid, i) => (
                             <ExprRow key={sid} setId={sid} expr={exprOfSet(sid)} h={rowHandlers}
@@ -195,9 +191,9 @@ export function DailyConditionBoard(): JSX.Element {
                 )}
 
                 {/* 열린 항의 편집면 — 편집면은 한 곳이다. */}
-                {!v.isLoading && openTerm !== null && condRow(openTerm)}
+                {openTerm !== null && condRow(openTerm)}
 
-                {!v.isLoading && (
+                {(
                     <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 0" }}>
                         <AddCondition
                             onCell={(p) => { addStageHere([p]); }}

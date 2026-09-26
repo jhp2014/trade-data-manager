@@ -62,9 +62,9 @@ export function useConditionGroups(date: string, active: boolean): {
     const groupName = useCallback(
         (setId: string): string => {
             const f = savedSets.find((x) => x.id === setId);
-            return f ? setDisplayName(f, funnel.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)";
+            return f ? setDisplayName(f, (id: string) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)") : "(지워진 집합)";
         },
-        [savedSets, funnel.labelLook],
+        [savedSets],
     );
 
     // 훅은 개수가 고정이어야 한다 — 그룹 칸 5개를 늘 부르고, 빈 칸은 null 식(재료를 안 당긴다).

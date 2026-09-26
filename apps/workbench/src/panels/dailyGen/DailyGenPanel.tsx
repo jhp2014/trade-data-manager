@@ -9,13 +9,11 @@
 // 새 패널이 된다. 옛 저장 배치의 탭 제목("집합 편성")은 아래 정규화가 되돌린다.
 import { useEffect } from "react";
 import { useDock } from "../../store/dock.js";
-import { useFunnel } from "../filter/FunnelContext.js";
 import { SetRow } from "../filter/SetRow.js";
 import { DailyConditionBoard } from "./DailyConditionBoard.js";
 import { DailyGenHeader } from "./DailyGenHeader.js";
 
 export function DailyGenPanel({ panelId, baseTitle }: { panelId: string; baseTitle?: string }): JSX.Element {
-    const v = useFunnel();
 
     // 탭 제목 = 카탈로그 이름 — 옛 저장 배치에 남은 "집합 편성" 을 되돌린다(테마 [조건]판 선례).
     useEffect(() => {
@@ -26,7 +24,7 @@ export function DailyGenPanel({ panelId, baseTitle }: { panelId: string; baseTit
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
-            <DailyGenHeader v={v} panelId={panelId} />
+            <DailyGenHeader panelId={panelId} />
             <SetRow />
             <div style={{ flex: 1, minHeight: 0 }}>
                 <DailyConditionBoard />

@@ -28,7 +28,6 @@ import {
 } from "../api/groups.js";
 import { groupsQuery, groupMembershipsQuery, pointGroupMembershipsQuery, pointGridsQuery } from "../api/queries.js";
 import type { DecodedPointGrids } from "../api/pointGrids.js";
-import { useWorkbench } from "../store/workbench.js";
 import { groupGrainSets, type GroupGrainSets } from "./groupGrain.js";
 import { applyGroupToggle, buildGroupIndex, countByGroup, foldPointIndexToDay } from "./groupIndex.js";
 import { ancestorsOf, expandWithAncestors, groupPathLabel, inheritanceSources } from "./groupTree.js";
@@ -235,7 +234,6 @@ export function useGroupsValue(): GroupsView {
             await apiRenameGroup(name, newName);
             // 이름이 곧 참조다 — 그룹 필터 리터럴·저장 집합의 조건 사본이 이 이름을 들고 있으므로
             // 서버 성공 직후 클라 저장물도 따라 바꾼다(안 하면 그 저장물이 즉시 죽은 참조).
-            useWorkbench.getState().renameGroupInFilters(name, newName);
             await invalidateDict(true);
         },
         [invalidateDict],

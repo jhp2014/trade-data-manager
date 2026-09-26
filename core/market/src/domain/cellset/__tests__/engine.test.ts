@@ -26,7 +26,7 @@ function stock(code: string, over: Partial<CellStock> & { n?: number } = {}): Ce
     };
 }
 
-const NO_MAT: CellMaterials = { gridMinutesOf: () => [], themeAt: () => null };
+const NO_MAT: CellMaterials = { themeAt: () => null };
 
 /** 등락률 ≥ r 칸 하나 — 전이를 술어/칸 어느 자리에 둘지 골라서. */
 const rateCond = (r: number, at: "none" | "pred" | "cond" = "none", t: Transition = "firstTrue"): CellConditions => [
@@ -56,7 +56,7 @@ describe("evaluateCells — 기본", () => {
     it("조건이 없거나 전부 꺼져 있으면 빈 목록 — '조건 없음 = 전부'가 아니다", () => {
         const s = stock("A", { rate: [9, 9, 9, 9, 9] });
         expect(evaluateCells([s], NO_MAT, []).hits).toEqual([]);
-        expect(evaluateCells([s], NO_MAT, [{ id: "c", enabled: false, predicates: [{ kind: "gridPoint" }] }]).hits).toEqual([]);
+        expect(evaluateCells([s], NO_MAT, [{ id: "c", enabled: false, predicates: [{ kind: "candleShape", shape: "bull" }] }]).hits).toEqual([]);
     });
 
     it("빈 술어만 든 칸은 '무제한'이 아니라 빠진다 — 19만 셀을 통째로 통과시키지 않는다", () => {
@@ -117,7 +117,6 @@ describe("evaluateCells — 전이", () => {
         const s = stock("A", { n: 4 });
         const seq: (number | null)[] = [3, 3, 2, 4];
         const mat: CellMaterials = {
-            gridMinutesOf: () => [],
             themeAt: (_c, min) => { const r = seq[min - MIN0]; return r === null ? null : { pass: r <= 5, zoneRank: r, theme: "T" }; },
         };
         const conds: CellConditions = [
@@ -130,7 +129,6 @@ describe("evaluateCells — 전이", () => {
         const s = stock("A", { n: 4 });
         const seq = [3, 3, 2, 4];
         const mat: CellMaterials = {
-            gridMinutesOf: () => [],
             themeAt: (_c, min) => ({ pass: true, zoneRank: seq[min - MIN0]!, theme: "T" }),
         };
         const conds: CellConditions = [
@@ -143,7 +141,7 @@ describe("evaluateCells — 전이", () => {
         // 등락률이 매 분 오르고(6→9) 존 순위는 2 고정 — 개선이 없으니 첫 진입(0)에만 발화해야 한다.
         // (옛 존순위 cellValue 시절과 같은 판정 — theme 를 값 잎으로 안 세면 등락률이 sole 이 되어 매 분 발화한다.)
         const s = stock("A", { rate: [6, 7, 8, 9], n: 4 });
-        const mat: CellMaterials = { gridMinutesOf: () => [], themeAt: () => ({ pass: true, zoneRank: 2, theme: "T" }) };
+        const mat: CellMaterials = { themeAt: () => ({ pass: true, zoneRank: 2, theme: "T" }) };
         const conds: CellConditions = [
             {
                 id: "c", enabled: true, transition: "improve",
@@ -176,7 +174,7 @@ describe("evaluateCells — 전이", () => {
         // 값 술어(비싼 zoneRank)가 싼 술어 뒤에 선다. 싼 술어가 죽은 분에는 zone 을 안 보고,
         // 다시 살아난 분에서 improve 가 "직전 미참"으로 발화해야 한다.
         const s = stock("A", { rate: [9, 0, 9] , n: 3 });
-        const mat: CellMaterials = { gridMinutesOf: () => [], themeAt: () => ({ pass: true, zoneRank: 2, theme: "T" }) };
+        const mat: CellMaterials = { themeAt: () => ({ pass: true, zoneRank: 2, theme: "T" }) };
         const conds: CellConditions = [
             {
                 id: "c",
@@ -205,7 +203,7 @@ describe("evaluateCells — 게으름·상한", () => {
                 ],
             },
         ];
-        const r = evaluateCells([s], { gridMinutesOf: () => [], themeAt }, conds);
+        const r = evaluateCells([s], { themeAt }, conds);
         expect(mins(r)).toEqual([9]);
         expect(themeAt).toHaveBeenCalledTimes(1); // 10 셀 중 1
     });
@@ -248,13 +246,6 @@ describe("evaluateCells — 게으름·상한", () => {
 });
 
 describe("evaluateCells — 격자·전고", () => {
-    it("격자 분만 걸리고, 격자 재료는 종목당 한 번만 읽는다", () => {
-        const s = stock("A", { n: 5 });
-        const gridMinutesOf = vi.fn(() => [MIN0 + 2]);
-        const r = evaluateCells([s], { gridMinutesOf, themeAt: () => null }, [{ id: "g", enabled: true, predicates: [{ kind: "gridPoint" }] }]);
-        expect(mins(r)).toEqual([2]);
-        expect(gridMinutesOf).toHaveBeenCalledTimes(1);
-    });
 
     it("전고 자는 index 0(당일)을 제외한다 — 포함하면 영영 거짓", () => {
         const s = stock("A", { minuteHigh: [2, 10, 11, 11, 11], trailingHighs: { krx: [], un: [20, 8, 5, 3, 1, 2] } });
@@ -397,7 +388,6 @@ describe("theme 술어 — payload 파라미터·게으름·전이·hit 존순�
         const s = stock("A", { rate: [1, 1, 1] , n: 3 });
         const seq: (boolean | null)[] = [true, null, false];
         const mat: CellMaterials = {
-            gridMinutesOf: () => [],
             themeAt: (_c, min) => { const p = seq[min - MIN0]; return p === null ? null : { pass: p, zoneRank: p ? 2 : null, theme: p ? "T" : null }; },
         };
         const r = evaluateCells([s], mat, themeCond());
@@ -416,7 +406,7 @@ describe("theme 술어 — payload 파라미터·게으름·전이·hit 존순�
                 { kind: "theme", ...TP },
             ],
         }];
-        const r = evaluateCells([s], { gridMinutesOf: () => [], themeAt }, conds);
+        const r = evaluateCells([s], { themeAt }, conds);
         expect(mins(r)).toEqual([1, 3]);
         expect(themeAt).toHaveBeenCalledTimes(2); // 5 셀 중 등락 통과 2 셀에서만
     });
@@ -429,7 +419,7 @@ describe("theme 술어 — payload 파라미터·게으름·전이·hit 존순�
             { id: "b", enabled: true, predicates: [{ kind: "theme", ...TP }] },
             { id: "c", enabled: true, predicates: [{ kind: "theme", ...TP, countMin: 9 }] },
         ];
-        evaluateCells([s], { gridMinutesOf: () => [], themeAt }, conds);
+        evaluateCells([s], { themeAt }, conds);
         expect(themeAt).toHaveBeenCalledTimes(2); // (TP) 한 번 + (countMin 9) 한 번
     });
 
@@ -437,7 +427,6 @@ describe("theme 술어 — payload 파라미터·게으름·전이·hit 존순�
         const s = stock("A", { n: 5 });
         const ranks: (number | null)[] = [3, 3, 2, null, 2];
         const mat: CellMaterials = {
-            gridMinutesOf: () => [],
             themeAt: (_c, min) => { const z = ranks[min - MIN0]; return { pass: z !== null, zoneRank: z, theme: z !== null ? "T" : null }; },
         };
         // 0: 첫 참(직전 미참) ✓ · 1: 3→3 개선 아님 ✗ · 2: 3→2 개선 ✓ · 3: 미참 ✗ · 4: 직전 미참 ✓
@@ -447,7 +436,7 @@ describe("theme 술어 — payload 파라미터·게으름·전이·hit 존순�
     it("빈 술어(활성 하위 조건 0)는 평가에서 빠진다 — '조건 없음 = 전부'가 되지 않게", () => {
         const s = stock("A", { n: 2 });
         const themeAt = vi.fn(() => ({ pass: true, zoneRank: 1, theme: "T" }));
-        const r = evaluateCells([s], { gridMinutesOf: () => [], themeAt },
+        const r = evaluateCells([s], { themeAt },
             themeCond({ countOn: false, baseRankOn: false, zoneRankOn: false }));
         expect(r.hits).toEqual([]);
         expect(themeAt).not.toHaveBeenCalled();

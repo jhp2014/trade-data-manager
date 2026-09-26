@@ -21,4 +21,4 @@ export async function loadStore(): Promise<typeof import("../store/workbench.js"
 }
 
 /** 비어 있지 않은 술어 한 벌 — 사전(그룹·축) 없이도 활성 판정이 서는 date 를 쓴다. */
-export const datePred: FilterPredicate = { kind: "date", ranges: [{ from: "2026-01-01", to: "2026-01-31" }] };
+export const timePred: FilterPredicate = { kind: "time", ranges: [{ from: "09:00", to: "10:30" }] };

@@ -97,14 +97,13 @@ describe("useBoundSet — 하루 우주", () => {
 });
 
 describe("useBoundSet — 모드가 라우팅을 정한다 (2026-09-22)", () => {
-    it("평가할 조건이 없으면(전부 결손) **이유 있는 빈 집합**이다 — 빈 목록이 아니다", () => {
-        // 종단 전용 조건(date)을 하루 모드에 두면 결손이라 평가할 식이 안 남는다.
-        seedEditing(exprOfStages([{ id: "d1", enabled: true, predicates: [{ kind: "date", ranges: [{ from: DATE, to: DATE }] }] }]), [], "daily");
+    it("평가할 조건이 없으면(전부 결손 — 깨진 참조) **이유 있는 빈 집합**이다 — 빈 목록이 아니다", () => {
+        // 지워진 집합을 가리키는 참조 하나 — AND 오염으로 평가할 식이 안 남는다(남은 유일한 결손 경로).
+        seedEditing({ id: "root", of: [{ kind: "ref", id: "r1", setId: "없는것" }], ops: [], groups: [] }, [], "daily");
         renderProbes(["a"], false); // 재료를 안 당기는 것도 이 검사의 일부다
         expect(seen.a!.day.on, "하루 경로는 선다").toBe(true);
         expect(seen.a!.view.viewedItems).toHaveLength(0);
         // ⚠ 본론 — `isFiltering && broken` 이라야 화면이 "조건에 다 걸렸다"로 안 읽는다.
-        //   「계산」 관문이 걷히면서 이 가드가 그 자리를 물려받았다(재료 없음 · 조건 없음 · 전부 결손).
         expect(seen.a!.view.isFiltering, "거르고 있다").toBe(true);
         expect(seen.a!.view.broken, "값은 아직 모른다").toBe(true);
         expect(evalSpy).not.toHaveBeenCalled();

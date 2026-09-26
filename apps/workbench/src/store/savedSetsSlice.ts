@@ -10,13 +10,10 @@
 // "깨짐"으로 선다.
 
 import type { StateCreator } from "zustand";
-import type { PointDefinition } from "@trade-data-manager/market/domain";
 import type { WorkbenchState } from "./workbench.js";
-import { parseStages } from "../panels/filter/stage.js";
+import { parseStages, takeRetiredPredicateCount } from "../panels/filter/stage.js";
 import { appendTerm, emptyExpr, hasCycle, parseExpr, refNode, refsOf, type SetExpr } from "../panels/filter/expr.js";
 import { universeOfExpr, parseUniverse, UNIVERSES, type Universe } from "../panels/filter/universe.js";
-import { parsePointDef } from "../lib/pointDef.js";
-import { persistPointDef } from "./pointDefSlice.js";
 import { backupRawOnce, loadJson, saveJson } from "./persist.js";
 import { loadFilterMode } from "./filterMode.js";
 
@@ -46,6 +43,11 @@ const SAVED_SETS_KEY = "wb.savedSets.v6";
 // 테마 술어 이주(2026-09-26 — zoneRank 셀 값·themeStrength → theme) 전 원문 백업: 이주된 저장물을
 // 옛 코드가 읽으면 parseStages 가 한 벌 통째 폐기한다 — 되돌릴 다리를 한 번 남긴다(pre-universe 선례).
 backupRawOnce("wb.savedSets.v6", "pre-theme");
+// 종단 트랙 전면 폐기(2026-09-26) 전 원문 — 종단 집합·은퇴 술어를 걷기 전에 한 번 뜬다(되돌릴 다리).
+backupRawOnce("wb.savedSets.v6", "pre-longitudinal");
+
+/** 이번 로드에 폐기한 종단 집합 수 — 아래 loadSavedSets 가 로그로 낸다. */
+let droppedLongitudinal = 0;
 
 export interface SavedSet {
     id: string;
@@ -58,9 +60,6 @@ export interface SavedSet {
     name?: string;
     /** 이 집합의 **식**(2026-09-19 부터 트리). 잎 목록이 필요하면 `leavesOf`. */
     expr: SetExpr;
-    /** 자동 타점 정의 사본(집합 자립 — 게이트가 다르면 같은 조건도 다른 모수를 센다). 옛 저장물엔 없음 →
-     *  열 때 현재 정의 유지(관대한 병합 — additive, 키 상향 금지 규칙). */
-    pointDef?: PointDefinition;
     /**
      * 이 집합이 사는 **우주**(2026-09-18 단계 ②). 부재·오염 = `longitudinal` — 우주 선언이 없던 시절
      * 저장물의 행동 그대로다. **낟알(grain)은 저장하지 않는다**(조건에서 파생 — stage.ts 머리 주석의
@@ -118,16 +117,16 @@ export function parseSavedSets(o: unknown): SavedSet[] | null {
     if (!Array.isArray(o)) return null;
     const out: SavedSet[] = [];
     for (const raw of o) {
-        const f = raw as { id?: unknown; name?: unknown; expr?: unknown; pointDef?: unknown; universe?: unknown };
+        const f = raw as { id?: unknown; name?: unknown; expr?: unknown; universe?: unknown };
         if (typeof f?.id !== "string") continue; // 이름은 옵셔널 — 부재 = 자동 이름(점선 칩)
+        // ── 종단 집합 폐기(2026-09-26 종단 트랙 전면 폐기) — 백업(pre-longitudinal)이 원문을 든다.
+        //    부재·오염 = 종단(우주 선언이 없던 시절 저장물의 행동 그대로)이라 그것도 폐기다.
+        if (parseUniverse(f.universe) !== "daily") { droppedLongitudinal += 1; continue; }
         const expr = parseExpr(f.expr, parseStages);
         if (!expr) continue;
-        const universe = parseUniverse(f.universe); // 부재·오염 = 종단(집합 폐기 사유가 아니다)
-        // 정의는 additive — 없거나 오염이면 필드 생략(열 때 현재 정의 유지). 집합 통째 폐기 사유가 아니다.
-        const pointDef = f.pointDef !== undefined ? (parsePointDef(f.pointDef) ?? undefined) : undefined;
-        // 옛 저장물의 pointSource(출처 토글)는 조용히 버린다 — 출처가 하나가 됐다(2026-09-01).
+        // (옛 pointDef 정의 사본·pointSource 는 조용히 버린다 — 타점 정의 자체가 은퇴했다.)
         const name = typeof f.name === "string" && f.name.trim() !== "" ? f.name : undefined;
-        out.push({ id: f.id, expr, universe, ...(name !== undefined ? { name } : {}), ...(pointDef ? { pointDef } : {}) });
+        out.push({ id: f.id, expr, universe: "daily", ...(name !== undefined ? { name } : {}) });
     }
     return out;
 }
@@ -150,8 +149,16 @@ export const setsOfMode = (sets: readonly SavedSet[], mode: Universe): SavedSet[
  *   전환하는 순간(`switchSeat`) 만든다.
  */
 const loadSavedSets = (mode: Universe): SavedSet[] => {
+    droppedLongitudinal = 0;
     const sets = parseSavedSets(loadJson(SAVED_SETS_KEY, (o) => (Array.isArray(o) ? o : null))) ?? [];
-    return setsOfMode(sets, mode).length > 0 ? sets : persistSavedSets([...sets, blankSet(mode)]);
+    const retiredPreds = takeRetiredPredicateCount();
+    if (droppedLongitudinal > 0 || retiredPreds > 0) {
+        // 이주 보고 — 백업 키(pre-longitudinal)가 원문을 든다. 조용히 사라졌다는 인상을 안 남긴다.
+        console.info(`[savedSets] 종단 폐기 이주: 종단 집합 ${droppedLongitudinal}개 폐기 · 은퇴 술어 ${retiredPreds}개 걷음 (백업: wb.savedSets.v6.backup.pre-longitudinal)`);
+    }
+    const withDefault = setsOfMode(sets, mode).length > 0 ? sets : [...sets, blankSet(mode)];
+    // 이주 결과를 곧바로 굳힌다 — 다음 로드부터는 걷어낼 것이 없다(로그도 한 번만).
+    return persistSavedSets(withDefault);
 };
 
 /**
@@ -302,13 +309,9 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
     // 갈아타기만 한다 — **사본을 안 뜬다**(편집 = 저장이라 사본이 곧 "저장 안 한 변경"이다).
     // 정의(pointDef)는 그 집합의 것으로 되돌린다 — 없는 집합은 현재 정의 유지(관대 병합 규칙).
     editSet: (id) => set((s) => {
-        const f = s.savedSets.find((x) => x.id === id);
-        if (!f) return {};
-        return {
-            // 목록에서 고른 건 **새 뿌리**다 — 경로를 물려받지 않는다.
-            ...putSeat(s.filterMode, id, [id]),
-            ...(f.pointDef ? { pointDef: persistPointDef(f.pointDef) } : {}),
-        };
+        if (!s.savedSets.some((x) => x.id === id)) return {};
+        // 목록에서 고른 건 **새 뿌리**다 — 경로를 물려받지 않는다.
+        return putSeat(s.filterMode, id, [id]);
     }),
 
     drillInto: (setId) => set((s) => {

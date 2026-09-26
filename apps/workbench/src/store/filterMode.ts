@@ -7,7 +7,7 @@
 //
 // 런타임에 "지금 모드"가 필요한 자리는 이걸 안 쓴다 — `set((s) => …)` 안에서 `s.filterMode` 를
 // 읽는다(그게 진실이고, 저장소는 부팅 복원용일 뿐이다).
-import { loadJson, saveJson } from "./persist.js";
+import { saveJson } from "./persist.js";
 import type { Universe } from "../panels/filter/universe.js";
 
 /**
@@ -17,8 +17,9 @@ import type { Universe } from "../panels/filter/universe.js";
  */
 const FILTER_MODE_KEY = "wb.filterMode.v1";
 
-const parse = (o: unknown): Universe | null => (o === "daily" || o === "longitudinal" ? o : null);
 
-export const loadFilterMode = (): Universe => loadJson(FILTER_MODE_KEY, parse) ?? "longitudinal";
+// 부재·종단 저장값 = **daily** — 종단 트랙 폐기(2026-09-26) 뒤 모드는 사실상 하루 하나다
+// (main.tsx 부팅 고정과 같은 답. 모드 개념 자체는 ①-4에서 은퇴한다).
+export const loadFilterMode = (): Universe => "daily";
 
 export const saveFilterMode = (u: Universe): Universe => { saveJson(FILTER_MODE_KEY, u); return u; };

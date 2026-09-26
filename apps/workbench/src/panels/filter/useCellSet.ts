@@ -27,7 +27,7 @@ import {
 } from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
-import { useAutoPoints, usePointGrids } from "../../lib/PointGridsContext.js";
+import { usePointGrids } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
 import { cellMaterialsOf } from "./cellMaterials.js";
 import type { FilterStage } from "./stage.js";
@@ -331,13 +331,11 @@ export function useCellSet(
     // (라벨 층은 이 재료가 없어도 선다 — 멤버십에서 오므로. 조건 없음 = 안 보여줌 규칙과 같은 결.)
     const snapQ = useDaySnapshot(narrowedEarly.expr !== null ? date : null);
     const stocks = snapQ.data?.stocks;
-    const auto = useAutoPoints();
     const themes = useThemeProjection();
 
     const narrowed = narrowedEarly;
     // ⚠ **트리를 걸어야 한다** — 평평한 2중 루프로 재면 묶음 안의 격자·존순위 술어를 못 보고,
     //   그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**(재료를 안 당기므로).
-    const needsGrid = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "gridPoint"), [narrowed]);
     const needsTheme = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "theme"), [narrowed]);
     // 돌파 생성기 — 기준선(/point-grids)을 이름표 재료로 쓴다. 안 쓰면 게이트도 안 선다.
     // 오늘은 /point-grids 가 기준선을 안 굽는다 → 이름표가 전부 「고가 돌파」(복기만 쓴다 — decisions).
@@ -361,11 +359,11 @@ export function useCellSet(
         //  · 격자(`auto.points`)·테마 투영(`themes.proj`)은 참조를 키에 못 실으니 **세대 번호**로 태운다.
         const key = JSON.stringify([
             date, narrowed.expr, limit ?? null, hardCap ?? null, limitBy ?? null,
-            genOf(auto.points), genOf(themes.proj),
+            genOf(themes.proj),
             needsBaseline && pointGrids.byDate ? genOf(pointGrids.byDate) : 0,
         ]);
         return evaluateMemo(stocks, key, () => {
-            const mat = cellMaterialsOf(stocks, date, auto, themes.proj, needsBaseline
+            const mat = cellMaterialsOf(stocks, date, themes.proj, needsBaseline
                 ? (code) => pointGrids.gridOf(code, date)?.base ?? null
                 : undefined);
             return evaluateCellsExpr(stocks, mat, narrowed.expr, {
@@ -374,7 +372,7 @@ export function useCellSet(
                 ...(limitBy !== undefined ? { limitBy } : {}),
             });
         });
-    }, [stocks, snapQ.data?.date, date, auto, themes.proj, themes.ready, needsTheme, narrowed,
+    }, [stocks, snapQ.data?.date, date, themes.proj, themes.ready, needsTheme, narrowed,
         limit, hardCap, limitBy, needsBaseline, pointGrids]);
 
     const items = useMemo<readonly FunnelItem[]>(
@@ -398,12 +396,11 @@ export function useCellSet(
         byCode,
         // 재료 게이트는 **그 재료를 쓰는 조건이 있을 때만** 선다 — 칸을 지웠는데 격자 실패가 화면을
         // 죽이면 "지웠다"가 거짓말이 된다.
-        isLoading: snapQ.isLoading || (needsGrid && auto.isLoading)
+        isLoading: snapQ.isLoading
             || (needsBaseline && pointGrids.isLoading) || (needsTheme && themes.isLoading),
         error: firstError([
             snapQ.error as Error | null,
             needsBaseline ? pointGrids.error : null,
-            needsGrid ? auto.error : null,
             // 멤버십 로드 실패를 삼키면 "재료 대기"로 영원히 위장한다(ready=false·null 결과가 로딩과 같은 얼굴).
             needsTheme ? themes.error : null,
         ]),

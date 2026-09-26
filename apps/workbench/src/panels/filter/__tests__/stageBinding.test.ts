@@ -3,136 +3,53 @@ import { applyRailToExpr, predicateFor, railKeyOf, sameRailKey, stagesFor, type 
 import { exprOfStages, leavesOf } from "../expr.js";
 import type { FilterPredicate, FilterStage } from "../stage.js";
 
-const stage = (id: string, predicates: FilterPredicate[]): FilterStage => ({ id, enabled: true, predicates });
-const band = (axisId: string, lo: string): FilterPredicate => ({ kind: "axisBand", axisId, band: { lo } });
-const value = (axisId: string, v: number): FilterPredicate => ({ kind: "axisValue", axisId, ranges: [{ from: { kind: "value", value: v } }] });
-const dates: FilterPredicate = { kind: "date", ranges: [{ from: "2026-07-01", to: "2026-07-31" }] };
-const AX: RailKey = { kind: "axis", axisId: "a1" };
+// 2026-09-26 종단 폐기 — 축·날짜·결과·급타점 레일은 kind 와 함께 은퇴했다. 남은 레일은 시각 하나다.
 
-/**
- * 레일 쓰기의 **리스트 관점** — 식 트리 판(applyRailToExpr)을 주소 없이 부르고 잎 목록으로 읽는다.
- * 주소(stageId)를 안 주는 길이 곧 옛 1:1 규칙이라(결과·급타점 전문 패널의 연동 거울이 쓰는 길),
- * 이 검사들이 그 규칙의 유일한 증인이다. 리스트 전용 구현은 2026-09-19 에 지웠다 — 같은 규칙을
- * 두 벌로 들고 있으면 언젠가 한쪽만 고쳐진다.
- */
+const stage = (id: string, predicates: FilterPredicate[]): FilterStage => ({ id, enabled: true, predicates });
+const time = (from: string, to: string): FilterPredicate => ({ kind: "time", ranges: [{ from, to }] });
+const TIME: RailKey = { kind: "time" };
+
 const applyRailPredicate = (stages: FilterStage[], key: RailKey, predicate: FilterPredicate | null): FilterStage[] =>
     leavesOf(applyRailToExpr(exprOfStages(stages), key, predicate));
 
-describe("railKeyOf — 그룹만 레일이 없다", () => {
-    it("축은 id 로, 날짜·시간은 종류로", () => {
-        expect(railKeyOf(band("a1", "s1"))).toEqual({ kind: "axis", axisId: "a1" });
-        expect(railKeyOf(value("a1", 3))).toEqual({ kind: "axis", axisId: "a1" });
-        expect(railKeyOf(dates)).toEqual({ kind: "date" });
-    });
-
-    it("그룹은 순서가 없어 레일이 아니다", () => {
-        expect(railKeyOf({ kind: "group", expr: { groups: [] }, scope: "day" })).toBeNull();
+describe("railKeyOf — 시각만 레일이다", () => {
+    it("시각은 종류로, 팝오버 종류(테마·돌파)와 셀 술어는 null", () => {
+        expect(railKeyOf(time("09:00", "10:30"))).toEqual({ kind: "time" });
+        expect(railKeyOf({ kind: "candleShape", shape: "bull" })).toBeNull();
+        expect(railKeyOf({ kind: "cellValue", field: "ratePct", ranges: [] })).toBeNull();
     });
 });
 
 describe("sameRailKey", () => {
-    it("축은 id 까지 같아야 같다", () => {
-        expect(sameRailKey(AX, { kind: "axis", axisId: "a1" })).toBe(true);
-        expect(sameRailKey(AX, { kind: "axis", axisId: "a2" })).toBe(false);
-        expect(sameRailKey(AX, { kind: "date" })).toBe(false);
-    });
-
-    it("밴드와 값 구간은 같은 축이면 같은 레일이다(한 축에 손잡이가 둘일 뿐)", () => {
-        expect(sameRailKey(railKeyOf(band("a1", "s1"))!, railKeyOf(value("a1", 3))!)).toBe(true);
+    it("종류가 같으면 같다", () => {
+        expect(sameRailKey(TIME, { kind: "time" })).toBe(true);
     });
 });
 
 describe("stagesFor · predicateFor", () => {
-    const stages = [stage("s1", [band("a1", "x")]), stage("s2", [dates]), stage("s3", [band("a1", "y")])];
+    const stages = [stage("s1", [time("09:00", "10:30")]), stage("s2", [{ kind: "candleShape", shape: "bull" }]), stage("s3", [time("13:00", "14:00")])];
 
     it("그 레일에 매인 필터를 순서대로", () => {
-        expect(stagesFor(stages, AX).map((s) => s.id)).toEqual(["s1", "s3"]);
+        expect(stagesFor(stages, TIME).map((s) => s.id)).toEqual(["s1", "s3"]);
     });
 
     it("레일이 그리는 건 첫 필터의 조건", () => {
-        expect(predicateFor(stages, AX)).toEqual(band("a1", "x"));
-        expect(predicateFor(stages, { kind: "time" })).toBeUndefined();
+        expect(predicateFor(stages, TIME)).toEqual(time("09:00", "10:30"));
+        expect(predicateFor([stage("s2", [{ kind: "candleShape", shape: "bull" }])], TIME)).toBeUndefined();
     });
 });
 
-describe("레일 쓰기(주소 없음) — 레일 하나 = 필터 하나", () => {
-    it("처음 그으면 새 필터가 생긴다", () => {
-        const next = applyRailPredicate([], AX, band("a1", "x"));
-        expect(next).toHaveLength(1);
-        expect(next[0]!.predicates).toEqual([band("a1", "x")]);
-        expect(next[0]!.enabled).toBe(true);
+describe("레일 쓰기 — 주소(stageId)가 고칠 줄을 정한다", () => {
+    it("처음 그으면 새 필터가 생기고, 주소로 그 줄만 고친다(시각A ∨ 시각B 보존)", () => {
+        const first = applyRailPredicate([], TIME, time("09:00", "10:30"));
+        expect(first).toHaveLength(1);
+        const two = [stage("a", [time("09:00", "10:30")]), stage("b", [time("13:00", "14:00")])];
+        const next = leavesOf(applyRailToExpr(exprOfStages(two), TIME, time("13:30", "14:30"), "b"));
+        expect(next.map((s) => s.predicates[0])).toEqual([time("09:00", "10:30"), time("13:30", "14:30")]);
     });
 
-    it("이미 있으면 그 필터를 갈아끼운다(새로 만들지 않는다)", () => {
-        const before = [stage("s1", [band("a1", "x")]), stage("s2", [dates])];
-        const next = applyRailPredicate(before, AX, band("a1", "z"));
-        expect(next.map((s) => s.id)).toEqual(["s1", "s2"]);
-        expect(next[0]!.predicates).toEqual([band("a1", "z")]);
-    });
-
-    it("같은 축의 밴드를 값 구간으로 바꿔도 같은 필터 자리다", () => {
-        const next = applyRailPredicate([stage("s1", [band("a1", "x")])], AX, value("a1", 5));
-        expect(next).toHaveLength(1);
-        expect(next[0]!.predicates).toEqual([value("a1", 5)]);
-    });
-
-    it("조건이 없어지면 그 필터를 지운다 — 빈 줄을 남기지 않는다", () => {
-        const before = [stage("s1", [band("a1", "x")]), stage("s2", [dates])];
-        expect(applyRailPredicate(before, AX, null).map((s) => s.id)).toEqual(["s2"]);
-    });
-
-    it("지울 게 없으면 아무 일도 안 한다", () => {
-        expect(applyRailPredicate([stage("s2", [dates])], AX, null).map((s) => s.id)).toEqual(["s2"]);
-    });
-
-    it("옛 저장본처럼 둘 이상 매여 있으면 첫 것만 건드린다", () => {
-        const before = [stage("s1", [band("a1", "x")]), stage("s3", [band("a1", "y")])];
-        const next = applyRailPredicate(before, AX, band("a1", "z"));
-        expect(next[0]!.predicates).toEqual([band("a1", "z")]);
-        expect(next[1]!.predicates).toEqual([band("a1", "y")]);
-    });
-
-    it("다른 레일의 필터는 순서까지 그대로", () => {
-        const before = [stage("s2", [dates]), stage("s1", [band("a1", "x")])];
-        expect(applyRailPredicate(before, { kind: "date" }, null).map((s) => s.id)).toEqual(["s1"]);
-    });
-
-    // 옛 저장본은 한 필터에 다른 레일의 술어가 같이 있을 수 있다 — 통째 교체는 안 보이는 형제를 지웠다.
-    it("한 필터에 다른 축 술어가 섞여 있으면 — 이 레일 것만 갈아끼우고 형제는 보존한다", () => {
-        const before = [stage("s1", [band("a1", "x"), value("a2", 3)])];
-        const next = applyRailPredicate(before, AX, band("a1", "z"));
-        expect(next).toHaveLength(1);
-        expect(next[0]!.predicates).toEqual([value("a2", 3), band("a1", "z")]);
-    });
-
-    it("같은 레일의 밴드+값구간이 같이 있으면 — 한 축의 두 손잡이라 둘 다 새 술어 하나로 접힌다", () => {
-        const before = [stage("s1", [band("a1", "x"), value("a1", 3)])];
-        const next = applyRailPredicate(before, AX, value("a1", 7));
-        expect(next[0]!.predicates).toEqual([value("a1", 7)]);
-    });
-
-    it("지울 때도 형제는 남는다 — 이 레일 술어만 빠지고, 필터가 비면 그때 필터째 사라진다", () => {
-        const mixed = [stage("s1", [band("a1", "x"), value("a2", 3)])];
-        const next = applyRailPredicate(mixed, AX, null);
-        expect(next).toHaveLength(1);
-        expect(next[0]!.predicates).toEqual([value("a2", 3)]);
-
-        const only = [stage("s1", [band("a1", "x")])];
-        expect(applyRailPredicate(only, AX, null)).toHaveLength(0);
-    });
-});
-
-describe("급타점 레일 키 — (창 W × 상승률 r) 이 자리다", () => {
-    const pred = (w: number, r: number): FilterPredicate => ({ kind: "hotPoints", w, r, ranges: [] });
-
-    it("파라미터가 키에 실린다 — 안 실으면 '이 레일에 뭘 그릴까'가 함수가 아니게 된다", () => {
-        expect(railKeyOf(pred(60, 3))).toEqual({ kind: "hotPoints", w: 60, r: 3 });
-    });
-
-    it("다른 (W,r) 은 다른 자리, 같은 (W,r) 은 같은 자리", () => {
-        const a = railKeyOf(pred(60, 3))!;
-        expect(sameRailKey(a, railKeyOf(pred(60, 3))!)).toBe(true);
-        expect(sameRailKey(a, railKeyOf(pred(30, 3))!)).toBe(false);
-        expect(sameRailKey(a, railKeyOf(pred(60, 5))!)).toBe(false);
+    it("null 이면 그 줄이 사라진다(빈 필터를 안 남긴다)", () => {
+        const two = [stage("a", [time("09:00", "10:30")])];
+        expect(leavesOf(applyRailToExpr(exprOfStages(two), TIME, null, "a"))).toHaveLength(0);
     });
 });

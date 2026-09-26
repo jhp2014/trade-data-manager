@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { datePred, loadStore, stubStorage } from "../test/funnelStoreHarness.js";
+import { timePred, loadStore, stubStorage } from "../test/funnelStoreHarness.js";
 import { selectEditingStages } from "./filterFunnelSlice.js";
 
 // 필터 깔때기 슬라이스 — 조건 한 벌의 이관·영속·시선(선택 칸) 정리 규칙.
@@ -18,10 +18,10 @@ afterEach(() => {
 describe("조건 한 벌의 자리 — 식은 **편집 중인 집합의 것**이다", () => {
     it("옛 독립 저장물 키(wb.filterExpr.*·리스트·슬롯)는 읽지 않는다 — 조건이 사는 자리가 집합으로 옮겼다", async () => {
         stubStorage({
-            "wb.filterExpr.v2": { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "old2", enabled: true, predicates: [datePred] } }] },
-            "wb.filterExpr.v1": { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "old1", enabled: true, predicates: [datePred] } }] },
-            "wb.filterStages.v4": [{ id: "old4", enabled: true, predicates: [datePred] }],
-            "wb.filterSlots": { active: 0, slots: [[{ id: "slot", enabled: true, predicates: [datePred] }], [], []] },
+            "wb.filterExpr.v2": { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "old2", enabled: true, predicates: [timePred] } }] },
+            "wb.filterExpr.v1": { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "old1", enabled: true, predicates: [timePred] } }] },
+            "wb.filterStages.v4": [{ id: "old4", enabled: true, predicates: [timePred] }],
+            "wb.filterSlots": { active: 0, slots: [[{ id: "slot", enabled: true, predicates: [timePred] }], [], []] },
         });
         const store = await loadStore();
         expect(selectEditingStages(store.getState())).toEqual([]);
@@ -29,7 +29,7 @@ describe("조건 한 벌의 자리 — 식은 **편집 중인 집합의 것**이
 
     it("저장 집합 키(v6)에서 읽는다 — 편집 대상의 식이 곧 조건 한 벌", async () => {
         stubStorage({
-            "wb.savedSets.v6": [{ id: "fs1", expr: { id: "root", of: [{ kind: "cond", stage: { id: "now", enabled: true, predicates: [datePred] } }], ops: [], groups: [] }, universe: "longitudinal" }],
+            "wb.savedSets.v6": [{ id: "fs1", expr: { id: "root", of: [{ kind: "cond", stage: { id: "now", enabled: true, predicates: [timePred] } }], ops: [], groups: [] }, universe: "daily" }],
             "wb.editingSetId.v1": "fs1",
         });
         const store = await loadStore();
@@ -41,7 +41,7 @@ describe("편집은 곧 영속", () => {
     it("조건을 더하면 **편집 중인 집합**의 저장물에 실린다", async () => {
         const storage = stubStorage();
         const store = await loadStore();
-        store.getState().addFilterStage([datePred]);
+        store.getState().addFilterStage([timePred]);
         expect(selectEditingStages(store.getState())).toHaveLength(1);
         const id = store.getState().editingSetId;
         const raw = JSON.parse(storage.get("wb.savedSets.v6")!) as { id: string; expr: { of: unknown[]; ops: unknown[] } }[];
@@ -57,7 +57,7 @@ describe("조건 개명 — 빈 이름은 자동 라벨로 되돌린다", () => 
     it("공백은 다듬고, 전부 공백이면 이름을 지운다(undefined = 자동 라벨)", async () => {
         stubStorage();
         const store = await loadStore();
-        store.getState().addFilterStage([datePred]);
+        store.getState().addFilterStage([timePred]);
         const id = selectEditingStages(store.getState())[0]!.id;
 
         store.getState().renameFilterStage(id, "  돌파  ");

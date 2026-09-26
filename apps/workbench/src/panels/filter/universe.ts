@@ -14,7 +14,7 @@
 // ⚠ 이 파일의 스위치에는 **자물쇠**(unknownPredicate)가 있다 — 새 술어 종류를 더하는 손이
 //   결손 지도를 그냥 지나치면, 그 종류는 모든 우주에서 조용히 "가용"이 되어 엉뚱한 우주에서
 //   영영 거짓으로 평가된다. 컴파일 에러로 여기를 만나게 하는 것이 자물쇠의 존재 이유 전부다.
-import { unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
+import { type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 import type { SetExpr } from "./expr.js";
 
 /**
@@ -109,88 +109,31 @@ export function universeOfExpr(e: SetExpr, universeOfRef: (setId: string) => Uni
 export const effectiveUniverse = (u: Universe | null): Universe => u ?? "longitudinal";
 
 /**
- * 종류만 보고 답하는 결손(payload 무관) — 팔레트 회색의 재료.
- * null = 가용. 문자열 = 회색 + 그 이유(title).
+ * 종류만 보고 답하는 결손(payload 무관) — 팔레트 회색의 재료. null = 가용.
+ * 종단 폐기(2026-09-26) 뒤 남은 종류는 전부 하루 가용이고, 종단엔 판정기가 없다(모드째 ①-4에서 은퇴).
  */
 export function kindDeficiency(k: PredicateKind, u: Universe): string | null {
     if (u === "longitudinal") {
         switch (k) {
-            case "cellValue":
-                return "분봉 재료(등락률·누적대금·분봉고가)는 하루 단면에만 있다 — 종단 행은 좌표 하나다";
-            case "priorHighBreak":
-                return "직전 거래일 고가(trailingHighs)는 하루 재료다";
-            case "gridPoint":
-                return "종단 격자 번들은 있으나 이 우주의 판정기가 아직 없다";
-            case "breakout":
-            case "candleShape":
-                // 원리적 결손이 아니다 — 라벨 좌표도 그날 분봉 안에 있다. 종단 판정기를 안 물렸을 뿐(종단 보류).
-                return "일별 타점[조건]의 조건 — 종단에는 아직 판정기가 안 물렸다";
-            // ⚠ theme 는 **종류 층에서 중립**이다(decisions 2026-09-26) — 여기서 종단 결손으로 답하면
-            //   committingUniverse 가 하루 전용으로 읽어, themeStrength → theme 이주 때 종단 저장 집합의
-            //   우주 파생이 하루로 뒤집힌다(숨겨 둔 집합이 목록에 나타난다). 결손은 payload 층이 말한다.
+            case "time":
+            case "theme":
+                return null; // 종류 층 중립(decisions — committingUniverse 가 우주를 못 정하게)
             default:
-                return null;
+                return "하루 분봉 재료 위의 조건이다 — 종단 트랙은 은퇴했다(2026-09-26)";
         }
     }
-    switch (k) {
-        case "axisBand":
-            return "배치줄은 종단 축의 행 인덱스다 — 셀은 축의 행이 아니다";
-        case "axisValue":
-            return "계산 축 값의 행 키는 라벨 좌표다 — 셀에는 그 키가 없다";
-        case "date":
-            return "하루 우주는 날짜가 정의가 아니라 변수다(전역 시선이 값을 준다)";
-        case "outcome":
-        case "outcomeRecovery":
-            return "결과 걷기의 앵커는 라벨 좌표다";
-        case "hotPoints":
-            return "격자 파생 축(좌표 축)이라 셀에는 값이 없다";
-        case "group":
-            return "좌표 라벨 재료는 있으나 하루 엔진에 아직 안 물렸다(라벨 층에서 켜진다)";
-        default:
-            return null;
-    }
+    return null;
 }
 
-/**
- * payload 까지 보는 결손 — 빈 배열이면 가용. 종류 결손에 **payload 결손**이 더해진다:
- *  · 전이 수식어는 종단에서 결손(종단 행에는 "직전 분"이 없다).
- *  · 타점 앵커 경계(`kind:"point"`)는 하루에서 결손(앵커 사전이 없다 — core 파서가 이미 "받아들이되 평가에서 결손").
- */
+/** payload 까지 보는 결손 — 빈 배열이면 가용. */
 export function predicateDeficiency(p: FilterPredicate, u: Universe): string[] {
     const out: string[] = [];
     const byKind = kindDeficiency(p.kind, u);
     if (byKind) out.push(byKind);
-
-    switch (p.kind) {
-        case "time":
-        case "cellValue":
-        case "priorHighBreak":
-        case "gridPoint":
-        case "breakout":
-        case "candleShape":
-            if (p.transition && u === "longitudinal") out.push("전이 수식어는 시계열 위에서만 뜻이 있다 — 종단 행에는 '직전 분'이 없다");
-            break;
-        case "axisValue":
-        case "outcome":
-        case "hotPoints":
-            if (u === "daily" && p.ranges.some((r) => r.from?.kind === "point" || r.to?.kind === "point")) {
-                out.push("타점 앵커 경계는 하루 우주에서 풀 수 없다(앵커 사전이 없다)");
-            }
-            break;
-        case "group":
-        case "axisBand":
-        case "date":
-        case "outcomeRecovery":
-            break;
-        case "theme":
-            // 종류 층은 중립(위 kindDeficiency 주석) — 종단 결손은 payload 층인 여기가 말한다.
-            if (u === "longitudinal") out.push("테마 존 판정은 하루 분 단면 위에서만 돈다 — 종단에는 판정기가 없다");
-            if (p.transition && u === "longitudinal") out.push("전이 수식어는 시계열 위에서만 뜻이 있다 — 종단 행에는 '직전 분'이 없다");
-            break;
-        default:
-            return unknownPredicate(p); // 자물쇠 — 새 종류는 반드시 여기를 지난다
+    if (u === "longitudinal") {
+        if (p.kind === "theme") out.push("테마 존 판정은 하루 분 단면 위에서만 돈다");
+        if ("transition" in p && p.transition) out.push("전이 수식어는 시계열 위에서만 뜻이 있다");
     }
-    // cellValue 의 경계는 core 가 value 만 받으므로 별도 검사가 없다(payload 상 point 가 못 들어온다).
     return out;
 }
 

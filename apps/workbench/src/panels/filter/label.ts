@@ -1,64 +1,21 @@
-// 단계·술어의 표시 이름(순수). 화면 폭이 좁아 **짧게, 그리고 지워진 것은 지워졌다고** 말해야 한다.
-//
-// 죽은 참조를 이름 없이 id 로 흘리면(또는 조용히 건너뛰면) 화면에는 멀쩡한 조건처럼 보인다.
-// 그래서 이름을 못 찾은 자리는 `(지워짐)` 으로 **눈에 띄게** 남긴다 — 판정에서 그게 미배치를 만들고 있으니
-// 숫자와 화면이 같은 이야기를 해야 한다.
+// 단계·술어의 표시 이름(순수). 화면 폭이 좁아 **짧게** 말해야 한다.
+// (옛 LabelLookup — 그룹·축 이름 사전 — 은 2026-09-26 종단 폐기로 은퇴: 남은 종류는 이름 재료가 전부 payload 다.)
 import { CANDLE_SHAPE_LABEL, CELL_VALUE_FIELDS, TRANSITION_LABEL } from "@trade-data-manager/market/domain";
-import { NONE_LABEL, isNoneLiteral, type GroupExpr } from "../rank/groupFilter.js";
-import { shortDate } from "../../lib/date.js";
-// (2026-09-26 종단 은퇴 과도기 — kind 와 함께 ①-3에서 죽는다)
-const OUTCOME_METRIC_NAME = { extHigh: "연장 고점", dropFromHigh: "고점 낙폭", dropFromClose: "종가 낙폭" } as const;
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 import { breakoutText } from "../breakout/chainChecks.js";
 
-export interface LabelLookup {
-    groupName: (id: string) => string | undefined;
-    axisName: (id: string) => string | undefined;
-}
-
 import type { SetExpr } from "./expr.js";
 
-const GONE = "(지워짐)";
-
-/** DNF 를 한 줄로: 절끼리 `|`, 절 안은 `&`, 부정은 `!`. */
-export function groupExprLabel(expr: GroupExpr, look: LabelLookup): string {
-    return expr.groups
-        .map((clause) =>
-            clause.literals
-                .map((l) => {
-                    const name = isNoneLiteral(l.groupId) ? NONE_LABEL : (look.groupName(l.groupId) ?? GONE);
-                    return `${l.neg ? "!" : ""}${name}`;
-                })
-                .join(" & "),
-        )
-        .join(" | ");
-}
-
-export function predicateLabel(p: FilterPredicate, look: LabelLookup): string {
+export function predicateLabel(p: FilterPredicate): string {
     switch (p.kind) {
-        case "group": return groupExprLabel(p.expr, look);
-        case "axisBand": return look.axisName(p.axisId) ?? GONE;
-        case "axisValue": return `${look.axisName(p.axisId) ?? GONE} 값`;
-        case "date":
-            return p.ranges.length === 1
-                ? `${shortDate(p.ranges[0]!.from)}~${shortDate(p.ranges[0]!.to)}`
-                : `날짜 ${p.ranges.length}구간`;
         case "time":
             return p.ranges.length === 1
                 ? `${p.ranges[0]!.from}~${p.ranges[0]!.to}`
                 : `시간 ${p.ranges.length}구간`;
         case "theme": return themeZoneLabel(p);
-        // T 를 라벨에 싣는다 — 같은 지표의 조건이 T 별로 여러 줄 설 수 있어(2026-09-09 인스턴스화)
-        // T 가 없으면 보드 목록에서 두 줄이 같은 이름으로 보인다.
-        case "outcome": return `${OUTCOME_METRIC_NAME[p.metric]} @T${p.t}%`;
-        case "outcomeRecovery": return `${p.recovered ? "저가 회복" : "저가 미회복"} @T${p.t}%`;
-        // (W,r) 을 라벨에 싣는다 — 결과의 @T 와 같은 이유: 인스턴스가 여럿이라 없으면 두 줄이 같은 이름이 된다.
-        case "hotPoints": return `급타점 수 (${p.w}분/${p.r}%)`;
         case "cellValue": return cellValueLabel(p);
         case "priorHighBreak": return `전고 돌파 (${p.days}일)`;
-        case "gridPoint": return "격자 Point";
-        // 요약 라벨(breakoutText) — 옛 "판 이름으로 갈린다" 규칙은 격자판 은퇴(2026-09-26)와 함께 죽었다.
-        // 돌파 줄이 여럿이면 이 요약이 서로를 가른다(결과 @T·급타점 (W,r) 과 같은 이유).
+        // 요약 라벨(breakoutText) — 돌파 줄이 여럿이면 이 요약이 서로를 가른다.
         case "breakout": return breakoutText(p);
         case "candleShape": return CANDLE_SHAPE_LABEL[p.shape];
     }
@@ -95,18 +52,10 @@ export function themeZoneLabel(p: Extract<FilterPredicate, { kind: "theme" }>): 
 export function kindLabel(kind: PredicateKind | undefined): string {
     if (kind === undefined) return "";
     switch (kind) {
-        case "group": return "그룹";
-        case "axisBand":
-        case "axisValue": return "축";
-        case "date": return "날짜";
         case "time": return "시간";
         case "theme": return "테마";
-        case "outcome":
-        case "outcomeRecovery": return "결과";
-        case "hotPoints": return "급타점";
         case "cellValue": return "셀 값";
         case "priorHighBreak": return "전고";
-        case "gridPoint": return "격자";
         case "breakout": return "타점";
         case "candleShape": return "캔들";
         default: {
@@ -121,19 +70,15 @@ export function kindLabel(kind: PredicateKind | undefined): string {
 
 /**
  * 집합의 **자동 이름** — 손으로 지은 이름이 없을 때 화면이 쓰는 것(2026-09-20).
- *
- * ⚠ **저장 시점에 굽지 않는다.** 재료인 `LabelLookup`(축 이름·그룹 이름)은 훅 재료라 스토어가
- * 동기로 초기화되는 시점엔 아직 없다 — 거기서 구우면 `c:supply-gap` 같은 축 **키**가 그대로
- * 이름으로 굳는다. 그래서 `SavedSet.name` 은 옵셔널이고 부재가 곧 "자동 이름"이다(점선 칩).
  */
-export function autoSetName(expr: SetExpr, look: LabelLookup, nameOfSet: (setId: string) => string): string {
+export function autoSetName(expr: SetExpr, nameOfSet: (setId: string) => string): string {
     // ⚠ **항 전부를 센다 — 조건만 세면 안 된다.** 새 모델에서 제일 흔한 모양이 `AND(참조, 참조)`(조건
     //   0개)인데, `leavesOf` 로만 재면 그게 "빈 집합"으로 불린다(칩·빵부스러기·목록이 한꺼번에 거짓말).
     //   decisions 의 "`leavesOf` 로 재는 판정엔 `refsOf` 를 따로 물어야 한다"를 여기서 또 밟았었다.
     const terms = expr.of;
     if (terms.length === 0) return "빈 집합";
     const head = terms[0]!;
-    const headLabel = head.kind === "cond" ? stageLabel(head.stage, look) : nameOfSet(head.setId);
+    const headLabel = head.kind === "cond" ? stageLabel(head.stage) : nameOfSet(head.setId);
     return terms.length === 1 ? headLabel : `${headLabel} 외 ${terms.length - 1}`;
 }
 
@@ -143,14 +88,13 @@ export function autoSetName(expr: SetExpr, look: LabelLookup, nameOfSet: (setId:
  */
 export const setDisplayName = (
     set: { name?: string; expr: SetExpr },
-    look: LabelLookup,
     /** 참조 항의 이름 — 안 주면 "(묶음)". 재귀를 안 타는 이유: 이름 짓다가 그래프를 걷지 않는다. */
     nameOfSet: (setId: string) => string = () => "(묶음)",
-): string => set.name ?? autoSetName(set.expr, look, nameOfSet);
+): string => set.name ?? autoSetName(set.expr, nameOfSet);
 
 /** 손으로 준 이름이 있으면 그것, 없으면 조건에서 만든다. 빈 술어는 이름에 안 낀다. */
-export function stageLabel(s: FilterStage, look: LabelLookup): string {
+export function stageLabel(s: FilterStage): string {
     if (s.name) return s.name;
-    const parts = s.predicates.filter((p) => !isPredicateEmpty(p)).map((p) => predicateLabel(p, look));
+    const parts = s.predicates.filter((p) => !isPredicateEmpty(p)).map((p) => predicateLabel(p));
     return parts.length === 0 ? "조건 없음" : parts.join(" · ");
 }

@@ -6,10 +6,9 @@ import { HeaderControls, type ControlSpec } from "../../components/HeaderControl
 import { selectEditingExpr, selectEditingUniverse, useWorkbench } from "../../store/workbench.js";
 import { FAIL } from "../../styles/palette.js";
 import { leafCount, leavesOf, refsOf } from "../filter/expr.js";
-import type { FunnelView } from "../filter/useFilterFunnel.js";
 import { useBoundSet } from "../filter/useBoundSet.js";
 
-export function DailyGenHeader({ v, panelId }: { v: FunnelView; panelId: string }): JSX.Element {
+export function DailyGenHeader({ panelId }: { panelId: string }): JSX.Element {
     const clearStages = useWorkbench((s) => s.clearFilterStages);
     const derived = useWorkbench(selectEditingUniverse);
     const date = useWorkbench((s) => s.focus.date);
@@ -56,11 +55,6 @@ export function DailyGenHeader({ v, panelId }: { v: FunnelView; panelId: string 
                 <span title={d.unsupported ?? "이 집합에는 종단 조건이 있어 하루에서 평가하지 않습니다"}
                     style={{ fontSize: 10.5, color: FAIL, flexShrink: 0 }}>
                     종단 집합 — 평가 안 함
-                </span>
-            )}
-            {v.deadStageIds.length > 0 && (
-                <span style={{ fontSize: 10.5, color: FAIL, flexShrink: 0 }} title="지워진 참조를 가리키는 조건이 있습니다">
-                    죽은 참조 {v.deadStageIds.length}
                 </span>
             )}
             <HeaderControls controls={controls} storageKey="wb.headerPins.funnel" />

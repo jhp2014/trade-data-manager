@@ -16,7 +16,7 @@ import {
 import { parseStages, type FilterStage } from "../stage.js";
 
 const st = (id: string, name?: string): FilterStage =>
-    ({ id, enabled: true, predicates: [{ kind: "date", ranges: [{ from: "2026-01-01", to: "2026-01-31" }] }], ...(name ? { name } : {}) });
+    ({ id, enabled: true, predicates: [{ kind: "time", ranges: [{ from: "2026-01-01", to: "2026-01-31" }] }], ...(name ? { name } : {}) });
 const cond = (id: string, neg = false): SetTerm => ({ kind: "cond", stage: st(id), ...(neg ? { neg: true as const } : {}) });
 const expr = (kind: Op, of: SetTerm[]): SetExpr => ({ id: "root", of, ops: of.slice(1).map(() => kind), groups: [] });
 /** 읽기 좋은 한 줄 표기 — 괄호까지 눈으로 본다. */
@@ -97,7 +97,7 @@ describe("편집 — 안 바뀐 항은 객체가 유지된다", () => {
 describe("activeExpr — 끄기는 결손이 아니라 **부재**다", () => {
     it("꺼진 조건·빈 술어 조건은 평가에서 빠진다", () => {
         const off: SetTerm = { kind: "cond", stage: { ...st("off"), enabled: false } };
-        const empty: SetTerm = { kind: "cond", stage: { id: "e", enabled: true, predicates: [{ kind: "date", ranges: [] }] } };
+        const empty: SetTerm = { kind: "cond", stage: { id: "e", enabled: true, predicates: [{ kind: "time", ranges: [] }] } };
         expect(leavesOf(activeExpr(expr("and", [cond("a"), off, empty]))).map((s) => s.id)).toEqual(["a"]);
     });
 
@@ -127,7 +127,7 @@ describe("파싱 — 항 단위로 관대하다", () => {
     });
 
     it("못 읽는 항만 떨어지고 나머지는 산다", () => {
-        const raw = { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "a", enabled: true, predicates: [{ kind: "date", ranges: [] }] } }, { kind: "cond", stage: "쓰레기" }, { kind: "ref" }] };
+        const raw = { kind: "and", id: "root", of: [{ kind: "cond", stage: { id: "a", enabled: true, predicates: [{ kind: "time", ranges: [] }] } }, { kind: "cond", stage: "쓰레기" }, { kind: "ref" }] };
         const e = parseExpr(raw, parseStages);
         expect(e!.of).toHaveLength(1);
     });
@@ -285,9 +285,9 @@ describe("파싱 — 연산자·괄호도 항 단위 관대를 따른다", () =>
         const raw = {
             id: "root",
             of: [
-                { kind: "cond", stage: { id: "a", enabled: true, predicates: [{ kind: "date", ranges: [] }] } },
+                { kind: "cond", stage: { id: "a", enabled: true, predicates: [{ kind: "time", ranges: [] }] } },
                 { kind: "cond", stage: "쓰레기" },
-                { kind: "cond", stage: { id: "c", enabled: true, predicates: [{ kind: "date", ranges: [] }] } },
+                { kind: "cond", stage: { id: "c", enabled: true, predicates: [{ kind: "time", ranges: [] }] } },
             ],
             ops: ["and", "or"],
             groups: [{ from: 0, to: 1 }],
@@ -339,10 +339,10 @@ describe("항이 줄어도 불변식이 선다 — 표시와 평가가 안 갈�
         const raw = {
             id: "root",
             of: [
-                { kind: "cond", stage: { id: "a", enabled: true, predicates: [{ kind: "date", ranges: [] }] } },
+                { kind: "cond", stage: { id: "a", enabled: true, predicates: [{ kind: "time", ranges: [] }] } },
                 { kind: "cond", stage: "쓰레기" },
-                { kind: "cond", stage: { id: "c", enabled: true, predicates: [{ kind: "date", ranges: [] }] } },
-                { kind: "cond", stage: { id: "d", enabled: true, predicates: [{ kind: "date", ranges: [] }] } },
+                { kind: "cond", stage: { id: "c", enabled: true, predicates: [{ kind: "time", ranges: [] }] } },
+                { kind: "cond", stage: { id: "d", enabled: true, predicates: [{ kind: "time", ranges: [] }] } },
             ],
             ops: ["and", "or", "and"],
             groups: [{ from: 1, to: 2 }],

@@ -10,39 +10,19 @@
 //
 // ⚠ 그룹은 레일이 아니다(순서가 없다) — railKeyOf 가 null 을 준다. 그룹 조건은 보드에서 리스트로 관리하고
 // 필터 여러 개가 될 수 있다(테마A / 돌파형을 나눠 걸어야 각각을 따로 끄고 켤 수 있다).
-import { newStage, unknownPredicate, type FilterPredicate, type FilterStage, type OutcomeMetric, type PredicateKind } from "./stage.js";
+import { newStage, unknownPredicate, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 import { appendLeaf, filterLeaves, leavesOf, mapLeaves, type SetExpr } from "./expr.js";
 
-/** 레일 하나를 가리키는 열쇠. 축은 id 로, 결과는 지표로, 날짜·시간은 종류만으로 유일하다. */
-export type RailKey =
-    | { kind: "axis"; axisId: string }
-    /** 결과는 **(지표 × 허용 폭 T)** 가 자리다 — T 가 술어로 내려오면서(2026-09-09) 같은 지표의 조건이
-     *  T 별로 여러 개 설 수 있게 됐고, 키에 T 를 실어야 "이 레일에 뭘 그릴까"가 다시 함수가 된다
-     *  (그 값은 지금 보는 T 슬라이스의 그 조건 하나). 조건의 T 를 옮기는 건 레일이 아니라 T 레일이 한다. */
-    | { kind: "outcome"; metric: OutcomeMetric; t: number }
-    | { kind: "date" }
-    | { kind: "time" }
-    /** 급타점 수는 **(창 W × 상승률 r)** 이 자리다 — 결과의 (지표 × T) 와 같은 근거: 파라미터가
-     *  술어에 살아 같은 축의 조건이 (W,r) 별로 여럿 설 수 있으므로, 키에 실어야 "이 레일에 뭘 그릴까"가
-     *  함수로 남는다. 대가는 **자리 충돌 거절**(hotLink) — 조용히 덮어쓰지 않는다. */
-    | { kind: "hotPoints"; w: number; r: number };
+/** 레일 하나를 가리키는 열쇠 — 종단 폐기(2026-09-26) 뒤 남은 것은 시각 하나다. */
+export type RailKey = { kind: "time" };
 
-/** 이 술어가 사는 레일. 그룹은 레일이 없어 null. */
+/** 이 술어가 사는 레일. 팝오버 종류(테마·돌파)와 셀 술어는 레일이 없어 null. */
 export function railKeyOf(p: FilterPredicate): RailKey | null {
     switch (p.kind) {
-        case "axisBand":
-        case "axisValue": return { kind: "axis", axisId: p.axisId };
-        case "outcome": return { kind: "outcome", metric: p.metric, t: p.t }; // 결과 패널의 레일(과거/미래 경계 저쪽)
-        case "date": return { kind: "date" };
         case "time": return { kind: "time" };
-        case "hotPoints": return { kind: "hotPoints", w: p.w, r: p.r }; // 급타점 패널의 레일
-        case "group": return null;
         case "theme": return null; // 편집면은 조건판 팝오버 하나
-        case "outcomeRecovery": return null; // 명목값 — 레일이 아니라 결과 패널 머리글 칩이 편집 입구
-        // 셀 술어 — 하루 우주의 레일(분포 스트립)은 아직 없다. 켤 때 어댑터 하나로 붙는다.
         case "cellValue":
         case "priorHighBreak":
-        case "gridPoint":
         case "breakout":
         case "candleShape": return null;
         // 자물쇠 — 빠뜨리면 그은 컷이 그 행에 조용히 안 붙는다(stage.ts).
@@ -51,11 +31,7 @@ export function railKeyOf(p: FilterPredicate): RailKey | null {
 }
 
 export function sameRailKey(a: RailKey, b: RailKey): boolean {
-    if (a.kind !== b.kind) return false;
-    if (a.kind === "axis") return a.axisId === (b as { axisId: string }).axisId;
-    if (a.kind === "outcome") { const o = b as { metric: OutcomeMetric; t: number }; return a.metric === o.metric && a.t === o.t; }
-    if (a.kind === "hotPoints") { const h = b as { w: number; r: number }; return a.w === h.w && a.r === h.r; }
-    return true;
+    return a.kind === b.kind;
 }
 
 /** 이 레일에 매인 필터들 — 정상은 0~1개. 옛 저장본에서 2개 이상일 수 있어 리스트로 답한다. */

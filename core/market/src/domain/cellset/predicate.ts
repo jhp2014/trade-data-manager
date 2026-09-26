@@ -107,7 +107,6 @@ export const CANDLE_SHAPE_LABEL: Record<CandleShape, string> = { bull: "양봉",
 export type CellPredicate =
     | { kind: "cellValue"; field: CellValueField; ranges: CellValueRange[]; transition?: Transition }
     | { kind: "priorHighBreak"; days: number; transition?: Transition }
-    | { kind: "gridPoint"; transition?: Transition }
     /** 돌파 사슬 후보(생성기) — 기준선은 `/point-grids` 의 확정 기준선(없으면 이름표가 전부 「고가 돌파」). */
     | { kind: "breakout"; zigzagPct: number; bandPct: number; chain: ChainFilter; transition?: Transition }
     | { kind: "candleShape"; shape: CandleShape; transition?: Transition }
@@ -138,7 +137,6 @@ export function costTierOf(p: CellPredicate): 0 | 1 | 2 {
         case "time":
             return 0;
         case "priorHighBreak":
-        case "gridPoint":
         case "breakout":
             return 1;
         case "candleShape":
@@ -219,7 +217,6 @@ export function isCellPredicateEmpty(p: CellPredicate): boolean {
         case "time":
             return p.ranges.length === 0;
         case "priorHighBreak":
-        case "gridPoint":
         case "breakout":
         case "candleShape":
             return false;
@@ -241,10 +238,6 @@ export function breakoutKeyOf(p: Extract<CellPredicate, { kind: "breakout" }>): 
     return `${breakoutStructKeyOf(p)}|${chainFilterKey(p.chain)}`;
 }
 
-/** 이 조건 묶음이 격자 재료를 쓰는가 — 패널의 로딩·오류 게이트가 본다(안 쓰면 격자 실패가 화면을 죽이면 안 된다). */
-export function usesGridPoint(conditions: CellConditions): boolean {
-    return conditions.some((c) => c.enabled && c.predicates.some((p) => p.kind === "gridPoint"));
-}
 
 /** 이 조건 묶음이 테마 재료(분 단면·멤버십)를 쓰는가 — 로딩 표시·게으름 게이트가 본다. */
 export function usesTheme(conditions: CellConditions): boolean {
@@ -314,8 +307,6 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
             if (typeof raw.days !== "number" || !Number.isFinite(raw.days)) return null;
             return { kind: "priorHighBreak", days: Math.max(1, Math.floor(raw.days)), ...transition };
         }
-        case "gridPoint":
-            return { kind: "gridPoint", ...transition };
         // 노브는 **폐기가 아니라 클램프** — 범위 밖 값 하나로 술어(와 종단이면 저장본 통째)를 버리지 않는다.
         case "breakout":
             return {

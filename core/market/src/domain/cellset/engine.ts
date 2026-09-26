@@ -55,7 +55,6 @@ export type CellStock = Pick<
 /** 주입 재료 — 기존 단일 출처의 어댑터. 계산 규칙을 여기로 들이지 말 것(서수 출처 단일화 불변식). */
 export interface CellMaterials {
     /** 격자 파생 Point 의 시각(분) 목록 — 없으면 빈 배열. (클라: useAutoPoints/defDerived) */
-    gridMinutesOf(code: string): readonly number[];
     /**
      * 테마 술어의 답(판정 + 존 순위 best) — 파라미터가 payload 라 술어마다 다르다. null = 재료 없음(모름 →
      * 미발화). ⚠ 단락 뒤에만 불린다. (클라: sectionSeries.themeSectionAt + themeZone.themeAnswerOf)
@@ -156,7 +155,6 @@ function applyTransition(t: Transition | undefined, st: TransitionState, raw: bo
 /** 종목 하나의 사전계산(tier 1) — 창별 전고 자와 격자 분 집합. 조건이 안 쓰면 만들지 않는다. */
 interface StockPrecomputed {
     priorHighOf(days: number): number | null;
-    gridMinutes: ReadonlySet<number> | null;
     /** 돌파 후보 키 → 후보 분(자정기준). */
     breakouts: ReadonlyMap<string, ReadonlySet<number>>;
 }
@@ -186,7 +184,6 @@ function precompute(
     s: CellStock,
     mat: CellMaterials,
     needDays: readonly number[],
-    needGrid: boolean,
     needBreakout: ReadonlyMap<string, BreakoutPred>,
 ): StockPrecomputed {
     const highs = new Map<number, number | null>();
@@ -200,7 +197,6 @@ function precompute(
     for (const [key, p] of needBreakout) breakouts.set(key, breakoutMinutes(p, s, mat, chains));
     return {
         priorHighOf: (days) => highs.get(days) ?? null,
-        gridMinutes: needGrid ? new Set(mat.gridMinutesOf(s.code)) : null,
         breakouts,
     };
 }
@@ -348,9 +344,6 @@ function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
                 raw = bar !== null && (ctx.s.minuteHigh[ctx.i] ?? -Infinity) > bar;
                 break;
             }
-            case "gridPoint":
-                raw = ctx.pre.gridMinutes !== null && ctx.pre.gridMinutes.has(ctx.min);
-                break;
             case "breakout": {
                 raw = ctx.pre.breakouts.get(c.breakoutKey!)?.has(ctx.min) === true;
                 break;
@@ -456,13 +449,11 @@ export function evaluateCellsExpr(
     // 사전계산 소요 — 식이 안 쓰는 재료는 만들지 않는다. **트리를 걸어야 한다**: 평평한 2중 루프로
     // 재면 묶음 안의 격자·전고 술어를 못 보고, 그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**.
     const needDays: number[] = [];
-    let needGrid = false;
     let needTheme = false;
     const needBreakout = new Map<string, BreakoutPred>();
     const scan = (e: CellExpr): void => {
         if (e.kind === "pred") {
             if (e.pred.kind === "priorHighBreak" && !needDays.includes(e.pred.days)) needDays.push(e.pred.days);
-            if (e.pred.kind === "gridPoint") needGrid = true;
             if (e.pred.kind === "breakout") needBreakout.set(breakoutKeyOf(e.pred), e.pred);
             if (e.pred.kind === "theme") needTheme = true;
             return;
@@ -478,7 +469,7 @@ export function evaluateCellsExpr(
     outer: for (const s of stocks) {
         const n = s.times.length;
         if (n === 0) continue;
-        const pre = precompute(s, mat, needDays, needGrid, needBreakout);
+        const pre = precompute(s, mat, needDays, needBreakout);
         // 전이 상태 — 노드마다 슬롯 하나. 종목이 바뀌면 새로 만든다(하루 경계 = 종목 타임라인).
         const st: TransitionState[] = Array.from({ length: slots }, newState);
 

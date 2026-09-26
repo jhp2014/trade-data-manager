@@ -9,7 +9,7 @@
 import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
 import {
-    newStage, renameGroupInStages,
+    newStage,
     type FilterPredicate, type FilterStage,
 } from "../panels/filter/stage.js";
 import {
@@ -104,13 +104,6 @@ export interface FilterFunnelSlice {
     /** 칸 통째 교체 — 칸 수준 필드(전이)까지 한 번에 가는 편집면이 쓴다(셀 술어 인라인 편집). */
     setFilterStage: (next: FilterStage) => void;
     renameFilterStage: (id: string, name: string) => void;
-    /**
-     * 그룹 **개명 승계** — 그룹 필터 리터럴이 그룹을 이름으로 들고 있어, 서버 개명 후 여기서 작업 깔때기 +
-     * 저장 집합(조건 사본)의 옛 이름을 따라 바꾼다. 안 하면 개명 즉시 그 이름을 쓰던 저장물이 죽은 참조가
-     * 된다(@none:day 승계 규칙과 같은 성질). putStages 를 안 타는 이유: 이건 손 편집이 아니라 기계 승계라
-     * 선택 포인터를 건드리면 안 된다(단계 id 불변).
-     */
-    renameGroupInFilters: (from: string, to: string) => void;
     clearFilterStages: () => void;
 }
 
@@ -206,16 +199,6 @@ export const createFilterFunnelSlice: StateCreator<WorkbenchState, [], [], Filte
         if (n === "") { const { name: _drop, ...rest } = x; return rest; }
         return { ...x, name: n };
     }))),
-    renameGroupInFilters: (from, to) => set((s) => {
-        // 기계 승계 — 편집 중인 집합만이 아니라 **저장 집합 전부**를 훑는다(그룹 이름이 리터럴이라).
-        // putExpr 을 안 타는 이유: 손 편집이 아니라 기계 승계라 선택 포인터를 건드리면 안 된다.
-        const sets = s.savedSets.map((f) => {
-            const ex = mapLeaves(f.expr, (x) => renameGroupInStages([x], from, to)[0]!);
-            return ex === f.expr ? f : { ...f, expr: ex };
-        });
-        if (!sets.some((f, i2) => f !== s.savedSets[i2])) return {};
-        return { savedSets: persistSavedSets(sets) };
-    }),
     clearFilterStages: () => set((s) => putExpr(s, emptyExpr())),
     };
 };

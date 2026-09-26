@@ -126,9 +126,9 @@ export function useBoundSet(_panelId: string): BoundSet {
     const label = useMemo(() => {
         const f = savedSets.find((x) => x.id === observedId);
         return f
-            ? setDisplayName(f, funnel.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)")
+            ? setDisplayName(f, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)")
             : "(지워진 집합)";
-    }, [savedSets, observedId, funnel.labelLook]);
+    }, [savedSets, observedId]);
 
     return {
         // 종단 은퇴(2026-09-26) — 하루 뷰 하나다. 하루가 아니면(과도기) 모름으로.

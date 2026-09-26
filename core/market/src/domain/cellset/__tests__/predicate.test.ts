@@ -7,9 +7,6 @@ import {
     parseCellConditions,
     parseCellPredicate,
     unknownCellPredicate,
-    usesGridPoint,
-    usesTheme,
-    type CellConditions,
     type CellPredicate,
 } from "../predicate.js";
 import { DEFAULT_THEME_ZONE } from "../themeZone.js";
@@ -21,7 +18,6 @@ describe("parseCellPredicate", () => {
         const preds = [
             { kind: "cellValue", field: "ratePct", ranges: [{ from: { kind: "value", value: 5 } }], transition: "firstOfDay" },
             { kind: "priorHighBreak", days: 20 },
-            { kind: "gridPoint", transition: "firstTrue" },
             { kind: "time", ranges: [{ from: "09:00", to: "10:30" }] },
         ];
         for (const p of preds) expect(parseCellPredicate(JSON.parse(JSON.stringify(p)))).toEqual(p);
@@ -59,7 +55,6 @@ describe("parseCellPredicate", () => {
     });
 
     it("전이 값이 모르는 문자열이면 전이 없음으로 떨군다(조용히 다른 뜻이 되지 않게)", () => {
-        expect(parseCellPredicate({ kind: "gridPoint", transition: "언젠가" })).toEqual({ kind: "gridPoint" });
     });
 });
 
@@ -78,9 +73,9 @@ describe("parseCellConditions", () => {
         const got = parseCellConditions([
             { id: "", predicates: [] }, // id 없음
             { id: "a", predicates: "nope" }, // 술어가 배열이 아님
-            { id: "b", enabled: false, predicates: [{ kind: "gridPoint" }, { kind: "모름" }] },
+            { id: "b", enabled: false, predicates: [{ kind: "candleShape", shape: "bull" }, { kind: "모름" }] },
         ]);
-        expect(got).toEqual([{ id: "b", enabled: false, predicates: [{ kind: "gridPoint" }] }]);
+        expect(got).toEqual([{ id: "b", enabled: false, predicates: [{ kind: "candleShape", shape: "bull" }] }]);
     });
 
     it("enabled 부재는 켬으로 승계한다", () => {
@@ -93,26 +88,14 @@ describe("비용 등급·빈 판정·재료 사용 여부", () => {
         expect(costTierOf({ kind: "theme", ...DEFAULT_THEME_ZONE })).toBe(2);
         expect(costTierOf({ kind: "cellValue", field: "ratePct", ranges: [] })).toBe(0);
         expect(costTierOf({ kind: "time", ranges: [] })).toBe(0);
-        expect(costTierOf({ kind: "gridPoint" })).toBe(1);
         expect(costTierOf({ kind: "priorHighBreak", days: 20 })).toBe(1);
     });
 
     it("빈 구간 술어는 '무제한'이 아니라 빈 것이다", () => {
         expect(isCellPredicateEmpty({ kind: "cellValue", field: "ratePct", ranges: [] })).toBe(true);
         expect(isCellPredicateEmpty({ kind: "time", ranges: [] })).toBe(true);
-        expect(isCellPredicateEmpty({ kind: "gridPoint" })).toBe(false);
     });
 
-    it("재료 사용 여부는 **켜진 칸만** 본다 — 끈 칸의 격자 실패가 화면을 죽이면 안 된다", () => {
-        const conds: CellConditions = [
-            { id: "off", enabled: false, predicates: [{ kind: "gridPoint" }] },
-            { id: "on", enabled: true, predicates: [{ kind: "cellValue", field: "ratePct", ranges: [] }] },
-        ];
-        expect(usesGridPoint(conds)).toBe(false);
-        expect(usesTheme(conds)).toBe(false);
-        expect(usesGridPoint([{ id: "g", enabled: true, predicates: [{ kind: "gridPoint" }] }])).toBe(true);
-        expect(usesTheme([{ id: "z", enabled: true, predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE }] }])).toBe(true);
-    });
 
     it("자물쇠는 모르는 종류에서 던진다(새 종류를 더하는 손이 컴파일 에러로 세 자리를 만난다)", () => {
         expect(() => unknownCellPredicate({ kind: "새것" } as never)).toThrow(/알 수 없는 셀 술어/);

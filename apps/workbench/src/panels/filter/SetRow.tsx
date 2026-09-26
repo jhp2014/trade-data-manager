@@ -23,7 +23,6 @@ import { selectObservedSetId, useWorkbench } from "../../store/workbench.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { FAIL } from "../../styles/palette.js";
 import { LinkIcon, PencilIcon, TrashIcon } from "../../components/icons.js";
-import { useFunnel } from "./FunnelContext.js";
 import { UNIVERSE_LABEL } from "./universe.js";
 import { leafCount, refsOf } from "./expr.js";
 import { setDisplayName } from "./label.js";
@@ -46,14 +45,13 @@ const rootChip: React.CSSProperties = {
 };
 
 export function SetRow(): JSX.Element {
-    const v = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
     const observedId = useWorkbench(selectObservedSetId);
     const mode = useWorkbench((s) => s.filterMode);
 
     const observed = savedSets.find((x) => x.id === observedId);
     const name = observed
-        ? setDisplayName(observed, v.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)")
+        ? setDisplayName(observed, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)")
         : "(지워진 집합)";
     
     return (
@@ -91,7 +89,6 @@ const iconBtn = (danger = false): React.CSSProperties => ({
 
 /** 집합 관리 판 — 위는 ＋ 새 집합, 아래는 **지금 모드의** 집합 한 목록(행 = 열기 · 🔗쓰는 곳 · hover 에 ✎·🗑). */
 function SetManager({ onClose }: { onClose: () => void }): JSX.Element {
-    const v = useFunnel();
     const savedSets = useWorkbench((s) => s.savedSets);
     const editSet = useWorkbench((s) => s.editSet);
     const createSet = useWorkbench((s) => s.createSet);
@@ -144,7 +141,7 @@ function SetManager({ onClose }: { onClose: () => void }): JSX.Element {
         const armed = armedDelete === f.id;
         const usedBy = usedByOf(f.id);
         const showTools = hovered === f.id || focused === f.id;
-        const nm = setDisplayName(f, v.labelLook, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)");
+        const nm = setDisplayName(f, (id) => savedSets.find((x) => x.id === id)?.name ?? "(묶음)");
         const other = f.universe !== mode; // 완충으로 낀 자리 — 숨기지 않고 뱃지로 말한다
         return (
             <div key={f.id} onMouseEnter={() => setHovered(f.id)} onMouseLeave={() => setHovered((h) => (h === f.id ? null : h))}

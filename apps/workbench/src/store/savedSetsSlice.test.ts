@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { exprOfStages, refsOf } from "../panels/filter/expr.js";
-import { datePred, loadStore, stubStorage } from "../test/funnelStoreHarness.js";
+import { timePred, loadStore, stubStorage } from "../test/funnelStoreHarness.js";
 import { selectEditingExpr, selectEditingStages, selectObservedExpr } from "./filterFunnelSlice.js";
 
 // 저장 집합 슬라이스 — **편집이 곧 저장**인 모델(2026-09-20)의 규칙.
@@ -44,7 +44,7 @@ describe("편집할 집합은 늘 하나 있다", () => {
 
     it("지금 키(v6)는 그대로 읽는다", async () => {
         stubStorage({
-            "wb.savedSets.v6": [{ id: "fs2", name: "새것", expr: exprOfStages([]), universe: "longitudinal" as const }],
+            "wb.savedSets.v6": [{ id: "fs2", name: "새것", expr: exprOfStages([]), universe: "daily" as const }],
         });
         const store = await loadStore();
         expect(store.getState().savedSets.map((s) => s.name)).toEqual(["새것"]);
@@ -55,7 +55,7 @@ describe("편집 = 저장 — 「저장 안 한 변경」이라는 상태가 없
     it("조건을 더하면 **편집 중인 집합의 저장물**이 그 자리에서 바뀐다", async () => {
         const storage = stubStorage();
         const store = await loadStore();
-        store.getState().addFilterStage([datePred]);
+        store.getState().addFilterStage([timePred]);
 
         const id = store.getState().editingSetId;
         expect(selectEditingStages(store.getState())).toHaveLength(1);
@@ -66,7 +66,7 @@ describe("편집 = 저장 — 「저장 안 한 변경」이라는 상태가 없
     it("편집 대상 갈아타기는 **사본을 안 뜬다** — 두 집합이 서로를 안 흔든다", async () => {
         stubStorage();
         const store = await loadStore();
-        store.getState().addFilterStage([datePred]);
+        store.getState().addFilterStage([timePred]);
         const first = store.getState().editingSetId;
 
         store.getState().createSet();
@@ -74,7 +74,7 @@ describe("편집 = 저장 — 「저장 안 한 변경」이라는 상태가 없
         expect(second).not.toBe(first);
         expect(selectEditingStages(store.getState()), "새 집합은 비어서 시작한다").toEqual([]);
 
-        store.getState().addFilterStage([datePred]);
+        store.getState().addFilterStage([timePred]);
         store.getState().editSet(first);
         expect(selectEditingStages(store.getState()), "돌아오면 그 집합의 조건 그대로").toHaveLength(1);
     });
@@ -84,7 +84,7 @@ describe("편집 = 저장 — 「저장 안 한 변경」이라는 상태가 없
         const store = await loadStore();
         store.getState().createSet();
         const id = store.getState().editingSetId;
-        expect(JSON.parse(storage.get("wb.editSeat.v1")!).longitudinal.id).toBe(id);
+        expect(JSON.parse(storage.get("wb.editSeat.v1")!).daily.id).toBe(id);
     });
 });
 
@@ -214,7 +214,7 @@ describe("편집 대상과 관측 대상", () => {
         stubStorage();
         const store = await loadStore();
         const root = store.getState().editingSetId;
-        store.getState().addFilterStage([datePred]);
+        store.getState().addFilterStage([timePred]);
 
         store.getState().addGroupTerm(); // 빈 묶음을 만들고 그리로 내려간다
         const inner = store.getState().editingSetId;
@@ -231,10 +231,10 @@ describe("편집 대상과 관측 대상", () => {
         const storage = stubStorage();
         const store = await loadStore();
         const root = store.getState().editingSetId;
-        store.getState().addFilterStage([datePred]);
+        store.getState().addFilterStage([timePred]);
         store.getState().addGroupTerm();
         const inner = store.getState().editingSetId;
-        expect(JSON.parse(storage.get("wb.editSeat.v1")!).longitudinal.path).toEqual([root, inner]);
+        expect(JSON.parse(storage.get("wb.editSeat.v1")!).daily.path).toEqual([root, inner]);
 
         const again = await loadStore(); // 새로고침
         expect(again.getState().editPath, "경로가 그대로 선다").toEqual([root, inner]);
@@ -246,7 +246,7 @@ describe("편집 대상과 관측 대상", () => {
         const store = await loadStore();
         store.getState().createSet();
         const second = store.getState().editingSetId;
-        store.getState().addFilterStage([datePred]);
+        store.getState().addFilterStage([timePred]);
         expect(selectObservedExpr(store.getState())).toBe(selectEditingExpr(store.getState()));
         expect(store.getState().editPath).toEqual([second]);
     });
@@ -255,58 +255,3 @@ describe("편집 대상과 관측 대상", () => {
 // ── 모드가 장부를 가른다 (2026-09-22) ──────────────────────────────────────
 //
 // 여기가 없으면 아무도 이 분리를 못 잡는다: 다른 검사는 전부 종단 한 모드에서만 돈다.
-describe("모드별 편집 자리 — 모드를 바꾸면 장부가 통째로 갈린다", () => {
-    it("새 집합·묶음은 **지금 모드**로 태어난다", async () => {
-        stubStorage();
-        const store = await loadStore();
-        store.getState().setFilterMode("daily");
-        store.getState().createSet();
-        const made = store.getState().savedSets.find((x) => x.id === store.getState().editingSetId)!;
-        expect(made.universe, "하루 모드에서 만들면 하루 집합이다").toBe("daily");
-        store.getState().addGroupTerm();
-        const inner = store.getState().savedSets.find((x) => x.id === store.getState().editingSetId)!;
-        expect(inner.universe).toBe("daily");
-    });
-
-    it("모드를 오가면 **각자 보던 자리**로 돌아온다", async () => {
-        stubStorage();
-        const store = await loadStore();
-        const longSeat = store.getState().editingSetId;
-
-        store.getState().setFilterMode("daily");
-        const daySeat = store.getState().editingSetId;
-        expect(daySeat, "하루에 집합이 없으면 그때 빈 집합을 만든다").not.toBe(longSeat);
-
-        store.getState().setFilterMode("longitudinal");
-        expect(store.getState().editingSetId).toBe(longSeat);
-        store.getState().setFilterMode("daily");
-        expect(store.getState().editingSetId).toBe(daySeat);
-    });
-
-    it("자리는 **영속**이다 — 새로고침 뒤에도 모드별로 제자리", async () => {
-        const storage = stubStorage();
-        const store = await loadStore();
-        store.getState().setFilterMode("daily");
-        const daySeat = store.getState().editingSetId;
-        const seats = JSON.parse(storage.get("wb.editSeat.v1")!);
-        expect(seats.daily.id).toBe(daySeat);
-        expect(seats.longitudinal.id, "종단 자리도 그대로 남는다").toBeTruthy();
-
-        const again = await loadStore();
-        expect(again.getState().editingSetId, "부팅 모드(하루)의 자리로 선다").toBe(daySeat);
-    });
-
-    it("모드를 넘는 참조는 거절한다 — 항 순서로 우주가 뒤집히지 않게", async () => {
-        stubStorage();
-        const store = await loadStore();
-        store.getState().setFilterMode("daily");
-        store.getState().createSet();
-        const dayId = store.getState().editingSetId;
-        store.getState().setFilterMode("longitudinal");
-        const longId = store.getState().editingSetId;
-
-        store.getState().addSetRef(dayId); // 종단 집합에 하루 집합을 붙이려는 손
-        const me = store.getState().savedSets.find((x) => x.id === longId)!;
-        expect(refsOf(me.expr), "안 붙는다").toEqual([]);
-    });
-});
