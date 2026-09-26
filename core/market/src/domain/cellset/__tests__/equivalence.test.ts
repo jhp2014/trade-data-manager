@@ -34,6 +34,11 @@ function stock(code: string, over: Partial<CellStock> & { n?: number } = {}): Ce
 }
 
 const NO_DEPS: ProbeDeps = { gridMinutesOf: () => [], zoneRankAt: () => null };
+/** 옛 zoneRankAt 픽스처 → 새 theme 콜백 — 존순위 컷만 켠 시드 theme 술어의 등가 재료(존 밖 = 불통과). */
+const themeAtOf = (deps: ProbeDeps) => (c: string, min: number, p: { zoneRankMax: number }) => {
+    const z = deps.zoneRankAt(c, min);
+    return z === null ? { pass: false, zoneRank: null, theme: null } : { pass: z.rank <= p.zoneRankMax, zoneRank: z.rank, theme: z.theme };
+};
 const P = (over: Partial<ProbeParams>): ProbeParams => ({ ...DEFAULT_PROBE_PARAMS, ...over });
 
 /** 조건 id → 옛 태그(1:1). 태그 어휘가 갈리면 비교가 성립하지 않으므로 여기서 한 번 번역한다. */
@@ -53,7 +58,7 @@ const normNew = (hits: readonly { code: string; min: number; tags: readonly stri
 /** 같은 입력을 두 엔진에 물려 비교 — 픽스처마다 이 한 줄이면 된다. */
 function bothAgree(stocks: readonly CellStock[], deps: ProbeDeps, params: ProbeParams): void {
     const old = probesOfDay(stocks, deps, params);
-    const now = evaluateCells(stocks, { ...deps, themeAt: () => null }, seedConditionsOf(params as SeedKnobs));
+    const now = evaluateCells(stocks, { ...deps, themeAt: themeAtOf(deps) }, seedConditionsOf(params as SeedKnobs));
     expect(normNew(now.hits), JSON.stringify(params)).toEqual(normOld(old));
 }
 
@@ -173,7 +178,7 @@ describe("알고 남기는 차이 — 타임라인 밖 격자 좌표", () => {
         const deps: ProbeDeps = { gridMinutesOf: () => [MIN0 + 99], zoneRankAt: () => null };
         const params = P({ surgeOn: false, priorHighOn: false });
         const old = probesOfDay([s], deps, params);
-        const now = evaluateCells([s], { ...deps, themeAt: () => null }, seedConditionsOf(params as SeedKnobs));
+        const now = evaluateCells([s], { ...deps, themeAt: themeAtOf(deps) }, seedConditionsOf(params as SeedKnobs));
         expect(old.map((h) => h.min - MIN0)).toEqual([99]); // 옛: 값 없이 실림
         expect(now.hits).toEqual([]); // 새: 셀이 아니다
     });
@@ -190,7 +195,7 @@ describe("알고 남기는 차이 — 하한이 '지연'인 근거가 깨지는 
         const deps: ProbeDeps = { gridMinutesOf: () => [], zoneRankAt: () => ({ rank: 3, theme: "T" }) };
         const params = P({ gridOn: false, surgeOn: false, priorHighOn: false, zoneOn: true, zoneMaxRank: 3, minCumAmountEok: 80 });
         const old = probesOfDay([s], deps, params);
-        const now = evaluateCells([s], { ...deps, themeAt: () => null }, seedConditionsOf(params as SeedKnobs));
+        const now = evaluateCells([s], { ...deps, themeAt: themeAtOf(deps) }, seedConditionsOf(params as SeedKnobs));
         expect(old.map((h) => h.min - MIN0)).toEqual([0]); // 옛: 하한 미달 분을 건너뛰며 prev(=3)를 **보존**해 침묵
         expect(now.hits.map((h) => h.min - MIN0)).toEqual([0, 3]); // 새: 단락으로 안 본 분은 미참으로 되돌려 재진입 발화
     });
@@ -204,7 +209,7 @@ describe("알고 남기는 차이 — 하한이 '지연'인 근거가 깨지는 
         });
         const params = P({ gridOn: false, surgeOn: false, zoneOn: false, minCumAmountEok: 50 });
         const old = probesOfDay([s], NO_DEPS, params);
-        const now = evaluateCells([s], { ...NO_DEPS, themeAt: () => null }, seedConditionsOf(params as SeedKnobs));
+        const now = evaluateCells([s], { ...NO_DEPS, themeAt: themeAtOf(NO_DEPS) }, seedConditionsOf(params as SeedKnobs));
         expect(old.map((h) => h.min - MIN0)).toEqual([0]); // 옛: `undefined < 하한` 이 거짓이라 게이트를 **통과**
         expect(now.hits).toEqual([]); // 새: 결손을 0 으로 읽어 하한 미달 — 모르는 값을 통과로 세지 않는다
     });

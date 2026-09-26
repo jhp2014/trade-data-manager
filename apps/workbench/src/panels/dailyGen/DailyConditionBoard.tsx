@@ -13,7 +13,7 @@
 // 계산 안 함)으로 바뀐다(gridLink 머리 주석).
 // 칩 클릭 = 판 열기(미연동이면 연동 메뉴) · 칩 우클릭 판 맨 위 = 연동 바꾸기·해제.
 import { useCallback, useMemo, useRef, useState } from "react";
-import { DEFAULT_BREAKOUT, type CellPredicate, type CellValueRange } from "@trade-data-manager/market/domain";
+import { DEFAULT_BREAKOUT, DEFAULT_THEME_ZONE, type CellPredicate, type CellValueRange } from "@trade-data-manager/market/domain";
 import { HeaderPopover } from "../../components/HeaderPopover.js";
 import { createPanelSlot, openPanelExact } from "../../lib/openPanel.js";
 import { allStagesOf, selectEditingExpr, selectEditingStages, useWorkbench } from "../../store/workbench.js";
@@ -468,7 +468,7 @@ function AddCondition({ onCell, onBreakout }: {
                         {item(close, "등락률", "그 분의 등락률(UN %) — 값은 줄에서 만집니다", () => onCell({ kind: "cellValue", field: "ratePct", ranges: [atLeast(5)] }))}
                         {item(close, "누적대금", "그 분까지의 세션 누적 거래대금(억)", () => onCell({ kind: "cellValue", field: "cumAmountEok", ranges: [atLeast(100)] }))}
                         {item(close, "분봉고가", "그 분 봉의 고가(UN %)", () => onCell({ kind: "cellValue", field: "minuteHighPct", ranges: [atLeast(5)] }))}
-                        {item(close, "존순위", "테마 존 안 순위(작을수록 위) — 분 단면을 굽는 비싼 재료입니다", () => onCell({ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }] }))}
+                        {item(close, "테마", "테마 존(대금·등락 상위 무리) 판정 — 분 단면을 굽는 비싼 재료입니다. 값은 줄에서 팝오버로", () => onCell({ kind: "theme", ...DEFAULT_THEME_ZONE }))}
                         {item(close, "전고 돌파", "직전 W 거래일 고가를 분봉 고가가 넘는 분(당일 제외)", () => onCell({ kind: "priorHighBreak", days: 20 }))}
                     </div>
                 )}

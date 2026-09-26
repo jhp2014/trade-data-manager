@@ -183,11 +183,11 @@ describe("＋ 조건 — 생성 입구 하나", () => {
     //   baseElement 에서 찾는다.
     const openMenu = (c: HTMLElement): void => { act(() => { fireEvent.click(byText(c, "＋ 조건")!); }); };
 
-    it("팔레트는 하루 종류뿐이다 — 날짜·계산 축·결과·그룹·테마·격자 Point 입구가 없다", () => {
+    it("팔레트는 하루 종류뿐이다 — 날짜·계산 축·결과·그룹·격자 Point 입구가 없다(테마는 하루 술어로 합류)", () => {
         const { container, baseElement } = renderBoard();
         openMenu(container);
-        for (const t of ["돌파", "분봉 대금", "양봉", "시각", "등락률", "존순위", "전고 돌파"]) expect(byText(baseElement, t), t).toBeDefined();
-        for (const t of ["날짜", "계산 축", "결과", "그룹", "테마 강도", "격자 Point", "급타점"]) expect(byText(baseElement, t), t).toBeUndefined();
+        for (const t of ["돌파", "분봉 대금", "양봉", "시각", "등락률", "테마", "전고 돌파"]) expect(byText(baseElement, t), t).toBeDefined();
+        for (const t of ["날짜", "계산 축", "결과", "그룹", "테마 강도", "격자 Point", "급타점", "존순위"]) expect(byText(baseElement, t), t).toBeUndefined();
     });
 
     it("돌파 = 기본값 행이 서고 **곧바로 연동 메뉴**가 뜬다(노브의 편집면이 격자판이라서)", () => {

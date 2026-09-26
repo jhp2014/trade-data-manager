@@ -6,6 +6,7 @@
 // 시드로 번역해 살리기 위해서다(갈아타며 조용히 기본값으로 되돌리지 않는다). 번역이 끝난 뒤의
 // 편집은 조건 payload 위에서 이뤄지고, 노브는 그 payload 를 만드는 씨앗으로만 남는다.
 import type { CellCondition, CellConditions, CellPredicate, CellValueRange } from "./predicate.js";
+import { DEFAULT_THEME_ZONE } from "./themeZone.js";
 
 /** 시드를 만드는 노브 — 전부 평평한 스칼라(panelUi 가방에 그대로 영속되던 모양). */
 export interface SeedKnobs {
@@ -49,7 +50,6 @@ export const SEED_IDS = {
 } as const;
 
 const atLeast = (value: number): CellValueRange => ({ from: { kind: "value", value } });
-const atMost = (value: number): CellValueRange => ({ to: { kind: "value", value } });
 
 /** 옛 노브 → 시드 조건 4칸. 순서가 곧 화면 순서다. */
 export function seedConditionsOf(k: SeedKnobs = DEFAULT_SEED_KNOBS): CellConditions {
@@ -88,7 +88,11 @@ export function seedConditionsOf(k: SeedKnobs = DEFAULT_SEED_KNOBS): CellConditi
         enabled: k.zoneOn,
         // 전이가 **술어 줄**에 붙는다 — 하한 항과 AND 로 공존해야 하므로(칸 전이면 하한 충족 여부가
         // 전이의 밑값에 섞인다). 옛 zoneRise 의 "직전 관찰 대비 개선 ∨ 재진입"과 등가.
-        predicates: [{ kind: "cellValue", field: "zoneRank", ranges: [atMost(k.zoneMaxRank)], transition: "improve" }, ...floor],
+        // 존순위 셀 값은 theme 술어로 이주(2026-09-26) — 존 정의는 기본값, 존순위 컷만 켠다(옛 뜻 그대로).
+        predicates: [
+            { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, baseRankOn: false, zoneRankOn: true, zoneRankMax: k.zoneMaxRank, transition: "improve" },
+            ...floor,
+        ],
     };
     return [grid, surge, priorHigh, zone];
 }

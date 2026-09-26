@@ -56,9 +56,6 @@ export type CellStock = Pick<
 export interface CellMaterials {
     /** 격자 파생 Point 의 시각(분) 목록 — 없으면 빈 배열. (클라: useAutoPoints/defDerived) */
     gridMinutesOf(code: string): readonly number[];
-    /** 그 분의 존 순위(소속 테마 중 best)와 승자 테마 — 존 밖·테마 없음·결손 = null.
-     *  ⚠ 단락 뒤에만 불린다(비싼 재료). (클라: sectionSeries 캐시 + themeStrength.themeStatsOf) */
-    zoneRankAt(code: string, min: number): { rank: number; theme: string } | null;
     /**
      * 테마 술어의 답(판정 + 존 순위 best) — 파라미터가 payload 라 술어마다 다르다. null = 재료 없음(모름 →
      * 미발화). ⚠ 단락 뒤에만 불린다. (클라: sectionSeries.themeSectionAt + themeZone.themeAnswerOf)
@@ -208,8 +205,8 @@ function precompute(
     };
 }
 
-/** 셀의 값 — cellValue 술어의 밑값. zoneRank 만 재료 콜백이 필요해 호출부가 넘긴다. */
-function valueOf(field: CellValueField, s: CellStock, i: number, zone: { rank: number; theme: string } | null): number | null {
+/** 셀의 값 — cellValue 술어의 밑값(전부 셀 배열 O(1)). */
+function valueOf(field: CellValueField, s: CellStock, i: number): number | null {
     switch (field) {
         case "ratePct":
             return s.rate[i] ?? null;
@@ -219,8 +216,6 @@ function valueOf(field: CellValueField, s: CellStock, i: number, zone: { rank: n
             return ((s.cumAmount[i] ?? 0) - (i > 0 ? (s.cumAmount[i - 1] ?? 0) : 0)) / KRW_PER_EOK;
         case "minuteHighPct":
             return s.minuteHigh[i] ?? null;
-        case "zoneRank":
-            return zone?.rank ?? null;
     }
 }
 
@@ -320,10 +315,6 @@ interface CellCtx {
     min: number;
     pre: StockPrecomputed;
     mat: CellMaterials;
-    zone: { rank: number; theme: string } | null;
-    zoneAsked: boolean;
-    /** 이 가지가 존 순위를 물었나 — 발화한 가지만 hit 에 순위를 싣는다(옛 usedZone 과 같은 자). */
-    usedZone: boolean;
     /** 테마 술어 답 캐시 — 파라미터 키별(같은 셀에서 같은 파라미터는 한 번만 계산). */
     themeAns: Map<string, ThemeAnswer | null>;
     /** 이 가지의 테마 술어가 낸 존 순위 best — 발화한 가지만 hit 에 싣는다(usedZone 과 같은 규칙). */
@@ -341,14 +332,7 @@ function runNode(c: Compiled, st: TransitionState[], ctx: CellCtx): boolean {
         let improveUp = true;
         switch (p.kind) {
             case "cellValue": {
-                if (p.field === "zoneRank") {
-                    if (!ctx.zoneAsked) {
-                        ctx.zone = ctx.mat.zoneRankAt(ctx.s.code, ctx.min);
-                        ctx.zoneAsked = true;
-                    }
-                    ctx.usedZone = true;
-                }
-                v = valueOf(p.field, ctx.s, ctx.i, ctx.zone);
+                v = valueOf(p.field, ctx.s, ctx.i);
                 improveUp = CELL_VALUE_FIELDS[p.field].improve === "up";
                 raw = v !== null && inRanges(v, p.ranges);
                 break;
@@ -490,10 +474,9 @@ export function evaluateCellsExpr(
 
         for (let i = 0; i < n; i++) {
             const min = minuteOfDayOf(s.times[i]);
-            const ctx: CellCtx = { s, i, min, pre, mat, zone: null, zoneAsked: false, usedZone: false, themeAns: new Map(), themeUsed: null };
+            const ctx: CellCtx = { s, i, min, pre, mat, themeAns: new Map(), themeUsed: null };
 
             for (const b of branches) {
-                ctx.usedZone = false;
                 // ⚠ 캐스트 — TS 는 함수 호출(runNode 의 속 변이)로 프로퍼티 좁힘을 안 풀어서, 그냥 null 을
                 //   대입하면 아래 읽기가 never 로 좁혀진다.
                 ctx.themeUsed = null as CellCtx["themeUsed"];
@@ -516,10 +499,6 @@ export function evaluateCellsExpr(
                     byKey.set(key, hit);
                 }
                 if (!hit.tags.includes(b.node.id)) hit.tags.push(b.node.id);
-                if (ctx.usedZone && ctx.zone && (hit.zoneRank === null || ctx.zone.rank < hit.zoneRank)) {
-                    hit.zoneRank = ctx.zone.rank;
-                    hit.zoneTheme = ctx.zone.theme;
-                }
                 if (ctx.themeUsed !== null && (hit.zoneRank === null || ctx.themeUsed.rank < hit.zoneRank)) {
                     hit.zoneRank = ctx.themeUsed.rank;
                     hit.zoneTheme = ctx.themeUsed.theme;

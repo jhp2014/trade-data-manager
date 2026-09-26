@@ -8,10 +8,11 @@ import {
     parseCellPredicate,
     unknownCellPredicate,
     usesGridPoint,
-    usesZoneRank,
+    usesTheme,
     type CellConditions,
     type CellPredicate,
 } from "../predicate.js";
+import { DEFAULT_THEME_ZONE } from "../themeZone.js";
 
 // 파서는 panelUi(무검증 JSON 가방)의 유일한 문지기다 — 여기가 뚫리면 깨진 blob 이 평가기까지 간다.
 
@@ -75,8 +76,8 @@ describe("parseCellConditions", () => {
 });
 
 describe("비용 등급·빈 판정·재료 사용 여부", () => {
-    it("zoneRank 만 tier 2, 격자·전고는 tier 1, 나머지는 tier 0", () => {
-        expect(costTierOf({ kind: "cellValue", field: "zoneRank", ranges: [] })).toBe(2);
+    it("theme 만 tier 2, 격자·전고는 tier 1, 나머지는 tier 0", () => {
+        expect(costTierOf({ kind: "theme", ...DEFAULT_THEME_ZONE })).toBe(2);
         expect(costTierOf({ kind: "cellValue", field: "ratePct", ranges: [] })).toBe(0);
         expect(costTierOf({ kind: "time", ranges: [] })).toBe(0);
         expect(costTierOf({ kind: "gridPoint" })).toBe(1);
@@ -95,9 +96,9 @@ describe("비용 등급·빈 판정·재료 사용 여부", () => {
             { id: "on", enabled: true, predicates: [{ kind: "cellValue", field: "ratePct", ranges: [] }] },
         ];
         expect(usesGridPoint(conds)).toBe(false);
-        expect(usesZoneRank(conds)).toBe(false);
+        expect(usesTheme(conds)).toBe(false);
         expect(usesGridPoint([{ id: "g", enabled: true, predicates: [{ kind: "gridPoint" }] }])).toBe(true);
-        expect(usesZoneRank([{ id: "z", enabled: true, predicates: [{ kind: "cellValue", field: "zoneRank", ranges: [] }] }])).toBe(true);
+        expect(usesTheme([{ id: "z", enabled: true, predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE }] }])).toBe(true);
     });
 
     it("자물쇠는 모르는 종류에서 던진다(새 종류를 더하는 손이 컴파일 에러로 세 자리를 만난다)", () => {

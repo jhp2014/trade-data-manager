@@ -43,7 +43,7 @@ export function CellPredicateField({ p, onChange }: { p: CellPredicate; onChange
                 label={`${meta.label}${b.side === "from" ? "≥" : "≤"}`}
                 suffix={meta.suffix}
                 value={b.value}
-                min={p.field === "zoneRank" ? 1 : undefined}
+                min={undefined}
                 onCommit={(v) => onChange(withBound(p, b.side, v))}
             />
         );

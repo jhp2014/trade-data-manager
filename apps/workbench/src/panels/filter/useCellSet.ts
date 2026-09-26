@@ -29,7 +29,6 @@ import type { ReplayStock } from "../../api/dayReplay.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useAutoPoints, usePointGrids } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
-import { useThemeKnobParams } from "./themeLink.js";
 import { cellMaterialsOf } from "./cellMaterials.js";
 import type { FilterStage } from "./stage.js";
 import { activeExpr, foldExpr, isFoldedNode, type FoldedNode, type SetExpr, type SetTerm } from "./expr.js";
@@ -343,17 +342,11 @@ export function useCellSet(
     const stocks = snapQ.data?.stocks;
     const auto = useAutoPoints();
     const themes = useThemeProjection();
-    // 존 정의(N·M·창·기준)는 공용 사다리 — 타점 정보 패널과 같은 숫자를 낸다(두 화면 두 숫자 금지).
-    const zoneParams = useThemeKnobParams();
 
     const narrowed = narrowedEarly;
     // ⚠ **트리를 걸어야 한다** — 평평한 2중 루프로 재면 묶음 안의 격자·존순위 술어를 못 보고,
     //   그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**(재료를 안 당기므로).
     const needsGrid = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "gridPoint"), [narrowed]);
-    const needsZone = useMemo(
-        () => usesCellPred(narrowed.expr, (p) => p.kind === "cellValue" && p.field === "zoneRank"),
-        [narrowed],
-    );
     const needsTheme = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "theme"), [narrowed]);
     // 돌파 생성기 — 기준선(/point-grids)을 이름표 재료로 쓴다. 안 쓰면 게이트도 안 선다.
     // 오늘은 /point-grids 가 기준선을 안 굽는다 → 이름표가 전부 「고가 돌파」(복기만 쓴다 — decisions).
@@ -370,18 +363,18 @@ export function useCellSet(
         if (needsBaseline && pointGrids.byDate === null) return null;
         // 테마 재료(멤버십 투영)가 오기 전의 평가는 **모름**이지 빈 결과가 아니다 — 빈 투영으로 돌리면
         // 테마 조건이 "그날 0건"이라는 그럴듯한 거짓을 낸다(리뷰가 예고한 자리).
-        if ((needsTheme || needsZone) && !themes.ready) return null;
+        if (needsTheme && !themes.ready) return null;
         // 메모 키 — 조건·노브·**재료 세대를 전부** 싣는다. 하나라도 빠지면 조용히 낡은 목록을 돌려준다.
         //  · 바깥 축(WeakMap) = `stocks` 배열 참조 = 하루 재료의 세대. 오늘 날짜는 60초마다 재조회되므로
         //    이걸 안 가르면 새로 채워진 분의 후보가 세션 내내 안 뜬다.
         //  · 격자(`auto.points`)·테마 투영(`themes.proj`)은 참조를 키에 못 실으니 **세대 번호**로 태운다.
         const key = JSON.stringify([
-            date, narrowed.expr, zoneParams, limit ?? null, hardCap ?? null, limitBy ?? null,
+            date, narrowed.expr, limit ?? null, hardCap ?? null, limitBy ?? null,
             genOf(auto.points), genOf(themes.proj),
             needsBaseline && pointGrids.byDate ? genOf(pointGrids.byDate) : 0,
         ]);
         return evaluateMemo(stocks, key, () => {
-            const mat = cellMaterialsOf(stocks, date, auto, themes.proj, zoneParams, needsBaseline
+            const mat = cellMaterialsOf(stocks, date, auto, themes.proj, needsBaseline
                 ? (code) => pointGrids.gridOf(code, date)?.base ?? null
                 : undefined);
             return evaluateCellsExpr(stocks, mat, narrowed.expr, {
@@ -390,7 +383,7 @@ export function useCellSet(
                 ...(limitBy !== undefined ? { limitBy } : {}),
             });
         });
-    }, [stocks, snapQ.data?.date, date, auto, themes.proj, zoneParams, narrowed, limit, hardCap, limitBy,
+    }, [stocks, snapQ.data?.date, date, auto, themes.proj, narrowed, limit, hardCap, limitBy,
         needsBaseline, pointGrids]);
 
     const items = useMemo<readonly FunnelItem[]>(
@@ -421,7 +414,7 @@ export function useCellSet(
             needsBaseline ? pointGrids.error : null,
             needsGrid ? auto.error : null,
         ]),
-        themesReady: !(needsZone || needsTheme) || themes.ready,
+        themesReady: !needsTheme || themes.ready,
         evaluable: narrowed.expr !== null,
         ready: result !== null,
     };

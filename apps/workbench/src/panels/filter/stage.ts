@@ -150,8 +150,7 @@ export interface FilterStage {
  * DailyExplorePanel 두 손 사본이었다(리뷰) — 한 벌로 모은다.
  */
 export function isHeavyCellPredicate(p: FilterPredicate): boolean {
-    return p.kind === "gridPoint" || p.kind === "breakout" || p.kind === "theme"
-        || (p.kind === "cellValue" && p.field === "zoneRank");
+    return p.kind === "gridPoint" || p.kind === "breakout" || p.kind === "theme";
 }
 
 export function isPredicateEmpty(p: FilterPredicate): boolean {

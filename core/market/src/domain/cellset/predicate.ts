@@ -20,7 +20,7 @@
 // 같은 공간에서 비교된다(probe 의 전례 그대로).
 
 import { DEFAULT_CHAIN_FILTER, chainFilterKey, parseChainFilter, type ChainFilter } from "./chainFilter.js";
-import { anyThemeCondOn, parseThemeZoneParams, type ThemeZoneParams } from "./themeZone.js";
+import { DEFAULT_THEME_ZONE, anyThemeCondOn, parseThemeZoneParams, type ThemeZoneParams } from "./themeZone.js";
 
 /**
  * 전이 수식어 — 시점 술어를 **엣지**로 바꾸는 한 겹. 어휘가 셋인 이유는 이주 등가성이다:
@@ -44,8 +44,8 @@ export const TRANSITION_LABEL: Record<Transition, string> = {
     improve: "직전 대비 상승",
 };
 
-/** 셀 값 필드 — 한 셀(종목·분)에서 읽히는 스칼라. `zoneRank` 만 분 단면이 필요해 비용 등급이 다르다. */
-export type CellValueField = "ratePct" | "cumAmountEok" | "minuteAmountEok" | "minuteHighPct" | "zoneRank";
+/** 셀 값 필드 — 한 셀(종목·분)에서 읽히는 스칼라(전부 셀 배열 O(1)). 옛 `zoneRank` 는 theme 술어로 이주(2026-09-26). */
+export type CellValueField = "ratePct" | "cumAmountEok" | "minuteAmountEok" | "minuteHighPct";
 
 export interface CellValueFieldMeta {
     label: string;
@@ -60,7 +60,6 @@ export const CELL_VALUE_FIELDS: Record<CellValueField, CellValueFieldMeta> = {
     // 그 분 봉 자신의 대금 — 돌파 후보의 「돌파 대금 ≥ n」 필터가 이것이다(생성기 밖 — 필터는 구조를 안 바꾼다).
     minuteAmountEok: { label: "분봉 대금", suffix: "억", improve: "up" },
     minuteHighPct: { label: "분봉고가", suffix: "%", improve: "up" },
-    zoneRank: { label: "존순위", suffix: "위", improve: "down" },
 };
 
 /**
@@ -135,7 +134,7 @@ export function unknownCellPredicate(p: never): never {
 export function costTierOf(p: CellPredicate): 0 | 1 | 2 {
     switch (p.kind) {
         case "cellValue":
-            return p.field === "zoneRank" ? 2 : 0;
+            return 0;
         case "time":
             return 0;
         case "priorHighBreak":
@@ -247,9 +246,9 @@ export function usesGridPoint(conditions: CellConditions): boolean {
     return conditions.some((c) => c.enabled && c.predicates.some((p) => p.kind === "gridPoint"));
 }
 
-/** 이 조건 묶음이 분 단면(존 순위)을 쓰는가 — 테마 재료 로딩 표시·게으름 게이트가 본다. */
-export function usesZoneRank(conditions: CellConditions): boolean {
-    return conditions.some((c) => c.enabled && c.predicates.some((p) => p.kind === "cellValue" && p.field === "zoneRank"));
+/** 이 조건 묶음이 테마 재료(분 단면·멤버십)를 쓰는가 — 로딩 표시·게으름 게이트가 본다. */
+export function usesTheme(conditions: CellConditions): boolean {
+    return conditions.some((c) => c.enabled && c.predicates.some((p) => p.kind === "theme"));
 }
 
 // ── 파서 ──────────────────────────────────────────────────────────────────
@@ -289,6 +288,18 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
     const transition = isTransition(raw.transition) ? { transition: raw.transition } : {};
     switch (raw.kind) {
         case "cellValue": {
+            // 옛 존순위 필드 → theme 술어 이주(2026-09-26). 값 상한만 존순위 컷으로 옮긴다 — 하한 구간은
+            // 새 모양에 없다(decisions). 존 정의·재적은 옛날에도 payload 가 아니라 공용 노브(사실상 기본값)였다.
+            if (raw.field === "zoneRank") {
+                const ranges = parseRanges(raw.ranges) ?? [];
+                const to = ranges.find((r) => r.to?.kind === "value")?.to;
+                const max = to?.kind === "value" ? Math.max(1, Math.floor(to.value)) : DEFAULT_THEME_ZONE.zoneRankMax;
+                return {
+                    kind: "theme", ...DEFAULT_THEME_ZONE,
+                    countOn: false, baseRankOn: false, zoneRankOn: true, zoneRankMax: max,
+                    ...transition,
+                };
+            }
             if (!isField(raw.field)) return null;
             const ranges = parseRanges(raw.ranges);
             if (ranges === null) return null;
