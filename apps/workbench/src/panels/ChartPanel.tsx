@@ -172,7 +172,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const minuteMarks = showAnchorMarks && ownBundle(minuteQ.data, code) ? allMarks.minute : undefined;
 
     // ── 봉 우클릭 메뉴 — 선 긋기(시장×값)와 무시 캔들 토글이 한자리에. 선 근처 우클릭은 삭제 항목만.
-    // 메뉴는 열린 차트(code·viewDate)의 것 — useDismiss 는 mousedown/Esc 만 들어, 메뉴를 둔 채 키보드로 종목·날짜를
+    // 메뉴는 열린 차트(code·viewDate)의 것 — 판 스택은 mousedown/Esc 만 들어, 메뉴를 둔 채 키보드로 종목·날짜를
     // 옮기면 옛 봉 날짜로 새 차트에 앵커를 쓰는 사고가 났다. 시선이 바뀌면 렌더에서 접는다(effect 경합 없음).
     const [rawMenu, setCandleMenu] = useState<{ chart: { code: string; date: string }; x: number; y: number; candle?: { date: string; time?: string }; nearLine?: RenderLine } | null>(null);
     const candleMenu = rawMenu && rawMenu.chart.code === code && rawMenu.chart.date === viewDate ? rawMenu : null;

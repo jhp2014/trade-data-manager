@@ -17,7 +17,7 @@ import type { Group } from "../api/groups.js";
 //  · 정렬은 이름순 고정(사전 순서 그대로) — 토글로 재정렬하지 않는다(연타 중 행 튐 금지).
 //  · 인라인 생성 = 생성+즉시 배정. 섹션 꼬리 ＋행이 검색어를 이름으로 쓴다(섹션이 곧 scope).
 //  · ⋯ 관리(개명·부모 지정·삭제 2단계)는 **인라인 블록**으로 편다 — 중첩 포털을 안 쓰는 것이
-//    바깥클릭 닫힘(useDismiss)과의 사고를 원천 차단한다.
+//    판 하나로 끝나 중첩 판정(ui/popover 스택)에 기댈 일이 없다.
 export function GroupAssignPopover(): JSX.Element | null {
     const target = useGroupAssign((s) => s.target);
     const anchor = useGroupAssign((s) => s.anchor);
@@ -262,7 +262,7 @@ function ManageBlock({ group, manage, setManage, gv, busy, run, dayGrain, pointG
                         if (e.key === "Enter" && newName.trim() && newName.trim() !== group.name)
                             void run(() => gv.renameGroup(group.name, newName.trim()));
                         if (e.key === "Escape") {
-                            // 전파를 막아야 한다 — 안 막으면 document 의 useDismiss 가 같은 Esc 로 팝오버째 닫는다.
+                            // 전파를 막아야 한다 — 안 막으면 판 스택(ui/popover, document bubble)이 같은 Esc 로 팝오버째 닫는다.
                             e.stopPropagation();
                             setManage(null);
                         }
