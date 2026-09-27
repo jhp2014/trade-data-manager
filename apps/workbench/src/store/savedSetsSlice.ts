@@ -50,6 +50,9 @@ backupRawOnce("wb.savedSets.v6", "pre-transition");
 backupRawOnce("wb.savedSets.v6", "pre-candle");
 // 전고 돌파 은퇴(2026-09-27 — 그 칸째 걷힘) 전 원문 1회 백업.
 backupRawOnce("wb.savedSets.v6", "pre-label");
+// 테마 컷 구간화(2026-09-27 — countOn·countMin 평면 → { on, min?, max? }) 전 원문 1회 백업. 옛 코드가 새 모양을
+// 읽으면 컷이 기본값으로 돌아간다 — 되돌릴 다리.
+backupRawOnce("wb.savedSets.v6", "pre-theme-cut");
 
 /** 이번 로드에 폐기한 종단 집합 수 — 아래 loadSavedSets 가 로그로 낸다. */
 let droppedLongitudinal = 0;

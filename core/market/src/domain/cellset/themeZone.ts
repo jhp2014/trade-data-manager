@@ -1,6 +1,7 @@
 // 테마 존 판정 — 분 단면 서수 위의 **순수 계산**(React·wire·I/O 0). 하루 「테마」 셀 술어의 판정 한 벌.
 // 옛 workbench lib/themeStrength 의 core 이주(2026-09-26)이자 개형: 대금 창이 0|60 이지선다에서
-// **자유 T분**(null = 당일 누적)이 되고, 등락 축이 순위 ≤M | **값 ≥x%** 둘이 된다(조합 4).
+// **자유 T분**(null = 당일 누적)이 되고, 등락 축이 순위 ≤M | **값 x~y%** 둘이 된다(조합 4).
+// 2026-09-27 컷 셋(재적·기본 순위·존 순위)이 한쪽 임계값에서 **하한~상한 구간**이 됐다(이상·이하).
 //
 // ## 의미론 (decisions.md 「테마 강도·순위 단면」 — 묶음 필터)
 // 타점 통과 ⟺ 그 종목의 소속 테마 중, **활성 하위 조건 전부를 혼자 만족하는** 테마가 하나라도 존재
@@ -21,8 +22,27 @@ export interface ThemeSectionRanks {
     ranksOf(code: string): { rateOrd: number | null; ratePct: number | null; amountOrd: number | null } | null;
 }
 
-/** 등락 축 — 존의 세로 변. 순위(서수 ≤ max)거나 값(등락률 ≥ minPct%). */
-export type ThemeRateAxis = { mode: "rank"; max: number } | { mode: "value"; minPct: number };
+/**
+ * 등락 축 — 존의 세로 변. 순위(서수 ≤ max)거나 값(등락률 minPct% ~ maxPct%, 양끝 포함·한쪽 비면 반열림).
+ * 값은 **적어도 한쪽**이 있다(파서·편집면이 지킨다) — 둘 다 비면 등락 변이 없는 존이 되어 뜻이 바뀐다.
+ * 순위는 상한만이다 — 존은 "상위 무리"라 11~40위 같은 띠는 존의 뜻을 흐린다(2026-09-27 사용자 확정).
+ */
+export type ThemeRateAxis = { mode: "rank"; max: number } | { mode: "value"; minPct?: number; maxPct?: number };
+
+/**
+ * 컷 하나 — 켬 + 양끝 선택 경계(정수, 양끝 포함, 빈칸 = 그쪽 무제한 — 2026-09-27 이상·이하). 켬과 경계를
+ * 가른 이유: 끈 컷의 경계가 살아 있어야 다시 켤 때 제자리로 온다. ⚠ 켜져 있어도 양끝이 다 비면 조건이 아니다.
+ */
+export interface ThemeCut {
+    on: boolean;
+    min?: number;
+    max?: number;
+}
+
+export const themeCutActive = (c: ThemeCut): boolean => c.on && (c.min !== undefined || c.max !== undefined);
+/** 켜진 컷의 판정 — 결손(null)은 불만족(결손은 결손). 끈 컷은 호출하지 말 것(themeZoneStatsPass 가 가른다). */
+const inCut = (v: number | null, c: ThemeCut): boolean =>
+    v !== null && (c.min === undefined || v >= c.min) && (c.max === undefined || v <= c.max);
 
 /**
  * 테마 술어 파라미터 — 술어 payload 에 산다(SavedSet 이 stages 를 통째 복사하므로 밖에 두면 집합의
@@ -36,15 +56,12 @@ export interface ThemeZoneParams {
     rate: ThemeRateAxis;
     /** 순위 조건(②③)의 기준 서수 — 한 벌 공유(등락률 기본, 거래대금 옵션). */
     basis: "rate" | "amount";
-    /** ① 존 내 테마 종목 수 ≥ countMin (자신 포함). */
-    countOn: boolean;
-    countMin: number;
-    /** ② 테마 내 기본 순위 ≤ baseRankMax (존 무관, 테마 전 멤버 중). */
-    baseRankOn: boolean;
-    baseRankMax: number;
-    /** ③ 테마 내 존 순위 ≤ zoneRankMax (존에 든 멤버 중 — 자신이 존 밖이면 불만족). */
-    zoneRankOn: boolean;
-    zoneRankMax: number;
+    /** ① 재적 — 존 내 테마 종목 수(자신 포함)가 구간 안. 3~5 = 번진 날 빼기. 빈 하한 = 1(존에 없으면 재적 아님). */
+    count: ThemeCut;
+    /** ② 기본 순위 — 테마 전 멤버 중 기준 서수 순위(존 무관)가 구간 안. */
+    baseRank: ThemeCut;
+    /** ③ 존 순위 — 존에 든 멤버 중 순위가 구간 안(자신이 존 밖이면 불만족). 2~5 = 대장 빼고 후발. */
+    zoneRank: ThemeCut;
     /**
      * **진입 시만**(부재 = 상시) — 판정이 직전 분에는 거짓이었고 지금 참인 셀만 발화한다(옛 전이
      * 기계의 후신 — 테마에만 남았다). 판정식은 `themeAnswerAt` 한 곳: pass(min) ∧ ¬pass(min−1),
@@ -58,22 +75,29 @@ export const DEFAULT_THEME_ZONE: ThemeZoneParams = {
     zoneAmountN: 40,
     rate: { mode: "rank", max: 30 },
     basis: "rate",
-    countOn: true,
-    countMin: 3,
-    baseRankOn: false,
-    baseRankMax: 3,
-    zoneRankOn: false,
-    zoneRankMax: 2,
+    count: { on: true, min: 3 },
+    baseRank: { on: false, max: 3 },
+    zoneRank: { on: false, max: 2 },
 };
 
 export const THEME_WINDOW_MAX_MIN = 600;
 
-export const anyThemeCondOn = (p: ThemeZoneParams): boolean => p.countOn || p.baseRankOn || p.zoneRankOn;
+export const anyThemeCondOn = (p: ThemeZoneParams): boolean =>
+    themeCutActive(p.count) || themeCutActive(p.baseRank) || themeCutActive(p.zoneRank);
+
+/** 모든 컷을 끈 모양 — 이주가 "조건-off theme"로 살릴 때(경계는 기본값으로 남겨 다시 켜면 제자리). */
+export const themeCutsOff = (): Pick<ThemeZoneParams, "count" | "baseRank" | "zoneRank"> => ({
+    count: { ...DEFAULT_THEME_ZONE.count, on: false },
+    baseRank: { ...DEFAULT_THEME_ZONE.baseRank, on: false },
+    zoneRank: { ...DEFAULT_THEME_ZONE.zoneRank, on: false },
+});
+
+const cutKey = (c: ThemeCut): string => (themeCutActive(c) ? `${c.min ?? ""}~${c.max ?? ""}` : "-");
 
 /** 파라미터 키 — 엔진의 셀당 답 캐시·표시 memo 가 같은 자를 쓴다(같은 키 = 같은 판정). */
 export const themeZoneKeyOf = (p: ThemeZoneParams): string =>
-    `tz|w${p.window ?? "d"}|a${p.zoneAmountN}|r${p.rate.mode === "rank" ? `k${p.rate.max}` : `v${p.rate.minPct}`}|b${p.basis}` +
-    `|c${p.countOn ? p.countMin : "-"}|B${p.baseRankOn ? p.baseRankMax : "-"}|Z${p.zoneRankOn ? p.zoneRankMax : "-"}|e${p.enter === true ? 1 : 0}`;
+    `tz|w${p.window ?? "d"}|a${p.zoneAmountN}|r${p.rate.mode === "rank" ? `k${p.rate.max}` : `v${p.rate.minPct ?? ""}~${p.rate.maxPct ?? ""}`}|b${p.basis}` +
+    `|c${cutKey(p.count)}|B${cutKey(p.baseRank)}|Z${cutKey(p.zoneRank)}|e${p.enter === true ? 1 : 0}`;
 
 /**
  * 저장물 파서 — 유효성 정의 한 벌(관대한 병합: 객체가 아니면 null, 필드는 맞는 것만 승계·나머지 기본값).
@@ -90,7 +114,13 @@ export function parseThemeZoneParams(o: unknown): ThemeZoneParams | null {
         const raw = r.rate;
         if (raw && typeof raw === "object") {
             const a = raw as Record<string, unknown>;
-            if (a.mode === "value" && typeof a.minPct === "number" && Number.isFinite(a.minPct)) return { mode: "value", minPct: a.minPct };
+            if (a.mode === "value") {
+                const fin = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+                let lo = fin(a.minPct);
+                let hi = fin(a.maxPct);
+                if (lo !== undefined && hi !== undefined && lo > hi) [lo, hi] = [hi, lo];
+                if (lo !== undefined || hi !== undefined) return { mode: "value", ...(lo !== undefined ? { minPct: lo } : {}), ...(hi !== undefined ? { maxPct: hi } : {}) };
+            }
             if (a.mode === "rank") return { mode: "rank", max: num(a.max, d.rate.mode === "rank" ? d.rate.max : 30) };
         }
         // 옛 모양 — zoneRateN(순위 N).
@@ -105,17 +135,30 @@ export function parseThemeZoneParams(o: unknown): ThemeZoneParams | null {
         if (r.zoneAmountWindow === 0) return null;
         return d.window;
     })();
+    /** 컷 한 칸 — 경계는 1 이상 정수, 뒤집히면 뒤집어 받는다. 켜졌는데 양끝이 다 비면 그대로 둔다(조건 아님). */
+    function cutOf(raw: unknown, oldOn: unknown, oldVal: unknown, oldSide: "min" | "max", fb: ThemeCut): ThemeCut {
+        const int = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) && v >= 1 ? Math.floor(v) : undefined);
+        if (raw && typeof raw === "object") {
+            const c = raw as Record<string, unknown>;
+            let lo = int(c.min);
+            let hi = int(c.max);
+            if (lo !== undefined && hi !== undefined && lo > hi) [lo, hi] = [hi, lo];
+            return { on: bool(c.on, fb.on), ...(lo !== undefined ? { min: lo } : {}), ...(hi !== undefined ? { max: hi } : {}) };
+        }
+        if (oldOn === undefined && oldVal === undefined) return fb;
+        const v = int(oldVal) ?? fb[oldSide];
+        return { on: bool(oldOn, fb.on), ...(v !== undefined ? { [oldSide]: v } : {}) };
+    }
     return {
         window,
         zoneAmountN: num(r.zoneAmountN, d.zoneAmountN),
         rate,
         basis: r.basis === "amount" ? "amount" : "rate",
-        countOn: bool(r.countOn, d.countOn),
-        countMin: num(r.countMin, d.countMin),
-        baseRankOn: bool(r.baseRankOn, d.baseRankOn),
-        baseRankMax: num(r.baseRankMax, d.baseRankMax),
-        zoneRankOn: bool(r.zoneRankOn, d.zoneRankOn),
-        zoneRankMax: num(r.zoneRankMax, d.zoneRankMax),
+        // 새 모양 `{ on, min?, max? }` — 옛 평면 모양(countOn·countMin / baseRankOn·baseRankMax / zoneRankOn·
+        // zoneRankMax, 2026-09-27 이전)은 그 한쪽 경계로 옮긴다(재적 = 하한, 순위 = 상한 — 판정이 같다).
+        count: cutOf(r.count, r.countOn, r.countMin, "min", d.count),
+        baseRank: cutOf(r.baseRank, r.baseRankOn, r.baseRankMax, "max", d.baseRank),
+        zoneRank: cutOf(r.zoneRank, r.zoneRankOn, r.zoneRankMax, "max", d.zoneRank),
         // 옛 전이 저장물 이주(2026-09-27 전이 은퇴): 처음으로·직전 대비 상승은 뜻이 "진입"이었다.
         // 하루 처음(firstOfDay)은 등가물이 없어 벗긴다(상시로).
         ...(r.enter === true || r.transition === "firstTrue" || r.transition === "improve" ? { enter: true } : {}),
@@ -150,7 +193,7 @@ export const inThemeZone = (r: Ranks, p: Pick<ThemeZoneParams, "zoneAmountN" | "
     if (r.amountOrd === null || r.amountOrd > p.zoneAmountN) return false;
     return p.rate.mode === "rank"
         ? r.rateOrd !== null && r.rateOrd <= p.rate.max
-        : r.ratePct !== null && r.ratePct >= p.rate.minPct;
+        : r.ratePct !== null && (p.rate.minPct === undefined || r.ratePct >= p.rate.minPct) && (p.rate.maxPct === undefined || r.ratePct <= p.rate.maxPct);
 };
 
 const basisOf = (r: Ranks, p: Pick<ThemeZoneParams, "basis">): number | null => (p.basis === "rate" ? r.rateOrd : r.amountOrd);
@@ -198,12 +241,14 @@ export function themeZoneStatsOf(code: string, theme: string, section: ThemeSect
     };
 }
 
-/** 셈 → 활성 조건 AND 판정. **임계값을 보는 유일한 자리**(결손 순위는 그 조건이 켜져 있으면 불만족). */
+/** 셈 → 활성 조건 AND 판정. **경계를 보는 유일한 자리**(결손 순위는 그 조건이 켜져 있으면 불만족). */
 export function themeZoneStatsPass(stats: ThemeZoneStats | null, p: ThemeZoneParams): boolean {
     if (stats === null) return false;
-    if (p.countOn && stats.zoneCount < p.countMin) return false;
-    if (p.baseRankOn && (stats.baseRank === null || stats.baseRank > p.baseRankMax)) return false;
-    if (p.zoneRankOn && (stats.zoneRank === null || stats.zoneRank > p.zoneRankMax)) return false;
+    // 재적의 빈 하한은 0 이 아니라 1 — 존에 한 종목도 없는 테마는 "재적"이 아니다. 0 을 받으면 상한만 준 컷
+    // (「~2종목」)이 존에 없는 테마까지 통과시켜 테마 사이 ∃ 로 거의 전 종목이 걸리지 않는다(리뷰 지적).
+    if (themeCutActive(p.count) && !inCut(stats.zoneCount, { ...p.count, min: p.count.min ?? 1 })) return false;
+    if (themeCutActive(p.baseRank) && !inCut(stats.baseRank, p.baseRank)) return false;
+    if (themeCutActive(p.zoneRank) && !inCut(stats.zoneRank, p.zoneRank)) return false;
     return true;
 }
 

@@ -1,5 +1,5 @@
 import { DEFAULT_CHAIN_FILTER, type ChainCond, type ChainFilter } from "../chainFilter.js";
-import { DEFAULT_THEME_ZONE } from "../themeZone.js";
+import { DEFAULT_THEME_ZONE, themeCutsOff, type ThemeZoneParams } from "../themeZone.js";
 import { describe, it, expect, vi } from "vitest";
 import { evaluateCells, evaluateCellsExpr, type CellMaterials, type CellStock } from "../engine.js";
 import type { CellConditions, CellExpr, CellPredicate } from "../predicate.js";
@@ -132,7 +132,7 @@ describe("evaluateCells — 게으름·상한", () => {
                 id: "c",
                 enabled: true,
                 predicates: [
-                    { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, zoneRankOn: true, zoneRankMax: 3 },
+                    { kind: "theme", ...DEFAULT_THEME_ZONE, ...themeCutsOff(), zoneRank: { on: true, max: 3 } },
                     { kind: "candle", axes: { rate: { on: true, from: 5 } } },
                 ],
             },
@@ -334,7 +334,7 @@ describe("돌파 생성기 + 캔들·분봉 대금 필터", () => {
 });
 
 describe("theme 술어 — payload 파라미터·게으름·hit 존순위", () => {
-    const TP = { ...DEFAULT_THEME_ZONE, countOn: true, countMin: 2 };
+    const TP: ThemeZoneParams = { ...DEFAULT_THEME_ZONE, count: { on: true, min: 2 } };
     const themeCond = (over: Partial<typeof TP> & { enter?: boolean } = {}): CellConditions => [
         { id: "t", enabled: true, predicates: [{ kind: "theme", ...TP, ...over }] },
     ];
@@ -372,10 +372,10 @@ describe("theme 술어 — payload 파라미터·게으름·hit 존순위", () =
         const conds: CellConditions = [
             { id: "a", enabled: true, predicates: [{ kind: "theme", ...TP }] },
             { id: "b", enabled: true, predicates: [{ kind: "theme", ...TP }] },
-            { id: "c", enabled: true, predicates: [{ kind: "theme", ...TP, countMin: 9 }] },
+            { id: "c", enabled: true, predicates: [{ kind: "theme", ...TP, count: { on: true, min: 9 } }] },
         ];
         evaluateCells([s], { themeAt }, conds);
-        expect(themeAt).toHaveBeenCalledTimes(2); // (TP) 한 번 + (countMin 9) 한 번
+        expect(themeAt).toHaveBeenCalledTimes(2); // (TP) 한 번 + (재적 9~) 한 번
     });
 
     it("enter 만 다른 두 술어는 **다른 판정**이다 — 셀당 답 캐시 키가 갈린다(themeZoneKeyOf)", () => {
@@ -395,7 +395,7 @@ describe("theme 술어 — payload 파라미터·게으름·hit 존순위", () =
         const s = stock("A", { n: 2 });
         const themeAt = vi.fn(() => ({ pass: true, zoneRank: 1, theme: "T" }));
         const r = evaluateCells([s], { themeAt },
-            themeCond({ countOn: false, baseRankOn: false, zoneRankOn: false }));
+            themeCond(themeCutsOff()));
         expect(r.hits).toEqual([]);
         expect(themeAt).not.toHaveBeenCalled();
     });

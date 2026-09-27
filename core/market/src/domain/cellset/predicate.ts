@@ -12,7 +12,7 @@
 // 같은 공간에서 비교된다.
 
 import { DEFAULT_CHAIN_FILTER, chainFilterKey, parseChainFilter, type ChainFilter } from "./chainFilter.js";
-import { DEFAULT_THEME_ZONE, anyThemeCondOn, parseThemeZoneParams, type ThemeZoneParams } from "./themeZone.js";
+import { DEFAULT_THEME_ZONE, anyThemeCondOn, parseThemeZoneParams, themeCutsOff, type ThemeZoneParams } from "./themeZone.js";
 
 // (전이 수식어 — firstOfDay·firstTrue·improve — 는 2026-09-27 은퇴했다. 실사용 뜻이 "진입"
 //  하나였고 그건 테마 술어의 `enter` 노브(themeZone)가 판정 층에서 잇는다. 엔진의 종목별 상태
@@ -308,20 +308,24 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
                 const axis: CandleAxis = raw.field === "ratePct" ? "rate" : "highRate";
                 return { kind: "candle", axes: { [axis]: { on: true, ...(from !== undefined ? { from } : {}), ...(to !== undefined ? { to } : {}) } } };
             }
-            // 옛 존순위 필드 → theme 술어 이주(2026-09-26). 값 상한만 존순위 컷으로 옮긴다 — 하한 구간은
-            // 새 모양에 없다(decisions). 존 정의·재적은 옛날에도 payload 가 아니라 공용 노브(사실상 기본값)였다.
+            // 옛 존순위 필드 → theme 술어 이주(2026-09-26). 첫 값 구간의 양끝을 존순위 컷으로 옮긴다(2026-09-27
+            // 컷이 구간이 되며 하한도 담는다 — 그 전엔 버려서 「2~5위」가 「~5위」로 대장을 다시 들였다).
+            // 존 정의·재적은 옛날에도 payload 가 아니라 공용 노브(사실상 기본값)였다.
             if (raw.field === "zoneRank") {
                 const ranges = parseRanges(raw.ranges) ?? [];
-                const to = ranges.find((r) => r.to?.kind === "value")?.to;
-                // 값 상한이 없으면(빈 ranges·하한만·point 경계) 컷을 **켜지 않는다** — 여기서 기본 상한을
-                // 지어내면 "조건 없음"이 "≤2 활성"이 되고 하한(≥k)은 뜻이 뒤집힌다(themeStrength 깨진
-                // payload 를 조건-off 로 살리는 것과 같은 원칙).
-                const max = to?.kind === "value" ? Math.max(1, Math.floor(to.value)) : null;
+                const r = ranges.find((x) => x.from?.kind === "value" || x.to?.kind === "value");
+                const int = (b: CellBound | undefined): number | undefined => (b?.kind === "value" ? Math.max(1, Math.floor(b.value)) : undefined);
+                let min = int(r?.from);
+                let max = int(r?.to);
+                if (min !== undefined && max !== undefined && min > max) [min, max] = [max, min];
+                // 값 경계가 없으면(빈 ranges·point 경계) 컷을 **켜지 않는다** — 여기서 기본 경계를 지어내면
+                // "조건 없음"이 "≤2 활성"이 된다(themeStrength 깨진 payload 를 조건-off 로 살리는 것과 같은 원칙).
+                const has = min !== undefined || max !== undefined;
                 return {
-                    kind: "theme", ...DEFAULT_THEME_ZONE,
-                    countOn: false, baseRankOn: false,
-                    zoneRankOn: max !== null,
-                    zoneRankMax: max ?? DEFAULT_THEME_ZONE.zoneRankMax,
+                    kind: "theme", ...DEFAULT_THEME_ZONE, ...themeCutsOff(),
+                    zoneRank: has
+                        ? { on: true, ...(min !== undefined ? { min } : {}), ...(max !== undefined ? { max } : {}) }
+                        : { ...DEFAULT_THEME_ZONE.zoneRank, on: false },
                     // 옛 전이(처음으로·직전 대비 상승) → 진입 노브(themeZone 파서와 같은 규칙).
                     ...(raw.transition === "firstTrue" || raw.transition === "improve" ? { enter: true } : {}),
                 };

@@ -517,12 +517,35 @@ describe("테마 조건 — 팝오버가 편집면(2026-09-26)", () => {
         act(() => { fireEvent.click(byText(container, "＋ 조건")!); });
         act(() => { fireEvent.click(byText(baseElement, "테마")!); });
         expect(stages()).toHaveLength(1);
-        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "theme", window: null, countOn: true });
+        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "theme", window: null, count: { on: true, min: 3 } });
         expect(baseElement.textContent).toContain("존 정의");
-        // 재적 컷 끄기 — payload 로 바로 쓰인다.
-        const off = [...baseElement.querySelectorAll<HTMLButtonElement>("button")].filter((b) => (b.textContent ?? "") === "켬")[0]!;
+        // 재적 컷 끄기(체크) — payload 로 바로 쓰인다. 경계는 남는다.
+        const off = baseElement.querySelector<HTMLInputElement>('input[aria-label="재적 켜기"]')!;
         act(() => { fireEvent.click(off); });
-        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "theme", countOn: false });
+        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "theme", count: { on: false, min: 3 } });
+    });
+
+    it("컷 = [하한] ~ [상한] — 상한을 더하면 구간, 뒤집힌 중간 상태는 빨갛게 남고 커밋되지 않는다", () => {
+        seedEditing(exprOfStages([{ id: "th", enabled: true, predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE }] }]));
+        const { container, baseElement } = renderBoard();
+        openChip(container, "테마");
+        act(() => { fireEvent.click(byText(container, "테마")!); });
+        const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
+        const pred = (): Record<string, unknown> => stages()[0]!.predicates[0] as unknown as Record<string, unknown>;
+        // 줄 순서: 재적 · 존 순위 · 기본 순위 — 각 줄에 하한·상한 칸.
+        const lows = [...dialog.querySelectorAll<HTMLInputElement>('input[aria-label="하한"]')];
+        const highs = [...dialog.querySelectorAll<HTMLInputElement>('input[aria-label="상한"]')];
+        act(() => { fireEvent.change(highs[0]!, { target: { value: "5" } }); fireEvent.blur(highs[0]!); });
+        expect(pred().count).toEqual({ on: true, min: 3, max: 5 });
+
+        // 존 순위(상한 2)에 하한 3 → 뒤집힘 → 커밋 안 됨·빨강. 상한 6 까지 넣으면 3~6.
+        act(() => { fireEvent.change(lows[1]!, { target: { value: "3" } }); fireEvent.blur(lows[1]!); });
+        expect(pred().zoneRank).toEqual({ on: false, max: 2 });
+        expect(lows[1]!.getAttribute("aria-invalid")).toBe("true");
+        act(() => { fireEvent.change(highs[1]!, { target: { value: "6" } }); fireEvent.blur(highs[1]!); });
+        expect(pred().zoneRank).toEqual({ on: false, min: 3, max: 6 });
+        // 재적은 이제 옳은 부호로 적힌다(옛 화면은 ≤ 로 적었다).
+        expect(container.textContent).toContain("재적 3~5");
     });
 
     it("테마 줄 이름 클릭 = 같은 팝오버 · 자 값 가져오기는 자 저장값이 없으면 회색", () => {
@@ -531,7 +554,7 @@ describe("테마 조건 — 팝오버가 편집면(2026-09-26)", () => {
         openChip(container, "테마");
         act(() => { fireEvent.click(byText(container, "테마")!); });
         expect(baseElement.textContent).toContain("대금 창");
-        const pull = [...baseElement.querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.textContent ?? "").includes("자 값 가져오기"))!;
+        const pull = [...baseElement.querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.textContent ?? "").includes("자 값"))!;
         expect(pull.disabled).toBe(true);
     });
 });

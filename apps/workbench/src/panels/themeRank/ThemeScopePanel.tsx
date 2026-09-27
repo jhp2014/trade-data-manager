@@ -55,7 +55,9 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
         if (!hasThemeCond) return null;
         const x = axes.xMode === "rank" && axes.windowMin === readParams.window ? readParams.zoneAmountN : null;
         const y = axes.yMode === readParams.rate.mode
-            ? (readParams.rate.mode === "rank" ? readParams.rate.max : readParams.rate.minPct)
+            // 값 축은 **하한만** 선이 된다 — 틴트가 선의 위(≥ 쪽)를 칠하므로 상한을 넘기면 존 밖을 존처럼 칠한다
+            // (리뷰 지적). 상한만인 존은 겹침을 안 세운다 · 양끝이면 틴트가 상한 위로 번지는 건 알려진 근사.
+            ? (readParams.rate.mode === "rank" ? readParams.rate.max : readParams.rate.minPct ?? null)
             : null;
         return x === null && y === null ? null : { x, y };
     }, [hasThemeCond, axes, readParams]);

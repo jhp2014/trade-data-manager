@@ -11,7 +11,7 @@ import {
     type CellPredicate,
     type Grain,
 } from "@trade-data-manager/market/domain";
-import { anyCandleAxisOn, anyThemeCondOn, DEFAULT_THEME_ZONE, parseThemeZoneParams } from "@trade-data-manager/market/domain";
+import { anyCandleAxisOn, anyThemeCondOn, DEFAULT_THEME_ZONE, parseThemeZoneParams, themeCutsOff } from "@trade-data-manager/market/domain";
 
 // 판정 알갱이 — 도메인 공용 어휘 재수출(필터 모듈들은 stage 만 본다).
 export type { Grain };
@@ -181,7 +181,7 @@ function parsePredicate(o: unknown): FilterPredicate | typeof RETIRED | null {
             const params = parseThemeZoneParams((o as { params?: unknown }).params);
             return params !== null
                 ? { kind: "theme", ...params, ...enter }
-                : { kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, baseRankOn: false, zoneRankOn: false, ...enter };
+                : { kind: "theme", ...DEFAULT_THEME_ZONE, ...themeCutsOff(), ...enter };
         }
         case "time": {
             const t = o as { ranges?: unknown; transition?: unknown };

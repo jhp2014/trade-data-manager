@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { nextLinkedId, themeReadParamsOf } from "../themeLink.js";
-import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
+import { DEFAULT_THEME_ZONE, themeCutsOff } from "@trade-data-manager/market/domain";
 import type { FilterStage } from "../stage.js";
 
 // 연동 행이 사라졌을 때 어디로 가나 — 삭제 입구가 보드 밖(막대 목록·집합 적용)에도 있어 순수 해석기가 진다.
@@ -32,15 +32,15 @@ describe("nextLinkedId", () => {
 describe("themeReadParamsOf", () => {
     const themeOn: FilterStage = {
         id: "b", enabled: true,
-        predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, baseRankOn: false, zoneRankOn: true, zoneRankMax: 4 }],
+        predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE, ...themeCutsOff(), zoneRank: { on: true, max: 4 } }],
     };
     const themeEmpty: FilterStage = {
         id: "a", enabled: true,
-        predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE, countOn: false, baseRankOn: false, zoneRankOn: false }],
+        predicates: [{ kind: "theme", ...DEFAULT_THEME_ZONE, ...themeCutsOff() }],
     };
 
     it("첫 **켜진** theme 조건 — 컷이 전부 꺼진 빈 술어는 건너뛴다", () => {
-        expect(themeReadParamsOf([themeEmpty, themeOn])).toMatchObject({ zoneRankOn: true, zoneRankMax: 4 });
+        expect(themeReadParamsOf([themeEmpty, themeOn])).toMatchObject({ zoneRank: { on: true, max: 4 } });
     });
 
     it("켜진 조건이 없으면 기본값 — 꺼진 칸도 조건이 아니다", () => {

@@ -75,3 +75,22 @@ describe("ChainExprRow", () => {
         expect(last.groups).toEqual([{ from: 0, to: 1, firstK: 1 }]);
     });
 });
+
+describe("ChainCondEditor 범위 칸 — RangePair(초안 + 순서 검사, 2026-09-27)", () => {
+    it("뒤집힌 중간 상태는 커밋하지 않고 빨갛게, 양끝 다 비움도 거절, 순번은 음수 거절", async () => {
+        const { ChainCondEditor } = await import("../ChainCondEditor.js");
+        const writes: unknown[] = [];
+        const term = { kind: "check" as const, id: "p", cond: { kind: "pos" as const, max: 2 } };
+        const { container } = render(<ChainCondEditor term={term} onChange={(t) => writes.push(t.cond)} />);
+        const lo = container.querySelector<HTMLInputElement>('input[aria-label="하한"]')!;
+        const hi = container.querySelector<HTMLInputElement>('input[aria-label="상한"]')!;
+        act(() => { fireEvent.change(lo, { target: { value: "3" } }); fireEvent.blur(lo); });
+        expect(writes, "3~2 는 커밋 안 됨").toEqual([]);
+        expect(lo.getAttribute("aria-invalid")).toBe("true");
+        act(() => { fireEvent.change(hi, { target: { value: "6" } }); fireEvent.blur(hi); });
+        expect(writes).toEqual([{ kind: "pos", min: 3, max: 6 }]);
+        act(() => { fireEvent.change(lo, { target: { value: "-1" } }); fireEvent.blur(lo); });
+        act(() => { fireEvent.change(lo, { target: { value: "" } }); fireEvent.change(hi, { target: { value: "" } }); fireEvent.blur(hi); });
+        expect(writes, "음수·양끝 비움은 거절").toHaveLength(1);
+    });
+});

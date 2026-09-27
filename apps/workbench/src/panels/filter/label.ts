@@ -1,6 +1,6 @@
 // 단계·술어의 표시 이름(순수). 화면 폭이 좁아 **짧게** 말해야 한다.
 // (옛 LabelLookup — 그룹·축 이름 사전 — 은 2026-09-26 종단 폐기로 은퇴: 남은 종류는 이름 재료가 전부 payload 다.)
-import { CANDLE_AXES, CANDLE_AXIS_LABEL, CELL_VALUE_FIELDS, candleAxisActive } from "@trade-data-manager/market/domain";
+import { CANDLE_AXES, CANDLE_AXIS_LABEL, CELL_VALUE_FIELDS, candleAxisActive, themeCutActive, type ThemeCut } from "@trade-data-manager/market/domain";
 import { isPredicateEmpty, type FilterPredicate, type FilterStage, type PredicateKind } from "./stage.js";
 import { breakoutText } from "../breakout/chainChecks.js";
 
@@ -50,15 +50,16 @@ export function labelPredLabel(p: Extract<FilterPredicate, { kind: "label" }>): 
     return p.groups.length === 0 ? `${mark} 라벨 (그룹 없음)` : `${mark} ${p.groups.join(" · ")}`;
 }
 
+/** 한쪽·양쪽 경계 표기 — `≥3` · `≤5` · ` 2~5`(양끝 포함). */
+const boundText = (min: number | undefined, max: number | undefined, unit: string): string =>
+    min !== undefined && max !== undefined ? ` ${min}~${max}${unit}` : min !== undefined ? `≥${min}${unit}` : max !== undefined ? `≤${max}${unit}` : "";
+
 /** 테마 존 술어 한 줄 — 존(창·대금 N·등락 축) + 켜진 컷만. 보드 행·막대·패널 칩이 같은 표기를 쓴다. */
 export function themeZoneLabel(p: Extract<FilterPredicate, { kind: "theme" }>): string {
     const win = p.window === null ? "당일" : `${p.window}분`;
-    const rate = p.rate.mode === "rank" ? `등락≤${p.rate.max}` : `등락≥${p.rate.minPct}%`;
-    const cuts = [
-        p.countOn ? `재적≥${p.countMin}` : null,
-        p.zoneRankOn ? `존≤${p.zoneRankMax}` : null,
-        p.baseRankOn ? `기본≤${p.baseRankMax}` : null,
-    ].filter(Boolean).join(" ");
+    const rate = p.rate.mode === "rank" ? `등락≤${p.rate.max}` : `등락${boundText(p.rate.minPct, p.rate.maxPct, "%")}`;
+    const cut = (name: string, c: ThemeCut): string | null => (themeCutActive(c) ? `${name}${boundText(c.min, c.max, "")}` : null);
+    const cuts = [cut("재적", p.count), cut("존", p.zoneRank), cut("기본", p.baseRank)].filter(Boolean).join(" ");
     return `테마 ${win} 대금≤${p.zoneAmountN}·${rate}${cuts ? ` ${cuts}` : ""}${p.enter === true ? " · 진입" : ""}`;
 }
 

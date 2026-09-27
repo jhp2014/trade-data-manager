@@ -130,7 +130,7 @@ describe("themeStrength → theme 이주 골든(2026-09-26 — 종류 은퇴)", 
         const p = back[0]!.predicates[0] as Extract<FilterPredicate, { kind: "theme" }>;
         expect(p).toMatchObject({
             kind: "theme", window: 60, zoneAmountN: 34, rate: { mode: "rank", max: 12 },
-            basis: "amount", countOn: true, countMin: 5, zoneRankOn: true, zoneRankMax: 2,
+            basis: "amount", count: { on: true, min: 5 }, zoneRank: { on: true, max: 2 }, baseRank: { on: false, max: 3 },
         });
     });
 
@@ -143,13 +143,25 @@ describe("themeStrength → theme 이주 골든(2026-09-26 — 종류 은퇴)", 
 });
 
 describe("theme 술어 — 저장 왕복·빈 판정(2026-09-26)", () => {
-    it("payload 그대로 왕복한다", () => {
+    it("payload 그대로 왕복한다(컷 = 구간, 등락 값 양끝)", () => {
         const p = {
+            kind: "theme", window: 30, zoneAmountN: 40, rate: { mode: "value", minPct: 5, maxPct: 15 }, basis: "rate",
+            count: { on: true, min: 3, max: 6 }, baseRank: { on: false, max: 3 }, zoneRank: { on: true, min: 2, max: 5 },
+        };
+        const back = parseStages([{ id: "t", enabled: true, predicates: [p] }])!;
+        expect(back[0]!.predicates[0]).toEqual(p);
+    });
+
+    it("옛 평면 컷(2026-09-27 이전)은 한쪽 경계로 옮겨 읽힌다 — 재적 = 하한, 순위 = 상한(판정 불변)", () => {
+        const old = {
             kind: "theme", window: 30, zoneAmountN: 40, rate: { mode: "rank", max: 30 }, basis: "rate",
             countOn: true, countMin: 3, baseRankOn: false, baseRankMax: 3, zoneRankOn: true, zoneRankMax: 2,
         };
-        const back = parseStages([{ id: "t", enabled: true, predicates: [p] }])!;
-        expect(back[0]!.predicates[0]).toMatchObject(p);
+        const back = parseStages([{ id: "t", enabled: true, predicates: [old] }])!;
+        expect(back[0]!.predicates[0]).toEqual({
+            kind: "theme", window: 30, zoneAmountN: 40, rate: { mode: "rank", max: 30 }, basis: "rate",
+            count: { on: true, min: 3 }, baseRank: { on: false, max: 3 }, zoneRank: { on: true, max: 2 },
+        });
     });
 });
 

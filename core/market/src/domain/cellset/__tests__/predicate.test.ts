@@ -46,15 +46,22 @@ describe("parseCellPredicate", () => {
 
     it("옛 존순위 셀 값(zoneRank) → theme 이주 — 값 상한 보존·전이는 enter 로", () => {
         const p = parseCellPredicate({ kind: "cellValue", field: "zoneRank", ranges: [{ to: { kind: "value", value: 3 } }], transition: "improve" });
-        expect(p).toMatchObject({ kind: "theme", zoneRankOn: true, zoneRankMax: 3, countOn: false, baseRankOn: false, enter: true });
+        expect(p).toMatchObject({ kind: "theme", zoneRank: { on: true, max: 3 }, count: { on: false }, baseRank: { on: false }, enter: true });
     });
 
-    it("zoneRank 에 값 상한이 없으면 컷을 켜지 않는다 — '조건 없음'이 '≤기본값 활성'으로 뒤집히지 않는다", () => {
-        for (const ranges of [[], [{ from: { kind: "value", value: 2 } }]]) {
+    it("zoneRank 에 값 경계가 없으면 컷을 켜지 않는다 — '조건 없음'이 '≤기본값 활성'으로 뒤집히지 않는다", () => {
+        for (const ranges of [[], [{ from: { kind: "point", point: "x" } }]]) {
             const p = parseCellPredicate({ kind: "cellValue", field: "zoneRank", ranges });
-            expect(p).toMatchObject({ kind: "theme", zoneRankOn: false });
+            expect(p).toMatchObject({ kind: "theme", zoneRank: { on: false } });
             expect(isCellPredicateEmpty(p!)).toBe(true);
         }
+    });
+
+    it("zoneRank 하한도 옮긴다(2026-09-27 컷 구간화) — 「2~5위」가 대장을 다시 들이지 않게, 하한만도 켠다", () => {
+        const both = parseCellPredicate({ kind: "cellValue", field: "zoneRank", ranges: [{ from: { kind: "value", value: 2 }, to: { kind: "value", value: 5 } }] });
+        expect(both).toMatchObject({ kind: "theme", zoneRank: { on: true, min: 2, max: 5 } });
+        const low = parseCellPredicate({ kind: "cellValue", field: "zoneRank", ranges: [{ from: { kind: "value", value: 2 } }] });
+        expect(low).toMatchObject({ kind: "theme", zoneRank: { on: true, min: 2 } });
     });
 
     it("모르는 종류·깨진 payload 는 null(그 술어만 건너뛴다)", () => {

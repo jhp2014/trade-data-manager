@@ -26,7 +26,23 @@ const sectionOf = (ranks: Record<string, [number | null, number | null, (number 
 const projOf = (members: Record<string, string[]>) =>
     themeProjectionOf(buildThemeIndex(Object.entries(members).flatMap(([theme, codes]) => codes.map((code) => ({ theme, code })))));
 
-const P = (over: Partial<ThemeZoneParams>): ThemeZoneParams => ({ ...DEFAULT_THEME_ZONE, ...over });
+/**
+ * 옛 평면 이름(countOn·countMin …)으로 적는 지름길 — 2026-09-27 컷이 구간 `{ on, min?, max? }` 가 됐다.
+ * 이 파일의 옛 사례들은 **한쪽 경계**(재적 = 하한, 순위 = 상한)로 옮겨 그대로 통과해야 한다 — 뜻 보존 잠금.
+ */
+type Flat = Partial<ThemeZoneParams> & {
+    countOn?: boolean; countMin?: number; baseRankOn?: boolean; baseRankMax?: number; zoneRankOn?: boolean; zoneRankMax?: number;
+};
+const P = ({ countOn, countMin, baseRankOn, baseRankMax, zoneRankOn, zoneRankMax, ...over }: Flat): ThemeZoneParams => {
+    const d = DEFAULT_THEME_ZONE;
+    return {
+        ...d,
+        count: { on: countOn ?? d.count.on, min: countMin ?? d.count.min },
+        baseRank: { on: baseRankOn ?? d.baseRank.on, max: baseRankMax ?? d.baseRank.max },
+        zoneRank: { on: zoneRankOn ?? d.zoneRank.on, max: zoneRankMax ?? d.zoneRank.max },
+        ...over,
+    };
+};
 const passes = (code: string, s: ThemeSectionRanks, p: ThemeZoneParams, proj: ReturnType<typeof projOf>): boolean =>
     themeAnswerOf(code, s, p, proj).pass;
 
@@ -140,8 +156,8 @@ describe("parseThemeZoneParams — 관대한 병합 + 옛 themeStrength 모양 �
         expect(p.window).toBe(60);
         expect(p.zoneAmountN).toBe(25);
         expect(p.basis).toBe("amount");
-        expect(p.zoneRankOn).toBe(true);
-        expect(p.zoneRankMax).toBe(4);
+        expect(p.zoneRank).toEqual({ on: true, max: 4 });
+        expect(p.count).toEqual({ on: false, min: 3 });
         expect(parseThemeZoneParams({ zoneAmountWindow: 0 })!.window).toBeNull();
     });
 
@@ -199,5 +215,64 @@ describe("themeAnswerAt — enter(진입 시만) = pass(min) ∧ ¬pass(min−1)
         expect(parseThemeZoneParams({ ...DEFAULT_THEME_ZONE, transition: "firstTrue" })).toMatchObject({ enter: true });
         const plain = parseThemeZoneParams({ ...DEFAULT_THEME_ZONE })!;
         expect("enter" in plain).toBe(false);
+    });
+});
+
+describe("컷 = 하한~상한 구간(2026-09-27 이상·이하)", () => {
+    const off = { countOn: false, baseRankOn: false, zoneRankOn: false } as const;
+
+    it("존 순위 2~ — 대장(존 1위)은 빼고 후발만", () => {
+        const proj = projOf({ T: ["lead", "f1", "f2"] });
+        const section = sectionOf({ lead: [1, 1], f1: [2, 2], f2: [3, 3] });
+        const p = P({ ...off, zoneRank: { on: true, min: 2, max: 5 } });
+        expect(passes("lead", section, p, proj)).toBe(false);
+        expect(passes("f1", section, p, proj)).toBe(true);
+        expect(passes("f2", section, p, proj)).toBe(true);
+    });
+
+    it("재적 ~2 — 상한만: 번진 날(존 3종목)은 빠지고, 존에 없는 테마(0)는 재적이 아니다(빈 하한 = 1)", () => {
+        const proj = projOf({ T: ["s", "m1", "m2"] });
+        const three = sectionOf({ s: [1, 1], m1: [2, 2], m2: [3, 3] });
+        const two = sectionOf({ s: [1, 1], m1: [2, 2], m2: [99, 99] });
+        const none = sectionOf({ s: [99, 99], m1: [99, 99], m2: [99, 99] });
+        const p = P({ ...off, count: { on: true, max: 2 } });
+        expect(passes("s", three, p, proj)).toBe(false);
+        expect(passes("s", two, p, proj)).toBe(true);
+        expect(passes("s", none, p, proj), "존에 한 종목도 없으면 불통과").toBe(false);
+    });
+
+    it("켜져 있어도 양끝이 다 비면 조건이 아니다 · 결손 순위는 하한만 있어도 불만족", () => {
+        expect(anyThemeCondOn(P({ ...off, zoneRank: { on: true } }))).toBe(false);
+        const proj = projOf({ T: ["s", "m1"] });
+        const section = sectionOf({ s: [99, 99], m1: [1, 1] }); // s 존 밖 → 존 순위 결손
+        expect(passes("s", section, P({ ...off, zoneRank: { on: true, min: 1 } }), proj)).toBe(false);
+    });
+
+    it("등락 값 상한 — 존 = 5~15%(상한가 근처 제외)", () => {
+        const proj = projOf({ T: ["s", "hot"] });
+        const section = sectionOf({ s: [9, 1, 7], hot: [1, 2, 29] });
+        const p = P({ ...off, count: { on: true, min: 2 }, rate: { mode: "value", minPct: 5, maxPct: 15 } });
+        expect(passes("s", section, p, proj), "hot 이 존 밖 → 재적 1").toBe(false);
+        expect(passes("s", section, P({ ...off, count: { on: true, min: 2 }, rate: { mode: "value", minPct: 5 } }), proj)).toBe(true);
+    });
+
+    it("파서 — 새 모양 왕복·뒤집힌 경계 교정·등락 값 양끝 없음은 기본 축", () => {
+        const p = parseThemeZoneParams({ ...DEFAULT_THEME_ZONE, zoneRank: { on: true, min: 5, max: 2 }, count: { on: true } })!;
+        expect(p.zoneRank).toEqual({ on: true, min: 2, max: 5 });
+        expect(p.count).toEqual({ on: true });
+        expect(parseThemeZoneParams({ rate: { mode: "value", maxPct: 15 } })!.rate).toEqual({ mode: "value", maxPct: 15 });
+        expect(parseThemeZoneParams({ rate: { mode: "value" } })!.rate).toEqual(DEFAULT_THEME_ZONE.rate);
+        expect(parseThemeZoneParams(DEFAULT_THEME_ZONE)).toEqual(DEFAULT_THEME_ZONE);
+    });
+
+    it("파서 — 새 모양과 옛 평면 필드가 섞이면 새 모양이 이긴다(필드마다)", () => {
+        const p = parseThemeZoneParams({ count: { on: false, min: 4 }, countOn: true, countMin: 9, zoneRankOn: true, zoneRankMax: 7 })!;
+        expect(p.count).toEqual({ on: false, min: 4 });
+        expect(p.zoneRank).toEqual({ on: true, max: 7 });
+    });
+
+    it("키 — 하한과 상한을 가른다(같은 수라도 뜻이 반대)", () => {
+        expect(themeZoneKeyOf(P({ ...off, zoneRank: { on: true, min: 2 } }))).not.toBe(themeZoneKeyOf(P({ ...off, zoneRank: { on: true, max: 2 } })));
+        expect(themeZoneKeyOf(P({ rate: { mode: "value", minPct: 5 } }))).not.toBe(themeZoneKeyOf(P({ rate: { mode: "value", maxPct: 5 } })));
     });
 });
