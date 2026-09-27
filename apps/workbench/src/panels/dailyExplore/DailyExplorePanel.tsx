@@ -23,6 +23,7 @@ import { useDock } from "../../store/dock.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { AnchoredPopover } from "../../ui/Dialog.js";
+import { MENU_PAD, MenuItem, MenuSep } from "../../ui/popover/menu.js";
 import { PIN } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { DAY_SET_OPTS, useCellSet } from "../filter/useCellSet.js";
@@ -397,35 +398,28 @@ function GroupMenu({ anchor, pickedIds, groupSets, savedSets, nameOf, onPick, on
     const current = (pickedIds ?? groupSets.map((f) => f.id)).filter((id) => daily.some((f) => f.id === id));
     // 손 이름 먼저, 자동 이름(묶음)은 흐리게 뒤로 — 집합 목록 판과 같은 결.
     const sorted = [...daily].sort((a, b) => Number(a.name === undefined) - Number(b.name === undefined));
-    const row: React.CSSProperties = {
-        display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left", border: "none", background: "transparent",
-        cursor: "pointer", font: "inherit", fontSize: 11.5, padding: "4px 10px", color: "var(--text-primary)",
-    };
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} width={230} padding={0} placement="beside" offset={6}>
-            <div style={{ maxHeight: 300, overflowY: "auto", padding: "3px 0" }}>
-                <button onClick={() => onPick(null)} style={row}
+            <div style={{ maxHeight: 300, overflowY: "auto", padding: MENU_PAD }}>
+                <MenuItem mark="check" on={pickedIds === null} onClick={() => onPick(null)}
                     title="보는 집합의 최상위 부품(참조 항)을 그대로 따라간다 — 집합을 바꾸면 열도 바뀐다">
-                    <Check on={pickedIds === null} />자동 — 보는 집합의 부품
-                </button>
-                <div style={{ borderTop: "0.5px solid var(--border-subtle)", margin: "3px 0" }} />
-                {sorted.length === 0 && <div style={{ padding: "6px 10px", fontSize: 11, color: "var(--text-tertiary)" }}>하루 집합이 없습니다</div>}
+                    자동 — 보는 집합의 부품
+                </MenuItem>
+                <MenuSep />
+                {sorted.length === 0 && <div style={{ padding: "4px 12px", fontSize: 11, color: "var(--text-tertiary)" }}>하루 집합이 없습니다</div>}
                 {sorted.map((f) => {
                     const on = current.includes(f.id);
                     const full = !on && current.length >= MAX_GROUPS;
                     return (
-                        <button key={f.id} disabled={full}
+                        <MenuItem key={f.id} mark="check" on={on} disabled={full}
                             onClick={() => onPick(on ? current.filter((x) => x !== f.id) : [...current, f.id])}
-                            title={full ? `최대 ${MAX_GROUPS}개 — 하나를 빼야 더 고를 수 있습니다` : on ? "열에서 빼기" : "열로 세우기"}
-                            style={{ ...row, color: full ? "var(--text-tertiary)" : f.name === undefined ? "var(--text-tertiary)" : "var(--text-primary)" }}>
-                            <Check on={on} />
-                            <span style={{ color: full ? undefined : PIN, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(f.id)}</span>
-                        </button>
+                            why={`최대 ${MAX_GROUPS}개 — 하나를 빼야 더 고를 수 있습니다`}
+                            title={on ? "열에서 빼기" : "열로 세우기"}>
+                            <span style={{ color: full ? undefined : PIN }}>{nameOf(f.id)}</span>
+                        </MenuItem>
                     );
                 })}
             </div>
         </AnchoredPopover>
     );
 }
-const Check = ({ on }: { on: boolean }): JSX.Element =>
-    <span style={{ width: 10, flexShrink: 0, color: "var(--accent-primary)", fontSize: 11 }}>{on ? "✓" : ""}</span>;

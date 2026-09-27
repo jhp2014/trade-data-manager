@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 // 공용 다이얼로그 — 백드롭 클릭/✕ 로 닫힘. 앱 전체 위 fixed 오버레이.
 // width/height 를 주면 프레임 고정(내용이 바뀌어도 창이 안 출렁임) — 설정처럼 화면 전환이 잦은 곳에 쓴다.
@@ -57,26 +57,3 @@ export function Dialog({
 
 // 커서 좌표에 뜨는 판 — 공용층(ui/popover)으로 옮겼다. 기존 import 경로를 살려 둔다.
 export { AnchoredPopover } from "./popover/AnchoredPopover.js";
-
-/** 메뉴 항목 버튼 — 가장자리까지 차는 좌측정렬 행(padding 0 팝오버와 한 쌍). */
-export function MenuItem({ onClick, children, style, disabled, title }: { onClick: () => void; children: ReactNode; style?: CSSProperties; disabled?: boolean; title?: string }): JSX.Element {
-    return (
-        <button
-            onClick={disabled ? undefined : onClick}
-            disabled={disabled}
-            title={title}
-            style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)", cursor: "pointer", font: "inherit", fontSize: 12.5, padding: "7px 12px", ...style, ...(disabled ? { color: "var(--text-tertiary)", opacity: 0.55, cursor: "default" } : {}) }}
-        >
-            {children}
-        </button>
-    );
-}
-
-/** 메뉴 제목 줄 — 무엇에 대한 메뉴인지(축 이름 등). */
-export function MenuLabel({ children }: { children: ReactNode }): JSX.Element {
-    return (
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-tertiary)", padding: "8px 12px 4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {children}
-        </div>
-    );
-}

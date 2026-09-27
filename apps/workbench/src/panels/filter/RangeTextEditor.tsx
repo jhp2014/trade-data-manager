@@ -7,7 +7,8 @@
 // ⚠ **못 읽은 줄을 조용히 넘기지 않는다.** 빨갛게 남기고 적용에서도 빠진다 — 오타가 조건에서 사라지면
 // 사용자는 그 조건이 걸린 줄 안다.
 import { useState } from "react";
-import { AnchoredPopover, MenuLabel } from "../../ui/Dialog.js";
+import { AnchoredPopover } from "../../ui/Dialog.js";
+import { MenuHead } from "../../ui/popover/menu.js";
 import { commitBtn, dashedBtn, numInput, xBtn } from "./ui.js";
 
 /** 한 줄의 판정 결과. `open` 이면 한쪽만 있어도 유효(그 방향 무제한). */
@@ -81,7 +82,7 @@ export function RangeTextEditor({ anchor, title, hint, above, rows: initial, pla
 
     return (
         <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={240} maxWidth={300} padding={0} placement="beside" offset={8}>
-            <MenuLabel>{title} · 여러 구간 = 또는</MenuLabel>
+            <MenuHead>{title} · 여러 구간 = 또는</MenuHead>
             {hint && <div style={{ padding: "0 10px 6px", fontSize: 10.5, color: "var(--text-tertiary)" }}>{hint}</div>}
             {above}
             <div style={{ padding: "0 10px 8px", display: "flex", flexDirection: "column", gap: 5 }}>

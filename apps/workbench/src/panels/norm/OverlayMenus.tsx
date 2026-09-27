@@ -2,7 +2,8 @@
 // (옛 그룹 메뉴는 골격 은퇴와 함께 제거 — 라벨 우클릭의 뜻이 "고정 토글"로 바뀌었다.)
 import { useMemo } from "react";
 import type { OverlayLine } from "./overlay.js";
-import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
+import { AnchoredPopover } from "../../ui/Dialog.js";
+import { MENU_PAD, MenuHead, MenuItem } from "../../ui/popover/menu.js";
 import { shortDate } from "../../lib/date.js";
 
 export interface OverlayMenusProps {
@@ -34,8 +35,8 @@ export function OverlayMenus(p: OverlayMenusProps): JSX.Element {
         <>
             {/* 뭉친 라벨의 멤버 목록 — 행 점이 그림의 그 선과 같은 색(목록↔그림을 잇는 유일한 것). */}
             {badge && (
-                <AnchoredPopover anchor={badge} onClose={p.onCloseBadge} minWidth={190} padding={0} placement="beside" offset={6}>
-                    <MenuLabel>{badge.members.length}개</MenuLabel>
+                <AnchoredPopover anchor={badge} onClose={p.onCloseBadge} minWidth={190} padding={MENU_PAD} placement="beside" offset={6}>
+                    <MenuHead>{badge.members.length}개</MenuHead>
                     <div style={{ maxHeight: 260, overflowY: "auto" }}>
                         {badgeRows.map((s) => (
                             <div key={s.key} onMouseEnter={() => p.setHovered(s.key)} onMouseLeave={() => p.setHovered(null)}>

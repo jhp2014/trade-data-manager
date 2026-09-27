@@ -2,6 +2,7 @@
 // 선언(ControlSpec)은 HeaderControls 에, 그리는 규약(폭 잠금·순환/팝오버 갈림)은 여기에 산다.
 import type { CSSProperties, ReactNode } from "react";
 import { TriggerPopover } from "../ui/popover/TriggerPopover.js";
+import { MENU_PAD, MenuItem } from "../ui/popover/menu.js";
 import { TextToggle } from "./ControlChrome.js";
 import { FAIL } from "../styles/palette.js";
 import type { ActionSpec, ChoiceSpec, ControlSpec, ToggleSpec } from "./HeaderControls.js";
@@ -99,18 +100,12 @@ function PickControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
             )}
         >
             {(close) => (
-                <div style={{ overflowY: "auto", fontSize: 11 }}>
+                <div style={{ overflowY: "auto", padding: MENU_PAD }}>
                     {spec.values.map((o) => (
-                        <button key={o.v} onClick={() => { spec.set(o.v); close(); }}
-                            style={{
-                                display: "block", width: "100%", textAlign: "left", padding: "4px 9px",
-                                border: "none", cursor: "pointer", font: "inherit", fontSize: 11,
-                                background: o.v === spec.value ? "var(--bg-secondary)" : "transparent",
-                                color: o.v === spec.value ? "var(--accent-primary)" : "var(--text-secondary)",
-                                fontWeight: o.v === spec.value ? 700 : 400,
-                            }}>
+                        <MenuItem key={o.v} mark="radio" on={o.v === spec.value} selected={o.v === spec.value}
+                            onClick={() => { spec.set(o.v); close(); }}>
                             {o.label}
-                        </button>
+                        </MenuItem>
                     ))}
                 </div>
             )}

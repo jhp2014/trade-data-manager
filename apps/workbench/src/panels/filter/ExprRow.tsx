@@ -32,6 +32,7 @@
 // 한 줄이 길다고 다른 줄이 같이 밀리면 "자리가 곧 경로"라는 뜻이 깨진다.
 import { useState, type MouseEvent } from "react";
 import { AnchoredPopover } from "../../ui/popover/AnchoredPopover.js";
+import { MENU_PAD, MenuItem, MenuSep } from "../../ui/popover/menu.js";
 import { FAIL, PIN } from "../../styles/palette.js";
 import { renderExpr } from "./exprRender.js";
 import { canSetOpAt, canToggleBoundary, groupAtBoundary, type Op, type SetExpr } from "./expr.js";
@@ -214,12 +215,12 @@ export function ExprRow({ setId, expr, h, open, tail }: {
             {menu !== null && (
                 <Panel at={menu} onClose={() => setMenu(null)}>
                     {(["and", "or"] as const).map((op) => (
-                        <Item key={op} label={op === "and" ? "AND" : "OR"}
-                            check={expr.ops[menu.at] === op}
+                        <MenuItem mark="check" key={op}
+                            on={expr.ops[menu.at] === op}
                             title={op === "and" ? "모두 만족" : "하나라도 만족"}
                             disabled={!canSetOpAt(expr, menu.at, op)}
                             why="괄호 안이나 밖이 섞입니다 — 괄호를 먼저 푸세요(한 겹이라 안쪽에 또 칠 자리가 없습니다)"
-                            onPick={() => { h.onSetOp(setId, menu.at, op); setMenu(null); }} />
+                            onClick={() => { h.onSetOp(setId, menu.at, op); setMenu(null); }}>{op === "and" ? "AND" : "OR"}</MenuItem>
                     ))}
                 </Panel>
             )}
@@ -227,13 +228,13 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                 <Panel at={ctx} onClose={() => setCtx(null)}>
                     {ctx.kind === "cond" && (
                         <>
-                            <Item label="NOT" check={ctx.neg} title="이 항을 부정합니다"
-                                onPick={() => { h.onNegateTerm(setId, ctx.termId); setCtx(null); }} />
-                            <Item label="끄기" check={!ctx.enabled} title="평가에서 뺍니다 — 지우지 않고 빼보는 손짓"
-                                onPick={() => { h.onToggleTerm(setId, ctx.termId); setCtx(null); }} />
-                            <Sep />
-                            <Item label="지우기" danger title="이 조건을 없앱니다"
-                                onPick={() => { h.onRemoveTerm(setId, ctx.termId); setCtx(null); }} />
+                            <MenuItem mark="check" on={ctx.neg} title="이 항을 부정합니다"
+                                onClick={() => { h.onNegateTerm(setId, ctx.termId); setCtx(null); }}>NOT</MenuItem>
+                            <MenuItem mark="check" on={!ctx.enabled} title="평가에서 뺍니다 — 지우지 않고 빼보는 손짓"
+                                onClick={() => { h.onToggleTerm(setId, ctx.termId); setCtx(null); }}>끄기</MenuItem>
+                            <MenuSep />
+                            <MenuItem mark="check" danger title="이 조건을 없앱니다"
+                                onClick={() => { h.onRemoveTerm(setId, ctx.termId); setCtx(null); }}>지우기</MenuItem>
                         </>
                     )}
                     {ctx.kind === "group" && (
@@ -244,37 +245,37 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                                 borderBottom: "0.5px solid var(--border-subtle)", marginBottom: 3,
                             }}>{ctx.name} · 쓰는 곳 {ctx.usedBy}</div>
                             <NameInput value={ctx.name} onCommit={(v) => { h.onRenameSet(ctx.setId, v); setCtx(null); }} />
-                            <Item label="NOT" check={ctx.neg} title="이 묶음을 부정합니다"
-                                onPick={() => { h.onNegateTerm(setId, ctx.termId); setCtx(null); }} />
-                            <Item label="빼기" title="이 식에서만 뺍니다 — 집합은 목록에 남습니다"
-                                onPick={() => { h.onRemoveTerm(setId, ctx.termId); setCtx(null); }} />
-                            <Sep />
+                            <MenuItem mark="check" on={ctx.neg} title="이 묶음을 부정합니다"
+                                onClick={() => { h.onNegateTerm(setId, ctx.termId); setCtx(null); }}>NOT</MenuItem>
+                            <MenuItem mark="check" title="이 식에서만 뺍니다 — 집합은 목록에 남습니다"
+                                onClick={() => { h.onRemoveTerm(setId, ctx.termId); setCtx(null); }}>빼기</MenuItem>
+                            <MenuSep />
                             {/* ⚠ **빼기와 다른 일이다** — 집합 자체가 없어져 쓰는 곳의 참조가 깨진다.
                                 쓰는 곳 0 이면 청소라 한 번에, 1 이상이면 한 번 무장한다(사용자 확정). */}
-                            <Item label={armed ? `정말 지우기 — ${ctx.usedBy}곳이 깨집니다` : "집합 지우기"}
+                            <MenuItem mark="check"
                                 danger armed={armed}
                                 title="집합 자체를 없앱니다 — 이 식에서만 빼려면 「빼기」입니다"
-                                onPick={() => {
+                                onClick={() => {
                                     if (ctx.usedBy >= 1 && !armed) { setArmed(true); return; }
                                     h.onDeleteSet(ctx.setId);
                                     setCtx(null);
-                                }} />
+                                }}>{armed ? `정말 지우기 — ${ctx.usedBy}곳이 깨집니다` : "집합 지우기"}</MenuItem>
                         </>
                     )}
                     {ctx.kind === "op" && (
-                        <Item label={groupAtBoundary(expr, ctx.at) === null ? "괄호 묶기" : "괄호 자르기"}
+                        <MenuItem mark="check"
                             disabled={!canToggleBoundary(expr, ctx.at)}
                             title="이 자리를 괄호 안/밖으로 — 만들기·넓히기·자르기·풀기가 이 하나입니다"
                             why="NOT 이 붙은 괄호는 자를 수 없습니다(NOT 이 갈 곳이 없습니다) — NOT 을 먼저 떼세요"
-                            onPick={() => { h.onToggleBoundary(setId, ctx.at); setCtx(null); }} />
+                            onClick={() => { h.onToggleBoundary(setId, ctx.at); setCtx(null); }}>{groupAtBoundary(expr, ctx.at) === null ? "괄호 묶기" : "괄호 자르기"}</MenuItem>
                     )}
                     {ctx.kind === "paren" && (
                         <>
-                            <Item label="NOT" check={ctx.neg} title="이 괄호를 부정합니다"
-                                onPick={() => { h.onNegateGroup(setId, ctx.from); setCtx(null); }} />
-                            <Item label="괄호 풀기" disabled={ctx.neg}
+                            <MenuItem mark="check" on={ctx.neg} title="이 괄호를 부정합니다"
+                                onClick={() => { h.onNegateGroup(setId, ctx.from); setCtx(null); }}>NOT</MenuItem>
+                            <MenuItem mark="check" disabled={ctx.neg}
                                 why="NOT 이 걸려 있습니다 — 풀면 NOT 이 갈 곳이 없으니 먼저 떼세요"
-                                onPick={() => { h.onUngroup(setId, ctx.from); setCtx(null); }} />
+                                onClick={() => { h.onUngroup(setId, ctx.from); setCtx(null); }}>괄호 풀기</MenuItem>
                         </>
                     )}
                 </Panel>
@@ -294,52 +295,13 @@ export function Panel({ at, onClose, children }: {
     children: React.ReactNode;
 }): JSX.Element {
     return (
-        <AnchoredPopover anchor={at} onClose={onClose} role="menu" minWidth={186} padding="3px 0"
+        <AnchoredPopover anchor={at} onClose={onClose} role="menu" minWidth={186} padding={MENU_PAD}
             placement="beside" offset={8} shiftX={-6}>
             {children}
         </AnchoredPopover>
     );
 }
 
-/**
- * 판의 한 줄 — **이름만 적는다.** 왜 그런지는 `title` 이 말하고, 상태는 낱말이 아니라 **체크**가 말한다
- * (`NOT` ↔ `NOT 떼기` 로 낱말을 오가면 같은 자리가 매번 달라 보인다).
- *
- * ⚠ **못 누르는 항목은 숨기지 않고 회색 + 이유**로 세운다 — 결손 지도와 같은 규칙이다
- * (숨기면 "그런 기능이 없다"가 되어, 왜 안 되는지 알 길이 없다).
- */
-export function Item({ label, onPick, disabled = false, why, title, check = false, danger = false, armed = false }: {
-    label: string;
-    onPick: () => void;
-    disabled?: boolean;
-    /** 못 누를 때의 이유 — 툴팁으로만 뜬다. */
-    why?: string;
-    /** 평소 툴팁 — 항목 이름이 짧은 대신 설명이 여기 있다. */
-    title?: string;
-    /** 켜져 있나 — 토글 항목의 상태. */
-    check?: boolean;
-    danger?: boolean;
-    /** 한 번 눌러 무장했나 — 되돌릴 수 없는 손이 그때만 경고를 입는다. */
-    armed?: boolean;
-}): JSX.Element {
-    return (
-        <button role="menuitem" onClick={disabled ? undefined : onPick} disabled={disabled}
-            title={disabled ? why : title}
-            style={{
-                display: "flex", alignItems: "center", gap: 7, width: "100%", textAlign: "left",
-                border: "none", font: "inherit", fontSize: 12, padding: "5px 10px",
-                cursor: disabled ? "default" : "pointer",
-                background: armed ? "var(--warning-soft)" : "transparent",
-                color: disabled ? "var(--text-tertiary)" : armed || danger ? FAIL : "var(--text-primary)",
-            }}>
-            <span style={{ width: 10, flexShrink: 0, color: "var(--accent-primary)", fontSize: 11 }}>{check ? "✓" : ""}</span>
-            {label}
-        </button>
-    );
-}
-
-/** 항목 사이 가름줄 — 되돌릴 수 없는 손을 나머지와 떼어 놓는 자리. */
-export const Sep = (): JSX.Element => <div style={{ borderTop: "0.5px solid var(--border-subtle)", margin: "3px 0" }} />;
 
 /**
  * 묶음 이름 — 판 안에서 바로 고친다. **비우면 자동 이름으로 되돌아간다**(부재 = 점선 칩).

@@ -7,7 +7,8 @@
 // 보이는 선 자체는 여기 없다 — 표시목록 빌더(themeLinesLayer)가 진다. 그림은 데이터로 내리고
 // 손짓만 DOM 에 남기는 게 이 패널의 규약이고, 캔버스 전환이 조작을 안 건드리는 이유다.
 import { fmtPct } from "../../lib/format.js";
-import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
+import { AnchoredPopover } from "../../ui/Dialog.js";
+import { MENU_PAD, MenuHead, MenuItem } from "../../ui/popover/menu.js";
 import type { ThemeOverlay, ThemeView } from "./useThemeOverlay.js";
 
 /** 화면 좌표 폴리라인 문자열 — 배율에 맞춰 점을 솎는다. */
@@ -65,8 +66,8 @@ export function ThemeOverflowMenu({ theme, onToggleCandle }: {
     if (!overlay || !theme.badge) return null;
     const setHovered = theme.setHovered;
     return (
-        <AnchoredPopover anchor={theme.badge} onClose={theme.closeBadge} minWidth={190} padding={0} placement="beside" offset={6}>
-            <MenuLabel>이름 생략 {theme.badge.members.length}종목</MenuLabel>
+        <AnchoredPopover anchor={theme.badge} onClose={theme.closeBadge} minWidth={190} padding={MENU_PAD} placement="beside" offset={6}>
+            <MenuHead>이름 생략 {theme.badge.members.length}종목</MenuHead>
             <div style={{ maxHeight: 300, overflowY: "auto" }}>
                 {theme.badge.members.map((code) => {
                     const l = overlay.lines.find((x) => x.code === code);

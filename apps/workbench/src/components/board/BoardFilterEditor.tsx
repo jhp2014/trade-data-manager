@@ -13,7 +13,8 @@ import { useWorkbench, type BoardFilterActions } from "../../store/workbench.js"
 import { AddPredicateBox, PredicateRow } from "../PredicateFormula.js";
 import { TrashIcon } from "../icons.js";
 import { PanelHeader } from "../ControlChrome.js";
-import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
+import { AnchoredPopover } from "../../ui/Dialog.js";
+import { MENU_PAD, MenuHead, MenuItem } from "../../ui/popover/menu.js";
 
 // 보드 필터 에디터 — DNF(그룹 안 AND, 그룹끼리 OR), **그룹별 처리**(배제 흐리게/숨김 · 선택 나머지 흐리게/숨김
 // · 강조). 술어는 domain 레지스트리.
@@ -59,14 +60,14 @@ function ModeBadge({ mode, onPick }: { mode: BoardFilterMode; onPick: (m: BoardF
                 {ui.label}<span style={{ fontSize: 8, opacity: 0.7 }}>▾</span>
             </button>
             {anchor && (
-                <AnchoredPopover anchor={anchor} onClose={() => setAnchor(null)} minWidth={248} padding={0}>
+                <AnchoredPopover anchor={anchor} onClose={() => setAnchor(null)} minWidth={248} padding={MENU_PAD}>
                     {MODE_SECTIONS.map((sec, si) => (
-                        <div key={sec.title} style={si > 0 ? { borderTop: "1px solid var(--border-subtle)" } : undefined}>
-                            <MenuLabel>{sec.title}</MenuLabel>
+                        <div key={sec.title}>
+                            <MenuHead sep={si > 0}>{sec.title}</MenuHead>
                             {sec.modes.map((m) => (
-                                <MenuItem key={m} onClick={() => { onPick(m); setAnchor(null); }} style={m === mode ? { background: "var(--bg-secondary)" } : undefined}>
-                                    <span style={{ fontWeight: 600, color: m === mode ? "var(--accent-primary)" : undefined }}>{MODE_UI[m].label}</span>
-                                    <span style={{ display: "block", fontSize: 10.5, color: "var(--text-tertiary)", marginTop: 1 }}>{MODE_UI[m].desc}</span>
+                                <MenuItem key={m} mark="radio" on={m === mode} selected={m === mode} hint={MODE_UI[m].desc}
+                                    onClick={() => { onPick(m); setAnchor(null); }} style={{ fontWeight: 600 }}>
+                                    {MODE_UI[m].label}
                                 </MenuItem>
                             ))}
                         </div>

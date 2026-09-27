@@ -18,7 +18,8 @@ import {
 } from "@trade-data-manager/market/domain";
 import { NumField } from "../../components/NumField.js";
 import { AnchoredPopover } from "../../ui/popover/AnchoredPopover.js";
-import { Item, Panel } from "../filter/ExprRow.js";
+import { Panel } from "../filter/ExprRow.js";
+import { MenuItem } from "../../ui/popover/menu.js";
 import { ChainCondEditor } from "../breakout/ChainCondEditor.js";
 import { ChainExprRow, RankPick } from "../breakout/ChainExprRow.js";
 import { COND_HINT, COND_NAME, defaultCond } from "../breakout/chainChecks.js";
@@ -91,8 +92,8 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
                 <Panel at={addAt} onClose={() => setAddAt(null)}>
                     {CHAIN_COND_KINDS.map((k) => (k === "time"
                         // 시각은 **빼는 쪽**이 주 용도라 NOT 을 단 채로 태어난다(칩 우클릭으로 풀면 「그 시간대 안에서」).
-                        ? <Item key={k} label="시간대 제외" title={`NOT ${COND_NAME[k]} — ${COND_HINT[k]}`} onPick={() => addCond(k, true)} />
-                        : <Item key={k} label={COND_NAME[k]} title={COND_HINT[k]} onPick={() => addCond(k)} />
+                        ? <MenuItem mark="check" key={k} title={`NOT ${COND_NAME[k]} — ${COND_HINT[k]}`} onClick={() => addCond(k, true)}>시간대 제외</MenuItem>
+                        : <MenuItem mark="check" key={k} title={COND_HINT[k]} onClick={() => addCond(k)}>{COND_NAME[k]}</MenuItem>
                     ))}
                 </Panel>
             )}

@@ -11,6 +11,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { DEFAULT_BREAKOUT, DEFAULT_CANDLE, DEFAULT_THEME_ZONE, type CellPredicate, type CellValueRange } from "@trade-data-manager/market/domain";
 import { TriggerPopover } from "../../ui/popover/TriggerPopover.js";
+import { MENU_PAD, MenuHead, MenuItem } from "../../ui/popover/menu.js";
 import { allStagesOf, selectEditingExpr, selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { CellStageFields } from "../filter/CellPredicateFields.js";
 import { RailEditors, type RailEditor } from "../filter/ConditionEditors.js";
@@ -241,38 +242,34 @@ export function DailyConditionBoard(): JSX.Element {
                             )}>
                             {(close) => {
                                 const { attached, broken, attachable, blocked } = setPicker;
-                                const head = (text: string, first: boolean): JSX.Element => (
-                                    <div style={{ padding: "4px 10px 1px", fontSize: 10, color: "var(--text-tertiary)", ...(first ? {} : { borderTop: "0.5px solid var(--border-subtle)", marginTop: 3, paddingTop: 5 }) }}>{text}</div>
-                                );
                                 // 쓰는 곳 = 🔗N — 집합 목록 판과 같은 표기(비어 있음 = 아무도 안 씀).
                                 const used = (id: string): JSX.Element | null => (refInfo(id).usedBy >= 1
                                     ? <span title={`이 집합을 쓰는 집합 ${refInfo(id).usedBy}개 — 고치면 같이 바뀝니다`}
-                                        style={{ marginLeft: "auto", paddingLeft: 8, display: "inline-flex", alignItems: "center", gap: 2, fontSize: 9.5, color: "var(--text-tertiary)" }}>
+                                        style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
                                         <LinkIcon />{refInfo(id).usedBy}
                                     </span>
                                     : null);
-                                const row = { ...menuItem, display: "flex", alignItems: "center", gap: 6 } as const;
-                                const check = (on: boolean): JSX.Element => <span style={{ width: 10, flexShrink: 0, color: "var(--accent-primary)", fontSize: 11 }}>{on ? "✓" : ""}</span>;
                                 if (attached.length + broken.length + attachable.length + blocked.length === 0) {
                                     return <div style={{ padding: "8px 10px", fontSize: 11, color: "var(--text-tertiary)" }}>저장된 다른 집합이 없습니다 — ＋ 묶음으로 만들 수 있습니다</div>;
                                 }
                                 let first = true;
-                                const section = (text: string): JSX.Element => { const h = head(text, first); first = false; return h; };
+                                const section = (text: string): JSX.Element => { const h = <MenuHead sep={!first}>{text}</MenuHead>; first = false; return h; };
                                 return (
-                                    <div style={{ maxHeight: 280, overflowY: "auto", padding: "3px 0" }}>
+                                    <div style={{ maxHeight: 280, overflowY: "auto", padding: MENU_PAD }}>
                                         {attached.length + broken.length > 0 && section("이 식에 올라와 있음")}
                                         {attached.map((f) => (
                                             // 칩 클릭과 같은 손짓 — 그 묶음을 연다. 빼기는 칩 우클릭(구조 손은 우클릭).
-                                            <button key={f.id} role="menuitem" onClick={() => { rowHandlers.onDrill(editingSetId, f.id); close(); }}
-                                                title={`${refInfo(f.id).name} — 이미 이 식에 붙어 있습니다. 누르면 그 묶음을 엽니다(빼기는 칩 우클릭)`} style={row}>
-                                                {check(true)}<span style={{ ...pickName, color: PIN }}>{refInfo(f.id).name}</span>{used(f.id)}
-                                            </button>
+                                            <MenuItem key={f.id} mark="check" on onClick={() => { rowHandlers.onDrill(editingSetId, f.id); close(); }}
+                                                title={`${refInfo(f.id).name} — 이미 이 식에 붙어 있습니다. 누르면 그 묶음을 엽니다(빼기는 칩 우클릭)`}
+                                                trailing={used(f.id)} style={{ color: PIN }}>
+                                                {refInfo(f.id).name}
+                                            </MenuItem>
                                         ))}
                                         {broken.map((id) => (
-                                            <button key={id} role="menuitem" disabled title="가리키는 집합이 지워졌습니다 — 칩 우클릭으로 이 자리를 뺄 수 있습니다"
-                                                style={{ ...row, cursor: "default", color: FAIL }}>
-                                                {check(true)}<span>(지워진 집합)</span>
-                                            </button>
+                                            <MenuItem key={id} mark="check" on disabled onClick={() => {}}
+                                                why="가리키는 집합이 지워졌습니다 — 칩 우클릭으로 이 자리를 뺄 수 있습니다" style={{ color: FAIL }}>
+                                                (지워진 집합)
+                                            </MenuItem>
                                         ))}
                                         {attachable.length > 0 && section("붙일 수 있음")}
                                         {attachable.map((f) => {
@@ -287,26 +284,22 @@ export function DailyConditionBoard(): JSX.Element {
                                             }
                                             return (
                                                 // 이름 없는 집합 = 누르면 그 자리에 이름 칸(강제 아님 — 비우고 Enter 면 그대로 붙는다).
-                                                <button key={f.id} role="menuitem" autoFocus={refocusSet === f.id}
+                                                <MenuItem key={f.id} mark="check" autoFocus={refocusSet === f.id}
                                                     onClick={() => { if (unnamed) setNamingSet(f.id); else { addSetRef(f.id); close(); } }}
                                                     title={unnamed
                                                         ? `${refInfo(f.id).name} — 이름이 없는 집합입니다. 누르면 이름을 짓고 붙입니다(비우면 그대로)`
                                                         : `${refInfo(f.id).name} — 이 식에 한 항으로 붙입니다`}
-                                                    style={row}>
-                                                    {check(false)}
-                                                    <span style={{ ...pickName, ...(unnamed ? { color: PIN, opacity: 0.65, borderBottom: `1px dashed ${PIN}` } : { color: PIN }) }}>{refInfo(f.id).name}</span>
-                                                    {unnamed && <span style={{ fontSize: 9.5, color: "var(--text-tertiary)" }}>이름 없음</span>}
-                                                    {used(f.id)}
-                                                </button>
+                                                    trailing={<>{unnamed && <span>이름 없음</span>}{used(f.id)}</>}>
+                                                    <span style={unnamed ? { color: PIN, opacity: 0.65, borderBottom: `1px dashed ${PIN}` } : { color: PIN }}>{refInfo(f.id).name}</span>
+                                                </MenuItem>
                                             );
                                         })}
                                         {blocked.length > 0 && section("붙일 수 없음")}
                                         {blocked.map(({ set: f, why }) => (
-                                            <button key={f.id} role="menuitem" disabled title={BLOCK_HINT[why]}
-                                                style={{ ...row, cursor: "default", color: "var(--text-tertiary)" }}>
-                                                {check(false)}<span style={pickName}>{refInfo(f.id).name}</span>
-                                                <span style={{ marginLeft: "auto", paddingLeft: 8, fontSize: 9.5 }}>{BLOCK_TEXT[why]}</span>
-                                            </button>
+                                            <MenuItem key={f.id} mark="check" disabled onClick={() => {}} why={BLOCK_HINT[why]}
+                                                trailing={BLOCK_TEXT[why]}>
+                                                {refInfo(f.id).name}
+                                            </MenuItem>
                                         ))}
                                     </div>
                                 );
@@ -443,16 +436,9 @@ function NameAndAttach({ autoName, taken, onAttach, onCancel }: {
     );
 }
 
-/** ＋ 집합 판의 이름 칸 — 돌파 요약이 든 자동 이름이 길어 줄바꿈으로 🔗N·사유가 밀리지 않게 자른다. */
-const pickName: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 };
-
 const addBtn: React.CSSProperties = {
     fontSize: 11, padding: "2px 9px", borderRadius: 4, border: "1px dashed var(--border-default)", background: "transparent",
     color: "var(--text-secondary)", cursor: "pointer",
-};
-const menuItem: React.CSSProperties = {
-    display: "block", width: "100%", textAlign: "left", border: "none", background: "transparent", color: "var(--text-primary)",
-    cursor: "pointer", font: "inherit", fontSize: 11.5, padding: "5px 10px",
 };
 
 /**
@@ -469,14 +455,9 @@ function AddCondition({ onCell, onBreakout, onTheme, onCandle, onLabel }: {
     const atLeast = (value: number): CellValueRange => ({ from: { kind: "value", value } });
     // 항목 = 이름 + **설명 한 줄**(항상 보인다 — 툴팁이 아니라 판에 적는다. 2026-09-27 팔레트 재편).
     const item = (close: () => void, label: string, hint: string, run: (e: React.MouseEvent) => void): JSX.Element => (
-        <button key={label} onClick={(e) => { close(); run(e); }} style={{ ...menuItem, padding: "4px 10px" }}>
-            <span style={{ display: "block" }}>{label}</span>
-            <span style={{ display: "block", fontSize: 9.5, color: "var(--text-tertiary)", whiteSpace: "normal", lineHeight: 1.35 }}>{hint}</span>
-        </button>
+        <MenuItem key={label} hint={hint} onClick={(e) => { close(); run(e); }}>{label}</MenuItem>
     );
-    const head = (text: string, first = false): JSX.Element => (
-        <div style={{ padding: "4px 10px 1px", fontSize: 10, fontWeight: 600, color: "var(--text-tertiary)", ...(first ? {} : { borderTop: "0.5px solid var(--border-subtle)", marginTop: 3, paddingTop: 6 }) }}>{text}</div>
-    );
+    const head = (text: string, first = false): JSX.Element => <MenuHead sep={!first}>{text}</MenuHead>;
     // ⚠ 감싸는 틀에 위아래가 다른 여백을 주지 않는다 — 줄이 세로 가운데 정렬이라 ＋ 묶음·＋ 집합보다 내려앉는다.
     return (
         <div>
@@ -487,7 +468,7 @@ function AddCondition({ onCell, onBreakout, onTheme, onCandle, onLabel }: {
                     </button>
                 )}>
                 {(close) => (
-                    <div style={{ maxHeight: 340, overflowY: "auto", padding: "3px 0" }}>
+                    <div style={{ maxHeight: 340, overflowY: "auto", padding: MENU_PAD }}>
                         {head("생성기 — 후보를 만든다", true)}
                         {item(close, "돌파 사슬", "고가(와 기준선) 밴드 사건에서 사슬이 서고, 눌림 전까지 대금이 커진 봉이 후보 — 값은 팝오버에서", onBreakout)}
                         {head("봉 — 그 분 봉 하나의 성질")}

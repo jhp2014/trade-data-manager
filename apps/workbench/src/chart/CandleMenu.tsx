@@ -14,7 +14,8 @@
 //  · 무시 캔들 = 차트 소유 토글(일봉만). 타점 선택이 필요 없다.
 //  · 선 근처 우클릭이면 그 선 삭제만 — 즉시 삭제 대신 메뉴를 거쳐 오발을 막는다.
 import { ANCHOR_FIELDS, anchorParamByKey, IGNORE_CANDLE_PARAM, type AnchorField, type AnchorMarket } from "@trade-data-manager/market/domain";
-import { AnchoredPopover, MenuItem, MenuLabel } from "../ui/Dialog.js";
+import { AnchoredPopover } from "../ui/Dialog.js";
+import { MENU_PAD, MenuHead, MenuItem } from "../ui/popover/menu.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 
 /** 캔들 한 시장의 OHLC(원). 로드된 번들 raw 에서 뽑는다 — KRX 는 세션 부재(NXT 단독 시간대)면 null. */
@@ -96,14 +97,6 @@ function FieldButtonRow({ rowLabel, rowColor, bar, cellOf, onPick }: {
     );
 }
 
-/** 섹션 구분선 위 라벨. */
-function SectionLabel({ children }: { children: React.ReactNode }): JSX.Element {
-    return (
-        <div style={{ borderTop: "1px solid var(--border-subtle)" }}>
-            <MenuLabel>{children}</MenuLabel>
-        </div>
-    );
-}
 
 export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketChange, lines, ignore, assign, onClose }: CandleMenuProps): JSX.Element {
     const title = candle ? `${candle.date}${candle.time ? ` ${candle.time.slice(0, 5)}` : " 일봉"}` : "가격선";
@@ -114,7 +107,7 @@ export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketCha
     const other: AnchorMarket = eff === "un" ? "krx" : "un";
 
     return (
-        <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={210} padding={0} placement="beside" offset={6}>
+        <AnchoredPopover anchor={anchor} onClose={onClose} minWidth={210} padding={MENU_PAD} placement="beside" offset={6}>
             {/* 제목 줄 — 시장 토글이 우측 빈자리를 쓴다(아래 선 줄이 이 시장을 따른다).
                 별도 줄로 두면 "기준 시장" 같은 설명 라벨이 필요해지는데, 버튼이 값(UN/KRX)을 이미 말한다. */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 8px 4px" }}>
@@ -133,7 +126,7 @@ export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketCha
             </div>
 
             {nearLine && (
-                <MenuItem onClick={() => { lines.onRemove(nearLine.id); onClose(); }} style={{ color: "var(--rise)" }}>
+                <MenuItem danger onClick={() => { lines.onRemove(nearLine.id); onClose(); }}>
                     이 선 삭제{nearLine.label ? ` (${nearLine.label})` : ""}
                 </MenuItem>
             )}
@@ -146,14 +139,14 @@ export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketCha
                             onPick={(field) => { lines.onAdd(field, eff); onClose(); }} />
                     </div>
                     {lines.idAtCandle && (
-                        <MenuItem onClick={() => { lines.onRemove(lines.idAtCandle!); onClose(); }} style={{ color: "var(--rise)" }}>
+                        <MenuItem danger onClick={() => { lines.onRemove(lines.idAtCandle!); onClose(); }}>
                             이 봉의 선 삭제
                         </MenuItem>
                     )}
 
                     {candle.time && assign && (
                         <>
-                            <SectionLabel>좌표 라벨 — 이 봉을 타점으로 분류</SectionLabel>
+                            <MenuHead sep>좌표 라벨 — 이 봉을 타점으로 분류</MenuHead>
                             <MenuItem onClick={() => { assign.onAssign(); onClose(); }}>
                                 이 좌표에 그룹 배정…
                             </MenuItem>
@@ -162,8 +155,8 @@ export function CandleMenu({ anchor, candle, bars, nearLine, market, onMarketCha
 
                     {!candle.time && (
                         <>
-                            <SectionLabel>{anchorParamByKey.get(IGNORE_CANDLE_PARAM)?.name ?? "무시 캔들"} — 이 차트의 과거 스캔에서 제외</SectionLabel>
-                            <MenuItem onClick={() => { ignore.onToggle(); onClose(); }} style={ignore.on ? { color: "var(--text-tertiary)" } : undefined}>
+                            <MenuHead sep>{anchorParamByKey.get(IGNORE_CANDLE_PARAM)?.name ?? "무시 캔들"} — 이 차트의 과거 스캔에서 제외</MenuHead>
+                            <MenuItem dim={ignore.on} onClick={() => { ignore.onToggle(); onClose(); }}>
                                 {ignore.on ? "이 캔들 해제" : "이 캔들 지정"}
                             </MenuItem>
                         </>

@@ -24,7 +24,8 @@ import {
 } from "@trade-data-manager/market/domain";
 import { FAIL } from "../../styles/palette.js";
 import { NumField } from "../../components/NumField.js";
-import { Item, Panel, Sep } from "../filter/ExprRow.js";
+import { Panel } from "../filter/ExprRow.js";
+import { MenuItem, MenuSep } from "../../ui/popover/menu.js";
 import { COND_HINT, condText, firstKText } from "./chainChecks.js";
 
 const ROW_H = 30;
@@ -120,43 +121,43 @@ export function ChainExprRow({ expr, open, onPick, onChange, tail }: {
             {ctx?.kind === "opPick" && (
                 <Panel at={ctx} onClose={close}>
                     {(["and", "or"] as const).map((op: Op) => (
-                        <Item key={op} label={op === "and" ? "AND" : "OR"} check={expr.ops[ctx.at] === op}
+                        <MenuItem mark="check" key={op} on={expr.ops[ctx.at] === op}
                             title={op === "and" ? "모두 만족" : "하나라도 만족"}
                             disabled={!canSetOpAt(expr, ctx.at, op)}
                             why="괄호 안이나 밖이 섞입니다 — 괄호를 먼저 푸세요(한 겹이라 안쪽에 또 칠 자리가 없습니다)"
-                            onPick={() => commit(setOpAt(expr, ctx.at, op))} />
+                            onClick={() => commit(setOpAt(expr, ctx.at, op))}>{op === "and" ? "AND" : "OR"}</MenuItem>
                     ))}
                 </Panel>
             )}
             {ctx?.kind === "op" && (
                 <Panel at={ctx} onClose={close}>
-                    <Item label={groupAtBoundary(expr, ctx.at) === null ? "괄호 묶기" : "괄호 자르기"}
+                    <MenuItem mark="check"
                         disabled={!canToggleBoundary(expr, ctx.at)}
                         title="이 자리를 괄호 안/밖으로 — 만들기·넓히기·자르기·풀기가 이 하나입니다"
                         why="NOT·순번이 붙은 괄호는 자를 수 없습니다(갈 곳이 없습니다) — 먼저 떼세요"
-                        onPick={() => commit(toggleBoundaryGroup(expr, ctx.at))} />
+                        onClick={() => commit(toggleBoundaryGroup(expr, ctx.at))}>{groupAtBoundary(expr, ctx.at) === null ? "괄호 묶기" : "괄호 자르기"}</MenuItem>
                 </Panel>
             )}
             {ctx?.kind === "term" && term !== null && (
                 <Panel at={ctx} onClose={close}>
-                    <Item label="NOT" check={term.neg === true} title="이 조건을 부정합니다(순번이 있으면 순번이 먼저, NOT 이 나중)"
-                        onPick={() => commit({ ...expr, of: expr.of.map((x) => (x.id === term.id ? xorNeg(x, true) : x)) })} />
-                    <Sep />
-                    <Item label="지우기" danger title="이 조건을 없앱니다"
+                    <MenuItem mark="check" on={term.neg === true} title="이 조건을 부정합니다(순번이 있으면 순번이 먼저, NOT 이 나중)"
+                        onClick={() => commit({ ...expr, of: expr.of.map((x) => (x.id === term.id ? xorNeg(x, true) : x)) })}>NOT</MenuItem>
+                    <MenuSep />
+                    <MenuItem mark="check" danger title="이 조건을 없앱니다"
                         disabled={!canRemoveChainTerm(expr, term.id)}
                         why="순번 괄호에 NOT 조건 하나만 남게 됩니다 — 순번이 갈 곳이 없으니 괄호 순번을 먼저 떼세요"
-                        onPick={() => commit(pruneFlat(expr, (x: ChainTerm) => x.id !== term.id, absorbChainGroup))} />
+                        onClick={() => commit(pruneFlat(expr, (x: ChainTerm) => x.id !== term.id, absorbChainGroup))}>지우기</MenuItem>
                 </Panel>
             )}
             {ctx?.kind === "paren" && paren !== null && (
                 <Panel at={ctx} onClose={close}>
-                    <Item label="NOT" check={paren.neg === true} title="이 괄호를 부정합니다(순번이 있으면 순번이 먼저, NOT 이 나중)"
-                        onPick={() => commit(negateGroupAt(expr, ctx.at))} />
+                    <MenuItem mark="check" on={paren.neg === true} title="이 괄호를 부정합니다(순번이 있으면 순번이 먼저, NOT 이 나중)"
+                        onClick={() => commit(negateGroupAt(expr, ctx.at))}>NOT</MenuItem>
                     <RankPick value={paren.firstK} onChange={(k) => { const next = setGroupFirstK(expr, ctx.at, k); if (next !== expr) onChange(next); }} />
-                    <Sep />
-                    <Item label="괄호 풀기" disabled={paren.neg === true || paren.firstK !== undefined}
+                    <MenuSep />
+                    <MenuItem mark="check" disabled={paren.neg === true || paren.firstK !== undefined}
                         why="NOT·순번이 걸려 있습니다 — 풀면 갈 곳이 없으니 먼저 떼세요"
-                        onPick={() => commit(removeGroupAt(expr, paren.from))} />
+                        onClick={() => commit(removeGroupAt(expr, paren.from))}>괄호 풀기</MenuItem>
                 </Panel>
             )}
         </div>
