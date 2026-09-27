@@ -70,7 +70,10 @@ export function useFitInViewport({ ref, getAnchor, opts, key, cap, track = false
     const live = pos && pos.key === key ? pos : null;
     if (!live) {
         // 재기 전 한 번 — 안 보이게, 우리 maxHeight 없이(원래 크기를 재야 방향을 고른다).
-        return { position: "fixed", left: 0, top: 0, visibility: "hidden", ...(cap !== undefined ? { maxHeight: cap } : {}) };
+        // ⚠ visibility:hidden 이 아니라 opacity:0 — React 는 autoFocus 를 layout 단계에서 **자식 먼저** 부르므로
+        //   판 안 입력의 focus() 가 이 자리 잡기보다 먼저 돈다. Chrome 은 visibility:hidden 요소에 포커스를 안
+        //   준다(검색칸·이름칸 autoFocus 가 조용히 죽는다). opacity:0 은 포커스를 받는다.
+        return { position: "fixed", left: 0, top: 0, opacity: 0, pointerEvents: "none", ...(cap !== undefined ? { maxHeight: cap } : {}) };
     }
     const maxHeight = cap === undefined ? live.maxHeight
         : typeof cap === "number" ? Math.min(cap, live.maxHeight)

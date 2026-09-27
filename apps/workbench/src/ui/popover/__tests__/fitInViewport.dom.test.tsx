@@ -54,6 +54,6 @@ describe("판이 자라도 안 튄다", () => {
     it("재기 전에는 안 보인다 — (0,0) 에서 한 번 깜빡이지 않게", () => {
         // 첫 layoutEffect 가 같은 커밋 안에서 자리를 잡으므로, 렌더가 끝난 뒤엔 보인다.
         render(<AnchoredPopover anchor={{ x: 100, y: 100 }} onClose={() => {}}>판</AnchoredPopover>);
-        expect(surface().style.visibility).toBe("");
+        expect(surface().style.opacity).toBe(""); // 잴 동안만 opacity 0(visibility:hidden 은 autoFocus 를 죽인다)
     });
 });
