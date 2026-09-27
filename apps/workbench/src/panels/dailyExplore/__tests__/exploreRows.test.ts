@@ -2,7 +2,7 @@
 // 열 상태는 모름을 탈락으로 안 찍는다.
 import { describe, expect, it } from "vitest";
 import type { CellHit } from "@trade-data-manager/market/domain";
-import { MAX_GROUPS, autoGroupIds, cellKeyOf, exploreRowsOf, groupColStateOf, groupNumberOf, membershipOf } from "../exploreRows.js";
+import { MAX_GROUPS, autoGroupIds, cellKeyOf, exploreRowsOf, groupColStateOf, groupNumberOf, membershipOf, themeChipsOf } from "../exploreRows.js";
 import type { SetExpr } from "../../filter/expr.js";
 
 const hit = (code: string, min: number): CellHit => ({ code, min, tags: [], ratePct: null, cumAmount: null, zoneRank: null, zoneTheme: null });
@@ -64,5 +64,13 @@ describe("groupColStateOf — 모름은 ●/· 가 아니다", () => {
     it("groupNumberOf — 자리 0..9 = ①..⑩", () => {
         expect(groupNumberOf(0)).toBe("①");
         expect(groupNumberOf(9)).toBe("⑩");
+    });
+});
+
+describe("themeChipsOf — 앞 3개 + 나머지 개수", () => {
+    it("3개 이하면 전부·+0, 넘치면 앞 3개와 나머지 수", () => {
+        expect(themeChipsOf([])).toEqual({ shown: [], rest: 0 });
+        expect(themeChipsOf(["a", "b", "c"])).toEqual({ shown: ["a", "b", "c"], rest: 0 });
+        expect(themeChipsOf(["a", "b", "c", "d", "e"])).toEqual({ shown: ["a", "b", "c"], rest: 2 });
     });
 });

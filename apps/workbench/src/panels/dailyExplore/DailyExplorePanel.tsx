@@ -1,5 +1,5 @@
 // 일별 타점 [탐색] — 하루 후보를 **날짜 단위로 걷는** 전용 뷰(2026-09-26 · 09-27 옛 작업 대상의 손을 승계).
-// 행 = 보는 집합의 그날 후보(기본 **종목순** — 종목 머리줄 아래 시간순, 토글로 시간순),
+// 행 = 보는 집합의 그날 후보(기본 **종목순** — 종목 머리줄(이름 + 테마) 아래 들여쓴 시간순, 토글로 시간순),
 // 열 = **조건 그룹**(고른 저장 집합 ≤10)의 통과 ●/· — 번호 열 ①~⑩ 이 **시간 반대편(오른쪽)** 에 붙고, 이름은
 // 위쪽 범례 줄이 말한다(열 머리에 이름을 세우면 폭·머리 높이를 먹는다). 폭이 모자라면 시간 열 고정 가로 스크롤.
 // "어느 조건 덕에 나왔나"는 조건판이 아니라 이 뷰의 책임이다(사용자 확정).
@@ -16,6 +16,7 @@ import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
 import { RowNavBadge } from "../../components/RowNavBadge.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
+import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { usePublishRowNav } from "../../lib/rowNav.js";
 import { useDayReplayPrefetch } from "../../lib/useDaySnapshot.js";
 import { useDock } from "../../store/dock.js";
@@ -31,7 +32,7 @@ import { useGroupAssign } from "../../store/groupAssign.js";
 import { neighborDates } from "./dayCrossing.js";
 import { useDayCrossing } from "./useDayCrossing.js";
 import { stepWithin, type NavKey } from "./walk.js";
-import { MAX_GROUPS, cellKeyOf, exploreRowsOf, type ExploreSort } from "./exploreRows.js";
+import { MAX_GROUPS, cellKeyOf, exploreRowsOf, themeChipsOf, type ExploreSort } from "./exploreRows.js";
 import { useConditionGroups, type GroupCol } from "./useConditionGroups.js";
 
 const EMPTY_DATES: string[] = [];
@@ -47,6 +48,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
 
     const funnel = useFunnel();
     const { nameOf } = useStockNamesDict();
+    const themeIndex = useThemeIndex().index;
     const isDaily = true;
     const focusDate = useWorkbench((s) => s.focus.date);
     const focusCode = useWorkbench((s) => s.focus.code);
@@ -80,21 +82,6 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         return rows.filter((r) => m.has(cellKeyOf(r.code, r.min)));
     }, [rows, narrowCol]);
 
-    // ── 종목 접기(종목순 전용 — 옛 작업 대상에서 이식, 2026-09-27) — 접힌 종목은 머리줄만 서고 w/s 순회에서도 빠진다.
-    // 접힘은 **그 날짜의 것**이다 — `{date, codes}` 로 저장하고 날짜가 다르면 빈 집합으로 **파생**한다.
-    // ⚠ effect 로 풀면 새 날짜의 첫 렌더가 어제 접힘으로 순회 목록을 세워, 날짜를 넘긴 착지가 어제 접은
-    //   종목을 건너뛰거나 빈 날로 오판해 스킵한다(2026-09-27 리뷰 — 옛 작업 대상에서 따라온 약점).
-    const [collapsedRaw, setCollapsedRaw] = usePanelUi<{ date: string; codes: string[] } | null>(panelId, "collapsed", null);
-    const collapsed = useMemo(() => new Set(
-        sortMode === "stock" && collapsedRaw !== null && !Array.isArray(collapsedRaw) && collapsedRaw.date === focusDate
-            ? collapsedRaw.codes : [],
-    ), [collapsedRaw, sortMode, focusDate]);
-    const toggleCollapse = useCallback((code: string) => {
-        const cur = [...collapsed];
-        setCollapsedRaw({ date: focusDate, codes: cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code] });
-    }, [collapsed, focusDate, setCollapsedRaw]);
-    /** 걷는 행 — 접힌 종목을 뺀 것. 본 줄 렌더도 순회도 **이 배열 하나**를 본다(두 벌이면 접힌 행을 순회가 밟는다). */
-    const walkRows = useMemo(() => shownRows.filter((r) => !collapsed.has(r.code)), [shownRows, collapsed]);
     /** 그룹 배정 — 종목 머리줄 우클릭 = 하루 그룹(차트), 행 우클릭 = 타점 그룹(좌표). */
     const openAssign = (ev: React.MouseEvent, code: string, time?: string): void => {
         ev.preventDefault();
@@ -112,7 +99,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                 .some(({ stage: st }) => st.enabled && st.predicates.some(isHeavyCellPredicate)),
         [cellSet.stages, funnel.slowExpr, funnel.slowSets],
     );
-    const order = useMemo<NavKey[]>(() => walkRows.map((r) => ({ code: r.code, date: focusDate, time: r.time })), [walkRows, focusDate]);
+    const order = useMemo<NavKey[]>(() => shownRows.map((r) => ({ code: r.code, date: focusDate, time: r.time })), [shownRows, focusDate]);
     const orderRef = useRef(order);
     orderRef.current = order;
     const landOn = useCallback((dir: 1 | -1) => {
@@ -186,6 +173,10 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         : rows.length === 0 ? "이 날은 후보가 없습니다"
         : null;
     const weekday = WEEKDAY[new Date(`${focusDate}T00:00:00`).getDay()] ?? "";
+    // 종목순 = 트리(머리줄 + 들여쓴 시간, 괘선 없음) · 시간순 = 평탄한 표(괘선 유지 — 묶음이 없어 줄이 행을 가른다).
+    const tree = sortMode === "stock";
+    const timeW = tree ? TIME_W + TREE_INDENT : TIME_W;
+    const noLine: React.CSSProperties | undefined = tree ? { borderBottom: "none" } : undefined;
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
@@ -196,7 +187,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                 <button onClick={() => crossing.cross(1)} disabled={crossing.seeking} title="다음 거래일 (목록 끝에서 s 로도 넘어간다)" style={navBtn}>▶</button>
                 <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}
                     title={`그날 후보 ${rows.length}${cellSet.truncated ? " (상한 잘림)" : ""} · ${pos !== null ? `순회 위치 ${pos}` : "커서 없음"}${narrowCol ? `\n좁히기: ${narrowCol.name}` : ""}`}>
-                    {narrowCol ? (narrowCol.state.kind === "ready" ? `후보 ${rows.length} · ${narrowCol.name} ${shownRows.length}` : `후보 ${rows.length} · ${narrowCol.name} …`) : `후보 ${rows.length}${pos !== null ? ` · ${pos}/${walkRows.length}` : ""}`}
+                    {narrowCol ? (narrowCol.state.kind === "ready" ? `후보 ${rows.length} · ${narrowCol.name} ${shownRows.length}` : `후보 ${rows.length} · ${narrowCol.name} …`) : `후보 ${rows.length}${pos !== null ? ` · ${pos}/${shownRows.length}` : ""}`}
                     {cellSet.truncated ? " · 잘림" : ""}
                 </span>
                 {(crossing.seeking || crossing.note !== null) && (
@@ -243,7 +234,8 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                     <table className="tabular" style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
                         <thead>
                             <tr>
-                                <Th style={{ ...stickL(0), zIndex: 3, width: TIME_W, minWidth: TIME_W }}>시간</Th>
+                                {/* 종목순에선 머리줄이 묶음을 말하므로 「시간」 글자는 할 말이 없다 — 칸(폭)만 둔다. */}
+                                <Th style={{ ...stickL(0), zIndex: 3, width: timeW, minWidth: timeW }}>{tree ? "" : "시간"}</Th>
                                 {sortMode === "time" && <Th style={{ ...stickL(TIME_W), zIndex: 3, width: NAME_W, minWidth: NAME_W, maxWidth: NAME_W }}>종목</Th>}
                                 {/* 빈 칸이 남는 폭을 다 먹어 번호 열을 **시간 반대편**으로 민다(사용자 확정). */}
                                 <th style={{ ...thBase, width: "100%" }} />
@@ -260,37 +252,25 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                         <tbody>
                             {shownRows.map((r, i) => {
                                 const isFocus = r.code === focusCode && r.time === focusTime;
-                                const folded = collapsed.has(r.code);
-                                // 종목순일 때만 종목 머리줄 — 이름만 싣는다(수·요약 없음, 사용자 확정). 클릭 = 그 종목 첫 타점.
-                                // ▾/▸ = 접기(접으면 후보 수만 말한다) · 우클릭 = 하루 그룹 배정(차트).
-                                // 가로 스크롤 중에도 이름이 보이게 안쪽 줄을 왼쪽에 붙인다(칸은 전폭 배경만).
-                                const head = sortMode === "stock" && (i === 0 || shownRows[i - 1]!.code !== r.code) ? (
+                                // 종목순일 때만 종목 머리줄 — 이름 + 테마(앞 THEME_SHOW 개, 나머지 +N). 클릭 = 그 종목 첫 타점 ·
+                                // 우클릭 = 하루 그룹 배정(차트). 묶음 경계는 **이름 뒤 가는 선** 하나다(칸 배경에 그린 1px 가로선을
+                                // 이름 덩어리가 제 배경으로 덮는다 — 가로 스크롤 중에도 이름이 왼쪽에 붙어 있게 덩어리만 sticky).
+                                const head = tree && (i === 0 || shownRows[i - 1]!.code !== r.code) ? (
                                     <tr key={`head-${r.code}`}>
-                                        <td colSpan={2 + groupCols.length} style={{ padding: 0, borderBottom: "0.5px solid var(--border-subtle)", background: "var(--bg-secondary)" }}>
-                                            <div style={{ ...stickL(0), display: "inline-flex", alignItems: "center", background: "var(--bg-secondary)" }}
+                                        <td colSpan={2 + groupCols.length} style={{ ...headLineCell, paddingTop: i === 0 ? 2 : 6 }}>
+                                            <div style={{ ...stickL(0), display: "inline-flex", alignItems: "baseline", gap: 7, padding: "2px 8px", background: "var(--bg-primary)" }}
                                                 onContextMenu={(ev) => openAssign(ev, r.code)}>
-                                                <button onClick={() => toggleCollapse(r.code)} className="row-self-marked"
-                                                    title={folded ? "펴기 — 이 종목의 후보가 다시 서고 순회에도 든다" : "접기 — 후보 행이 사라지고 w/s 순회에서도 빠진다"}
-                                                    style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 10, padding: "3px 2px 3px 6px" }}>
-                                                    {folded ? "▸" : "▾"}
-                                                </button>
-                                                <button onClick={() => {
-                                                    // 접힌 종목이면 먼저 편다 — 안 보이는 행으로 시선이 가면 다음 w/s 가 목록 끝으로 튄다.
-                                                    if (folded) toggleCollapse(r.code);
-                                                    useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore");
-                                                }}
+                                                <button onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}
+                                                    className="row-self-marked"
                                                     title="좌클릭 = 이 종목의 첫 타점으로 · 우클릭 = 그룹 배정(하루)"
-                                                    style={{ textAlign: "left", border: "none", cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 600, padding: "3px 6px 3px 2px", background: "transparent", color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                                                    style={{ border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, padding: 0, color: "var(--text-primary)", whiteSpace: "nowrap" }}>
                                                     {nameOf(r.code)}
-                                                    {folded && <span style={{ marginLeft: 6, fontWeight: 400, color: "var(--text-tertiary)" }}>
-                                                        후보 {shownRows.filter((x) => x.code === r.code).length}
-                                                    </span>}
                                                 </button>
+                                                <ThemeChips themes={themeIndex.themesOf(r.code)} />
                                             </div>
                                         </td>
                                     </tr>
                                 ) : null;
-                                if (folded) return head === null ? null : <FragmentRow key={cellKeyOf(r.code, r.min)} head={head}>{null}</FragmentRow>;
                                 const rowBg = isFocus ? "var(--accent-soft)" : "var(--bg-primary)";
                                 return (
                                     <FragmentRow key={cellKeyOf(r.code, r.min)} head={head}>
@@ -299,15 +279,17 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                                         onContextMenu={(ev) => openAssign(ev, r.code, r.time)}
                                         title="좌클릭 = 이 타점으로 시선 이동(차트가 따라온다) · 우클릭 = 그룹 배정(좌표 라벨)"
                                         style={{ cursor: "pointer", background: rowBg }}>
-                                        {/* 붙는 칸은 제 배경을 칠해야 밀려 지나가는 점 열을 가린다. */}
-                                        <Td style={{ ...stickL(0), background: rowBg }}>{r.time.slice(0, 5)}</Td>
+                                        {/* 붙는 칸은 제 배경을 칠해야 밀려 지나가는 점 열을 가린다. 종목순 = 가이드선 안쪽으로 들여쓴다. */}
+                                        {/* paddingLeft 는 두 모드 다 **항상** 준다 — 한쪽에만 두면 모드 전환 때 React 가 그 키를 지우며 Td 의 padding(shorthand)
+                                            왼쪽까지 날린다(같은 td 가 재사용된다 — 키가 정렬과 무관). */}
+                                        <Td style={{ ...stickL(0), backgroundColor: rowBg, paddingLeft: tree ? 8 + TREE_INDENT : 8, ...noLine, ...(tree ? treeTimeCell(isFocus) : null) }}>{r.time.slice(0, 5)}</Td>
                                         {/* 종목순에선 열 자체를 접는다 — 머리줄이 이름을 말하는데 빈 열이 폭만 먹는다. */}
                                         {sortMode === "time" && (
                                             <Td style={{ ...stickL(TIME_W), background: rowBg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: NAME_W }}>{nameOf(r.code)}</Td>
                                         )}
-                                        <Td />
+                                        <Td style={noLine} />
                                         {groupCols.map((c) => (
-                                            <Td key={c.setId} style={dotCell}>
+                                            <Td key={c.setId} style={{ ...dotCell, ...noLine }}>
                                                 {c.state.kind === "loading" ? <span style={{ color: "var(--text-tertiary)" }}>…</span>
                                                     : c.state.kind === "unknown" ? <span style={{ color: "var(--text-tertiary)" }} title={c.state.why}>—</span>
                                                     : c.state.member.has(cellKeyOf(r.code, r.min))
@@ -341,6 +323,38 @@ const FragmentRow = ({ head, children }: { head: React.ReactNode; children: Reac
 );
 
 const TIME_W = 44;
+/** 종목순 들여쓰기 — 가이드선(x=12) 오른쪽으로 시간이 선다. */
+const TREE_INDENT = 18;
+/** 종목 머리줄 칸 — 세로 가운데 1px 가로선(묶음 경계). content-box 기준이라 위 여백(paddingTop)이 선 높이를 안 민다. */
+const headLineCell: React.CSSProperties = {
+    padding: 0, backgroundColor: "var(--bg-primary)",
+    backgroundImage: "linear-gradient(var(--border-default), var(--border-default))",
+    backgroundSize: "100% 1px", backgroundPosition: "0 50%", backgroundRepeat: "no-repeat", backgroundOrigin: "content-box",
+};
+/** 종목순 시간 칸 — 왼쪽 가이드선(본 줄에 괘선이 없어 칸 높이 100% 가 줄줄이 이어진다). 포커스 = 선이 굵은 청록(색 하나 안 늘리고 "지금 여기"). */
+const treeTimeCell = (focus: boolean): React.CSSProperties => {
+    const line = focus ? "var(--accent-primary)" : "var(--border-default)";
+    return {
+        color: focus ? "var(--text-primary)" : "var(--text-secondary)",
+        backgroundImage: `linear-gradient(${line}, ${line})`, backgroundSize: `${focus ? 2 : 1}px 100%`,
+        backgroundPosition: "12px 0", backgroundRepeat: "no-repeat",
+    };
+};
+/**
+ * 종목 머리줄의 테마 — 앞 THEME_SHOW 개만 글자로, 나머지는 +N(hover = 전부).
+ * **색은 안 칠한다**: 이 판의 계열색(seriesColor)은 이미 조건 그룹 번호 ①~⑩ 이 쓰고 있어, 테마까지 칠하면
+ * "초록 = ① 인가 테마인가"가 섞인다(한 판에 색 어휘는 하나).
+ */
+function ThemeChips({ themes }: { themes: readonly string[] }): JSX.Element | null {
+    if (themes.length === 0) return null;
+    const { shown, rest } = themeChipsOf(themes);
+    return (
+        <span title={themes.join(" · ")} style={{ display: "inline-flex", gap: 6, fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+            {shown.map((t) => <span key={t}>{t}</span>)}
+            {rest > 0 && <span style={{ color: "var(--text-tertiary)" }}>+{rest}</span>}
+        </span>
+    );
+}
 const NAME_W = 110;
 /** 왼쪽에 붙는 칸(가로 스크롤 중 시간·종목) — 배경은 호출부가 칠한다(행 강조색을 따라가야 해서). */
 const stickL = (left: number): React.CSSProperties => ({ position: "sticky", left, zIndex: 1 });

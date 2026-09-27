@@ -80,3 +80,14 @@ export function groupColStateOf(v: { evaluable: boolean; ready: boolean; isLoadi
 
 /** 그룹 자리(0-base) → 원 번호 ①~⑩ — 열 머리·범례가 같은 자를 쓴다. 번호 = 고른 순서의 자리다. */
 export const groupNumberOf = (i: number): string => (i >= 0 && i < 20 ? String.fromCharCode(0x2460 + i) : `(${i + 1})`);
+
+/** 종목 머리줄에 글자로 세우는 테마 수 — 넘치면 +N(hover = 전부). */
+export const THEME_SHOW = 3;
+
+/**
+ * 종목의 테마 → 머리줄 표기(앞 `max` 개 + 나머지 개수). 순서는 멤버십 원천 순서 그대로다 —
+ * 멤버십엔 순서의 뜻이 없어 여기서 따로 매기지 않는다(대표 테마처럼 읽히게 고르지 않는다).
+ */
+export function themeChipsOf(themes: readonly string[], max = THEME_SHOW): { shown: string[]; rest: number } {
+    return { shown: themes.slice(0, max), rest: Math.max(0, themes.length - max) };
+}

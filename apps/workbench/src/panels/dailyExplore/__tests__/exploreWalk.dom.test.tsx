@@ -1,6 +1,6 @@
-// 일별 타점 [탐색] — 옛 작업 대상에서 이식한 손(2026-09-27 작업 대상 은퇴): 종목 접기 · 우클릭 그룹 배정.
-// 여기서 잠그는 불변식은 옛 worksetDaily 가 지키던 것 그대로다 —
-//  ① 순회와 렌더가 **같은 목록** — 접힌 종목은 화면에서도 w/s 에서도 빠진다.
+// 일별 타점 [탐색] — 종목 머리줄(이름 + 테마) · 우클릭 그룹 배정 · 라벨 조건.
+// 여기서 잠그는 불변식 —
+//  ① 순회와 렌더가 **같은 목록**(`shownRows` 한 배열) — 종목순 w/s 는 화면 순서 그대로 종목 경계를 넘는다(접기는 2026-09-28 은퇴).
 //  ② 배정 입구 둘 — 종목 머리줄 우클릭 = 하루(차트), 행 우클릭 = 타점(좌표).
 import { describe, it, expect, beforeEach } from "vitest";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
@@ -81,45 +81,38 @@ beforeEach(() => {
     act(() => selectRowNavOwner("daily-explore"));
 });
 
-describe("탐색판 — 종목 접기", () => {
-    it("접으면 본 줄이 사라지고 **순회에서도 빠진다** — 머리줄은 남아 후보 수를 말한다", () => {
-        const { container } = renderExplore();
-        expect(bodyRows(container)).toHaveLength(5);
-
-        const fold = [...container.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "▾")!;
-        act(() => { fireEvent.click(fold); }); // 첫 종목(유한양행) 접기
-        expect(bodyRows(container)).toHaveLength(2);
-        expect(container.textContent).toContain("후보 3");
-
-        press("s");
-        expect(useWorkbench.getState().focus.code, "접힌 종목은 안 밟는다").toBe("247540");
-    });
-});
-
-describe("탐색판 — 접힘은 그 날짜의 것이다", () => {
-    it("다른 날짜에 접어 둔 종목은 오늘 접히지 않는다 — 찫 렌더부터(날짜 넘기기 착지가 건너뛰지 않게)", () => {
-        useWorkbench.getState().setPanelUi(PANEL, "collapsed", { date: "2026-09-15", codes: ["000100"] });
-        const { container } = renderExplore();
-        expect(bodyRows(container)).toHaveLength(5);
-        press("s");
-        expect(useWorkbench.getState().focus.code, "첫 종목에 착지").toBe("000100");
+describe("탐색판 — 종목 머리줄", () => {
+    it("이름 + 테마 앞 3개 + 나머지 +N · 접기 손은 없다", () => {
+        const { container } = renderExplore([wide], {
+            themeMembers: ["바이오", "제약", "비만치료제", "mRNA", "원격의료"].map((theme) => ({ theme, code: "000100" })),
+        });
+        const head = [...container.querySelectorAll<HTMLTableRowElement>("tbody tr")].find((tr) => (tr.textContent ?? "").startsWith("유한양행"))!;
+        expect(head.textContent).toBe("유한양행바이오제약비만치료제+2");
+        expect(head.querySelector("span[title]")?.getAttribute("title")).toBe("바이오 · 제약 · 비만치료제 · mRNA · 원격의료");
+        expect([...container.querySelectorAll("button")].some((b) => b.textContent === "▾" || b.textContent === "▸"), "종목 접기 없음").toBe(false);
     });
 
-    it("시간순 모드에선 접힘이 없다(머리줄이 없으므로)", () => {
-        useWorkbench.getState().setPanelUi(PANEL, "collapsed", { date: DATE, codes: ["000100"] });
-        useWorkbench.getState().setPanelUi(PANEL, "sortMode", "time");
+    it("테마가 없는 종목은 이름만", () => {
         const { container } = renderExplore();
-        expect(bodyRows(container)).toHaveLength(5);
+        const head = [...container.querySelectorAll<HTMLTableRowElement>("tbody tr")].find((tr) => (tr.textContent ?? "").startsWith("에코프로비엠"))!;
+        expect(head.textContent).toBe("에코프로비엠");
     });
 
-    it("접힌 종목 이름을 누르면 펴고 간다 — 안 보이는 행으로 시선이 가지 않는다", () => {
-        useWorkbench.getState().setPanelUi(PANEL, "collapsed", { date: DATE, codes: ["000100"] });
+    it("종목순 w/s 는 화면 순서대로 종목 경계를 넘는다", () => {
         const { container } = renderExplore();
-        expect(bodyRows(container)).toHaveLength(2);
-        const name = [...container.querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.textContent ?? "").startsWith("유한양행"))!;
-        act(() => { fireEvent.click(name); });
         expect(bodyRows(container)).toHaveLength(5);
-        expect(useWorkbench.getState().focus).toMatchObject({ code: "000100", time: "09:00:00" });
+        for (let k = 0; k < 4; k++) press("s");
+        expect(useWorkbench.getState().focus, "유한양행 3분 뒤 에코프로비엠 첫 분").toMatchObject({ code: "247540", time: "09:00:00" });
+    });
+
+    it("종목순 → 시간순 전환 — 트리 들여쓰기가 걷히고 시간 칸 왼쪽 여백이 남는다(같은 td 재사용 회귀)", () => {
+        const { container } = renderExplore();
+        const timeCell = (): HTMLTableCellElement => bodyRows(container)[0]!.cells[0]!;
+        expect(timeCell().style.paddingLeft).toBe("26px");
+        act(() => { useWorkbench.getState().setPanelUi(PANEL, "sortMode", "time"); });
+        expect(timeCell().style.paddingLeft, "시간순 = 기본 여백").toBe("8px");
+        expect(container.querySelector("thead")?.textContent).toContain("시간");
+        expect(container.querySelector("thead")?.textContent).toContain("종목");
     });
 });
 
