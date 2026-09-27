@@ -8,6 +8,7 @@
 // · 저장물에 있지만 사전에 없는 이름(지워진 그룹)은 맨 아래 흐린 줄로 세운다 — 조용히 숨기면 그 조건이
 //   왜 0건인지 아무도 모른다. 체크를 풀면 걷힌다.
 import { useMemo, useRef } from "react";
+import { expandWithAncestors } from "../../lib/groupTree.js";
 import type { CellPredicate } from "@trade-data-manager/market/domain";
 import type { Group } from "../../api/groups.js";
 import { useGroups } from "../../lib/GroupsContext.js";
@@ -44,6 +45,14 @@ export function labelTreeRows(groups: readonly Group[], allowed: ReadonlySet<str
         }
     };
     walk(null, 0);
+    // 순환 고리(A↔B)는 루트가 없어 위 걷기에 안 걸린다 — 조용히 사라지면 체크를 못 푼다(리뷰 L3).
+    // 서버가 순환을 거절하지만, 깨진 사전에서도 목록이 거짓말하지 않게 남은 것을 최상위로 세운다.
+    for (const g of shown) {
+        if (seen.has(g.name)) continue;
+        seen.add(g.name);
+        out.push({ group: g, depth: 0 });
+        walk(g.name, 1);
+    }
     return out;
 }
 
@@ -59,9 +68,18 @@ export function LabelCondEditor({ at, pred, onWrite, onClose }: {
     const isDay = pred.scope === "day";
     const allowed = isDay ? g.grainSets.dayGrain : g.grainSets.pointGrain;
     const rows = useMemo(() => labelTreeRows(g.groups, allowed), [g.groups, allowed]);
-    const countOf = isDay ? g.countOf : g.pointCountOf;
+    // 수 = **자손 포함 롤업**(부모를 고르면 자식 라벨도 통과하므로 — 직접 수만 보이면 부모가 0으로 오독된다, 리뷰 L4).
+    const counts = useMemo(() => {
+        const m = new Map<string, number>();
+        for (const x of isDay ? g.memberships : g.pointMemberships) {
+            for (const n of expandWithAncestors(x.groupNames, g.groupByName)) m.set(n, (m.get(n) ?? 0) + 1);
+        }
+        return m;
+    }, [isDay, g.memberships, g.pointMemberships, g.groupByName]);
     const picked = new Set(pred.groups);
-    const missing = pred.groups.filter((n) => !g.groupByName.has(n));
+    // 고른 것 중 목록에 안 서는 것 — 사전에 없거나(지워짐) 라벨이 다 떨어졌다(빈 그룹). 숨기면 체크를 못 푼다(리뷰 L1).
+    const listed = new Set(rows.map((r) => r.group.name));
+    const missing = pred.groups.filter((n) => !listed.has(n));
 
     const toggle = (name: string): void => {
         const next = picked.has(name) ? pred.groups.filter((n) => n !== name) : [...pred.groups, name];
@@ -107,18 +125,23 @@ export function LabelCondEditor({ at, pred, onWrite, onClose }: {
                         title={depth > 0 ? `${group.parentName} 아래 — 부모를 고르면 이 그룹 라벨도 통과합니다` : undefined}>
                         {box(picked.has(group.name))}
                         <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{group.name}</span>
-                        <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{countOf(group.name)}</span>
+                        <span style={{ fontSize: 10, color: "var(--text-tertiary)" }}>{counts.get(group.name) ?? 0}</span>
                     </button>
                 ))}
-                {missing.map((name) => (
-                    <button key={`missing:${name}`} role="menuitemcheckbox" aria-checked onClick={() => toggle(name)}
-                        title="사전에 없는 그룹 — 지워졌거나 이름이 바뀌었습니다. 체크를 풀면 조건에서 걷힙니다"
-                        style={{ ...row, color: "var(--text-tertiary)" }}>
-                        {box(true, FAIL)}
-                        <span style={{ flex: 1, textDecoration: "line-through" }}>{name}</span>
-                        <span style={{ fontSize: 10, color: FAIL }}>지워짐</span>
-                    </button>
-                ))}
+                {missing.map((name) => {
+                    const gone = !g.groupByName.has(name);
+                    return (
+                        <button key={`missing:${name}`} role="menuitemcheckbox" aria-checked onClick={() => toggle(name)}
+                            title={gone
+                                ? "사전에 없는 그룹 — 지워졌습니다. 체크를 풀면 조건에서 걷힙니다"
+                                : `이 입구(${isDay ? "하루" : "타점"})의 라벨이 하나도 없는 그룹 — 지금은 늘 거짓입니다. 체크를 풀면 걷힙니다`}
+                            style={{ ...row, color: "var(--text-tertiary)" }}>
+                            {box(true, gone ? FAIL : "var(--text-tertiary)")}
+                            <span style={{ flex: 1, textDecoration: gone ? "line-through" : "none" }}>{name}</span>
+                            <span style={{ fontSize: 10, color: gone ? FAIL : "var(--text-tertiary)" }}>{gone ? "지워짐" : "라벨 없음"}</span>
+                        </button>
+                    );
+                })}
             </div>
         </div>
     );

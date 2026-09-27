@@ -1,6 +1,6 @@
 // 라벨 색인 — 셀 판정의 재료(계층 상속·분 키·날짜 거르기). 엔진 쪽 판정 규칙은 core engine.test 가 잠근다.
 import { describe, expect, it } from "vitest";
-import { labelAtOf, labelIndexOf } from "../cellMaterials.js";
+import { labelAtOf, labelIndexOf, sharedLabelIndex } from "../cellMaterials.js";
 
 const groupByName = new Map([
     ["돌파", { name: "돌파", parentName: null }],
@@ -34,5 +34,15 @@ describe("labelIndexOf / labelAtOf", () => {
 
     it("groups 는 OR", () => {
         expect(labelAt("A", MIN("09:00"), "day", ["없음", "후발주"])).toBe(true);
+    });
+});
+
+describe("sharedLabelIndex — 소비자들이 **같은 색인 객체**를 받는다(평가 메모 키가 모이는 근거)", () => {
+    it("같은 참조·같은 날짜면 같은 객체, 멤버십 참조가 바뀌면 새 객체", () => {
+        const mem = [{ stockCode: "A", date: DATE, groupNames: ["후발주"] }];
+        const pts: { stockCode: string; date: string; time: string; groupNames: string[] }[] = [];
+        const a = sharedLabelIndex(DATE, mem, pts, groupByName);
+        expect(sharedLabelIndex(DATE, mem, pts, groupByName)).toBe(a);
+        expect(sharedLabelIndex(DATE, [...mem], pts, groupByName), "라벨 토글 = 새 배열 = 새 색인").not.toBe(a);
     });
 });

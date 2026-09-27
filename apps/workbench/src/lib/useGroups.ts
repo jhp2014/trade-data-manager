@@ -138,6 +138,11 @@ export interface GroupsView {
     setParent: (name: string, parentName: string | null) => Promise<void>;
 
     isLoading: boolean;
+    /**
+     * 사전·멤버십(양 grain) 데이터가 **실제로 와 있나** — 판정 재료로 쓰는 소비자(라벨 조건)의 가드.
+     * isLoading 과 다르다: 오류·오프라인으로 끝난 쿼리는 isLoading=false 인데 데이터는 없다(빈 배열 폴백).
+     */
+    ready: boolean;
 }
 
 /**
@@ -317,8 +322,9 @@ export function useGroupsValue(): GroupsView {
             deleteGroup: deleteGroupCb,
             setParent: setParentCb,
             isLoading: groupsQ.isLoading || memberQ.isLoading || pointMemberQ.isLoading,
+            ready: groupsQ.data !== undefined && memberQ.data !== undefined && pointMemberQ.data !== undefined,
         };
         // mutation 은 매 렌더 새 객체(useMutation) — 의존성에 넣으면 매번 재생성되므로 제외(mutate 는 안정).
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [groups, groupByName, chartIndex, counts, memberships, grainSets, pointIndex, pointCounts, pointMemberships, pointDayApplied, pointLabelsByChart, createGroupAndAttach, renameGroupCb, deleteGroupCb, setParentCb, groupsQ.isLoading, memberQ.isLoading, pointMemberQ.isLoading]);
+    }, [groups, groupByName, chartIndex, counts, memberships, grainSets, pointIndex, pointCounts, pointMemberships, pointDayApplied, pointLabelsByChart, createGroupAndAttach, renameGroupCb, deleteGroupCb, setParentCb, groupsQ.isLoading, memberQ.isLoading, pointMemberQ.isLoading, groupsQ.data, memberQ.data, pointMemberQ.data]);
 }

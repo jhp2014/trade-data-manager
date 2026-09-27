@@ -64,6 +64,35 @@ export function labelIndexOf(
     return { day, point };
 }
 
+/**
+ * **공유** 색인 — (멤버십 참조 × 좌표 멤버십 참조 × 사전 참조 × 날짜)로 메모한다. 소비자(보는 집합·차트·
+ * 탐색판·조건 그룹 열)마다 따로 세우면 색인 객체가 갈려 평가 메모 키(세대)가 갈리고, 같은 식이 소비자 수만큼
+ * 다시 평가된다(2026-09-27 리뷰 M1 — 테마 투영·격자처럼 재료 객체는 한 벌이어야 캐시가 모인다).
+ * 참조가 바뀌면(라벨 토글·재조회) WeakMap 이 옛 색인을 놓는다.
+ */
+const SHARED = new WeakMap<object, WeakMap<object, WeakMap<object, Map<string, LabelIndex>>>>();
+export function sharedLabelIndex(
+    date: string,
+    memberships: readonly GroupMembership[],
+    pointMemberships: readonly PointGroupMembership[],
+    groupByName: ReadonlyMap<string, Group>,
+): LabelIndex {
+    let a = SHARED.get(memberships);
+    if (!a) SHARED.set(memberships, (a = new WeakMap()));
+    let b = a.get(pointMemberships);
+    if (!b) a.set(pointMemberships, (b = new WeakMap()));
+    let byDate = b.get(groupByName);
+    if (!byDate) b.set(groupByName, (byDate = new Map()));
+    let ix = byDate.get(date);
+    if (!ix) {
+        ix = labelIndexOf(date, memberships, pointMemberships, groupByName);
+        byDate.set(date, ix);
+        // 날짜 축은 걷기로 계속 는다 — 한 참조 세대 안에서 최근 몇 날만 쥔다.
+        if (byDate.size > 8) byDate.delete(byDate.keys().next().value!);
+    }
+    return ix;
+}
+
 /** 색인 → 엔진 콜백. groups 는 OR — 하나라도 적용 이름에 있으면 참. */
 export const labelAtOf = (ix: LabelIndex): NonNullable<CellMaterials["labelAt"]> =>
     (code, min, scope, groups) => {

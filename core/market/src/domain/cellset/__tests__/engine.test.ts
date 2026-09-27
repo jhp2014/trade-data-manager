@@ -21,7 +21,6 @@ function stock(code: string, over: Partial<CellStock> & { n?: number } = {}): Ce
         minuteHigh: seq(over.minuteHigh as number[] | undefined, 0),
         minuteOpen: seq(over.minuteOpen as number[] | undefined, 0),
         minuteLow: seq(over.minuteLow as number[] | undefined, 0),
-        trailingHighs: over.trailingHighs ?? { krx: [], un: [] },
         basePrice: over.basePrice ?? { krx: null, un: null },
     };
 }

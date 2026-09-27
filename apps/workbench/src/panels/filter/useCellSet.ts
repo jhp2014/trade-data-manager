@@ -30,7 +30,7 @@ import type { ReplayStock } from "../../api/dayReplay.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { usePointGrids } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
-import { cellMaterialsOf, labelIndexOf } from "./cellMaterials.js";
+import { cellMaterialsOf, sharedLabelIndex } from "./cellMaterials.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { activeExpr, foldExpr, isFoldedNode, type FoldedNode, type SetExpr, type SetTerm } from "./expr.js";
 
@@ -333,10 +333,12 @@ export function useCellSet(
     const groups = useGroups();
     const needsLabel = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "label"), [narrowed]);
     const labelIx = useMemo(
-        () => (needsLabel ? labelIndexOf(date, groups.memberships, groups.pointMemberships, groups.groupByName) : null),
-        [needsLabel, date, groups.memberships, groups.pointMemberships, groups.groupByName],
+        () => (needsLabel && groups.ready ? sharedLabelIndex(date, groups.memberships, groups.pointMemberships, groups.groupByName) : null),
+        [needsLabel, date, groups.ready, groups.memberships, groups.pointMemberships, groups.groupByName],
     );
-    const labelsLoading = groups.isLoading;
+    // ⚠ `isLoading` 이 아니라 **데이터가 있나**로 가른다 — react-query v5 의 isLoading 은 오류·오프라인(paused)에서
+    //   false 가 되고 데이터는 빈 배열이라, NOT 라벨이 "전부 미분류"라는 거짓을 낸다(리뷰 L2).
+    const labelsLoading = !groups.ready;
     const limit = opts?.limit;
     const hardCap = opts?.hardCap;
     const limitBy = opts?.limitBy;

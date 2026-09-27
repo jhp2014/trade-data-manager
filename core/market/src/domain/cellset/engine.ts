@@ -52,7 +52,7 @@ import { themeZoneKeyOf, type ThemeAnswer, type ThemeZoneParams } from "./themeZ
 /** 입력 종목 — 쓰는 필드만 Pick(probe·rankSection 과 같은 수법: 와이어 ReplayStock 이 그대로 들어온다). */
 export type CellStock = Pick<
     MinuteDerived,
-    "code" | "times" | "rate" | "cumAmount" | "minuteOpen" | "minuteHigh" | "minuteLow" | "trailingHighs" | "basePrice"
+    "code" | "times" | "rate" | "cumAmount" | "minuteOpen" | "minuteHigh" | "minuteLow" | "basePrice"
 >;
 
 /** 주입 재료 — 기존 단일 출처의 어댑터. 계산 규칙을 여기로 들이지 말 것(서수 출처 단일화 불변식). */
@@ -395,7 +395,7 @@ export function evaluateCellsExpr(
     for (const b of branches) byCondition.set(b.node.id, 0);
 
     // 사전계산 소요 — 식이 안 쓰는 재료는 만들지 않는다. **트리를 걸어야 한다**: 평평한 2중 루프로
-    // 재면 묶음 안의 격자·전고 술어를 못 보고, 그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**.
+    // 재면 묶음 안의 돌파·기준선 술어를 못 보고, 그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**.
     let needTheme = false;
     let needBaselinePct = false;
     const needBreakout = new Map<string, BreakoutPred>();

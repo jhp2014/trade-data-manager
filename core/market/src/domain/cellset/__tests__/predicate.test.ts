@@ -105,7 +105,7 @@ describe("parseCellConditions", () => {
 });
 
 describe("비용 등급·빈 판정·재료 사용 여부", () => {
-    it("theme 만 tier 2, 격자·전고는 tier 1, 나머지는 tier 0", () => {
+    it("theme 만 tier 2, 돌파·기준선 캔들은 tier 1, 나머지(라벨 포함)는 tier 0", () => {
         expect(costTierOf({ kind: "theme", ...DEFAULT_THEME_ZONE })).toBe(2);
         expect(costTierOf({ kind: "cellValue", field: "cumAmountEok", ranges: [] })).toBe(0);
         expect(costTierOf({ kind: "candle", axes: { rate: { on: true, from: 5 } } }), "캔들은 tier 0").toBe(0);

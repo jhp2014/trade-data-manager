@@ -122,10 +122,5 @@ describe("돌파 생성기 라벨 = breakoutText 요약(2026-09-26 — 옛 「�
         expect(breakoutText(a as BreakoutPred)).toBe("돌파 2%/0.5% · 처음 1개");
         expect(breakoutText(b as BreakoutPred)).toBe("돌파 3%/1% · 봉 대금 ≥ 50억 · 처음 1 AND (세션 고가 돌파 OR NOT 기준선 돌파) · 처음 2 · 전부");
         expect(predicateLabel(c), "활성 축만·선언 순서").toBe("캔들 등락률5~12% 시가→종가≤-0.01%");
-        expect(kindLabel("breakout")).toBe("돌파 사슬");
-        expect(kindLabel("label")).toBe("라벨");
-        // 라벨 — ▣(하루)/◆(타점)로 입구를 늘 가른다, 그룹은 OR 라 「·」로.
-        expect(predicateLabel({ kind: "label", scope: "day", groups: ["후발주", "순위 급등"] })).toBe("▣ 후발주 · 순위 급등");
-        expect(predicateLabel({ kind: "label", scope: "point", groups: [] })).toBe("◆ 라벨 (그룹 없음)");
     });
 });

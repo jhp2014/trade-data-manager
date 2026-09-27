@@ -8,7 +8,7 @@
 // 검증(파서)도 core 한 벌 — stage.ts 는 time 만 자기 소유고 나머지는 parseCellPredicate 를 그대로 쓴다.
 // 옛 저장물 이주(zoneRank→theme·candleShape/ratePct/minuteHighPct→candle·전이→enter)도 전부 이 파서다.
 //
-// 값의 기준은 UN 한 벌이다 — rate·minuteHigh·trailingHighs.un 이 전부 "전일 종가 대비 %" 라
+// 값의 기준은 UN 한 벌이다 — rate·minuteHigh 가 전부 "전일 종가 대비 %" 라
 // 같은 공간에서 비교된다.
 
 import { DEFAULT_CHAIN_FILTER, chainFilterKey, parseChainFilter, type ChainFilter } from "./chainFilter.js";
