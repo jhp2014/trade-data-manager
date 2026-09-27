@@ -8,13 +8,13 @@
 //   에만 걸리므로 이 머리에 산다. 옛 모양은 부호가 한 벌(≤)이라 재적(실제 ≥)이 거꾸로 적혔다.
 // · 발화 — 상시 / 진입 시만.
 // 표는 열을 맞춘 grid 라 폭 안에서 줄바꿈이 없다(옛 flex-wrap 은 「존 정의」 줄이 넘쳐 값이 다음 줄로 떨어졌다).
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { THEME_WINDOW_MAX_MIN, type CellPredicate, type ThemeCut } from "@trade-data-manager/market/domain";
 import { NumField } from "../../components/NumField.js";
 import { RangePair } from "../../components/RangePair.js";
 import { useDock } from "../../store/dock.js";
 import { useWorkbench } from "../../store/workbench.js";
-import { useDismiss } from "../../ui/useDismiss.js";
+import { AnchoredPopover } from "../../ui/popover/AnchoredPopover.js";
 import { parseSlotId } from "../../shell/panelSlots.js";
 import { panelTypeOf } from "../../shell/panelCatalog.js";
 import { readThemeRuler } from "../themeRank/rulerRead.js";
@@ -30,15 +30,6 @@ export function ThemeCondEditor({ at, pred, onWrite, onClose }: {
     onWrite: (next: ThemePred) => void;
     onClose: () => void;
 }): JSX.Element {
-    const ref = useRef<HTMLDivElement>(null);
-    // 닫기 전 blur — 칸들이 blur/Enter 커밋이라, 바깥 클릭으로 바로 언마운트되면 입력하던 값이 사라진다
-    // (BreakoutCondEditor 와 같은 처방).
-    const close = (): void => {
-        const el = ref.current;
-        if (el && el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
-        onClose();
-    };
-    useDismiss(ref, close, true);
     const w = (patch: Partial<ThemePred>): void => onWrite({ ...pred, ...patch });
 
     // 자 값 가져오기 — 열린 시장 단면 판 중 **최소 슬롯** 하나(카운트 단일 인스턴스의 선례).
@@ -57,11 +48,8 @@ export function ThemeCondEditor({ at, pred, onWrite, onClose }: {
 
     const W = 340;
     return (
-        <div ref={ref} role="dialog" style={{
-            position: "fixed", top: Math.min(at.y + 6, window.innerHeight - 260), left: Math.min(at.x - 6, window.innerWidth - W - 20),
-            zIndex: 300, width: W, background: "var(--bg-primary)", border: "1px solid var(--border-default)",
-            borderRadius: 8, boxShadow: "0 8px 30px rgba(0,0,0,0.25)", padding: "8px 12px 10px", fontSize: 11,
-        }}>
+        <AnchoredPopover anchor={at} onClose={onClose} role="dialog" width={W} padding="8px 12px 10px"
+            placement="beside" offset={6} shiftX={-6} maxHeight="100vh" style={{ fontSize: 11 }}>
             <Section title="존 정의" hint="존 = 대금 서수 ≤ N ∧ 등락 축 — 그날 그 분의 상위 무리"
                 right={
                     <button
@@ -147,7 +135,7 @@ export function ThemeCondEditor({ at, pred, onWrite, onClose }: {
                 <Seg options={[["always", "상시"], ["enter", "진입 시만"]]} value={pred.enter === true ? "enter" : "always"}
                     onPick={(v) => w(v === "enter" ? { enter: true } : { enter: undefined })} />
             </Section>
-        </div>
+        </AnchoredPopover>
     );
 }
 

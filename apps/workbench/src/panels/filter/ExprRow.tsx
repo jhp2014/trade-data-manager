@@ -30,8 +30,8 @@
 //
 // ## 가로 스크롤은 줄마다 독립이다
 // 한 줄이 길다고 다른 줄이 같이 밀리면 "자리가 곧 경로"라는 뜻이 깨진다.
-import { useRef, useState, type MouseEvent } from "react";
-import { useDismiss } from "../../ui/useDismiss.js";
+import { useState, type MouseEvent } from "react";
+import { AnchoredPopover } from "../../ui/popover/AnchoredPopover.js";
 import { FAIL, PIN } from "../../styles/palette.js";
 import { renderExpr } from "./exprRender.js";
 import { canSetOpAt, canToggleBoundary, groupAtBoundary, type Op, type SetExpr } from "./expr.js";
@@ -285,21 +285,19 @@ export function ExprRow({ setId, expr, h, open, tail }: {
 
 /**
  * 떠 있는 판 하나 — 좌클릭 연산자 판과 우클릭 판이 **같은 껍데기**를 쓴다(해제 규칙이 갈리지 않게).
- * `position: fixed` 인 이유: 줄이 가로 스크롤 컨테이너라 안쪽 absolute 는 잘린다.
+ * 공용 AnchoredPopover(ui/popover) 위의 메뉴 모양: 커서 오른쪽 아래에 열고, 화면 끝이면 커서 반대편으로
+ * 뒤집는다(우측 끝 칩 우클릭이 화면 밖으로 잘리던 것). body portal 이라 가로 스크롤 줄에도 안 잘린다.
  */
 export function Panel({ at, onClose, children }: {
     at: { x: number; y: number };
     onClose: () => void;
     children: React.ReactNode;
 }): JSX.Element {
-    const ref = useRef<HTMLDivElement>(null);
-    useDismiss(ref, onClose);
     return (
-        <div ref={ref} role="menu" style={{
-            position: "fixed", left: at.x - 6, top: at.y + 8, zIndex: 60, minWidth: 186,
-            background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 6,
-            boxShadow: "0 4px 14px rgba(0,0,0,0.12)", padding: "3px 0",
-        }}>{children}</div>
+        <AnchoredPopover anchor={at} onClose={onClose} role="menu" minWidth={186} padding="3px 0"
+            placement="beside" offset={8} shiftX={-6}>
+            {children}
+        </AnchoredPopover>
     );
 }
 

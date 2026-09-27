@@ -21,7 +21,7 @@ import {
     type CellPredicate,
 } from "@trade-data-manager/market/domain";
 import { OptNumField } from "../../components/NumField.js";
-import { useDismiss } from "../../ui/useDismiss.js";
+import { AnchoredPopover } from "../../ui/popover/AnchoredPopover.js";
 
 type CandlePred = Extract<CellPredicate, { kind: "candle" }>;
 
@@ -64,14 +64,6 @@ export function CandleCondEditor({ at, pred, onWrite, onClose }: {
     onWrite: (next: CandlePred) => void;
     onClose: () => void;
 }): JSX.Element {
-    const ref = useRef<HTMLDivElement>(null);
-    // 닫기 전 blur — NumField 커밋 규약(blur/Enter) 때문(BreakoutCondEditor 와 같은 처방).
-    const close = (): void => {
-        const el = ref.current;
-        if (el && el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
-        onClose();
-    };
-    useDismiss(ref, close, true);
 
     const [drag, setDrag] = useState<Drag | null>(null);
     const shown = drag?.draft ?? pred; // 그림·배지는 드래그 중 draft, 평시엔 저장물
@@ -154,12 +146,8 @@ export function CandleCondEditor({ at, pred, onWrite, onClose }: {
     };
 
     return (
-        <div ref={ref} role="dialog" style={{
-            position: "fixed", top: Math.min(at.y + 6, window.innerHeight - 320), left: Math.min(at.x - 6, window.innerWidth - 470),
-            zIndex: 300, width: 452, background: "var(--bg-primary)", border: "1px solid var(--border-default)",
-            borderRadius: 8, boxShadow: "0 8px 30px rgba(0,0,0,0.25)", padding: "8px 12px 10px",
-            display: "flex", gap: 10,
-        }}>
+        <AnchoredPopover anchor={at} onClose={onClose} role="dialog" width={452} padding="8px 12px 10px"
+            placement="beside" offset={6} shiftX={-6} maxHeight="100vh" style={{ display: "flex", gap: 10 }}>
             <svg ref={svgRef} width={W} height={H} onPointerMove={onMove} onPointerUp={endDrag} onPointerLeave={endDrag}
                 style={{ flexShrink: 0, background: "var(--bg-secondary)", borderRadius: 6 }}>
                 {/* 표본 캔들 — 심지(고가~저가) + 몸통(시가~종가). 값이 아니라 조건의 그림이다. */}
@@ -197,7 +185,7 @@ export function CandleCondEditor({ at, pred, onWrite, onClose }: {
                     );
                 })}
             </div>
-        </div>
+        </AnchoredPopover>
     );
 }
 

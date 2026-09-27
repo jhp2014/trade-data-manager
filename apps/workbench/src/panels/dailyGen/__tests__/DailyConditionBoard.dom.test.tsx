@@ -46,9 +46,9 @@ const openChip = (c: HTMLElement, text: string): void => {
 const rows = (c: HTMLElement): HTMLElement[] => [...c.querySelectorAll("[data-row]")] as HTMLElement[];
 /** 우클릭 — 항의 성질(NOT·끄기·빼기)과 괄호 조작은 **여기 전용**이다(2026-09-22). */
 const rightClick = (el: Element): void => { act(() => { fireEvent.contextMenu(el); }); };
-/** 뜬 판에서 한 줄 고르기 — 판은 포털이 아니라 줄 안에 fixed 로 선다. */
-const pickItem = (c: HTMLElement, text: string): void => {
-    const it = [...c.querySelectorAll('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes(text));
+/** 뜬 판에서 한 줄 고르기 — 판은 body 로 portal 된다(ui/popover). `c` 는 부르는 자리 표시일 뿐 검색은 body. */
+const pickItem = (_c: HTMLElement, text: string): void => {
+    const it = [...document.body.querySelectorAll('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes(text));
     if (!it) throw new Error(`판에 '${text}' 가 없다`);
     act(() => { fireEvent.click(it); });
 };
@@ -131,21 +131,48 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "breakout", zigzagPct: 5, bandPct: 0.5 });
     });
 
-    it("팝오버 안 「＋ 조건 ▾」 판 — 항목 클릭이 팝오버를 닫지 않는다(판은 팝오버 DOM 안)", async () => {
+    it("팝오버 안 「＋ 조건 ▾」 판 — 항목 클릭이 팝오버를 닫지 않는다(자식 판은 부모의 바깥이 아니다 — 판 스택)", async () => {
         seedEditing(exprOfStages([BO_STAGE]));
         const { container, baseElement } = renderBoard();
         act(() => { fireEvent.click(chipByText(container, "돌파")!); });
-        // ⚠ useDismiss 는 setTimeout(0) 뒤에야 리스너를 단다 — 안 기다리면 이 테스트는 아무것도 안 잰다
-        //   (headerPopover.dom.test 선례).
+        // ⚠ 판은 setTimeout(0) 뒤에야 무장한다(판 스택) — 안 기다리면 이 테스트는 아무것도 안 잰다.
         await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
         const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
         const add = [...dialog.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("＋ 조건"))!;
         act(() => { fireEvent.mouseDown(add); fireEvent.click(add); });
-        const item = [...dialog.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("봉 대금"))!;
+        await act(async () => { await new Promise((r) => setTimeout(r, 0)); }); // 자식 판도 무장시킨 뒤 누른다
+        const item = [...baseElement.querySelectorAll('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("봉 대금"))!;
         act(() => { fireEvent.mouseDown(item); fireEvent.click(item); });
         expect(baseElement.querySelector('[role="dialog"]'), "팝오버가 살아 있다").not.toBeNull();
         const chain = (stages()[0]!.predicates[0] as { chain: { expr: { of: unknown[] } } }).chain;
         expect(chain.expr.of).toHaveLength(1);
+    });
+
+    it("편집기 안 「＋ 조건」 판에서 Esc 한 번은 그 판만 닫는다 — 편집기는 남는다(맨 위 하나)", async () => {
+        seedEditing(exprOfStages([BO_STAGE]));
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(chipByText(container, "돌파")!); });
+        const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
+        act(() => { fireEvent.click([...dialog.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("＋ 조건"))!); });
+        expect(baseElement.querySelector('[role="menu"]'), "「＋ 조건」 판").not.toBeNull();
+        act(() => { fireEvent.keyDown(document, { key: "Escape" }); });
+        expect(baseElement.querySelector('[role="menu"]'), "자식 판만 닫힘").toBeNull();
+        expect(baseElement.querySelector('[role="dialog"]'), "편집기는 남음").not.toBeNull();
+        act(() => { fireEvent.keyDown(document, { key: "Escape" }); });
+        expect(baseElement.querySelector('[role="dialog"]')).toBeNull();
+    });
+
+    it("입력 중 바깥을 누르면 값이 커밋되고 닫힌다 — 판 스택이 닫기 전에 blur 한다", async () => {
+        seedEditing(exprOfStages([BO_STAGE]));
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(chipByText(container, "돌파")!); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+        const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
+        const zigzag = [...dialog.querySelectorAll("input")].find((el) => (el.closest("label")?.textContent ?? "").includes("zigzag"))!;
+        act(() => { zigzag.focus(); fireEvent.change(zigzag, { target: { value: "4" } }); });
+        act(() => { fireEvent.mouseDown(document.body); });
+        expect(baseElement.querySelector('[role="dialog"]'), "닫힘").toBeNull();
+        expect(stages()[0]!.predicates[0]).toMatchObject({ kind: "breakout", zigzagPct: 4 });
     });
 
     it("「시간대 제외」 = NOT 시각 칩으로 태어나고, 아랫줄에서 구간을 더한다(구간끼리 OR)", async () => {
@@ -156,7 +183,7 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
         const btn = (text: string): HTMLButtonElement => [...dialog.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(text))!;
         act(() => { fireEvent.click(btn("＋ 조건")); });
-        act(() => { fireEvent.click(btn("시간대 제외")); });
+        pickItem(container, "시간대 제외"); // 「＋ 조건」 판은 편집기의 자식 판 — body 에 따로 선다
         const term = (): { neg?: boolean; cond: { kind: string; ranges: { from: string; to: string }[] } } =>
             (stages()[0]!.predicates[0] as unknown as { chain: { expr: { of: never[] } } }).chain.expr.of[0]!;
         expect(term()).toMatchObject({ neg: true, cond: { kind: "time", ranges: [{ from: "09:00", to: "09:02" }] } });
@@ -180,8 +207,8 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         seedEditing(exprOfStages([BO_STAGE]));
         const { container } = renderBoard();
         rightClick(chipByText(container, "돌파")!);
-        expect(container.textContent).not.toContain("격자판 연동");
-        expect(container.textContent).toContain("NOT");
+        expect(document.body.textContent).not.toContain("격자판 연동");
+        expect(document.body.textContent).toContain("NOT");
     });
 });
 
@@ -404,7 +431,7 @@ describe("연산자 — 경계마다 하나, 섞이면 괄호", () => {
         expect(selectEditingExpr(useWorkbench.getState()).groups[0]!.neg).toBe(true);
 
         rightClick(container.querySelector("[data-paren]")!);
-        const ungroup = [...container.querySelectorAll('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("괄호 풀기"))!;
+        const ungroup = [...document.body.querySelectorAll('[role="menuitem"]')].find((b) => (b.textContent ?? "").includes("괄호 풀기"))!;
         expect((ungroup as HTMLButtonElement).disabled, "NOT 이 갈 곳이 없어 막힌다").toBe(true);
     });
     it("항 부정 — 칩 우클릭으로 NOT 이 식에 실린다", () => {
@@ -478,12 +505,12 @@ describe("묶음 우클릭 — 이름·빼기·지우기", () => {
     it("이름을 판 안에서 짓는다 — 비우면 자동 이름으로 되돌아간다", () => {
         const { container, inner } = withGroup();
         rightClick(chipByText(container, "빈 집합")!);
-        const input = container.querySelector('input[aria-label="묶음 이름"]') as HTMLInputElement;
+        const input = document.body.querySelector('input[aria-label="묶음 이름"]') as HTMLInputElement;
         act(() => { fireEvent.change(input, { target: { value: "아침 돌파" } }); fireEvent.keyDown(input, { key: "Enter" }); });
         expect(useWorkbench.getState().savedSets.find((x) => x.id === inner)!.name).toBe("아침 돌파");
 
         rightClick(chipByText(container, "아침 돌파")!);
-        const again = container.querySelector('input[aria-label="묶음 이름"]') as HTMLInputElement;
+        const again = document.body.querySelector('input[aria-label="묶음 이름"]') as HTMLInputElement;
         act(() => { fireEvent.change(again, { target: { value: "  " } }); fireEvent.keyDown(again, { key: "Enter" }); });
         expect(useWorkbench.getState().savedSets.find((x) => x.id === inner)!.name, "부재 = 자동 이름").toBeUndefined();
     });

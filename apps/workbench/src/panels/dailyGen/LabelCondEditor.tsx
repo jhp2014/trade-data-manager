@@ -7,12 +7,12 @@
 // · 라벨이 하나도 없는 빈 그룹은 안 세운다(조건으로 걸면 늘 거짓인 잡음 — groupGrain 규칙).
 // · 저장물에 있지만 사전에 없는 이름(지워진 그룹)은 맨 아래 흐린 줄로 세운다 — 조용히 숨기면 그 조건이
 //   왜 0건인지 아무도 모른다. 체크를 풀면 걷힌다.
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { expandWithAncestors } from "../../lib/groupTree.js";
 import type { CellPredicate } from "@trade-data-manager/market/domain";
 import type { Group } from "../../api/groups.js";
 import { useGroups } from "../../lib/GroupsContext.js";
-import { useDismiss } from "../../ui/useDismiss.js";
+import { AnchoredPopover } from "../../ui/popover/AnchoredPopover.js";
 import { FAIL } from "../../styles/palette.js";
 
 type LabelPred = Extract<CellPredicate, { kind: "label" }>;
@@ -62,8 +62,6 @@ export function LabelCondEditor({ at, pred, onWrite, onClose }: {
     onWrite: (next: LabelPred) => void;
     onClose: () => void;
 }): JSX.Element {
-    const ref = useRef<HTMLDivElement>(null);
-    useDismiss(ref, onClose, true);
     const g = useGroups();
     const isDay = pred.scope === "day";
     const allowed = isDay ? g.grainSets.dayGrain : g.grainSets.pointGrain;
@@ -99,11 +97,8 @@ export function LabelCondEditor({ at, pred, onWrite, onClose }: {
     );
 
     return (
-        <div ref={ref} role="dialog" style={{
-            position: "fixed", top: Math.min(at.y + 6, window.innerHeight - 320), left: Math.min(at.x - 6, window.innerWidth - 290),
-            zIndex: 300, width: 272, background: "var(--bg-primary)", border: "1px solid var(--border-default)",
-            borderRadius: 8, boxShadow: "0 8px 30px rgba(0,0,0,0.25)", padding: "8px 10px 10px",
-        }}>
+        <AnchoredPopover anchor={at} onClose={onClose} role="dialog" width={272} padding="8px 10px 10px"
+            placement="beside" offset={6} shiftX={-6} maxHeight="100vh" style={{ fontSize: 12 }}>
             <div style={{ fontSize: 11.5, fontWeight: 600, marginBottom: 2 }}>
                 {isDay ? "▣ 라벨 (하루)" : "◆ 라벨 (타점)"}
             </div>
@@ -143,6 +138,6 @@ export function LabelCondEditor({ at, pred, onWrite, onClose }: {
                     );
                 })}
             </div>
-        </div>
+        </AnchoredPopover>
     );
 }

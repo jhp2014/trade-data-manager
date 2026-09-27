@@ -1,10 +1,10 @@
 // 돌파 술어의 **편집면** — 조건판 돌파 줄에서 여는 팝오버(2026-09-26, 옛 격자판·연동 모델 폐지).
 // 값은 술어 payload 에 산다 — 줄에서 열리므로 "어느 행을 비추나" 주소 문제가 없다(테마 팝오버와 같은 문법).
 // 두 층은 옛 격자판 그대로: ① 격자 정의(밴드·zigzag) → ② 사슬 필터(식 줄 + 칩 아랫줄 편집 + 식 전체 순번).
-// ⚠ 「＋ 조건」 판은 **팝오버 DOM 안**에 둔다 — useDismiss 가 ref.contains 로 안/밖을 가르므로, 밖(형제)에
-//   두면 판 항목의 mousedown 이 팝오버를 먼저 닫아 클릭이 사라진다. 호출부는 key={stageId} 로 세운다 —
-//   열린 칩 상태가 다른 줄의 같은 id(옮겨 읽은 저장물 m0·m1…)로 새지 않게.
-import { useRef, useState } from "react";
+// 「＋ 조건」 판은 이 판의 자식 판이다 — 판 스택(ui/popover)이 부모 사슬로 안/밖을 가르므로 portal 로
+//   떨어져 있어도 그 판을 누른 것이 이 판의 바깥이 아니다. 입력 중 바깥 클릭은 스택이 blur 로 먼저 커밋한다.
+//   호출부는 key={stageId} 로 세운다 — 열린 칩 상태가 다른 줄의 같은 id(옮겨 읽은 저장물 m0·m1…)로 새지 않게.
+import { useState } from "react";
 import {
     BREAKOUT_BAND_MAX_PCT,
     BREAKOUT_ZIGZAG_MAX_PCT,
@@ -17,7 +17,7 @@ import {
     type ChainTerm,
 } from "@trade-data-manager/market/domain";
 import { NumField } from "../../components/NumField.js";
-import { useDismiss } from "../../ui/useDismiss.js";
+import { AnchoredPopover } from "../../ui/popover/AnchoredPopover.js";
 import { Item, Panel } from "../filter/ExprRow.js";
 import { ChainCondEditor } from "../breakout/ChainCondEditor.js";
 import { ChainExprRow, RankPick } from "../breakout/ChainExprRow.js";
@@ -33,15 +33,6 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
     onWrite: (next: BreakoutPred) => void;
     onClose: () => void;
 }): JSX.Element {
-    const ref = useRef<HTMLDivElement>(null);
-    // 닫기 전 blur — NumField 는 blur/Enter 커밋이라, 바깥 클릭/Esc 로 바로 언마운트되면 입력하던 값이
-    // 조용히 사라진다(옛 격자판은 도킹 판이라 바깥 클릭 = blur 커밋이었다 — 그 회귀를 여기서 막는다).
-    const close = (): void => {
-        const el = ref.current;
-        if (el && el.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
-        onClose();
-    };
-    useDismiss(ref, close, true);
     const setExpr = (expr: ChainExpr): void => onWrite({ ...pred, chain: { ...pred.chain, expr } });
 
     // 아랫줄에 열린 칩 — 지워졌으면 닫힌다(수명은 팝오버와 같다 — 호출부의 key={stageId}).
@@ -56,16 +47,10 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
     };
     const hasInnerRank = pred.chain.expr.of.some((t) => t.firstK !== undefined) || pred.chain.expr.groups.some((g) => g.firstK !== undefined);
 
-    const top = Math.min(at.y + 6, window.innerHeight - 320);
     return (
-        <div ref={ref} role="dialog" style={{
-            position: "fixed", top, left: Math.min(at.x - 6, window.innerWidth - 420),
-            // maxHeight 는 top 기준 — innerHeight 기준으로 두면 아래쪽에서 열릴 때 「식 전체」 줄이 화면 밖으로 나간다.
-            zIndex: 300, width: 400, maxHeight: window.innerHeight - top - 8, overflowY: "auto",
-            background: "var(--bg-primary)", border: "1px solid var(--border-default)",
-            borderRadius: 8, boxShadow: "0 8px 30px rgba(0,0,0,0.25)", padding: "8px 12px 10px",
-            display: "flex", flexDirection: "column", gap: 8, fontSize: 12,
-        }}>
+        <AnchoredPopover anchor={at} onClose={onClose} role="dialog" width={400} padding="8px 12px 10px"
+            placement="beside" offset={6} shiftX={-6} maxHeight="100vh"
+            style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 12 }}>
             <Layer n="1" title="격자 정의" hint="하루 전체에서 서는 구조 — 밴드에 닿으면 사건, 사슬 고점에서 zigzag 만큼 눌리면 사슬 끝">
                 <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 16px", fontSize: 11 }}>
                     <NumField label="밴드" suffix="%" value={pred.bandPct} min={0}
@@ -111,7 +96,7 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
                     ))}
                 </Panel>
             )}
-        </div>
+        </AnchoredPopover>
     );
 }
 
