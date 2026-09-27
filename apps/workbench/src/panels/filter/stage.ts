@@ -56,8 +56,7 @@ export interface FilterStage {
 }
 
 /**
- * "무거운 조건"인가 — 날짜 자동 스킵 상한을 줄이는 자(사슬·테마 분 단면). WorksetPanel·
- * DailyExplorePanel 이 한 벌로 쓴다.
+ * "무거운 조건"인가 — 날짜 자동 스킵 상한을 줄이는 자(사슬·테마 분 단면). DailyExplorePanel 이 쓴다.
  */
 export function isHeavyCellPredicate(p: FilterPredicate): boolean {
     return p.kind === "breakout" || p.kind === "theme";

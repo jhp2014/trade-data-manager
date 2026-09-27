@@ -24,8 +24,8 @@ afterEach(() => { useKeymapDynamic.setState({ commands: {} }); });
 
 describe("effectiveOwner", () => {
     it("고른 주인이 얹혀 있으면 그것, 아니면 우선순위 폴백. 아무도 없으면 선택 그대로.", () => {
-        expect(effectiveOwner(["workset", "daily-explore"], "workset")).toBe("workset");
-        expect(effectiveOwner(["workset", "theme-board"], "daily-explore")).toBe("workset"); // 시트 없음 → 우선순위
+        expect(effectiveOwner(["daily-explore", "replay-board"], "replay-board")).toBe("replay-board");
+        expect(effectiveOwner(["replay-board", "theme-board"], "daily-explore")).toBe("replay-board"); // 탐색판 없음 → 우선순위
         expect(effectiveOwner(["theme-board"], "daily-explore")).toBe("theme-board");
         expect(effectiveOwner([], "replay-board")).toBe("replay-board");
     });
@@ -37,8 +37,8 @@ describe("nextOwner(q 순환)", () => {
         expect(nextOwner(avail, "daily-explore")).toBe("replay-board");
         expect(nextOwner(avail, "replay-board")).toBe("theme-board");
         expect(nextOwner(avail, "theme-board")).toBe("daily-explore");
-        expect(nextOwner(avail, "workset")).toBe("daily-explore"); // 후보 밖이면 첫 후보로
-        expect(nextOwner([], "workset")).toBe("workset"); // 후보 없음 → 제자리
+        expect(nextOwner(["daily-explore", "replay-board"], "theme-board")).toBe("daily-explore"); // 후보 밖이면 첫 후보로
+        expect(nextOwner([], "theme-board")).toBe("theme-board"); // 후보 없음 → 제자리
     });
 });
 
@@ -48,7 +48,6 @@ describe("행 순회 소유권", () => {
         renderHook(() => {
             useRowNavHotkeys();
             usePublishRowNav("daily-explore").current = (d) => seen.push(`explore${d}`);
-            usePublishRowNav("workset").current = (d) => seen.push(`workset${d}`);
             usePublishRowNav("replay-board").current = (d) => seen.push(`replay${d}`);
         });
 
@@ -64,17 +63,17 @@ describe("행 순회 소유권", () => {
     it("고른 주인이 안 얹혀 있으면(배경 탭 언마운트) 우선순위로 흘린다 — 선택 자체는 안 지운다.", () => {
         const seen: string[] = [];
         act(() => selectRowNavOwner("theme-board"));
-        const workset = renderHook(() => { usePublishRowNav("workset").current = (d) => seen.push(`workset${d}`); });
+        const explore = renderHook(() => { usePublishRowNav("daily-explore").current = (d) => seen.push(`explore${d}`); });
         renderHook(() => {
             useRowNavHotkeys();
-            usePublishRowNav("daily-explore").current = (d) => seen.push(`explore${d}`);
+            usePublishRowNav("replay-board").current = (d) => seen.push(`replay${d}`);
         });
         press("s");
-        expect(seen).toEqual(["workset1"]); // 테마보드 없음 → 우선순위 1등(작업 대상)
+        expect(seen).toEqual(["explore1"]); // 테마보드 없음 → 우선순위 1등(탐색판)
 
-        workset.unmount();
+        explore.unmount();
         press("s");
-        expect(seen).toEqual(["workset1", "explore1"]); // 작업 대상도 사라지면 다음 후보로
+        expect(seen).toEqual(["explore1", "replay1"]); // 탐색판도 사라지면 다음 후보로
     });
 
     it("q 는 얹혀 있는 후보 사이만 순환한다.", () => {

@@ -13,7 +13,6 @@ import { ThemeBoardPanel } from "../panels/ThemeBoardPanel.js";
 import { LiveBoardPanel } from "../panels/LiveBoardPanel.js";
 import { RealtimeChartPanel } from "../panels/RealtimeChartPanel.js";
 import { ReplayBoardPanel } from "../panels/ReplayBoardPanel.js";
-import { WorksetPanel } from "../panels/WorksetPanel.js";
 import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
 import { DailyGenPanel } from "../panels/dailyGen/DailyGenPanel.js";
 import { DailyExplorePanel } from "../panels/dailyExplore/DailyExplorePanel.js";
@@ -86,7 +85,6 @@ export const PANEL_TYPES: PanelType[] = [
         },
         render: (id) => <ChartPanel panelId={id} />,
     },
-    { idBase: "workset", component: "workset", title: "작업 대상", plane: "eod", render: (id) => <WorksetPanel panelId={id} /> },
     // (옛 "탐색 후보" 패널은 2026-09-18 단계 ③ 에서 **작업 대상에 흡수**됐다 — 하루·셀 우주를 고르면
     //  그 패널이 곧 후보 순회 목록이다. 저장 레이아웃의 `component: "probe"` 는 sanitizeLayout 이
     //  미등록으로 걷어낸다(map·rankSkeleton 선례) — 사용자 화면의 그 탭은 다음 로드에 사라진다.)

@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { useWorkbench } from "../store/workbench.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { weekdayOf } from "../lib/date.js";
-import { Name } from "./WorksetRows.js";
 import { PanelHeader } from "../components/ControlChrome.js";
 
 // 최근 탐색 패널 — 세션 방문기록(EOD)을 최신순 flat 목록으로. focus 초크포인트가 기록하므로 워크셋·가설·차트·보드 어디서 이동하든 모임.
@@ -86,5 +85,14 @@ export function RecentHistoryPanel(): JSX.Element {
                 })}
             </div>
         </div>
+    );
+}
+
+/** 종목 이름 한 칸(옛 WorksetRows 에서 이사 — 유일한 소비자가 여기다). */
+function Name({ name, code, color, strong }: { name: string | null; code: string; color?: string; strong?: boolean }): JSX.Element {
+    return (
+        <span style={{ minWidth: 0, color: color ?? "var(--text-primary)", fontWeight: strong ? 700 : 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {name ?? code}
+        </span>
     );
 }

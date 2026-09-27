@@ -30,12 +30,11 @@ import { useKeymapDynamic } from "../keymap/dynamic.js";
 //
 // ⚠ 모듈 전역 단일 소유 — 후보 패널은 각 1개 전제(panelCatalog). 인스턴스가 둘이 되면 나중 것이 앞을 덮는다.
 
-export type RowNavOwner = "workset" | "daily-explore" | "replay-board" | "theme-board";
+export type RowNavOwner = "daily-explore" | "replay-board" | "theme-board";
 type Step = (dir: 1 | -1) => void;
 
 /** 후보 — **순환 순서이자 폴백 우선순위**. unit 은 도움말 문구("다음 …"), label 은 배지 툴팁·순환 문구. */
 export const ROW_NAV_OWNERS: readonly { owner: RowNavOwner; unit: string; label: string }[] = [
-    { owner: "workset", unit: "타점(작업 대상)", label: "작업 대상" },
     { owner: "daily-explore", unit: "타점(일별 [탐색])", label: "일별 [탐색]" },
     { owner: "replay-board", unit: "종목(테마 [복기])", label: "테마 [복기]" },
     { owner: "theme-board", unit: "종목(테마 [장 마감])", label: "테마 [장 마감]" },
@@ -50,9 +49,9 @@ export const ROW_NAV_ORIGIN = "row-nav";
 const SELECTED = persistedField<RowNavOwner>(
     "wb.rowNavOwner",
     (o) => {
-        // 옛 소유자 승계 — "탐색 후보"(2026-09-18 작업 대상 흡수)·"시트"(2026-09-26 종단 은퇴 → 탐색판).
+        // 옛 소유자 승계 — "탐색 후보"·"작업 대상"(2026-09-27 은퇴)·"시트"(2026-09-26 종단 은퇴)는 전부 탐색판으로.
         // 안 하면 파서가 거절해 말없이 기본값으로 떨어진다(고른 주인이 조용히 바뀌는 사고).
-        const v = o === "point-probe" ? "workset" : o === "rank-sheet" ? "daily-explore" : o;
+        const v = o === "point-probe" || o === "workset" || o === "rank-sheet" ? "daily-explore" : o;
         return ORDER.includes(v as RowNavOwner) ? (v as RowNavOwner) : null;
     },
     "daily-explore",

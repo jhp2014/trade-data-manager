@@ -27,9 +27,10 @@ import { useFunnel } from "../filter/FunnelContext.js";
 import { DAY_SET_OPTS, useCellSet } from "../filter/useCellSet.js";
 import { leavesOf } from "../filter/expr.js";
 import { isHeavyCellPredicate } from "../filter/stage.js";
-import { neighborDates } from "../workset/dayCrossing.js";
-import { useDayCrossing } from "../workset/useDayCrossing.js";
-import { stepWithin, type NavKey } from "../workset/rows.js";
+import { useGroupAssign } from "../../store/groupAssign.js";
+import { neighborDates } from "./dayCrossing.js";
+import { useDayCrossing } from "./useDayCrossing.js";
+import { stepWithin, type NavKey } from "./walk.js";
 import { MAX_GROUPS, cellKeyOf, exploreRowsOf, type ExploreSort } from "./exploreRows.js";
 import { useConditionGroups } from "./useConditionGroups.js";
 
@@ -77,6 +78,28 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         return rows.filter((r) => m.has(cellKeyOf(r.code, r.min)));
     }, [rows, narrowCol]);
 
+    // ── 종목 접기(종목순 전용 — 옛 작업 대상에서 이식, 2026-09-27) — 접힌 종목은 머리줄만 서고 w/s 순회에서도 빠진다.
+    const [collapsedCodes, setCollapsedCodes] = usePanelUi<string[]>(panelId, "collapsed", []);
+    const collapsed = useMemo(() => new Set(sortMode === "stock" ? collapsedCodes : []), [collapsedCodes, sortMode]);
+    const toggleCollapse = useCallback((code: string) => {
+        setCollapsedCodes((v) => (v.includes(code) ? v.filter((c) => c !== code) : [...v, code]));
+    }, [setCollapsedCodes]);
+    // 날짜가 **바뀌면** 접힘을 푼다 — 어제 접은 종목이 오늘 접혀 있으면 놓친다.
+    // ⚠ 마운트에서는 풀지 않는다: effect 는 첫 렌더에도 도므로 그냥 두면 새로고침마다 저장된 접힘이 지워진다.
+    const lastDate = useRef(focusDate);
+    useEffect(() => {
+        if (lastDate.current === focusDate) return;
+        lastDate.current = focusDate;
+        setCollapsedCodes([]);
+    }, [focusDate, setCollapsedCodes]);
+    /** 걷는 행 — 접힌 종목을 뺀 것. 렌더의 본 줄과 순회가 **같은 배열**을 본다(두 벌이면 접힌 행을 순회가 밟는다). */
+    const walkRows = useMemo(() => shownRows.filter((r) => !collapsed.has(r.code)), [shownRows, collapsed]);
+    /** 그룹 배정 — 종목 머리줄 우클릭 = 하루 그룹(차트), 행 우클릭 = 타점 그룹(좌표). 옛 작업 대상 목록과 같은 두 입구. */
+    const openAssign = (ev: React.MouseEvent, code: string, time?: string): void => {
+        ev.preventDefault();
+        useGroupAssign.getState().open({ stockCode: code, name: nameOf(code), date: focusDate, ...(time !== undefined ? { time } : {}) }, { x: ev.clientX, y: ev.clientY });
+    };
+
     // ── 날짜 넘기 — 작업 대상과 같은 기계. ◀▶ 도 같은 손(빈 날 스킵·고정·상한이 한 규칙).
     const datesQ = useQuery({ ...dataDatesQuery(), enabled: isDaily });
     const [datePinned, setDatePinned] = usePanelUi<boolean>(panelId, "datePin", false);
@@ -87,7 +110,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
             && leavesOf(funnel.slowExpr).some((st) => st.predicates.some(isHeavyCellPredicate)),
         [cellSet.stages, funnel.slowExpr],
     );
-    const order = useMemo<NavKey[]>(() => shownRows.map((r) => ({ code: r.code, date: focusDate, time: r.time })), [shownRows, focusDate]);
+    const order = useMemo<NavKey[]>(() => walkRows.map((r) => ({ code: r.code, date: focusDate, time: r.time })), [walkRows, focusDate]);
     const orderRef = useRef(order);
     orderRef.current = order;
     const landOn = useCallback((dir: 1 | -1) => {
@@ -170,7 +193,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                 <button onClick={() => crossing.cross(1)} disabled={crossing.seeking} title="다음 거래일 (목록 끝에서 s 로도 넘어간다)" style={navBtn}>▶</button>
                 <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}
                     title={`그날 후보 ${rows.length}${cellSet.truncated ? " (상한 잘림)" : ""} · ${pos !== null ? `순회 위치 ${pos}` : "커서 없음"}${narrowCol ? `\n좁히기: ${narrowCol.name}` : ""}`}>
-                    {narrowCol ? (narrowCol.state.kind === "ready" ? `후보 ${rows.length} · ${narrowCol.name} ${shownRows.length}` : `후보 ${rows.length} · ${narrowCol.name} …`) : `후보 ${rows.length}${pos !== null ? ` · ${pos}/${shownRows.length}` : ""}`}
+                    {narrowCol ? (narrowCol.state.kind === "ready" ? `후보 ${rows.length} · ${narrowCol.name} ${shownRows.length}` : `후보 ${rows.length} · ${narrowCol.name} …`) : `후보 ${rows.length}${pos !== null ? ` · ${pos}/${walkRows.length}` : ""}`}
                     {cellSet.truncated ? " · 잘림" : ""}
                 </span>
                 {(crossing.seeking || crossing.note !== null) && (
@@ -203,23 +226,38 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                         <tbody>
                             {shownRows.map((r, i) => {
                                 const isFocus = r.code === focusCode && r.time === focusTime;
+                                const folded = collapsed.has(r.code);
                                 // 종목순일 때만 종목 머리줄 — 이름만 싣는다(수·요약 없음, 사용자 확정). 클릭 = 그 종목 첫 타점.
+                                // ▾/▸ = 접기(접으면 후보 수만 말한다) · 우클릭 = 하루 그룹 배정(차트).
                                 const head = sortMode === "stock" && (i === 0 || shownRows[i - 1]!.code !== r.code) ? (
                                     <tr key={`head-${r.code}`}>
                                         <td colSpan={2 + groupCols.length} style={{ padding: 0, borderBottom: "0.5px solid var(--border-subtle)" }}>
-                                            <button onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}
-                                                title="이 종목의 첫 타점으로"
-                                                style={{ display: "block", width: "100%", textAlign: "left", border: "none", cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 600, padding: "3px 8px", background: "var(--bg-secondary)", color: "var(--text-secondary)" }}>
-                                                {nameOf(r.code)}
-                                            </button>
+                                            <div style={{ display: "flex", alignItems: "center", background: "var(--bg-secondary)" }}
+                                                onContextMenu={(ev) => openAssign(ev, r.code)}>
+                                                <button onClick={() => toggleCollapse(r.code)} className="row-self-marked"
+                                                    title={folded ? "펴기 — 이 종목의 후보가 다시 서고 순회에도 든다" : "접기 — 후보 행이 사라지고 w/s 순회에서도 빠진다"}
+                                                    style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 10, padding: "3px 2px 3px 6px" }}>
+                                                    {folded ? "▸" : "▾"}
+                                                </button>
+                                                <button onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}
+                                                    title="좌클릭 = 이 종목의 첫 타점으로 · 우클릭 = 그룹 배정(하루)"
+                                                    style={{ flex: 1, textAlign: "left", border: "none", cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 600, padding: "3px 6px 3px 2px", background: "transparent", color: "var(--text-secondary)" }}>
+                                                    {nameOf(r.code)}
+                                                    {folded && <span style={{ marginLeft: 6, fontWeight: 400, color: "var(--text-tertiary)" }}>
+                                                        후보 {shownRows.filter((x) => x.code === r.code).length}
+                                                    </span>}
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ) : null;
+                                if (folded) return head === null ? null : <FragmentRow key={cellKeyOf(r.code, r.min)} head={head}>{null}</FragmentRow>;
                                 return (
                                     <FragmentRow key={cellKeyOf(r.code, r.min)} head={head}>
                                     <tr ref={isFocus ? focusRowRef : undefined}
                                         onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}
-                                        title="이 타점으로 시선 이동 — 차트가 따라온다"
+                                        onContextMenu={(ev) => openAssign(ev, r.code, r.time)}
+                                        title="좌클릭 = 이 타점으로 시선 이동(차트가 따라온다) · 우클릭 = 그룹 배정(좌표 라벨)"
                                         style={{ cursor: "pointer", background: isFocus ? "var(--accent-soft)" : "transparent" }}>
                                         <Td>{r.time.slice(0, 5)}</Td>
                                         {/* 종목순에선 열 자체를 접는다 — 머리줄이 이름을 말하는데 빈 열이 폭만 먹는다. */}
