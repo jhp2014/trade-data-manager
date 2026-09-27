@@ -44,6 +44,7 @@ import {
     type CellPredicate,
     type CellValueField,
     type CellValueRange,
+    type LabelScope,
     candleAxisActive,
 } from "./predicate.js";
 import { themeZoneKeyOf, type ThemeAnswer, type ThemeZoneParams } from "./themeZone.js";
@@ -67,6 +68,12 @@ export interface CellMaterials {
      * 이름표가 전부 「고가 돌파」). 옵셔널: 안 쓰는 호출자(probe 등가·기존 테스트)는 부재 = 없음.
      */
     baselineOf?(code: string): number | null;
+    /**
+     * 라벨 술어의 답 — 이 셀이 groups 중 하나(계층 상속 포함)로 라벨돼 있나. day 는 그 종목·날 소속,
+     * point 는 정확히 그 분 좌표. 옵셔널: 부재 = 재료 없음 → 거짓(지어내지 않는다).
+     * (클라: useGroups 멤버십 + groupTree.expandWithAncestors — cellMaterials.labelIndexOf)
+     */
+    labelAt?(code: string, min: number, scope: LabelScope, groups: readonly string[]): boolean;
 }
 
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
@@ -121,9 +128,8 @@ const KRW_PER_EOK = 100_000_000;
 // (전이 상태 기계 — TransitionState·applyTransition — 는 2026-09-27 전이 은퇴로 삭제됐다.
 //  셀 판정은 다시 무상태다. "진입 시만"은 테마 술어의 enter payload 가 판정 층(themeAnswerAt)에서 잇는다.)
 
-/** 종목 하나의 사전계산(tier 1) — 창별 전고 자와 격자 분 집합. 조건이 안 쓰면 만들지 않는다. */
+/** 종목 하나의 사전계산(tier 1) — 돌파 후보 분 집합·기준선 %. 조건이 안 쓰면 만들지 않는다. */
 interface StockPrecomputed {
-    priorHighOf(days: number): number | null;
     /** 돌파 후보 키 → 후보 분(자정기준). */
     breakouts: ReadonlyMap<string, ReadonlySet<number>>;
     /** 확정 기준선의 %(분봉과 같은 식·같은 반올림 — baselinePctOf). 캔들 기준선 축이 켜졌을 때만 계산. */
@@ -154,21 +160,13 @@ function breakoutMinutes(
 function precompute(
     s: CellStock,
     mat: CellMaterials,
-    needDays: readonly number[],
     needBreakout: ReadonlyMap<string, BreakoutPred>,
     needBaselinePct: boolean,
 ): StockPrecomputed {
-    const highs = new Map<number, number | null>();
-    for (const days of needDays) {
-        // ⚠ index 0 = **당일** 전체 고가라 반드시 1부터 자른다(포함하면 영영 거짓 — probe 테스트가 지키던 규칙).
-        const w = s.trailingHighs.un.slice(1, Math.max(1, Math.floor(days)) + 1);
-        highs.set(days, w.length > 0 ? Math.max(...w) : null); // 창이 비면 결손(신규 상장 등)
-    }
     const breakouts = new Map<string, ReadonlySet<number>>();
     const chains = new Map<string, BreakoutChainResult>();
     for (const [key, p] of needBreakout) breakouts.set(key, breakoutMinutes(p, s, mat, chains));
     return {
-        priorHighOf: (days) => highs.get(days) ?? null,
         breakouts,
         baselinePct: needBaselinePct ? baselinePctOf(mat.baselineOf?.(s.code) ?? null, s.basePrice.un) : null,
     };
@@ -313,11 +311,9 @@ function runNode(c: Compiled, ctx: CellCtx): boolean {
                 raw = v !== null && inRanges(v, p.ranges);
                 break;
             }
-            case "priorHighBreak": {
-                const bar = ctx.pre.priorHighOf(p.days);
-                raw = bar !== null && (ctx.s.minuteHigh[ctx.i] ?? -Infinity) > bar;
+            case "label":
+                raw = ctx.mat.labelAt?.(ctx.s.code, ctx.min, p.scope, p.groups) ?? false;
                 break;
-            }
             case "breakout": {
                 raw = ctx.pre.breakouts.get(c.breakoutKey!)?.has(ctx.min) === true;
                 break;
@@ -400,13 +396,11 @@ export function evaluateCellsExpr(
 
     // 사전계산 소요 — 식이 안 쓰는 재료는 만들지 않는다. **트리를 걸어야 한다**: 평평한 2중 루프로
     // 재면 묶음 안의 격자·전고 술어를 못 보고, 그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**.
-    const needDays: number[] = [];
     let needTheme = false;
     let needBaselinePct = false;
     const needBreakout = new Map<string, BreakoutPred>();
     const scan = (e: CellExpr): void => {
         if (e.kind === "pred") {
-            if (e.pred.kind === "priorHighBreak" && !needDays.includes(e.pred.days)) needDays.push(e.pred.days);
             if (e.pred.kind === "breakout") needBreakout.set(breakoutKeyOf(e.pred), e.pred);
             if (e.pred.kind === "theme") needTheme = true;
             if (e.pred.kind === "candle" && candleAxisActive(e.pred.axes.baseline)) needBaselinePct = true;
@@ -423,7 +417,7 @@ export function evaluateCellsExpr(
     outer: for (const s of stocks) {
         const n = s.times.length;
         if (n === 0) continue;
-        const pre = precompute(s, mat, needDays, needBreakout, needBaselinePct);
+        const pre = precompute(s, mat, needBreakout, needBaselinePct);
 
         for (let i = 0; i < n; i++) {
             const min = minuteOfDayOf(s.times[i]);

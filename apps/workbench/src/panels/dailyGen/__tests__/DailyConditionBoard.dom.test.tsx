@@ -22,9 +22,9 @@ const candidateDays: Seed["candidateDays"] = [
 const points: SeedPoint[] = [{ stockCode: A, date: DATES[0], time: "09:30:00", name: "삼성전자" }];
 const SEED: Seed = { candidateDays, points };
 
-const renderBoard = (): ReturnType<typeof render> =>
+const renderBoard = (seed: Seed = SEED): ReturnType<typeof render> =>
     render(<DailyConditionBoard />, {
-        wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers>,
+        wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(seed)}>{children}</Providers>,
     });
 
 const buttons = (c: HTMLElement): HTMLButtonElement[] => [...c.querySelectorAll("button")];
@@ -166,8 +166,8 @@ describe("＋ 조건 — 생성 입구 하나", () => {
     it("팔레트는 하루 종류뿐이다 — 날짜·계산 축·결과·그룹·격자 Point 입구가 없다(테마는 하루 술어로 합류)", () => {
         const { container, baseElement } = renderBoard();
         openMenu(container);
-        for (const t of ["돌파 사슬", "캔들", "분봉 대금", "누적대금", "전고 돌파", "시각", "테마"]) expect(byText(baseElement, t), t).toBeDefined();
-        for (const t of ["날짜", "계산 축", "결과", "그룹", "테마 강도", "격자 Point", "급타점", "존순위", "양봉", "분봉고가"]) expect(byText(baseElement, t), t).toBeUndefined();
+        for (const t of ["돌파 사슬", "캔들", "분봉 대금", "누적대금", "시각", "테마", "▣ 라벨 (하루)", "◆ 라벨 (타점)"]) expect(byText(baseElement, t), t).toBeDefined();
+        for (const t of ["날짜", "계산 축", "결과", "그룹 (하루)", "그룹 (타점)", "테마 강도", "격자 Point", "급타점", "존순위", "양봉", "분봉고가", "전고 돌파"]) expect(byText(baseElement, t), t).toBeUndefined();
     });
 
     it("돌파 = 기본값 행이 서고 **곧바로 팝오버**가 뜬다(값의 편집면이 팝오버 하나라서)", () => {
@@ -213,6 +213,45 @@ describe("＋ 조건 — 생성 입구 하나", () => {
             fireEvent.blur(from);
         });
         expect(axesOn().rate?.from, "빈 칸 = 경계 없음").toBeUndefined();
+    });
+
+    it("라벨(타점) = 빈 행이 서고 곧바로 팝오버 — 타점 그룹만 계층 트리로, 체크 = OR", () => {
+        // 하루 그룹 「후발주」 · 타점 그룹 「돌파」 ▸ 「돌파: 성공」(라벨은 자식에만 — 부모는 롤업으로 타점 grain).
+        const seed: Seed = {
+            ...SEED,
+            points: [], // 기본 시드의 자동 라벨 그룹을 빼고 이 검사의 그룹만
+            groups: [
+                { name: "돌파", parentName: null },
+                { name: "돌파: 성공", parentName: "돌파" },
+                { name: "후발주", parentName: null },
+            ],
+            memberships: [{ stockCode: "000100", date: "2026-07-01", groupNames: ["후발주"] }],
+            pointMemberships: [{ stockCode: "000100", date: "2026-07-01", time: "09:05:00", groupNames: ["돌파: 성공"] }],
+        };
+        const { container, baseElement } = renderBoard(seed);
+        openMenu(container);
+        act(() => { fireEvent.click(byText(baseElement, "◆ 라벨 (타점)")!); });
+        expect(stages()[0]!.predicates[0]).toEqual({ kind: "label", scope: "point", groups: [] });
+        const items = [...baseElement.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]')];
+        expect(items.map((b) => b.textContent?.replace(/\d+$/, "")), "타점 그룹만 — 하루 그룹은 안 선다").toEqual(["돌파", "돌파: 성공"]);
+        expect(items[1]!.style.paddingLeft, "자식은 들여쓴다").not.toBe(items[0]!.style.paddingLeft);
+        act(() => { fireEvent.click(items[1]!); });
+        expect(stages()[0]!.predicates[0]).toEqual({ kind: "label", scope: "point", groups: ["돌파: 성공"] });
+    });
+
+    it("라벨(하루) 입구는 하루 그룹만 세운다", () => {
+        const seed: Seed = {
+            ...SEED,
+            points: [], // 기본 시드의 자동 라벨 그룹을 빼고 이 검사의 그룹만
+            groups: [{ name: "돌파: 성공", parentName: null }, { name: "후발주", parentName: null }],
+            memberships: [{ stockCode: "000100", date: "2026-07-01", groupNames: ["후발주"] }],
+            pointMemberships: [{ stockCode: "000100", date: "2026-07-01", time: "09:05:00", groupNames: ["돌파: 성공"] }],
+        };
+        const { container, baseElement } = renderBoard(seed);
+        openMenu(container);
+        act(() => { fireEvent.click(byText(baseElement, "▣ 라벨 (하루)")!); });
+        const items = [...baseElement.querySelectorAll<HTMLButtonElement>('[role="menuitemcheckbox"]')];
+        expect(items.map((b) => b.textContent?.replace(/\d+$/, ""))).toEqual(["후발주"]);
     });
 
     it("캔들 핸들 드래그 — 기준이 얼어 있어 같은 자리에서 값이 안 발산하고, 커밋은 pointerup 한 번이다(H1·M4)", () => {

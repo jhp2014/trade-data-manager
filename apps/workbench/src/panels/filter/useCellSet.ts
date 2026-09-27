@@ -30,7 +30,8 @@ import type { ReplayStock } from "../../api/dayReplay.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { usePointGrids } from "../../lib/PointGridsContext.js";
 import { useThemeProjection } from "../../lib/useThemeProjection.js";
-import { cellMaterialsOf } from "./cellMaterials.js";
+import { cellMaterialsOf, labelIndexOf } from "./cellMaterials.js";
+import { useGroups } from "../../lib/GroupsContext.js";
 import { activeExpr, foldExpr, isFoldedNode, type FoldedNode, type SetExpr, type SetTerm } from "./expr.js";
 
 /**
@@ -327,6 +328,15 @@ export function useCellSet(
     const needsBaseline = useMemo(() => usesCellPred(narrowed.expr,
         (p) => p.kind === "breakout" || (p.kind === "candle" && candleAxisActive(p.axes.baseline))), [narrowed]);
     const pointGrids = usePointGrids();
+    // 라벨(분류) — 그날 멤버십을 적용 이름(직접 ∪ 조상)으로 편 색인. 라벨을 붙이거나 떼면 멤버십 참조가
+    // 바뀌어 색인이 새로 서고 → 메모 키(세대)가 바뀌어 **즉시 다시 평가**된다(분류 작업 큐가 그 자리서 준다).
+    const groups = useGroups();
+    const needsLabel = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "label"), [narrowed]);
+    const labelIx = useMemo(
+        () => (needsLabel ? labelIndexOf(date, groups.memberships, groups.pointMemberships, groups.groupByName) : null),
+        [needsLabel, date, groups.memberships, groups.pointMemberships, groups.groupByName],
+    );
+    const labelsLoading = groups.isLoading;
     const limit = opts?.limit;
     const hardCap = opts?.hardCap;
     const limitBy = opts?.limitBy;
@@ -339,6 +349,8 @@ export function useCellSet(
         // 테마 재료(멤버십 투영)가 오기 전의 평가는 **모름**이지 빈 결과가 아니다 — 빈 투영으로 돌리면
         // 테마 조건이 "그날 0건"이라는 그럴듯한 거짓을 낸다(리뷰가 예고한 자리).
         if (needsTheme && !themes.ready) return null;
+        // 라벨 재료가 오기 전의 평가도 모름이다 — 빈 멤버십으로 돌리면 NOT 라벨이 "전부 미분류"라는 거짓을 낸다.
+        if (needsLabel && (labelsLoading || labelIx === null)) return null;
         // 메모 키 — 조건·노브·**재료 세대를 전부** 싣는다. 하나라도 빠지면 조용히 낡은 목록을 돌려준다.
         //  · 바깥 축(WeakMap) = `stocks` 배열 참조 = 하루 재료의 세대. 오늘 날짜는 60초마다 재조회되므로
         //    이걸 안 가르면 새로 채워진 분의 후보가 세션 내내 안 뜬다.
@@ -347,11 +359,12 @@ export function useCellSet(
             date, narrowed.expr, limit ?? null, hardCap ?? null, limitBy ?? null,
             genOf(themes.proj),
             needsBaseline && pointGrids.byDate ? genOf(pointGrids.byDate) : 0,
+            labelIx !== null ? genOf(labelIx) : 0,
         ]);
         return evaluateMemo(stocks, key, () => {
             const mat = cellMaterialsOf(stocks, date, themes.proj, needsBaseline
                 ? (code) => pointGrids.gridOf(code, date)?.base ?? null
-                : undefined);
+                : undefined, labelIx ?? undefined);
             return evaluateCellsExpr(stocks, mat, narrowed.expr, {
                 ...(limit !== undefined ? { limit } : {}),
                 ...(hardCap !== undefined ? { hardCap } : {}),
@@ -359,7 +372,7 @@ export function useCellSet(
             });
         });
     }, [stocks, snapQ.data?.date, date, themes.proj, themes.ready, needsTheme, narrowed,
-        limit, hardCap, limitBy, needsBaseline, pointGrids]);
+        limit, hardCap, limitBy, needsBaseline, pointGrids, needsLabel, labelIx, labelsLoading]);
 
     const items = useMemo<readonly FunnelItem[]>(
         () => (result ? result.hits.map((h) => cellHitToItem(h, date)) : EMPTY_ITEMS),

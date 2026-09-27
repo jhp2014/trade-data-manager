@@ -12,7 +12,7 @@
 import type { StateCreator } from "zustand";
 import type { WorkbenchState } from "./workbench.js";
 import { parseStages, takeRetiredPredicateCount, takeStrippedTransitionCount } from "../panels/filter/stage.js";
-import { appendTerm, emptyExpr, hasCycle, parseExpr, refNode, refsOf, type SetExpr } from "../panels/filter/expr.js";
+import { appendTerm, emptyExpr, hasCycle, mapLeaves, parseExpr, refNode, refsOf, type SetExpr } from "../panels/filter/expr.js";
 import { parseUniverse } from "../panels/filter/universe.js";
 import { backupRawOnce, loadJson, saveJson } from "./persist.js";
 
@@ -48,6 +48,8 @@ backupRawOnce("wb.savedSets.v6", "pre-longitudinal");
 backupRawOnce("wb.savedSets.v6", "pre-transition");
 // 캔들 술어 도입(2026-09-27) — candleShape·ratePct·minuteHighPct 이주 전 원문 1회 백업.
 backupRawOnce("wb.savedSets.v6", "pre-candle");
+// 전고 돌파 은퇴(2026-09-27 — 그 칸째 걷힘) 전 원문 1회 백업.
+backupRawOnce("wb.savedSets.v6", "pre-label");
 
 /** 이번 로드에 폐기한 종단 집합 수 — 아래 loadSavedSets 가 로그로 낸다. */
 let droppedLongitudinal = 0;
@@ -226,6 +228,11 @@ export interface SavedSetsSlice {
     addSetRef: (setId: string) => void;
     /** 이름만 바꾼다(id·조건 유지 — 바인딩이 id 로 따라오므로 이름은 표시물일 뿐). 빈 이름 = 자동 이름으로. */
     renameSet: (id: string, name: string) => void;
+    /**
+     * 그룹 **개명 승계** — 라벨 술어는 그룹을 이름으로 지목하므로, 서버 개명 성공 직후 저장물의 이름도
+     * 따라 바꾼다(안 하면 그 조건이 즉시 영영 거짓인 죽은 참조가 된다). 부르는 곳 = useGroups.renameGroup.
+     */
+    renameGroupInSets: (from: string, to: string) => void;
     deleteSet: (id: string) => void;
 }
 
@@ -314,6 +321,24 @@ export const createSavedSetsSlice: StateCreator<WorkbenchState, [], [], SavedSet
             return { ...x, name: n };
         });
         return { savedSets: persistSavedSets(next) };
+    }),
+    renameGroupInSets: (from, to) => set((s) => {
+        if (from === to) return {};
+        let touched = false;
+        const next = s.savedSets.map((f) => {
+            const expr = mapLeaves(f.expr, (st) => (st.predicates.some((p) => p.kind === "label" && p.groups.includes(from))
+                ? {
+                    ...st,
+                    predicates: st.predicates.map((p) => (p.kind === "label" && p.groups.includes(from)
+                        ? { ...p, groups: [...new Set(p.groups.map((g) => (g === from ? to : g)))] }
+                        : p)),
+                }
+                : st));
+            if (expr === f.expr) return f;
+            touched = true;
+            return { ...f, expr };
+        });
+        return touched ? { savedSets: persistSavedSets(next) } : {};
     }),
     deleteSet: (id) => set((s) => {
         // 하나도 안 남으면 빈 집합을 다시 세운다 — 편집할 집합이 반드시 하나는 있어야 한다.

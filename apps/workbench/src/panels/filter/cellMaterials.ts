@@ -6,7 +6,9 @@
 //
 // 순수 함수인 이유: 훅이 아니어야 dom 테스트 없이 잠글 수 있고, 호출부(useCellSet)의 memo 신원이
 // 재료 한 벌로 모인다(어댑터가 훅이면 의존 배열이 갈려 매 렌더 새 참조가 된다).
-import { themeAnswerAt, type CellMaterials } from "@trade-data-manager/market/domain";
+import { hmsToMinute, themeAnswerAt, type CellMaterials } from "@trade-data-manager/market/domain";
+import type { Group, GroupMembership, PointGroupMembership } from "../../api/groups.js";
+import { expandWithAncestors } from "../../lib/groupTree.js";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import type { ThemeProjection } from "@trade-data-manager/market/domain";
 import { themeSectionAt } from "../themeRank/sectionSeries.js";
@@ -21,11 +23,50 @@ export function cellMaterialsOf(
     proj: ThemeProjection,
     /** 돌파 사슬의 기준선(원주가) — 안 쓰면 생략(부재 = 기준선 없음 → 이름표가 전부 「고가 돌파」). */
     baselineOf?: (code: string) => number | null,
+    /** 라벨 색인(그날) — 안 쓰면 생략(부재 = 라벨 재료 없음 → 라벨 술어는 거짓). */
+    labels?: LabelIndex,
 ): CellMaterials {
     return {
         ...(baselineOf ? { baselineOf } : {}),
+        ...(labels ? { labelAt: labelAtOf(labels) } : {}),
         // 테마 술어 — 판정은 core themeAnswerAt 하나(계산 규칙을 여기 두지 않는다 — enter 의 min−1 비교 포함).
         // 단면은 sectionSeries 공용 캐시라 표시(시장 단면 판)와 같은 물건을 보고, min−1 단면도 분당 캐시에 얹힌다.
         themeAt: (code, min, p) => themeAnswerAt(code, (m) => themeSectionAt(stocks, date, m, p.window), min, p, proj),
     };
 }
+
+/**
+ * 그날의 라벨 색인 — 셀 판정이 O(1) 이 되게 **적용 이름(직접 ∪ 조상)** 으로 미리 편다. 계층 상속
+ * 규칙은 groupTree 한 벌(배정 팝오버·차트 칩과 같은 자 — 조건판만 다른 상속을 쓰면 화면끼리 어긋난다).
+ *  · day   : 종목 → 그 차트(종목·날짜)에 적용되는 그룹 이름들
+ *  · point : `종목|분` → 그 좌표에 적용되는 그룹 이름들(분 = 자정기준, 엔진 셀과 같은 자)
+ */
+export interface LabelIndex {
+    day: ReadonlyMap<string, ReadonlySet<string>>;
+    point: ReadonlyMap<string, ReadonlySet<string>>;
+}
+
+export function labelIndexOf(
+    date: string,
+    memberships: readonly GroupMembership[],
+    pointMemberships: readonly PointGroupMembership[],
+    groupByName: ReadonlyMap<string, Group>,
+): LabelIndex {
+    const add = (m: Map<string, Set<string>>, key: string, names: readonly string[]): void => {
+        let s = m.get(key);
+        if (!s) m.set(key, (s = new Set()));
+        for (const n of expandWithAncestors(names, groupByName)) s.add(n);
+    };
+    const day = new Map<string, Set<string>>();
+    for (const m of memberships) if (m.date === date) add(day, m.stockCode, m.groupNames);
+    const point = new Map<string, Set<string>>();
+    for (const m of pointMemberships) if (m.date === date) add(point, `${m.stockCode}|${hmsToMinute(m.time)}`, m.groupNames);
+    return { day, point };
+}
+
+/** 색인 → 엔진 콜백. groups 는 OR — 하나라도 적용 이름에 있으면 참. */
+export const labelAtOf = (ix: LabelIndex): NonNullable<CellMaterials["labelAt"]> =>
+    (code, min, scope, groups) => {
+        const applied = scope === "day" ? ix.day.get(code) : ix.point.get(`${code}|${min}`);
+        return applied !== undefined && groups.some((g) => applied.has(g));
+    };

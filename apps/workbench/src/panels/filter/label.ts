@@ -14,7 +14,7 @@ export function predicateLabel(p: FilterPredicate): string {
                 : `시간 ${p.ranges.length}구간`;
         case "theme": return themeZoneLabel(p);
         case "cellValue": return cellValueLabel(p);
-        case "priorHighBreak": return `전고 돌파 (${p.days}일)`;
+        case "label": return labelPredLabel(p);
         // 요약 라벨(breakoutText) — 돌파 줄이 여럿이면 이 요약이 서로를 가른다.
         case "breakout": return breakoutText(p);
         case "candle": return candleLabel(p);
@@ -41,6 +41,15 @@ export function candleLabel(p: Extract<FilterPredicate, { kind: "candle" }>): st
     return parts.length === 0 ? "캔들" : `캔들 ${parts.join(" ")}`;
 }
 
+/**
+ * 라벨 술어 한 줄 — ▣(하루) / ◆(타점) 기호로 입구를 늘 가른다(같은 이름이 다른 질문이 되지 않게).
+ * 그룹은 OR 라 「·」로 잇는다. 고른 게 없으면 그 사실을 말한다(빈 술어 — 평가에서 빠진다).
+ */
+export function labelPredLabel(p: Extract<FilterPredicate, { kind: "label" }>): string {
+    const mark = p.scope === "day" ? "▣" : "◆";
+    return p.groups.length === 0 ? `${mark} 라벨 (그룹 없음)` : `${mark} ${p.groups.join(" · ")}`;
+}
+
 /** 테마 존 술어 한 줄 — 존(창·대금 N·등락 축) + 켜진 컷만. 보드 행·막대·패널 칩이 같은 표기를 쓴다. */
 export function themeZoneLabel(p: Extract<FilterPredicate, { kind: "theme" }>): string {
     const win = p.window === null ? "당일" : `${p.window}분`;
@@ -60,7 +69,7 @@ export function kindLabel(kind: PredicateKind | undefined): string {
         case "time": return "시간";
         case "theme": return "테마";
         case "cellValue": return "셀 값";
-        case "priorHighBreak": return "전고";
+        case "label": return "라벨";
         case "breakout": return "돌파 사슬";
         case "candle": return "캔들";
         default: {

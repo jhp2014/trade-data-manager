@@ -255,3 +255,23 @@ describe("편집 대상과 관측 대상", () => {
 // ── 모드가 장부를 가른다 (2026-09-22) ──────────────────────────────────────
 //
 // 여기가 없으면 아무도 이 분리를 못 잡는다: 다른 검사는 전부 종단 한 모드에서만 돈다.
+
+describe("그룹 개명 승계 — 라벨 술어가 이름으로 지목하므로 저장물도 따라 바뀐다", () => {
+    it("개명된 이름만 바뀌고, 다른 집합·다른 술어는 참조 그대로", async () => {
+        stubStorage();
+        const store = await loadStore();
+        const id = store.getState().editingSetId;
+        store.getState().setFilterExpr(exprOfStages([
+            { id: "l", enabled: true, predicates: [{ kind: "label", scope: "point", groups: ["돌파: 성공", "눌림: 성공"] }] },
+            { id: "t", enabled: true, predicates: [timePred] },
+        ]));
+        const before = store.getState().savedSets;
+        store.getState().renameGroupInSets("돌파: 성공", "돌파: 대성공");
+        const stages = selectEditingStages(store.getState());
+        expect(stages[0]!.predicates[0]).toEqual({ kind: "label", scope: "point", groups: ["돌파: 대성공", "눌림: 성공"] });
+        expect(store.getState().savedSets.find((x) => x.id === id)).not.toBe(before.find((x) => x.id === id));
+        const untouched = store.getState().savedSets;
+        store.getState().renameGroupInSets("없는 그룹", "아무거나");
+        expect(store.getState().savedSets, "해당 없으면 저장물 참조 그대로").toBe(untouched);
+    });
+});

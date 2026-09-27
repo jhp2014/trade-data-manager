@@ -7,7 +7,7 @@ import {
     CELL_VALUE_FIELDS,
     type CellPredicate,
 } from "@trade-data-manager/market/domain";
-import { NumField, OptNumField } from "../../components/NumField.js";
+import { OptNumField } from "../../components/NumField.js";
 import type { FilterPredicate, FilterStage } from "./stage.js";
 
 /** 첫 구간의 한쪽 값 경계(타점 앵커 경계는 편집 밖). */
@@ -41,15 +41,11 @@ export function CellPredicateField({ p, onChange }: { p: CellPredicate; onChange
             </span>
         );
     }
-    if (p.kind === "priorHighBreak") {
-        // 창은 필수 값 — 빈 칸을 허용하는 OptNumField 를 쓰면 "무효를 되돌린다" 규약이 깨진다(리뷰 L4).
-        return <NumField label="창" suffix="일" value={p.days} min={1} onCommit={(v) => onChange({ ...p, days: Math.round(v) })} />;
-    }
-    // 돌파·캔들의 값은 **줄의 팝오버 한 곳**에서 만진다 — 줄 이름 클릭이 곧 팝오버라 여기 안 온다.
+    // 돌파·캔들·테마·라벨의 값은 **줄의 팝오버 한 곳**에서 만진다 — 줄 이름 클릭이 곧 팝오버라 여기 안 온다.
     return null;
 }
 
-const CELL_KINDS: ReadonlySet<string> = new Set(["cellValue", "priorHighBreak", "breakout", "candle", "theme"]);
+const CELL_KINDS: ReadonlySet<string> = new Set(["cellValue", "label", "breakout", "candle", "theme"]);
 export const isCellPredicate = (p: FilterPredicate): p is CellPredicate => CELL_KINDS.has(p.kind) || p.kind === "time";
 
 /** 칸 하나의 셀 술어 편집 줄. (전이 칩은 2026-09-27 전이 은퇴로 사라졌다 — 진입은 테마 팝오버의 노브.) */

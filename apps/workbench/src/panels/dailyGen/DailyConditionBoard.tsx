@@ -21,6 +21,7 @@ import { setDisplayName, stageLabel } from "../filter/label.js";
 import { stageKind, type FilterPredicate, type FilterStage } from "../filter/stage.js";
 import { BreakoutCondEditor } from "./BreakoutCondEditor.js";
 import { CandleCondEditor } from "./CandleCondEditor.js";
+import { LabelCondEditor } from "./LabelCondEditor.js";
 import { ThemeCondEditor } from "./ThemeCondEditor.js";
 import { FAIL, PIN } from "../../styles/palette.js";
 import { LinkIcon } from "../../components/icons.js";
@@ -49,6 +50,7 @@ export function DailyConditionBoard(): JSX.Element {
     const [themeEdit, setThemeEdit] = useState<{ stageId: string; x: number; y: number } | null>(null);
     const [breakoutEdit, setBreakoutEdit] = useState<{ stageId: string; x: number; y: number } | null>(null);
     const [candleEdit, setCandleEdit] = useState<{ stageId: string; x: number; y: number } | null>(null);
+    const [labelEdit, setLabelEdit] = useState<{ stageId: string; x: number; y: number } | null>(null);
     const [picked, setPicked] = useState<string | null>(null);
 
     /** 조건 만들기의 **유일한 입구** — 만든 조건 id 를 돌려준다(돌파·테마는 곧바로 팝오버를 편다). */
@@ -73,8 +75,11 @@ export function DailyConditionBoard(): JSX.Element {
             case "candle":
                 setCandleEdit({ stageId: stage.id, x: e.clientX, y: e.clientY });
                 return;
+            case "label":
+                setLabelEdit({ stageId: stage.id, x: e.clientX, y: e.clientY });
+                return;
             default:
-                return; // 셀 값·전고 — 줄 안에서 만진다.
+                return; // 셀 값 — 줄 안에서 만진다.
         }
     };
 
@@ -213,6 +218,11 @@ export function DailyConditionBoard(): JSX.Element {
                                 const made = addStageHere([{ kind: "candle", axes: { ...DEFAULT_CANDLE.axes } }]);
                                 if (made) setCandleEdit({ stageId: made, x: e.clientX, y: e.clientY });
                             }}
+                            onLabel={(scope, e) => {
+                                // 입구가 scope 를 정한다(태어날 때 고정) — 그룹은 팝오버에서 고른다.
+                                const made = addStageHere([{ kind: "label", scope, groups: [] }]);
+                                if (made) setLabelEdit({ stageId: made, x: e.clientX, y: e.clientY });
+                            }}
                         />
                         {/* 새로 만드는 손(조건·묶음)이 앞, 있는 것을 가져오는 손(집합)이 뒤다. */}
                         <button onClick={() => addGroupTerm()} title="새 묶음 — 빈 집합을 만들어 이 식에 붙이고 그 안으로 내려갑니다" style={addBtn}>
@@ -314,6 +324,17 @@ export function DailyConditionBoard(): JSX.Element {
                 return (
                     <ThemeCondEditor at={themeEdit} pred={pred} onClose={() => setThemeEdit(null)}
                         onWrite={(next) => setPredicates(st.id, st.predicates.map((x) => (x.kind === "theme" ? next : x)))} />
+                );
+            })()}
+
+            {labelEdit !== null && (() => {
+                const st = stages.find((x) => x.id === labelEdit.stageId);
+                const at = st?.predicates.findIndex((x) => x.kind === "label") ?? -1;
+                const pred = at >= 0 ? (st!.predicates[at] as Extract<FilterPredicate, { kind: "label" }>) : undefined;
+                if (!st || !pred) return null; // 줄이 지워졌으면 조용히 닫힌다
+                return (
+                    <LabelCondEditor at={labelEdit} pred={pred} onClose={() => setLabelEdit(null)}
+                        onWrite={(next) => setPredicates(st.id, st.predicates.map((x, i) => (i === at ? next : x)))} />
                 );
             })()}
 
@@ -438,11 +459,12 @@ const menuItem: React.CSSProperties = {
  * ＋ 조건 — 하루 종류만. 생성기(돌파)가 맨 위, 그 아래가 후보에 거는 필터들이다(필터는 구조를 안 바꾼다).
  * ⚠ 판은 **포털 + fixed**(HeaderPopover) — 스크롤 컨테이너 안 absolute 는 탭 스트립에 덮였다(2026-09-19 실측).
  */
-function AddCondition({ onCell, onBreakout, onTheme, onCandle }: {
+function AddCondition({ onCell, onBreakout, onTheme, onCandle, onLabel }: {
     onCell: (p: FilterPredicate) => void;
     onBreakout: (e: React.MouseEvent) => void;
     onTheme: (e: React.MouseEvent) => void;
     onCandle: (e: React.MouseEvent) => void;
+    onLabel: (scope: "day" | "point", e: React.MouseEvent) => void;
 }): JSX.Element {
     const atLeast = (value: number): CellValueRange => ({ from: { kind: "value", value } });
     // 항목 = 이름 + **설명 한 줄**(항상 보인다 — 툴팁이 아니라 판에 적는다. 2026-09-27 팔레트 재편).
@@ -472,10 +494,12 @@ function AddCondition({ onCell, onBreakout, onTheme, onCandle }: {
                         {item(close, "분봉 대금", "그 분 봉 자신의 거래대금(억) — 돌파 대금 필터", () => onCell({ kind: "cellValue", field: "minuteAmountEok", ranges: [atLeast(30)] }))}
                         {head("세션 — 하루 안 흐름")}
                         {item(close, "누적대금", "그 분까지의 세션 누적 거래대금(억)", () => onCell({ kind: "cellValue", field: "cumAmountEok", ranges: [atLeast(100)] }))}
-                        {item(close, "전고 돌파", "직전 W 거래일 고가를 분봉 고가가 넘는 분(당일 제외)", () => onCell({ kind: "priorHighBreak", days: 20 }))}
                         {item(close, "시각", "장중 시각 창 — 09:00~10:30 처럼", () => onCell({ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }))}
                         {head("시장 — 종목 밖 단면")}
                         {item(close, "테마", "테마 존(대금·등락 상위 무리) 판정 — 분 단면을 굽는 비싼 재료. 값은 팝오버에서", onTheme)}
+                        {head("분류 — 내가 붙인 것")}
+                        {item(close, "▣ 라벨 (하루)", "그 종목·날에 붙인 하루 그룹 — 그날 모든 분이 물려받는다", (e) => onLabel("day", e))}
+                        {item(close, "◆ 라벨 (타점)", "라벨 찍은 그 분 좌표만 — NOT 으로 걸면 아직 분류 안 한 후보", (e) => onLabel("point", e))}
                     </div>
                 )}
             </HeaderPopover>

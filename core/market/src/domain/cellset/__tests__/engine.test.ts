@@ -180,18 +180,39 @@ describe("evaluateCells — 게으름·상한", () => {
     });
 });
 
-describe("evaluateCells — 격자·전고", () => {
+describe("evaluateCells — 라벨(분류)", () => {
+    // 재료: 차트 A 하루 라벨 {후발주}, 차트 B 09:02 좌표 라벨 {돌파: 성공}. 판정(계층 상속 포함)은 재료 층 몫.
+    const a = stock("A", { n: 4 });
+    const b = stock("B", { n: 4 });
+    const labelAt: CellMaterials["labelAt"] = (code, min, scope, groups) =>
+        scope === "day"
+            ? code === "A" && groups.includes("후발주")
+            : code === "B" && min === MIN0 + 2 && groups.includes("돌파: 성공");
+    const mat: CellMaterials = { themeAt: () => null, labelAt };
+    const at = (r: { hits: { code: string; min: number }[] }): string[] => r.hits.map((h) => `${h.code}@${h.min - MIN0}`);
+    const cond = (scope: "day" | "point", groups: string[], neg = false): CellExpr =>
+        ({ kind: "pred", id: "l", pred: { kind: "label", scope, groups }, ...(neg ? { neg: true as const } : {}) });
 
-    it("전고 자는 index 0(당일)을 제외한다 — 포함하면 영영 거짓", () => {
-        const s = stock("A", { minuteHigh: [2, 10, 11, 11, 11], trailingHighs: { krx: [], un: [20, 8, 5, 3, 1, 2] } });
-        const conds: CellConditions = [{ id: "p", enabled: true, predicates: [{ kind: "priorHighBreak", days: 5 }] }];
-        expect(mins(evaluateCells([s], NO_MAT, conds))).toEqual([1, 2, 3, 4]);
+    it("day — 하루 라벨이 붙은 차트의 **모든 분**이 통과한다(하위 분들이 물려받는다)", () => {
+        expect(at(evaluateCellsExpr([a, b], mat, cond("day", ["후발주"])))).toEqual(["A@0", "A@1", "A@2", "A@3"]);
     });
 
-    it("창이 비면(신규 상장) 결손 — 발화하지 않는다", () => {
-        const s = stock("A", { minuteHigh: [50, 50, 50, 50, 50], trailingHighs: { krx: [], un: [50] } });
-        const conds: CellConditions = [{ id: "p", enabled: true, predicates: [{ kind: "priorHighBreak", days: 5 }] }];
-        expect(evaluateCells([s], NO_MAT, conds).hits).toEqual([]);
+    it("point — 정확히 그 좌표만 통과한다", () => {
+        expect(at(evaluateCellsExpr([a, b], mat, cond("point", ["돌파: 성공"])))).toEqual(["B@2"]);
+    });
+
+    it("groups 는 OR — 하나라도 맞으면 통과, 모르는 이름은 조용히 거짓", () => {
+        expect(at(evaluateCellsExpr([a, b], mat, cond("point", ["없는 그룹", "돌파: 성공"])))).toEqual(["B@2"]);
+        expect(evaluateCellsExpr([a, b], mat, cond("point", ["없는 그룹"])).hits).toEqual([]);
+    });
+
+    it("NOT 라벨 — 아직 분류 안 한 셀(분류 작업 큐의 모양)", () => {
+        const notLabeled = at(evaluateCellsExpr([b], mat, cond("point", ["돌파: 성공"], true)));
+        expect(notLabeled).toEqual(["B@0", "B@1", "B@3"]);
+    });
+
+    it("재료(labelAt) 가 없으면 거짓 — 지어내지 않는다", () => {
+        expect(evaluateCellsExpr([a, b], NO_MAT, cond("day", ["후발주"])).hits).toEqual([]);
     });
 });
 

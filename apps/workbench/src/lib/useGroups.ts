@@ -32,6 +32,7 @@ import { groupGrainSets, type GroupGrainSets } from "./groupGrain.js";
 import { applyGroupToggle, buildGroupIndex, countByGroup, foldPointIndexToDay } from "./groupIndex.js";
 import { ancestorsOf, expandWithAncestors, groupPathLabel, inheritanceSources } from "./groupTree.js";
 import { chartKey, pointKey } from "./pointKey.js";
+import { useWorkbench } from "../store/workbench.js";
 
 /** 라벨 없는 날의 ∃ 조회 결과 — 고정 참조(대부분의 날이라 매 호출 새 배열이면 소비 memo 가 헛돈다). */
 const EMPTY_NAMES: string[] = [];
@@ -232,8 +233,9 @@ export function useGroupsValue(): GroupsView {
     const renameGroupCb = useCallback(
         async (name: string, newName: string): Promise<void> => {
             await apiRenameGroup(name, newName);
-            // 이름이 곧 참조다 — 그룹 필터 리터럴·저장 집합의 조건 사본이 이 이름을 들고 있으므로
-            // 서버 성공 직후 클라 저장물도 따라 바꾼다(안 하면 그 저장물이 즉시 죽은 참조).
+            // 이름이 곧 참조다 — 저장 집합의 라벨 술어가 이 이름을 들고 있으므로 서버 성공 직후 클라
+            // 저장물도 따라 바꾼다(안 하면 그 조건이 즉시 죽은 참조).
+            useWorkbench.getState().renameGroupInSets(name, newName);
             await invalidateDict(true);
         },
         [invalidateDict],

@@ -17,7 +17,7 @@ describe("parseCellPredicate", () => {
     it("세 종류를 왕복한다", () => {
         const preds = [
             { kind: "cellValue", field: "cumAmountEok", ranges: [{ from: { kind: "value", value: 100 } }] },
-            { kind: "priorHighBreak", days: 20 },
+            { kind: "label", scope: "point", groups: ["돌파: 성공", "재돌파: 성공"] },
             { kind: "time", ranges: [{ from: "09:00", to: "10:30" }] },
         ];
         for (const p of preds) expect(parseCellPredicate(JSON.parse(JSON.stringify(p)))).toEqual(p);
@@ -60,7 +60,7 @@ describe("parseCellPredicate", () => {
     it("모르는 종류·깨진 payload 는 null(그 술어만 건너뛴다)", () => {
         expect(parseCellPredicate({ kind: "axisValue", axisId: "x", ranges: [] })).toBeNull();
         expect(parseCellPredicate({ kind: "cellValue", field: "없는필드", ranges: [] })).toBeNull();
-        expect(parseCellPredicate({ kind: "priorHighBreak" })).toBeNull();
+        expect(parseCellPredicate({ kind: "label", groups: ["a"] }), "scope 없는 라벨은 무엇을 묻는지 모른다").toBeNull();
         expect(parseCellPredicate(null)).toBeNull();
     });
 
@@ -69,10 +69,12 @@ describe("parseCellPredicate", () => {
         expect(p).toMatchObject({ kind: "cellValue", ranges: [{ from: { kind: "point" } }] });
     });
 
-    it("빈 구간(from·to 둘 다 없음)은 버리고, days 는 1 이상 정수로 다듬는다", () => {
+    it("빈 구간(from·to 둘 다 없음)은 버리고, 라벨 그룹 목록은 다듬는다", () => {
         expect(parseCellPredicate({ kind: "cellValue", field: "cumAmountEok", ranges: [{}, { from: { kind: "value", value: 1 } }] }))
             .toMatchObject({ ranges: [{ from: { kind: "value", value: 1 } }] });
-        expect(parseCellPredicate({ kind: "priorHighBreak", days: 0.4 })).toMatchObject({ days: 1 });
+        // 라벨 그룹 — 문자열만·빈 문자열 제외·중복 제거(순서 보존).
+        expect(parseCellPredicate({ kind: "label", scope: "day", groups: ["b", 3, "", "b", "a"] }))
+            .toEqual({ kind: "label", scope: "day", groups: ["b", "a"] });
     });
 
 });
@@ -109,7 +111,8 @@ describe("비용 등급·빈 판정·재료 사용 여부", () => {
         expect(costTierOf({ kind: "candle", axes: { rate: { on: true, from: 5 } } }), "캔들은 tier 0").toBe(0);
         expect(costTierOf({ kind: "candle", axes: { baseline: { on: true, from: 0 } } }), "기준선 축이 켜지면 tier 1").toBe(1);
         expect(costTierOf({ kind: "time", ranges: [] })).toBe(0);
-        expect(costTierOf({ kind: "priorHighBreak", days: 20 })).toBe(1);
+        expect(costTierOf({ kind: "label", scope: "day", groups: ["a"] }), "라벨은 집합 조회 — tier 0").toBe(0);
+        expect(isCellPredicateEmpty({ kind: "label", scope: "point", groups: [] }), "그룹 안 고른 라벨은 빈 술어").toBe(true);
     });
 
     it("빈 구간 술어는 '무제한'이 아니라 빈 것이다", () => {

@@ -22,7 +22,7 @@ export function railKeyOf(p: FilterPredicate): RailKey | null {
         case "time": return { kind: "time" };
         case "theme": return null; // 편집면은 조건판 팝오버 하나
         case "cellValue":
-        case "priorHighBreak":
+        case "label":
         case "breakout":
         case "candle": return null;
         // 자물쇠 — 빠뜨리면 그은 컷이 그 행에 조용히 안 붙는다(stage.ts).

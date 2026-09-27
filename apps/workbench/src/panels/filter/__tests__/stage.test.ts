@@ -66,7 +66,25 @@ describe("parseStages — 반쯤 살아난 조건은 없느니만 못하다", ()
     });
 });
 
+describe("라벨 술어 — core 파서 한 벌을 그대로 쓴다", () => {
+    it("왕복한다 · 그룹을 안 고른 라벨은 빈 술어다", () => {
+        const raw = [{ id: "l", enabled: true, predicates: [{ kind: "label", scope: "day", groups: ["후발주", "순위 급등"] }] }];
+        expect(parseStages(raw)![0]!.predicates[0]).toEqual({ kind: "label", scope: "day", groups: ["후발주", "순위 급등"] });
+        expect(isPredicateEmpty({ kind: "label", scope: "point", groups: [] })).toBe(true);
+    });
+});
+
 describe("은퇴 kind 이주(2026-09-26 종단 폐기) — 저장본 통째 폐기가 아니라 **그 칸만** 걷는다", () => {
+    it("전고 돌파(2026-09-27 은퇴)가 든 칸도 칸째 걷힌다", () => {
+        takeRetiredPredicateCount();
+        const raw = [
+            { id: "p", enabled: true, predicates: [{ kind: "priorHighBreak", days: 20 }] },
+            { id: "t", enabled: true, predicates: [{ kind: "time", ranges: [{ from: "09:00", to: "10:30" }] }] },
+        ];
+        expect(parseStages(raw)!.map((s) => s.id)).toEqual(["t"]);
+        expect(takeRetiredPredicateCount()).toBe(1);
+    });
+
     it("은퇴 술어가 든 칸은 AND 형제가 있어도 **칸째** 걷힌다 — 느슨해진 AND 를 남기지 않는다(2026-09-27 리뷰)", () => {
         takeRetiredPredicateCount();
         const raw = [{

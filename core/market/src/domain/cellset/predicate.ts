@@ -110,10 +110,21 @@ export const anyCandleAxisOn = (axes: CandleAxes): boolean => CANDLE_AXES.some((
 /** 팔레트의 「캔들」 기본값 — 양봉(시가→종가 ≥ 0.01%). 옛 candleShape bull 이주와 같은 모양. */
 export const DEFAULT_CANDLE: { axes: CandleAxes } = { axes: { openClose: { on: true, from: 0.01 } } };
 
+// ── 라벨 술어(2026-09-27) — 내가 붙인 분류(그룹)를 조건으로 ──
+//
+// 그룹은 두 종류다: **하루 그룹**(종목·날짜 = 차트에 붙는다) · **타점 그룹**(종목·날짜·분 = 좌표에 붙는다).
+// scope 는 그 종류와 **1:1** 이고 팔레트 입구에서 태어날 때 고정된다(교차 grain 은 없다 — 옛 ∃ 상향은
+// 같은 그룹이 입구에 따라 다른 질문이 되어 헷갈렸다, decisions 「라벨 조건」):
+//  · day   — 그 종목·날이 G 에 속하면 **그날 모든 분**이 통과(하루 라벨은 하위 분들이 물려받는다).
+//  · point — 정확히 그 (종목, 분) 좌표가 G 로 라벨됐을 때만 통과.
+// groups 는 OR 이고, 판정은 **계층 상속**을 본다(자식 그룹 라벨이 부모 그룹을 만족 — 재료 층 몫).
+// 이름으로 지목한다(그룹 id 는 계약을 안 건넌다) — 개명은 저장물 승계, 지워진 이름은 영영 거짓.
+export type LabelScope = "day" | "point";
+
 /** 셀 술어 하나 — 전부 시점 술어다(전이 은퇴 2026-09-27 · 진입 판정은 theme 의 `enter` payload). */
 export type CellPredicate =
     | { kind: "cellValue"; field: CellValueField; ranges: CellValueRange[] }
-    | { kind: "priorHighBreak"; days: number }
+    | { kind: "label"; scope: LabelScope; groups: string[] }
     /** 돌파 사슬 후보(생성기) — 기준선은 `/point-grids` 의 확정 기준선(없으면 이름표가 전부 「고가 돌파」). */
     | { kind: "breakout"; zigzagPct: number; bandPct: number; chain: ChainFilter }
     | { kind: "candle"; axes: CandleAxes }
@@ -143,7 +154,8 @@ export function costTierOf(p: CellPredicate): 0 | 1 | 2 {
             return 0;
         case "time":
             return 0;
-        case "priorHighBreak":
+        case "label":
+            return 0; // 멤버십 집합 조회 O(1)
         case "breakout":
             return 1;
         case "candle":
@@ -219,7 +231,8 @@ export function isCellPredicateEmpty(p: CellPredicate): boolean {
             return p.ranges.every((r) => !r.from && !r.to);
         case "time":
             return p.ranges.length === 0;
-        case "priorHighBreak":
+        case "label":
+            return p.groups.length === 0; // 그룹을 안 고른 라벨은 조건이 아니다
         case "breakout":
             return false;
         case "candle":
@@ -318,9 +331,12 @@ export function parseCellPredicate(raw: unknown): CellPredicate | null {
             if (ranges === null) return null;
             return { kind: "cellValue", field: raw.field, ranges };
         }
-        case "priorHighBreak": {
-            if (typeof raw.days !== "number" || !Number.isFinite(raw.days)) return null;
-            return { kind: "priorHighBreak", days: Math.max(1, Math.floor(raw.days)) };
+        case "label": {
+            if (raw.scope !== "day" && raw.scope !== "point") return null;
+            const groups = Array.isArray(raw.groups)
+                ? [...new Set(raw.groups.filter((g): g is string => typeof g === "string" && g.length > 0))]
+                : [];
+            return { kind: "label", scope: raw.scope, groups };
         }
         // 노브는 **폐기가 아니라 클램프** — 범위 밖 값 하나로 술어(와 종단이면 저장본 통째)를 버리지 않는다.
         case "breakout":

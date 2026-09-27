@@ -25,7 +25,8 @@ export interface TimeRange { from: string; to: string } // HH:MM (양끝 포함)
 export type FilterPredicate =
     | { kind: "time"; ranges: TimeRange[] }
     | Extract<CellPredicate, { kind: "cellValue" }>
-    | Extract<CellPredicate, { kind: "priorHighBreak" }>
+    // 라벨(분류) — 내가 붙인 그룹을 조건으로(2026-09-27). scope 는 입구에서 고정(하루/타점).
+    | Extract<CellPredicate, { kind: "label" }>
     // Daily 타점 생성기(돌파 사슬)와 캔들 술어(축 6개 — 옛 candleShape·% 셀 값의 후신, 2026-09-27).
     | Extract<CellPredicate, { kind: "breakout" }>
     | Extract<CellPredicate, { kind: "candle" }>
@@ -67,7 +68,7 @@ export function isPredicateEmpty(p: FilterPredicate): boolean {
     switch (p.kind) {
         case "time": return p.ranges.length === 0;
         case "cellValue": return p.ranges.every((r) => !r.from && !r.to);
-        case "priorHighBreak": return false; // 창 하나라 항상 조건이다
+        case "label": return p.groups.length === 0; // 그룹을 안 고른 라벨은 조건이 아니다
         case "breakout": return false; // 노브가 전부 기본값을 가져 항상 조건이다
         case "candle": return !anyCandleAxisOn(p.axes); // 켜진 축이 없거나 경계가 없으면 조건이 아니다
         case "theme": return !anyThemeCondOn(p); // 활성 하위 조건 0 = 무제한 통과(core 빈 판정과 같은 자)
@@ -97,8 +98,11 @@ export const newStage = (predicates: FilterPredicate[] = []): FilterStage =>
 
 // ── 영속 검증 ──────────────────────────────────────────────────────────────
 
-/** 은퇴 kind(종단 폐기 2026-09-26) — 이 술어는 저장물에서 **그 술어만** 걷어낸다(집합 통째 폐기 아님). */
-const RETIRED_KINDS = new Set(["group", "axisBand", "axisValue", "date", "outcome", "outcomeRecovery", "hotPoints", "gridPoint"]);
+/**
+ * 은퇴 kind — 이 술어가 든 **칸**을 걷는다(집합 통째 폐기 아님). 종단 폐기(2026-09-26) 8종 +
+ * 전고 돌파(`priorHighBreak`, 2026-09-27 — 전이 은퇴 뒤 "넘어 있는 모든 분"이 되어 단독으론 홍수였다).
+ */
+const RETIRED_KINDS = new Set(["group", "axisBand", "axisValue", "date", "outcome", "outcomeRecovery", "hotPoints", "gridPoint", "priorHighBreak"]);
 const RETIRED = Symbol("retired-predicate");
 
 let retiredPredicates = 0;
@@ -190,7 +194,7 @@ function parsePredicate(o: unknown): FilterPredicate | typeof RETIRED | null {
         // "저장본 통째 폐기" 신호로 흐른다. 옛 술어 전이는 core 가 벗기고(theme 의 처음으로·직전 대비
         // 상승은 enter 로 이주 — parseThemeZoneParams), 여기서는 벗긴 수만 센다(로그).
         case "cellValue":
-        case "priorHighBreak":
+        case "label":
         case "breakout":
         case "candleShape":
         case "candle":
