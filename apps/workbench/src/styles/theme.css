@@ -347,7 +347,8 @@ button {
 }
 
 /* 판 안 메뉴 줄(ui/popover/menu.tsx MenuItem) — 배경은 여기서만 칠한다. 인라인 배경은 :hover 를 이겨서
-   고른 줄·무장한 줄을 인라인으로 칠하면 그 줄만 마우스 올림 강조가 죽는다. 순서 = 우선순위(아래가 이긴다). */
+   고른 줄·무장한 줄을 인라인으로 칠하면 그 줄만 마우스 올림 강조가 죽는다. ⚠ 순서만으로는 못 이긴다 — 특이도가
+   먼저다(:not(:disabled):hover = 0,3,0). 상태 규칙마다 :hover 짝을 같이 써서 특이도를 맞추고, 그 뒤에 둔다. */
 .menu-item {
     background: transparent;
 }
@@ -360,6 +361,8 @@ button {
 .menu-item[data-selected]:not(:disabled):hover {
     background: color-mix(in srgb, var(--accent-soft), var(--accent-primary) 8%);
 }
-.menu-item[data-armed] {
+/* 무장은 클릭으로 걸리므로 그 순간 커서가 그 줄 위다 — hover 보다 특이도가 낮으면 경고 면이 안 보인다. */
+.menu-item[data-armed],
+.menu-item[data-armed]:hover {
     background: var(--warning-soft);
 }

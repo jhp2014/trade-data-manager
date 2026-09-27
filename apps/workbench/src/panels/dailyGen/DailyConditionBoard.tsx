@@ -289,7 +289,7 @@ export function DailyConditionBoard(): JSX.Element {
                                                     title={unnamed
                                                         ? `${refInfo(f.id).name} — 이름이 없는 집합입니다. 누르면 이름을 짓고 붙입니다(비우면 그대로)`
                                                         : `${refInfo(f.id).name} — 이 식에 한 항으로 붙입니다`}
-                                                    trailing={<>{unnamed && <span>이름 없음</span>}{used(f.id)}</>}>
+                                                    trailing={unnamed || refInfo(f.id).usedBy >= 1 ? <>{unnamed && <span>이름 없음</span>}{used(f.id)}</> : null}>
                                                     <span style={unnamed ? { color: PIN, opacity: 0.65, borderBottom: `1px dashed ${PIN}` } : { color: PIN }}>{refInfo(f.id).name}</span>
                                                 </MenuItem>
                                             );

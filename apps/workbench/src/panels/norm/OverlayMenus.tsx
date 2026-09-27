@@ -43,13 +43,12 @@ export function OverlayMenus(p: OverlayMenusProps): JSX.Element {
                                 {/* ⚠ 닫기 전에 호버를 **손으로** 푼다 — 목록이 사라지면 이 행은 언마운트라
                                     mouseleave 가 영영 안 온다(라벨에서 겪은 것과 같은 부류의 누수).
                                     거기선 노드를 안 부수는 게 답이지만, 여기선 닫는 게 목적이라 풀어 주는 게 답이다. */}
-                                <MenuItem onClick={() => { p.onGoTo(s); p.setHovered(null); p.onCloseBadge(); }}>
-                                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                                        <span style={{ width: 6, height: 6, borderRadius: 3, background: p.groupColorOf(s.key), flexShrink: 0 }} />
-                                        <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{shortDate(s.date)}</span>
-                                        <span>{p.nameOf(s.stockCode)}</span>
-                                        {s.kind === "point" && <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{s.time.slice(0, 5)}</span>}
-                                    </span>
+                                {/* 인라인으로 흘린다 — inline-flex 로 싸면 이름만이 아니라 줄 통째가 말줄임 칸에서 잘린다. */}
+                                <MenuItem onClick={() => { p.onGoTo(s); p.setHovered(null); p.onCloseBadge(); }}
+                                    trailing={s.kind === "point" ? <span style={{ fontSize: 11, fontVariantNumeric: "tabular-nums" }}>{s.time.slice(0, 5)}</span> : null}>
+                                    <span style={{ display: "inline-block", verticalAlign: "middle", width: 6, height: 6, borderRadius: 3, marginRight: 6, background: p.groupColorOf(s.key) }} />
+                                    <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums", marginRight: 6 }}>{shortDate(s.date)}</span>
+                                    {p.nameOf(s.stockCode)}
                                 </MenuItem>
                             </div>
                         ))}

@@ -75,13 +75,12 @@ export function ThemeOverflowMenu({ theme, onToggleCandle }: {
                     return (
                         // 목록 행도 거터 칩과 같은 손짓 — 누르면 그 종목 캔들 토글.
                         <div key={code} onMouseEnter={() => setHovered([code])} onMouseLeave={() => setHovered(null)}>
-                            <MenuItem onClick={() => onToggleCandle(code)}>
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                                    <span style={{ width: 6, height: 6, borderRadius: 3, background: theme.colorOf(code), flexShrink: 0 }} />
-                                    <span>{l.name}</span>
-                                    {/* 첫 점의 등락률 — 재적 모드에선 "첫 재적 분"의 값이다(하루 시작 아님). */}
-                                    <span style={{ color: "var(--text-tertiary)", fontVariantNumeric: "tabular-nums" }}>{fmtPct(l.segments[0][0].y + overlay.baseRate)}</span>
-                                </span>
+                            {/* 첫 점의 등락률(꼬리표) — 재적 모드에선 "첫 재적 분"의 값이다(하루 시작 아님).
+                                인라인으로 흘린다 — inline-flex 로 싸면 이름만이 아니라 줄 통째가 말줄임 칸에서 잘린다. */}
+                            <MenuItem onClick={() => onToggleCandle(code)}
+                                trailing={<span style={{ fontSize: 11, fontVariantNumeric: "tabular-nums" }}>{fmtPct(l.segments[0][0].y + overlay.baseRate)}</span>}>
+                                <span style={{ display: "inline-block", verticalAlign: "middle", width: 6, height: 6, borderRadius: 3, marginRight: 6, background: theme.colorOf(code) }} />
+                                {l.name}
                             </MenuItem>
                         </div>
                     );

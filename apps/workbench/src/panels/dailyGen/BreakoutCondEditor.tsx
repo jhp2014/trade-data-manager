@@ -92,8 +92,8 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
                 <Panel at={addAt} onClose={() => setAddAt(null)}>
                     {CHAIN_COND_KINDS.map((k) => (k === "time"
                         // 시각은 **빼는 쪽**이 주 용도라 NOT 을 단 채로 태어난다(칩 우클릭으로 풀면 「그 시간대 안에서」).
-                        ? <MenuItem mark="check" key={k} title={`NOT ${COND_NAME[k]} — ${COND_HINT[k]}`} onClick={() => addCond(k, true)}>시간대 제외</MenuItem>
-                        : <MenuItem mark="check" key={k} title={COND_HINT[k]} onClick={() => addCond(k)}>{COND_NAME[k]}</MenuItem>
+                        ? <MenuItem key={k} title={`NOT ${COND_NAME[k]} — ${COND_HINT[k]}`} onClick={() => addCond(k, true)}>시간대 제외</MenuItem>
+                        : <MenuItem key={k} title={COND_HINT[k]} onClick={() => addCond(k)}>{COND_NAME[k]}</MenuItem>
                     ))}
                 </Panel>
             )}
