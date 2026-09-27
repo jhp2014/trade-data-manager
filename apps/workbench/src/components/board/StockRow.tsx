@@ -6,6 +6,9 @@ import { useAssign } from "../../store/assign.js";
 import { useUi } from "../../store/ui.js";
 import { AMOUNT_BUCKET_COLORS } from "../../chart/chartUtils.js";
 import { AXIS_LO, AXIS_HI, fmtRate1, type BoardStock } from "./boardTypes.js";
+import { Z_HOVER } from "../../ui/popover/layers.js";
+import { pointRect, type PlaceOpts } from "../../ui/popover/place.js";
+import { usePlacedTooltip } from "../../ui/popover/usePlacedTooltip.js";
 
 // ── 종목 행 — grid: [등수+이름+테마칩(1fr)] [등락률 58] [거래대금 52] [캔들 28] ──
 // 등락률·거래대금은 고정폭 우측정렬이라 행끼리 세로줄이 맞는다. 좁아지면 이름/칩이 ellipsis·clip.
@@ -192,17 +195,23 @@ export function StockRow({
  * document.body 로 portal — dim 행(opacity<1)이 만드는 stacking context 밖으로 빼야 옆 카드에 안 가림(안 잘림).
  * 흐림은 유지: dim 행이면 툴팁 자체에 opacity 를 직접 준다(같은 흐린 모양 + 최상위 렌더).
  */
+/** 커서 오른쪽 14px·위로 28px(gap 음수 = 커서 위로 걸친다) — 안 들어가면 커서 반대편. */
+const BUCKET_PLACE: PlaceOpts = { side: "below", align: "start", gap: -28, shiftX: 14, overlap: true };
+
 function BucketChart({ buckets, pos, dim }: { buckets: number[]; pos: { x: number; y: number }; dim?: boolean }): JSX.Element {
     const max = Math.max(1, ...buckets);
     const H = 42;
-    const W = 150; // 대략 폭 — 커서 오른쪽에 뒀을 때 화면 밖으로 넘치면 왼쪽으로 뒤집는다.
-    const left = pos.x + 14 + W > window.innerWidth ? pos.x - 14 - W : pos.x + 14;
+    const ref = useRef<HTMLDivElement>(null);
+    // 기본 커서 오른쪽 14px, y 는 살짝 위(−28) — 커서/행을 가리지 않게. 화면 끝이면 실측 크기로 뒤집는다.
+    const at = usePlacedTooltip(ref, pointRect(pos.x, pos.y), BUCKET_PLACE);
     return createPortal(
         <div
+            ref={ref}
             style={{
                 position: "fixed",
-                left, // 기본 커서 오른쪽, 우측 넘치면 왼쪽. y 는 살짝 위로 — 커서/행을 가리지 않게
-                top: pos.y - 28,
+                left: at?.left ?? pos.x + 14,
+                top: at?.top ?? pos.y - 28,
+                visibility: at === null ? "hidden" : "visible",
                 display: "flex",
                 gap: 3,
                 alignItems: "flex-end",
@@ -210,7 +219,7 @@ function BucketChart({ buckets, pos, dim }: { buckets: number[]; pos: { x: numbe
                 border: "1px solid rgba(255,255,255,0.1)",
                 borderRadius: 6,
                 padding: "6px 8px",
-                zIndex: 200,
+                zIndex: Z_HOVER,
                 pointerEvents: "none",
                 boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
                 opacity: dim ? 0.35 : 1, // dim 행이면 흐린 모양 유지(portal 이라 행 opacity 를 상속 못 받음)

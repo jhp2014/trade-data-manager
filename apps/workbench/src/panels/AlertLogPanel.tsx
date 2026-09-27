@@ -1,11 +1,11 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import type { AlertLogEntry, AlertThemeContext, AlertThemeMember } from "../api/alerts.js";
 import { kstHm, kstMidnight, kstToday, kstTime } from "../lib/date.js";
 import { useAlertLog } from "../lib/useAlertLog.js";
 import { useWorkbench } from "../store/workbench.js";
 import { usePersistedState } from "../store/persist.js";
 import { PanelHeader, ScrollRow } from "../components/ControlChrome.js";
-import { useDismiss } from "../ui/useDismiss.js";
+import { TriggerPopover } from "../ui/popover/TriggerPopover.js";
 
 /** 배달 상태 배지 — sent 는 배지 없음(정상 배달), 나머지는 왜 텔레그램에 안 갔는지. */
 const DELIVERY_BADGE: Record<string, { icon: string; title: string } | undefined> = {
@@ -246,69 +246,45 @@ function parseHHmm(s: string): number | null {
     return floorFromHHmm(`${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`);
 }
 
-/** 시간 floor — 평소엔 시각만 표시("09:41"/"전체"). 클릭하면 팝오버: [지금][전체] + 직접 입력(24h HH:mm).
- *  팝오버는 헤더의 overflow 클리핑을 피해 fixed 로 띄운다. 해제(바깥 클릭·Esc)는 수제 백드롭 대신
- *  공용 useDismiss 한 벌 — 어디에 포커스가 있든 Esc 가 일관되게 닫는다. */
+/** 시간 floor — 평소엔 시각만 표시("09:41"/"전체"). 클릭하면 트리거 판: [지금][전체] + 직접 입력(24h HH:mm).
+ *  판은 공용 TriggerPopover(ui/popover) — 헤더 overflow 클리핑을 피해 body 로 뜨고, 바깥 클릭·Esc 로 닫힌다. */
 function FloorControl({ effFloor, midnight, onSet }: { effFloor: number; midnight: number; onSet: (ms: number) => void }): JSX.Element {
-    const [open, setOpen] = useState(false);
     const [draft, setDraft] = useState("");
-    const [pos, setPos] = useState({ left: 0, top: 0 });
-    const anchorRef = useRef<HTMLSpanElement>(null);
-    // dismiss 판정 범위 = 앵커+팝오버(display:contents 라 레이아웃엔 불참) — 앵커 클릭은 토글이 처리.
-    const wrapRef = useRef<HTMLSpanElement>(null);
-    useDismiss(wrapRef, () => setOpen(false), open);
     const label = effFloor <= midnight ? "전체" : kstHm(effFloor);
 
-    const openPop = (): void => {
-        const r = anchorRef.current?.getBoundingClientRect();
-        if (r) setPos({ left: r.left, top: r.bottom + 4 });
-        setDraft(effFloor <= midnight ? "" : kstHm(effFloor));
-        setOpen(true);
-    };
-    const apply = (ms: number): void => {
-        onSet(ms);
-        setOpen(false);
-    };
-    const commitDraft = (): void => {
-        const ms = parseHHmm(draft);
-        if (ms != null) onSet(ms);
-        setOpen(false);
-    };
-
     return (
-        <span ref={wrapRef} style={{ display: "contents" }}>
-            <span
-                ref={anchorRef}
-                onClick={() => (open ? setOpen(false) : openPop())}
-                title="클릭 — 지금/전체/직접 입력(24h HH:mm)"
-                style={{ flexShrink: 0, fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "var(--bg-tertiary)", color: "var(--text-secondary)", cursor: "pointer", whiteSpace: "nowrap" }}
-            >
-                {label}
-            </span>
-            {open && (
-                <div
-                    style={{
-                        position: "fixed", left: pos.left, top: pos.top, zIndex: 51,
-                        display: "flex", gap: 4, alignItems: "center", padding: 6,
-                        background: "var(--bg-primary)", border: "1px solid var(--border-default)", borderRadius: 6,
-                        boxShadow: "0 4px 14px rgba(0,0,0,0.18)",
+        <TriggerPopover align="start" layout="scroll" padding={6}
+            trigger={(open, toggle) => (
+                <span
+                    onClick={() => {
+                        if (!open) setDraft(effFloor <= midnight ? "" : kstHm(effFloor));
+                        toggle();
                     }}
+                    title="클릭 — 지금/전체/직접 입력(24h HH:mm)"
+                    style={{ flexShrink: 0, fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "var(--bg-tertiary)", color: "var(--text-secondary)", cursor: "pointer", whiteSpace: "nowrap" }}
                 >
-                    <button type="button" onClick={() => apply(Date.now())} title="지금 이후만 — 화면 비우기" style={btnStyle}>지금</button>
-                    <button type="button" onClick={() => apply(0)} title="오늘 전체 표시" style={btnStyle}>전체</button>
+                    {label}
+                </span>
+            )}>
+            {(close) => (
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    <button type="button" onClick={() => { onSet(Date.now()); close(); }} title="지금 이후만 — 화면 비우기" style={btnStyle}>지금</button>
+                    <button type="button" onClick={() => { onSet(0); close(); }} title="오늘 전체 표시" style={btnStyle}>전체</button>
                     <input
                         autoFocus
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
                         onKeyDown={(e) => {
-                            if (e.key === "Enter") commitDraft();
-                            else if (e.key === "Escape") setOpen(false);
+                            if (e.key !== "Enter") return;
+                            const ms = parseHHmm(draft);
+                            if (ms != null) onSet(ms);
+                            close();
                         }}
                         placeholder="09:41"
                         style={{ ...selectStyle, width: 52, textAlign: "center" }}
                     />
                 </div>
             )}
-        </span>
+        </TriggerPopover>
     );
 }
