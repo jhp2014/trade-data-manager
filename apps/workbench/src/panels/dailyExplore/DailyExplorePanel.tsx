@@ -25,7 +25,7 @@ import { AnchoredPopover } from "../../ui/Dialog.js";
 import { PIN } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
 import { DAY_SET_OPTS, useCellSet } from "../filter/useCellSet.js";
-import { leavesOf } from "../filter/expr.js";
+import { deepLeavesOf } from "../filter/expr.js";
 import { isHeavyCellPredicate } from "../filter/stage.js";
 import { useGroupAssign } from "../../store/groupAssign.js";
 import { neighborDates } from "./dayCrossing.js";
@@ -103,11 +103,12 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const datesQ = useQuery({ ...dataDatesQuery(), enabled: isDaily });
     const [datePinned, setDatePinned] = usePanelUi<boolean>(panelId, "datePin", false);
     useDayReplayPrefetch(isDaily ? focusDate : null, useMemo(() => neighborDates(datesQ.data ?? EMPTY_DATES, focusDate), [datesQ.data, focusDate]));
-    // 무거운 조건(돌파 사슬·테마 분 단면)이면 빈 날 스킵 상한이 줄어든다.
+    // 무거운 조건(돌파 사슬·테마 분 단면)이면 빈 날 스킵 상한이 줄어든다 — 묶음 속 조건도 평가에선 돈다.
     const heavy = useMemo(
         () => cellSet.stages.some((st) => st.counted)
-            && leavesOf(funnel.slowExpr).some((st) => st.predicates.some(isHeavyCellPredicate)),
-        [cellSet.stages, funnel.slowExpr],
+            && deepLeavesOf(funnel.slowExpr, (id) => funnel.slowSets.find((f) => f.id === id)?.expr)
+                .some(({ stage: st }) => st.enabled && st.predicates.some(isHeavyCellPredicate)),
+        [cellSet.stages, funnel.slowExpr, funnel.slowSets],
     );
     const order = useMemo<NavKey[]>(() => walkRows.map((r) => ({ code: r.code, date: focusDate, time: r.time })), [walkRows, focusDate]);
     const orderRef = useRef(order);

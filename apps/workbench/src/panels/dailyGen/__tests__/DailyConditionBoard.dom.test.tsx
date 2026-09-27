@@ -148,6 +148,34 @@ describe("이름 클릭 — 그 종류의 편집면으로", () => {
         expect(chain.expr.of).toHaveLength(1);
     });
 
+    it("「시간대 제외」 = NOT 시각 칩으로 태어나고, 아랫줄에서 구간을 더한다(구간끼리 OR)", async () => {
+        seedEditing(exprOfStages([BO_STAGE]));
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(chipByText(container, "돌파")!); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+        const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
+        const btn = (text: string): HTMLButtonElement => [...dialog.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(text))!;
+        act(() => { fireEvent.click(btn("＋ 조건")); });
+        act(() => { fireEvent.click(btn("시간대 제외")); });
+        const term = (): { neg?: boolean; cond: { kind: string; ranges: { from: string; to: string }[] } } =>
+            (stages()[0]!.predicates[0] as unknown as { chain: { expr: { of: never[] } } }).chain.expr.of[0]!;
+        expect(term()).toMatchObject({ neg: true, cond: { kind: "time", ranges: [{ from: "09:00", to: "09:02" }] } });
+        expect(dialog.textContent).toContain("NOT시각 09:00~09:02"); // NOT 은 칩 안 별도 표식
+
+        act(() => { fireEvent.click(btn("＋ 구간")); });
+        const inputs = [...dialog.querySelectorAll<HTMLInputElement>('input[aria-label="시각"]')];
+        act(() => { fireEvent.change(inputs[2]!, { target: { value: "8:00" } }); fireEvent.blur(inputs[2]!); });
+        act(() => { fireEvent.change(inputs[3]!, { target: { value: "08:03" } }); fireEvent.blur(inputs[3]!); });
+        expect(term().cond.ranges).toEqual([{ from: "09:00", to: "09:02" }, { from: "08:00", to: "08:03" }]);
+
+        // 앞 칸부터 늦은 시각으로 고치는 중간(15:20~08:03)은 뒤집혀 커밋되지 않는다 — 빨갛게 남고, 뒤 칸까지 맞으면 커밋.
+        act(() => { fireEvent.change(inputs[2]!, { target: { value: "15:20" } }); fireEvent.blur(inputs[2]!); });
+        expect(term().cond.ranges[1]).toEqual({ from: "08:00", to: "08:03" });
+        expect(inputs[2]!.getAttribute("aria-invalid")).toBe("true");
+        act(() => { fireEvent.change(inputs[3]!, { target: { value: "15:30" } }); fireEvent.blur(inputs[3]!); });
+        expect(term().cond.ranges[1]).toEqual({ from: "15:20", to: "15:30" });
+    });
+
     it("돌파 칩 우클릭 판 — 연동 항목이 없다(NOT·끄기·지우기 뿐)", () => {
         seedEditing(exprOfStages([BO_STAGE]));
         const { container } = renderBoard();

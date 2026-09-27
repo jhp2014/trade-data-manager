@@ -18,6 +18,9 @@
 // ## 생성소의 조건과의 경계
 // 차이는 하나 — **순번 셈에 드는가**. 순번은 이 식의 칩·괄호가 가르고, 생성소의 조건은 순번이 정해진 뒤에 거른다.
 // 봉 순번·세션 고가 돌파·이름표는 사슬 문맥이 있어야 서므로 여기에만 있다.
+// 「시각」은 생성소에도 있지만 **뜻이 다르다**(2026-09-27): 여기서 `NOT 시각 09:00~09:02` 는 그 봉을 **줄 서기에서
+// 뺀다** — 09:03 이후 첫 봉이 「처음 1」이 된다. 생성소의 시각은 처음 1 을 뽑은 **뒤에** 거르므로 자리가 비어 버린다.
+// 뺀 봉도 사슬의 일부다 — 고가·밴드·봉 순번(`pos`)은 그대로 센다(사슬을 다시 세우는 안은 기각).
 import {
     foldFlat,
     isFoldedFlat,
@@ -31,6 +34,7 @@ import {
     type FoldedFlat,
     type Op,
 } from "../expr/flatExpr.js";
+import { minuteOfDayOf } from "../replay/dayReplay.js";
 import type { BreakoutLabel, ChainBar, ChainSeries } from "./breakoutChain.js";
 
 /** 양끝 포함 구간 — 한쪽이 없으면 반열림. */
@@ -38,6 +42,15 @@ export interface ChainRange {
     min?: number;
     max?: number;
 }
+
+/** "HH:MM" 양끝 포함 — 생성소 시각 조건(CellTimeRange)과 같은 모양. */
+export interface ChainTimeRange {
+    from: string;
+    to: string;
+}
+
+/** 사슬 필터가 보는 시계열 — 사슬 재료 + 봉 시각(unix초, 「시각」 조건의 재료). */
+export type ChainFilterSeries = ChainSeries & { times: readonly number[] };
 
 /** 봉 조건 하나 — 전부 **그 봉까지의 값**(미래 누출 없음). 아니다는 NOT 으로 건다. */
 export type ChainCond =
@@ -52,9 +65,11 @@ export type ChainCond =
     /** 고가 ≥ 직전까지 세션 최고가(터치 포함). */
     | { kind: "sessionHigh" }
     /** 그 봉 시점 이름표. */
-    | { kind: "label"; label: BreakoutLabel };
+    | { kind: "label"; label: BreakoutLabel }
+    /** 그 봉 시각이 구간 중 하나에 든다(구간끼리 OR). 주 용도는 NOT — 「그 시간대 봉은 줄 서기에서 뺀다」. */
+    | { kind: "time"; ranges: ChainTimeRange[] };
 export type ChainCondKind = ChainCond["kind"];
-export const CHAIN_COND_KINDS: readonly ChainCondKind[] = ["pos", "amount", "openHigh", "openClose", "sessionHigh", "label"];
+export const CHAIN_COND_KINDS: readonly ChainCondKind[] = ["pos", "amount", "openHigh", "openClose", "sessionHigh", "label", "time"];
 
 /** 식의 항 — 봉 조건 칩 하나. `kind` 는 접힌 묶음(and/or)과 겹치지 않는다. */
 export interface ChainTerm {
@@ -113,8 +128,11 @@ const lv = (pct: number): number => 1 + pct / 100;
 /** a% → b% 의 가격 비 변화(%) — 둘 다 기준가 대비 % 라 차가 아니라 비로 잰다. */
 export const movePct = (a: number, b: number): number => (lv(b) / lv(a) - 1) * 100;
 
+/** "HH:MM" → 자정부터의 분. */
+const hmMin = (hm: string): number => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
+
 /** 봉 조건 하나 — 순번·NOT 없는 맨 조건. */
-export function chainCondHolds(c: ChainCond, b: ChainBar, s: ChainSeries): boolean {
+export function chainCondHolds(c: ChainCond, b: ChainBar, s: ChainFilterSeries): boolean {
     switch (c.kind) {
         case "pos": return inRange(b.pos, c);
         case "amount": return b.tv >= c.minEok * 1e8;
@@ -122,6 +140,10 @@ export function chainCondHolds(c: ChainCond, b: ChainBar, s: ChainSeries): boole
         case "openClose": return inRange(movePct(s.minuteOpen[b.i], s.rate[b.i]), c);
         case "sessionHigh": return b.sessionHigh;
         case "label": return b.label === c.label;
+        case "time": {
+            const m = minuteOfDayOf(s.times[b.i]);
+            return c.ranges.some((r) => m >= hmMin(r.from) && m <= hmMin(r.to));
+        }
     }
 }
 
@@ -137,7 +159,7 @@ export interface ChainVerdict {
 /**
  * 사슬 봉 전부의 판정 — 순번 셈은 사슬마다 새로. 셀 엔진(picked)·격자판(수)·기본 차트 사슬 층이 같은 이 함수를 쓴다.
  */
-export function chainVerdicts(bars: readonly ChainBar[], s: ChainSeries, f: ChainFilter): ChainVerdict[] {
+export function chainVerdicts(bars: readonly ChainBar[], s: ChainFilterSeries, f: ChainFilter): ChainVerdict[] {
     const tree = foldFlat(f.expr);
     const empty = f.expr.of.length === 0;
     const counts = new Map<string, number>();
@@ -176,7 +198,7 @@ export function chainVerdicts(bars: readonly ChainBar[], s: ChainSeries, f: Chai
 }
 
 /** 후보(최종 통과 봉)만. */
-export function chainCandidatesOf(bars: readonly ChainBar[], s: ChainSeries, f: ChainFilter): ChainBar[] {
+export function chainCandidatesOf(bars: readonly ChainBar[], s: ChainFilterSeries, f: ChainFilter): ChainBar[] {
     const out: ChainBar[] = [];
     for (const v of chainVerdicts(bars, s, f)) if (v.picked) out.push(v.bar);
     return out;
@@ -196,6 +218,7 @@ export function chainFilterKey(f: ChainFilter): string {
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+const HM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const parseK = (v: unknown): number | undefined =>
     finite(v) && v >= 1 ? Math.min(CHAIN_FIRST_K_MAX, Math.floor(v)) : undefined;
 
@@ -221,6 +244,16 @@ export function parseChainCond(raw: unknown): ChainCond | null {
         case "amount": return finite(raw.minEok) && raw.minEok > 0 ? { kind: "amount", minEok: raw.minEok } : null;
         case "sessionHigh": return { kind: "sessionHigh" };
         case "label": return raw.label === "baseline" || raw.label === "high" ? { kind: "label", label: raw.label } : null;
+        case "time": {
+            // 못 읽는 구간만 떨어진다 · 뒤집힌 구간은 뒤집어 받는다 · 구간이 하나도 없으면 조건이 아니다.
+            if (!Array.isArray(raw.ranges)) return null;
+            const ranges: ChainTimeRange[] = [];
+            for (const r of raw.ranges) {
+                if (!isObj(r) || typeof r.from !== "string" || typeof r.to !== "string" || !HM.test(r.from) || !HM.test(r.to)) continue;
+                ranges.push(r.from <= r.to ? { from: r.from, to: r.to } : { from: r.to, to: r.from });
+            }
+            return ranges.length > 0 ? { kind: "time", ranges } : null;
+        }
         default: return null;
     }
 }

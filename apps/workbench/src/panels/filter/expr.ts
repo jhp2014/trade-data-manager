@@ -167,6 +167,39 @@ export function leavesOf(e: SetExpr): FilterStage[] {
     return out;
 }
 
+/** 묶음 속까지 내려가 모은 조건 하나 — `via` = 거쳐 온 집합 id(바깥 → 안, 맨 윗단이면 빈 배열). */
+export interface DeepLeaf {
+    stage: FilterStage;
+    via: readonly string[];
+}
+
+/**
+ * 조건들 — **참조(묶음) 속까지** 내려가 모은다(표시 순서, 깊이 우선). 평가(`toCellExpr`)가 묶음을 풀어
+ * 도는 조건을 "이 식에 무엇이 도나"로 묻는 소비자(차트 사슬 층·무거운 조건 판정)가 쓴다 — `leavesOf` 로
+ * 물으면 묶음 안 돌파 사슬이 ◇ 에는 걸리는데 사슬 층엔 없다고 나온다(2026-09-27 실사용 버그).
+ * · 순환 참조는 그 자리에서 멈춘다(저장 시 거절되지만 깨진 저장물 방어) · 같은 조건이 두 길로 닿으면 첫 길만.
+ * · 깨진 참조(없는 집합)는 건너뛴다. NOT 은 모른다 — 도는지만 말한다.
+ */
+export function deepLeavesOf(e: SetExpr, exprOfSet: (id: string) => SetExpr | undefined): DeepLeaf[] {
+    const out: DeepLeaf[] = [];
+    const seen = new Set<string>();
+    const walk = (x: SetExpr, via: readonly string[]): void => {
+        for (const t of x.of) {
+            if (t.kind === "cond") {
+                if (seen.has(t.stage.id)) continue;
+                seen.add(t.stage.id);
+                out.push({ stage: t.stage, via });
+                continue;
+            }
+            if (via.includes(t.setId)) continue; // 순환
+            const inner = exprOfSet(t.setId);
+            if (inner) walk(inner, [...via, t.setId]);
+        }
+    };
+    walk(e, []);
+    return out;
+}
+
 /** 이 식이 든 조건 수 — 배열 없는 판. 참조는 안 센다. */
 export function leafCount(e: SetExpr): number {
     let n = 0;

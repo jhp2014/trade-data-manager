@@ -48,8 +48,8 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
     const [openId, setOpenId] = useState<string | null>(null);
     const openTerm = pred.chain.expr.of.find((t) => t.id === openId) ?? null;
     const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null);
-    const addCond = (kind: ChainTerm["cond"]["kind"]): void => {
-        const t: ChainTerm = { kind: "check", id: newChainTermId(), cond: defaultCond(kind) };
+    const addCond = (kind: ChainTerm["cond"]["kind"], neg = false): void => {
+        const t: ChainTerm = { kind: "check", id: newChainTermId(), cond: defaultCond(kind), ...(neg ? { neg: true } : {}) };
         setExpr(appendFlat(pred.chain.expr, t));
         setOpenId(t.id);
         setAddAt(null);
@@ -104,8 +104,10 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
 
             {addAt !== null && (
                 <Panel at={addAt} onClose={() => setAddAt(null)}>
-                    {CHAIN_COND_KINDS.map((k) => (
-                        <Item key={k} label={COND_NAME[k]} title={COND_HINT[k]} onPick={() => addCond(k)} />
+                    {CHAIN_COND_KINDS.map((k) => (k === "time"
+                        // 시각은 **빼는 쪽**이 주 용도라 NOT 을 단 채로 태어난다(칩 우클릭으로 풀면 「그 시간대 안에서」).
+                        ? <Item key={k} label="시간대 제외" title={`NOT ${COND_NAME[k]} — ${COND_HINT[k]}`} onPick={() => addCond(k, true)} />
+                        : <Item key={k} label={COND_NAME[k]} title={COND_HINT[k]} onPick={() => addCond(k)} />
                     ))}
                 </Panel>
             )}

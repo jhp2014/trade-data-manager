@@ -477,8 +477,9 @@ function AddCondition({ onCell, onBreakout, onTheme, onCandle, onLabel }: {
     const head = (text: string, first = false): JSX.Element => (
         <div style={{ padding: "4px 10px 1px", fontSize: 10, fontWeight: 600, color: "var(--text-tertiary)", ...(first ? {} : { borderTop: "0.5px solid var(--border-subtle)", marginTop: 3, paddingTop: 6 }) }}>{text}</div>
     );
+    // ⚠ 감싸는 틀에 위아래가 다른 여백을 주지 않는다 — 줄이 세로 가운데 정렬이라 ＋ 묶음·＋ 집합보다 내려앉는다.
     return (
-        <div style={{ padding: "6px 2px 2px" }}>
+        <div>
             <HeaderPopover width={264} align="start" closeOnOutside
                 trigger={(open, toggle) => (
                     <button onClick={toggle} title="조건 만들기 — 생성기(돌파 사슬)와 후보 필터" style={addBtn}>

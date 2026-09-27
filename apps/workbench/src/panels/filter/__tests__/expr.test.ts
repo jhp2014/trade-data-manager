@@ -7,7 +7,7 @@
 //  ④ 참조는 **조건이 아니다** — 조건 목록·조건 수에 안 든다(내용이 남의 것이라).
 import { describe, it, expect } from "vitest";
 import {
-    activeExpr, appendLeaf, appendTerm, emptyExpr, exprOfStages, filterLeaves, findTerm, foldExpr,
+    activeExpr, appendLeaf, appendTerm, deepLeavesOf, emptyExpr, exprOfStages, filterLeaves, findTerm, foldExpr,
     hasCycle, isFoldedNode, leafCount, leavesOf, mapLeaves, negOf, negateTerm, opAt, parseExpr,
     refNode, refsOf, removeGroupAt, removeTerm, replaceTerm, setAllOps, setOpAt,
     toggleBoundaryGroup, topOpOf, canSetOpAt, canToggleBoundary, negateGroupAt, normalizeExpr,
@@ -417,5 +417,21 @@ describe("괄호의 NOT", () => {
         expect(setOpAt(g, 2, "or"), "바깥이 and·or 로 섞인다 — 거절").toBe(g);
         expect(canSetOpAt(g, 2, "or")).toBe(false);
         expect(canSetOpAt(g, 0, "or"), "괄호 안을 통째로 or 로 바꾸는 건 된다").toBe(true);
+    });
+});
+
+describe("deepLeavesOf — 묶음 속까지(평가가 도는 범위)", () => {
+    const exprOfSet = (map: Record<string, SetExpr>) => (id: string): SetExpr | undefined => map[id];
+
+    it("묶음 속 조건을 경로와 함께 — 표시 순서·깊이 우선", () => {
+        const map = { B: expr("and", [cond("b1"), refNode("C")]), C: expr("and", [cond("c1")]) };
+        const got = deepLeavesOf(expr("and", [cond("a"), refNode("B"), cond("z")]), exprOfSet(map));
+        expect(got.map((l) => [l.stage.id, l.via.join(">")])).toEqual([["a", ""], ["b1", "B"], ["c1", "B>C"], ["z", ""]]);
+    });
+
+    it("다이아몬드는 첫 길만 · 순환·깨진 참조에서 멈춘다", () => {
+        const map = { B: expr("and", [refNode("C")]), C: expr("and", [cond("c1"), refNode("B")]), D: expr("and", [refNode("C"), refNode("없음")]) };
+        const got = deepLeavesOf(expr("and", [refNode("B"), refNode("D")]), exprOfSet(map));
+        expect(got.map((l) => [l.stage.id, l.via.join(">")])).toEqual([["c1", "B>C"]]);
     });
 });

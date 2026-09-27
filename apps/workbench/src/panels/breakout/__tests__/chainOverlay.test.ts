@@ -1,15 +1,18 @@
 // 사슬 층 입력 변환 — 사슬 끝 = 마지막 **거래** 봉(차트엔 채움봉이 없다), 후보는 ◇ 로 남았는지로 갈리고,
 // 밴드 면은 UN% → 가격 → 차트% 정확 환산.
 import { describe, expect, it } from "vitest";
-import { DEFAULT_CHAIN_FILTER, breakoutChainsOf, chainVerdicts, type ChainSeries } from "@trade-data-manager/market/domain";
+import { DEFAULT_CHAIN_FILTER, breakoutChainsOf, chainVerdicts, type ChainFilterSeries } from "@trade-data-manager/market/domain";
+import { exprOfStages, refNode, type SetExpr } from "../../filter/expr.js";
+import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import { chainOverlayInputOf, chainSourceRowsOf } from "../useChainOverlay.js";
 
 const T0 = 1_750_000_000;
 const times = [0, 1, 2, 3, 4, 5].map((k) => T0 + k * 60);
 /** [고가%, 저가%, 분 대금(억)] — 대금 0 = 채움봉. */
-function series(bars: [number, number, number][]): ChainSeries {
+function series(bars: [number, number, number][]): ChainFilterSeries {
     let cum = 0;
     return {
+        times,
         minuteOpen: bars.map((b) => b[1]),
         minuteHigh: bars.map((b) => b[0]),
         minuteLow: bars.map((b) => b[1]),
@@ -65,8 +68,19 @@ describe("chainSourceRowsOf — 켜진 돌파 줄 전부, 이름 = 요약 라벨
             bo("a"), bo("b"), bo("d", false),
             { id: "e", enabled: true, predicates: [{ kind: "candle" as const, axes: { openClose: { on: true, from: 0.01 } } }] },
         ];
-        const rows = chainSourceRowsOf(stages);
+        const rows = chainSourceRowsOf(exprOfStages(stages), []);
         expect(rows.map((r) => r.stageId)).toEqual(["a", "b"]);
         expect(rows[0]!.text).toContain("돌파 2%/0.5%");
+    });
+
+    it("묶음 속 돌파 줄도 출처다 — ◇ 평가가 묶음을 풀어 도는 것과 같은 범위, 이름 앞에 묶음 경로", () => {
+        const inner: SetExpr = exprOfStages([bo("in")]);
+        const sets = [{ id: "g1", name: "눌림", expr: inner } as SavedSet];
+        const outer: SetExpr = { ...exprOfStages([bo("top", false)]), of: [...exprOfStages([bo("top", false)]).of, refNode("g1")], ops: ["and"] };
+        const rows = chainSourceRowsOf(outer, sets);
+        expect(rows.map((r) => r.stageId)).toEqual(["in"]);
+        expect(rows[0]!.text.startsWith("눌림 › 돌파 2%/0.5%")).toBe(true);
+        const unnamed = chainSourceRowsOf(outer, [{ id: "g1", expr: inner } as SavedSet]);
+        expect(unnamed[0]!.text.startsWith("묶음 › 돌파 2%/0.5%"), "이름 없는 묶음은 자동 이름(속 조건 흉내) 대신 「묶음」").toBe(true);
     });
 });

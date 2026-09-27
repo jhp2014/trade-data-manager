@@ -1,23 +1,29 @@
 // 사슬 필터 식 — 순번은 **붙은 자리**가 뜻이다(칩·괄호·식 전체), 순번 셈은 단락하지 않는다, 사슬마다 새로 센다.
 import { describe, expect, it } from "vitest";
-import type { ChainBar, ChainSeries } from "../breakoutChain.js";
+import type { ChainBar } from "../breakoutChain.js";
 import {
     absorbChainGroup,
     canRemoveChainTerm,
     chainCandidatesOf,
+    chainFilterKey,
     chainVerdicts,
     parseChainFilter,
     type ChainCond,
     type ChainFilter,
+    type ChainFilterSeries,
     type ChainTerm,
 } from "../chainFilter.js";
 import { pruneFlat, type FlatGroup, type Op } from "../../expr/flatExpr.js";
+import { kstToUnix } from "../../kst.js";
 
 // 한 사슬 봉 8개 — 대금≥50억: 1·3·4·6 / 양봉: 0·2·3·5·6·7 / 세션고가: 0·2·5.
 const AMT = [20, 60, 20, 60, 60, 20, 60, 20];
 const BULL = [1, 0, 1, 1, 0, 1, 1, 1];
 const SH = [1, 0, 1, 0, 0, 1, 0, 0];
-const s: ChainSeries = {
+// 봉 시각 — 봉 i = 09:00 + i분(KST).
+const T900 = kstToUnix("2026-09-16", "09:00:00");
+const s: ChainFilterSeries = {
+    times: AMT.map((_, i) => T900 + i * 60),
     minuteOpen: AMT.map(() => 0),
     minuteHigh: AMT.map(() => 1),
     minuteLow: AMT.map(() => -1),
@@ -85,6 +91,41 @@ describe("식 전체", () => {
     it("AND/OR/NOT 괄호 — 대금≥50억 AND NOT(세션고가 OR 양봉)", () => {
         const e = f([t("a", AMOUNT), t("b", SESS), t("c", BULLC)], ["and", "or"], [{ from: 1, to: 2, neg: true }]);
         expect(pick(e)).toEqual([1, 4]);
+    });
+});
+
+describe("시각 — 줄 서기에서 뺀다(2026-09-27)", () => {
+    // 봉 0~7 = 09:00~09:07. 대금≥50억: 1(09:01)·3(09:03)·4·6.
+    const TIME = (from: string, to: string): ChainCond => ({ kind: "time", ranges: [{ from, to }] });
+
+    it("NOT 시각 09:00~09:02 + 꼬리 처음 1 = 09:03 이후 첫 봉(3) — 뺀 봉은 순번 자리를 안 차지한다", () => {
+        expect(pick(f([t("x", TIME("09:00", "09:02"), { neg: true })], [], [], 1))).toEqual([3]);
+    });
+
+    it("NOT 없이 + 칩 순번 — 「09:03~09:07 안 50억 봉 중 처음 1」 = 3", () => {
+        expect(pick(f([t("x", TIME("09:03", "09:07")), t("a", AMOUNT)], ["and"], [{ from: 0, to: 1, firstK: 1 }]))).toEqual([3]);
+    });
+
+    it("판정 키가 시각 구간을 가른다(엔진 후보 메모가 섞이지 않게)", () => {
+        const a = f([t("x", TIME("09:00", "09:02"), { neg: true })], [], [], 1);
+        const b = f([t("x", TIME("09:00", "09:03"), { neg: true })], [], [], 1);
+        expect(chainFilterKey(a)).not.toBe(chainFilterKey(b));
+    });
+
+    it("구간 여럿 = OR(양끝 포함) — NOT(09:00~09:01 · 09:03~09:04) AND 대금≥50억 → 6", () => {
+        const c: ChainCond = { kind: "time", ranges: [{ from: "09:00", to: "09:01" }, { from: "09:03", to: "09:04" }] };
+        expect(pick(f([t("x", c, { neg: true }), t("a", AMOUNT)], ["and"]))).toEqual([6]);
+    });
+
+    it("뺀 봉도 사슬 안 순번(pos)은 그대로다 — 봉 순번 ≥ 3 은 여전히 봉 3부터", () => {
+        expect(pick(f([t("x", TIME("09:00", "09:02"), { neg: true }), t("p", { kind: "pos", min: 3 })], ["and"]))).toEqual([3, 4, 5, 6, 7]);
+    });
+
+    it("파서 — 못 읽는 구간만 떨어지고 뒤집힌 구간은 뒤집는다, 구간이 없으면 항이 떨어진다", () => {
+        const raw = (ranges: unknown) => ({ expr: { of: [{ kind: "check", id: "x", cond: { kind: "time", ranges } }] }, firstK: 1 });
+        expect(parseChainFilter(raw([{ from: "09:02", to: "09:00" }, { from: "9:00", to: "x" }])).expr.of[0]!.cond)
+            .toEqual({ kind: "time", ranges: [{ from: "09:00", to: "09:02" }] });
+        expect(parseChainFilter(raw([])).expr.of).toEqual([]);
     });
 });
 

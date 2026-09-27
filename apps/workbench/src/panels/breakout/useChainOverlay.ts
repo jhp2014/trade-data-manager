@@ -3,8 +3,9 @@
 // 규칙: .claude/decisions.md 「Daily 타점 생성 = 돌파 사슬」(기본 차트 사슬 층 = A안).
 //
 // ## 출처 — 보는 집합의 「돌파」 줄
-// 차트 ◇ 가 그리는 **같은 식**(깔때기의 늦은 한 벌 `slowExpr` — 박자가 갈리면 ▼ 가 ◇ 보다 먼저 바뀐다)의 잎에서
-// 고른다. 줄이 여럿이면: 패널에 저장한 선택 → 첫 줄. **켜진 줄이 전부** 후보다(돌파 줄은 항상 계산한다 —
+// 차트 ◇ 가 그리는 **같은 식**(깔때기의 늦은 한 벌 `slowExpr`/`slowSets` — 박자가 갈리면 ▼ 가 ◇ 보다 먼저 바뀐다)의
+// 잎에서 고른다. 잎은 **묶음 속까지** 본다(`deepLeavesOf` — ◇ 의 평가가 묶음을 풀어 도는 것과 같은 범위. 윗단만
+// 보면 묶음 안 돌파 줄은 ◇ 는 뜨는데 사슬 층이 "줄이 없다"고 했다 — 2026-09-27). 줄이 여럿이면: 패널에 저장한 선택 → 첫 줄. **켜진 줄이 전부** 후보다(돌파 줄은 항상 계산한다 —
 // 옛 연동·미연동 개념은 2026-09-26 폐지). 목록 이름 = 요약 라벨(`breakoutText`).
 // ⚠ 세로 줄은 **그 「돌파」 줄 단독**의 후보다(격자판의 "그날 후보"와 같은 수) — 같은 줄의 다른 AND 조건·전이·
 // 목록 상한은 모른다. 그건 ◇(집합 평가)가 말하고, 세로 줄은 ◇ 로 남았는지(`keptTimes`)를 진하기로 가른다.
@@ -26,8 +27,8 @@ import { usePointGrids } from "../../lib/PointGridsContext.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { BREAKOUT_BASE, BREAKOUT_HIGH } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
-import { leavesOf } from "../filter/expr.js";
-import type { FilterStage } from "../filter/stage.js";
+import { deepLeavesOf, type SetExpr } from "../filter/expr.js";
+import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { breakoutText } from "./chainChecks.js";
 
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
@@ -35,7 +36,7 @@ type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
 export interface ChainSourceRow {
     stageId: string;
     pred: BreakoutPred;
-    /** 목록 본문 = 요약 라벨(칩과 같은 자 — `breakoutText`). */
+    /** 목록 본문 = 요약 라벨(칩과 같은 자 — `breakoutText`). 묶음 속 줄이면 앞에 묶음 경로(`A › B › `). */
     text: string;
 }
 
@@ -47,14 +48,18 @@ export interface ChainOverlay {
     why: string | null;
 }
 
-/** 출처 목록 — **켜진** 돌파 줄 전부, 이름 = 요약 라벨(순수부 — 테스트 표면). */
-export function chainSourceRowsOf(stages: readonly FilterStage[]): ChainSourceRow[] {
+/** 출처 목록 — **켜진** 돌파 줄 전부(묶음 속 포함), 이름 = 묶음 경로 + 요약 라벨(순수부 — 테스트 표면). */
+export function chainSourceRowsOf(expr: SetExpr, sets: readonly SavedSet[]): ChainSourceRow[] {
+    const setOf = (id: string): SavedSet | undefined => sets.find((f) => f.id === id);
+    // 손 이름만 쓴다 — 이름 없는 묶음의 자동 이름은 속 조건을 흉내 내 「돌파… › 돌파…」로 겹쳐 읽힌다(실측).
+    const nameOf = (id: string): string => setOf(id)?.name ?? "묶음";
     const out: ChainSourceRow[] = [];
-    for (const st of stages) {
+    for (const { stage: st, via } of deepLeavesOf(expr, (id) => setOf(id)?.expr)) {
         if (!st.enabled) continue;
         const p = st.predicates.find((x): x is BreakoutPred => x.kind === "breakout");
         if (!p) continue;
-        out.push({ stageId: st.id, pred: p, text: breakoutText(p) });
+        const path = via.map((id) => `${nameOf(id)} › `).join("");
+        out.push({ stageId: st.id, pred: p, text: `${path}${breakoutText(p)}` });
     }
     return out;
 }
@@ -76,9 +81,9 @@ export function useChainOverlay(args: {
     keptTimes: ReadonlySet<number> | null;
 }): ChainOverlay {
     const { on, showBands, sourceId, code, date, onSetDate, ownBars, chartBase, keptTimes } = args;
-    const stages = leavesOf(useFunnel().slowExpr);
+    const { slowExpr, slowSets } = useFunnel();
 
-    const rows = useMemo(() => chainSourceRowsOf(stages), [stages]);
+    const rows = useMemo(() => chainSourceRowsOf(slowExpr, slowSets), [slowExpr, slowSets]);
     const source = rows.find((r) => r.stageId === sourceId) ?? rows[0] ?? null;
 
     const active = on && source !== null && onSetDate;
