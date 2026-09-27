@@ -96,6 +96,33 @@ describe("탐색판 — 종목 접기", () => {
     });
 });
 
+describe("탐색판 — 접힘은 그 날짜의 것이다", () => {
+    it("다른 날짜에 접어 둔 종목은 오늘 접히지 않는다 — 찫 렌더부터(날짜 넘기기 착지가 건너뛰지 않게)", () => {
+        useWorkbench.getState().setPanelUi(PANEL, "collapsed", { date: "2026-09-15", codes: ["000100"] });
+        const { container } = renderExplore();
+        expect(bodyRows(container)).toHaveLength(5);
+        press("s");
+        expect(useWorkbench.getState().focus.code, "첫 종목에 착지").toBe("000100");
+    });
+
+    it("시간순 모드에선 접힘이 없다(머리줄이 없으므로)", () => {
+        useWorkbench.getState().setPanelUi(PANEL, "collapsed", { date: DATE, codes: ["000100"] });
+        useWorkbench.getState().setPanelUi(PANEL, "sortMode", "time");
+        const { container } = renderExplore();
+        expect(bodyRows(container)).toHaveLength(5);
+    });
+
+    it("접힌 종목 이름을 누르면 펴고 간다 — 안 보이는 행으로 시선이 가지 않는다", () => {
+        useWorkbench.getState().setPanelUi(PANEL, "collapsed", { date: DATE, codes: ["000100"] });
+        const { container } = renderExplore();
+        expect(bodyRows(container)).toHaveLength(2);
+        const name = [...container.querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.textContent ?? "").startsWith("유한양행"))!;
+        act(() => { fireEvent.click(name); });
+        expect(bodyRows(container)).toHaveLength(5);
+        expect(useWorkbench.getState().focus).toMatchObject({ code: "000100", time: "09:00:00" });
+    });
+});
+
 describe("탐색판 — 우클릭 그룹 배정", () => {
     it("종목 머리줄 = 하루(시각 없음) · 본 줄 = 타점(그 시각)", () => {
         const { container } = renderExplore();

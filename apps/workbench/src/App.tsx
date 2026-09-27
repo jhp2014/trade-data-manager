@@ -14,7 +14,7 @@ import { useSnapFocusDate } from "./lib/useSnapFocusDate.js";
 // 상단 전역 툴바는 폐지 — 컨텍스트는 작업표시줄 우측 구석으로 이전.
 export function App(): JSX.Element {
     useKeymap(); // 전역 단축키 디스패처(1회 마운트).
-    // 행 순회(w/s) — 등록은 여기 1회, 걷는 주체는 소유자 규칙이 고른다(시트 우선·작업셋 폴백, lib/rowNav).
+    // 행 순회(w/s) — 등록은 여기 1회, 걷는 주체는 소유자 규칙이 고른다(고른 주인 → 없으면 탐색판·복기·장 마감 순 폴백, lib/rowNav).
     useRowNavHotkeys();
     // 첫 시선 날짜를 데이터 있는 날로 1회 보정 — 주말·휴장일에 켜면 전부 빈 화면이 된다.
     useSnapFocusDate();

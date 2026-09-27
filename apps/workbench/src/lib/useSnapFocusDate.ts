@@ -29,16 +29,3 @@ export function useSnapFocusDate(): void {
         setDate(snap, "snap");
     }, [dates, setDate]);
 }
-
-/**
- * 그 날에 데이터가 있나 — 빈 화면이 "조건 탓"인지 "휴장"인지 가르는 재료.
- *
- * ⚠ **캐시만 읽는다**(`enabled: false`) — 이건 문구를 고르는 곁가지라 제 손으로 날짜 목록을 당기지
- * 않는다. 당기게 두면 목록이 필요 없던 화면(종단 작업 대상 등)이 이 훅 때문에 네트워크를 치고,
- * 그 화면의 검사는 "데이터 없이 그려진 화면"을 단언하게 된다. 목록을 실제로 당기는 곳은
- * `useSnapFocusDate`(앱에 1회)와 날짜 피커다.
- */
-export function useHasDataOn(date: string): boolean | undefined {
-    const { data: dates } = useQuery({ ...dataDatesQuery(), enabled: false });
-    return dates === undefined ? undefined : dates.includes(date);
-}

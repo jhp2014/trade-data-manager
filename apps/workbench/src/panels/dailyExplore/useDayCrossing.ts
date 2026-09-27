@@ -32,7 +32,7 @@ export interface DayCrossing extends DayCrossingState {
  * @param pinned  날짜 고정 — 경계에서 멈춘다("이 날만 보겠다"는 선언)
  * @param onLand  착지 — 도착한 날짜에서 방향에 맞는 끝 항목으로 시선을 옮기는 일은 호출자가 안다
  */
-export function useDayCrossing({ active, dates, ready, failed, count, heavy, pinned, truncated, onLand, origin = "workset-cross" }: {
+export function useDayCrossing({ active, dates, ready, failed, count, heavy, pinned, truncated, onLand, origin }: {
     active: boolean;
     dates: readonly string[];
     ready: boolean;
@@ -43,7 +43,7 @@ export function useDayCrossing({ active, dates, ready, failed, count, heavy, pin
     truncated: boolean;
     onLand: (dir: 1 | -1) => void;
     /** setDate 출처 — 패널마다 제 이름(포커스 추종·스냅 로직이 출처를 본다). */
-    origin?: string;
+    origin: string;
 }): DayCrossing {
     const date = useWorkbench((s) => s.focus.date);
     const setDate = useWorkbench((s) => s.setDate);

@@ -85,9 +85,9 @@ export const PANEL_TYPES: PanelType[] = [
         },
         render: (id) => <ChartPanel panelId={id} />,
     },
-    // (옛 "탐색 후보" 패널은 2026-09-18 단계 ③ 에서 **작업 대상에 흡수**됐다 — 하루·셀 우주를 고르면
-    //  그 패널이 곧 후보 순회 목록이다. 저장 레이아웃의 `component: "probe"` 는 sanitizeLayout 이
-    //  미등록으로 걷어낸다(map·rankSkeleton 선례) — 사용자 화면의 그 탭은 다음 로드에 사라진다.)
+    // (옛 "탐색 후보"(probe, 2026-09-18 작업 대상에 흡수)와 「작업 대상」(workset, 2026-09-27 은퇴 — 탐색판이
+    //  접기·우클릭 배정을, 라벨 조건이 라벨 층을 승계)은 없다. 저장 레이아웃의 그 칸은 sanitizeLayout 이
+    //  미등록으로 걷어낸다 — 사용자 화면의 그 탭은 다음 로드에 사라진다.)
     { idBase: "history", component: "recentHistory", title: "최근 탐색", plane: "eod", render: () => <RecentHistoryPanel /> },
     // 일별 타점 [생성] — 하루 조건 묶음(집합)이 태어나는 자리(다른 패널은 그 집합을 구독만 한다).
     // 옛 「집합 편성」(2026-09-24 은퇴)의 idBase·component 를 **승계**한다 — 저장 배치·프리셋의 자리가 그대로
@@ -96,7 +96,6 @@ export const PANEL_TYPES: PanelType[] = [
     // (격자판 「일별 타점[조건: 격자]」은 2026-09-26 은퇴 — 돌파 편집은 조건판 팝오버.
     //  저장 배치·프리셋의 daily-grid 칸은 sanitizeLayout 이 걷는다 — 테마 [조건]판 선례.)
     // 일별 타점 [탐색] — 하루 후보를 날짜 단위로 걷는 뷰(행 = 그날 후보, 열 = 조건 그룹 ●/·).
-    // 작업 대상과 다른 몫: 저긴 시선·큐레이션 브라우징, 여긴 조건 그룹 통과를 보며 걷는 하루 전용 판.
     // ⚠ duplicable 아님 — w/s 순회(usePublishRowNav)가 **후보 패널 각 1개** 전제의 모듈 전역 단일 소유다
     //   (rowNav 머리 주석). 복제가 필요해지면 rowNav 소유를 인스턴스 낟알로 바꾸는 일이 먼저다.
     { idBase: "daily-explore", component: "dailyExplore", title: "일별 타점 [탐색]", plane: "eod", render: (id) => <DailyExplorePanel panelId={id} baseTitle={slotTitleOf(id)} /> },

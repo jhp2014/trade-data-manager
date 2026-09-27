@@ -67,8 +67,8 @@ function AnchoredBox({
 }
 
 /**
- * 마커 기하 — 글리프·크기는 **공용 단일 출처**(chart/markerGlyphs)다. 목록(작업 대상)이 같은 기호를
- * 쓰기 때문에 여기 지역 상수로 두면 두 화면의 표식이 조용히 갈린다.
+ * 마커 기하 — 글리프·크기는 **공용 단일 출처**(chart/markerGlyphs)다. 여기 지역 상수로 두면 다른
+ * 화면의 같은 표식과 조용히 갈린다.
  * 상자는 **클릭 표적**의 크기다(그림이 6.5px 로 작아져도 손은 18px 그대로 — 줄이지 말 것).
  */
 const MARKER_BOX = { w: MARK_HIT_W, h: MARK_BAND_H } as const;

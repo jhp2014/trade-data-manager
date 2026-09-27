@@ -1,9 +1,9 @@
-// 일별 타점 [탐색] — 하루 후보를 **날짜 단위로 걷는** 전용 뷰(2026-09-26). 작업 대상(시선·큐레이션 브라우징)과
-// 다른 몫: 행 = 보는 집합의 그날 후보(기본 **종목순** — 종목 머리줄 아래 시간순, 토글로 시간순),
+// 일별 타점 [탐색] — 하루 후보를 **날짜 단위로 걷는** 전용 뷰(2026-09-26 · 09-27 옛 작업 대상의 손을 승계).
+// 행 = 보는 집합의 그날 후보(기본 **종목순** — 종목 머리줄 아래 시간순, 토글로 시간순),
 // 열 = **조건 그룹**(고른 저장 집합 4~5개)의 통과 ●/·.
 // "어느 조건 덕에 나왔나"는 조건판이 아니라 이 뷰의 책임이다(사용자 확정).
 //
-// · 날짜 넘기 = 작업 대상과 같은 기계(useDayCrossing) — 목록 끝 w/s·◀▶ 로 이전/다음 거래일, 빈 날 스킵,
+// · 날짜 넘기 = useDayCrossing — 목록 끝 w/s·◀▶ 로 이전/다음 거래일, 빈 날 스킵,
 //   「날짜 고정」으로 잠금.
 // · 조건 그룹 = 저장 집합 그 자체(새 저장물 없음). 그룹마다 그날 평가 한 벌 — 훅 규칙 때문에 **고정 5칸**으로
 //   부른다(MAX_GROUPS). 캐시 선반은 12칸(useCellSet MEMO_CAP)이라 첫 방문 뒤엔 공짜다.
@@ -54,7 +54,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const focusTime = useWorkbench((s) => s.focus.time);
     const savedSets = useWorkbench((s) => s.savedSets);
 
-    // ── 보는 집합의 그날 후보 — 차트 ◇·작업 대상과 같은 평가·같은 상한(300).
+    // ── 보는 집합의 그날 후보 — 차트 ◇ 와 같은 평가·같은 상한(300).
     const cellSet = useCellSet(isDaily ? funnel.slowExpr : null, funnel.slowSets, focusDate, DAY_SET_OPTS);
     // 기본 = 종목순(종목 안 시간순) — 대부분 종목 단위로 걷는다(사용자 확정). 순회(w/s)도 이 순서 그대로다.
     const [sortMode, setSortMode] = usePanelUi<ExploreSort>(panelId, "sortMode", "stock");
@@ -79,32 +79,31 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     }, [rows, narrowCol]);
 
     // ── 종목 접기(종목순 전용 — 옛 작업 대상에서 이식, 2026-09-27) — 접힌 종목은 머리줄만 서고 w/s 순회에서도 빠진다.
-    const [collapsedCodes, setCollapsedCodes] = usePanelUi<string[]>(panelId, "collapsed", []);
-    const collapsed = useMemo(() => new Set(sortMode === "stock" ? collapsedCodes : []), [collapsedCodes, sortMode]);
+    // 접힘은 **그 날짜의 것**이다 — `{date, codes}` 로 저장하고 날짜가 다르면 빈 집합으로 **파생**한다.
+    // ⚠ effect 로 풀면 새 날짜의 첫 렌더가 어제 접힘으로 순회 목록을 세워, 날짜를 넘긴 착지가 어제 접은
+    //   종목을 건너뛰거나 빈 날로 오판해 스킵한다(2026-09-27 리뷰 — 옛 작업 대상에서 따라온 약점).
+    const [collapsedRaw, setCollapsedRaw] = usePanelUi<{ date: string; codes: string[] } | null>(panelId, "collapsed", null);
+    const collapsed = useMemo(() => new Set(
+        sortMode === "stock" && collapsedRaw !== null && !Array.isArray(collapsedRaw) && collapsedRaw.date === focusDate
+            ? collapsedRaw.codes : [],
+    ), [collapsedRaw, sortMode, focusDate]);
     const toggleCollapse = useCallback((code: string) => {
-        setCollapsedCodes((v) => (v.includes(code) ? v.filter((c) => c !== code) : [...v, code]));
-    }, [setCollapsedCodes]);
-    // 날짜가 **바뀌면** 접힘을 푼다 — 어제 접은 종목이 오늘 접혀 있으면 놓친다.
-    // ⚠ 마운트에서는 풀지 않는다: effect 는 첫 렌더에도 도므로 그냥 두면 새로고침마다 저장된 접힘이 지워진다.
-    const lastDate = useRef(focusDate);
-    useEffect(() => {
-        if (lastDate.current === focusDate) return;
-        lastDate.current = focusDate;
-        setCollapsedCodes([]);
-    }, [focusDate, setCollapsedCodes]);
-    /** 걷는 행 — 접힌 종목을 뺀 것. 렌더의 본 줄과 순회가 **같은 배열**을 본다(두 벌이면 접힌 행을 순회가 밟는다). */
+        const cur = [...collapsed];
+        setCollapsedRaw({ date: focusDate, codes: cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code] });
+    }, [collapsed, focusDate, setCollapsedRaw]);
+    /** 걷는 행 — 접힌 종목을 뺀 것. 본 줄 렌더도 순회도 **이 배열 하나**를 본다(두 벌이면 접힌 행을 순회가 밟는다). */
     const walkRows = useMemo(() => shownRows.filter((r) => !collapsed.has(r.code)), [shownRows, collapsed]);
-    /** 그룹 배정 — 종목 머리줄 우클릭 = 하루 그룹(차트), 행 우클릭 = 타점 그룹(좌표). 옛 작업 대상 목록과 같은 두 입구. */
+    /** 그룹 배정 — 종목 머리줄 우클릭 = 하루 그룹(차트), 행 우클릭 = 타점 그룹(좌표). */
     const openAssign = (ev: React.MouseEvent, code: string, time?: string): void => {
         ev.preventDefault();
         useGroupAssign.getState().open({ stockCode: code, name: nameOf(code), date: focusDate, ...(time !== undefined ? { time } : {}) }, { x: ev.clientX, y: ev.clientY });
     };
 
-    // ── 날짜 넘기 — 작업 대상과 같은 기계. ◀▶ 도 같은 손(빈 날 스킵·고정·상한이 한 규칙).
+    // ── 날짜 넘기 — ◀▶ 도 w/s 경계와 같은 손(빈 날 스킵·고정·상한이 한 규칙).
     const datesQ = useQuery({ ...dataDatesQuery(), enabled: isDaily });
     const [datePinned, setDatePinned] = usePanelUi<boolean>(panelId, "datePin", false);
     useDayReplayPrefetch(isDaily ? focusDate : null, useMemo(() => neighborDates(datesQ.data ?? EMPTY_DATES, focusDate), [datesQ.data, focusDate]));
-    // 무거운 조건(격자·존 순위)이면 빈 날 스킵 상한이 줄어든다 — 작업 대상과 같은 판정.
+    // 무거운 조건(돌파 사슬·테마 분 단면)이면 빈 날 스킵 상한이 줄어든다.
     const heavy = useMemo(
         () => cellSet.stages.some((st) => st.counted)
             && leavesOf(funnel.slowExpr).some((st) => st.predicates.some(isHeavyCellPredicate)),
@@ -133,7 +132,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     });
     const canCross = isDaily && !cellSet.isLoading && !cellSet.tooWide && cellSet.error === null && !crossing.seeking;
 
-    // ── w/s 순회 — 커서 = focus 그대로(하루 우주의 행은 좌표다 — 작업 대상과 같은 판단).
+    // ── w/s 순회 — 커서 = focus 그대로(하루 우주의 행은 좌표다).
     const navRef = usePublishRowNav("daily-explore");
     navRef.current = (dir): void => {
         const cur = focusTime !== null ? { code: focusCode, date: focusDate, time: focusTime } : null;
@@ -239,7 +238,11 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                                                     style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 10, padding: "3px 2px 3px 6px" }}>
                                                     {folded ? "▸" : "▾"}
                                                 </button>
-                                                <button onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}
+                                                <button onClick={() => {
+                                                    // 접힌 종목이면 먼저 편다 — 안 보이는 행으로 시선이 가면 다음 w/s 가 목록 끝으로 튄다.
+                                                    if (folded) toggleCollapse(r.code);
+                                                    useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore");
+                                                }}
                                                     title="좌클릭 = 이 종목의 첫 타점으로 · 우클릭 = 그룹 배정(하루)"
                                                     style={{ flex: 1, textAlign: "left", border: "none", cursor: "pointer", font: "inherit", fontSize: 11, fontWeight: 600, padding: "3px 6px 3px 2px", background: "transparent", color: "var(--text-secondary)" }}>
                                                     {nameOf(r.code)}
