@@ -3,7 +3,7 @@ import { isBoardFilterActive, type BoardFilterExpr } from "@trade-data-manager/m
 import { useUi } from "../../store/ui.js";
 import { TextToggle, PanelHeader } from "../ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../HeaderControls.js";
-import { HeaderPopover } from "../HeaderPopover.js";
+import { TriggerPopover } from "../../ui/popover/TriggerPopover.js";
 import { RowNavBadge } from "../RowNavBadge.js";
 import type { RowNavOwner } from "../../lib/rowNav.js";
 
@@ -71,7 +71,7 @@ export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, on
             <span className="tabular" style={{ whiteSpace: "nowrap", flexShrink: 0 }}>{count}종목</span>
             {navOwner && <RowNavBadge owner={navOwner} />}
             {filter && filterEditor && (
-                <HeaderPopover
+                <TriggerPopover
                     width={400}
                     trigger={(open, toggle) => (
                         <TextToggle
@@ -85,7 +85,7 @@ export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, on
                     )}
                 >
                     {filterEditor}
-                </HeaderPopover>
+                </TriggerPopover>
             )}
             <HeaderControls controls={controls} storageKey={`wb.headerPins.board.${panelId}`} />
         </PanelHeader>

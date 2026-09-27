@@ -1,7 +1,7 @@
 // 컨트롤 하나하나의 **손잡이들** — 헤더와 더보기 판이 같은 것을 쓴다(라벨·설명만 판에 더 붙는다).
 // 선언(ControlSpec)은 HeaderControls 에, 그리는 규약(폭 잠금·순환/팝오버 갈림)은 여기에 산다.
 import type { CSSProperties, ReactNode } from "react";
-import { HeaderPopover } from "./HeaderPopover.js";
+import { TriggerPopover } from "../ui/popover/TriggerPopover.js";
 import { TextToggle } from "./ControlChrome.js";
 import { FAIL } from "../styles/palette.js";
 import type { ActionSpec, ChoiceSpec, ControlSpec, ToggleSpec } from "./HeaderControls.js";
@@ -83,9 +83,8 @@ function CycleControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
 function PickControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
     const cur = spec.values.find((o) => o.v === spec.value);
     return (
-        <HeaderPopover
+        <TriggerPopover
             width={150}
-            closeOnOutside
             trigger={(open, toggle) => (
                 <WidthLock max={TRIGGER_MAX_W} alts={spec.values.map((o) => <span key={o.v} style={face}>{o.label} ▾</span>)}>
                     <button onClick={toggle} title={spec.help ?? spec.name}
@@ -115,7 +114,7 @@ function PickControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
                     ))}
                 </div>
             )}
-        </HeaderPopover>
+        </TriggerPopover>
     );
 }
 

@@ -6,7 +6,7 @@
 import { useEffect, useMemo } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { SubjectBadge } from "../../components/SubjectBadge.js";
-import { HeaderPopover } from "../../components/HeaderPopover.js";
+import { TriggerPopover } from "../../ui/popover/TriggerPopover.js";
 import { useDock } from "../../store/dock.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { subjectStatus } from "../../lib/subject.js";
@@ -65,7 +65,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
     return (
         <div style={wrap}>
             <PanelHeader chrome={false} gap={8} style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
-                <HeaderPopover width={340} align="start"
+                <TriggerPopover width={340} align="start"
                     trigger={(open, toggle) => (
                         <button onClick={toggle}
                             style={{ ...label, cursor: "pointer", border: "1px solid var(--border-default)", borderRadius: 8, padding: "0 6px", background: open ? "var(--bg-tertiary)" : "none" }}
@@ -74,7 +74,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
                         </button>
                     )}>
                     {() => <AxisControls axes={axes} onChange={setAxesRaw} />}
-                </HeaderPopover>
+                </TriggerPopover>
                 <span style={{ ...label, color: "var(--text-tertiary)" }}
                     title="빨간 점선 = 깔때기 첫 테마 조건(읽기 전용 — 축·창이 일치하는 변만). 수정은 일별 타점 [생성]의 테마 팝오버">
                     {overlay !== null ? "조건 겹침(읽기 전용)" : "관찰 — 판정 없음(조건은 일별 타점 [생성])"}

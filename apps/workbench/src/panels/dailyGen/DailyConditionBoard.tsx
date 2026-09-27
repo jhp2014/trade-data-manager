@@ -10,7 +10,7 @@
 // 값의 주인은 줄(집합) — 팝오버는 stageId 로 최신 술어를 스토어에서 읽고 그 줄에 바로 쓴다.
 import { useCallback, useMemo, useState } from "react";
 import { DEFAULT_BREAKOUT, DEFAULT_CANDLE, DEFAULT_THEME_ZONE, type CellPredicate, type CellValueRange } from "@trade-data-manager/market/domain";
-import { HeaderPopover } from "../../components/HeaderPopover.js";
+import { TriggerPopover } from "../../ui/popover/TriggerPopover.js";
 import { allStagesOf, selectEditingExpr, selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { CellStageFields } from "../filter/CellPredicateFields.js";
 import { RailEditors, type RailEditor } from "../filter/ConditionEditors.js";
@@ -231,7 +231,7 @@ export function DailyConditionBoard(): JSX.Element {
                         {/* ⚠ 늘 열린다 — 붙일 게 없어도 **왜 없는지**를 판이 말한다. 규칙(2026-09-25): **절대 안 되는 것은
                             안 보이고**(열린 집합·경로 위 조상), **상황 때문에 안 되는 것만** 회색 +
                             이유(나를 쓰는 집합 · 빈 집합). 식 칩 우클릭 판 Item 의 "숨기지 않고 회색 + 이유"는 후자에만 걸린다. */}
-                        <HeaderPopover width={260} align="start" closeOnOutside
+                        <TriggerPopover width={260} align="start"
                             trigger={(open, toggle) => (
                                 <button onClick={() => { setNamingSet(null); setRefocusSet(null); toggle(); }}
                                     title="이미 있는 집합을 이 식에 한 항으로 붙입니다 — 고치면 그 집합을 쓰는 곳이 전부 같이 바뀝니다"
@@ -311,7 +311,7 @@ export function DailyConditionBoard(): JSX.Element {
                                     </div>
                                 );
                             }}
-                        </HeaderPopover>
+                        </TriggerPopover>
                     </div>
                 )}
                 <div style={{ height: 8 }} />
@@ -457,7 +457,7 @@ const menuItem: React.CSSProperties = {
 
 /**
  * ＋ 조건 — 하루 종류만. 생성기(돌파)가 맨 위, 그 아래가 후보에 거는 필터들이다(필터는 구조를 안 바꾼다).
- * ⚠ 판은 **포털 + fixed**(HeaderPopover) — 스크롤 컨테이너 안 absolute 는 탭 스트립에 덮였다(2026-09-19 실측).
+ * ⚠ 판은 **포털 + fixed**(TriggerPopover) — 스크롤 컨테이너 안 absolute 는 탭 스트립에 덮였다(2026-09-19 실측).
  */
 function AddCondition({ onCell, onBreakout, onTheme, onCandle, onLabel }: {
     onCell: (p: FilterPredicate) => void;
@@ -480,7 +480,7 @@ function AddCondition({ onCell, onBreakout, onTheme, onCandle, onLabel }: {
     // ⚠ 감싸는 틀에 위아래가 다른 여백을 주지 않는다 — 줄이 세로 가운데 정렬이라 ＋ 묶음·＋ 집합보다 내려앉는다.
     return (
         <div>
-            <HeaderPopover width={264} align="start" closeOnOutside
+            <TriggerPopover width={264} align="start"
                 trigger={(open, toggle) => (
                     <button onClick={toggle} title="조건 만들기 — 생성기(돌파 사슬)와 후보 필터" style={addBtn}>
                         ＋ 조건 {open ? "▴" : "▾"}
@@ -503,7 +503,7 @@ function AddCondition({ onCell, onBreakout, onTheme, onCandle, onLabel }: {
                         {item(close, "◆ 라벨 (타점)", "라벨 찍은 그 분 좌표만 — NOT 으로 걸면 아직 분류 안 한 후보", (e) => onLabel("point", e))}
                     </div>
                 )}
-            </HeaderPopover>
+            </TriggerPopover>
         </div>
     );
 }

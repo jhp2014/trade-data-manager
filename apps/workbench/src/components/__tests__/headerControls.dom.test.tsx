@@ -5,7 +5,7 @@
 //   · 폭 잠금 — 있을 수 있는 모든 모습이 같은 칸에 겹쳐 서 있다(그래야 값이 바뀌어도 칸이 안 변한다).
 //     jsdom 엔 레이아웃이 없어 폭 자체는 못 재므로, 그 폭을 만드는 **숨은 사본**이 있는지를 본다.
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, fireEvent, screen, cleanup } from "@testing-library/react";
+import { render, fireEvent, screen, cleanup, act } from "@testing-library/react";
 import { applyOrder, HeaderControls, type ControlSpec } from "../HeaderControls.js";
 
 const KEY = "wb.test.headerPins";
@@ -21,6 +21,12 @@ const draw = (controls: ControlSpec[]): HTMLElement =>
 const headerText = (c: HTMLElement): string => c.textContent ?? "";
 const openSheet = (c: HTMLElement): void => {
     fireEvent.click(c.querySelector("button[title^='컨트롤 전부']")!);
+};
+/** 판은 연 뒤 한 매크로태스크 지나 무장한다(자기를 연 클릭이 자기를 닫지 않게) — 바깥 클릭 단언 전에 흘려보낸다. */
+const armed = async (): Promise<void> => {
+    await act(async () => {
+        await new Promise((res) => setTimeout(res, 0));
+    });
 };
 const sheet = (): HTMLElement => document.body.querySelector<HTMLElement>("[style*='position: fixed']")!;
 
@@ -55,23 +61,25 @@ describe("핀 — 헤더에 올릴 것 고르기", () => {
         expect(set).toHaveBeenCalledWith(true);
     });
 
-    it("판 바깥을 누르면 닫힌다 — 다른 패널이든 같은 패널의 그림이든", () => {
+    it("판 바깥을 누르면 닫힌다 — 다른 패널이든 같은 패널의 그림이든", async () => {
         const c = draw([toggle("a", "선")]);
         openSheet(c);
         expect(sheet()).toBeTruthy();
+        await armed();
         // ⚠ 캡처 단계로 듣는다 — 그래프 위에서는 d3 가 mousedown 을 삼켜 버블링으로는 안 온다.
         fireEvent.mouseDown(document.body);
-        expect(document.body.querySelector("[data-header-popover]")).toBeNull();
+        expect(document.body.querySelector("[data-popover-layer]")).toBeNull();
     });
 
-    it("판 안을 누르면 안 닫힌다 — 읽고 고르는 중이다", () => {
+    it("판 안을 누르면 안 닫힌다 — 읽고 고르는 중이다", async () => {
         const c = draw([toggle("a", "선")]);
         openSheet(c);
+        await armed();
         fireEvent.mouseDown(sheet());
-        expect(document.body.querySelector("[data-header-popover]")).toBeTruthy();
+        expect(document.body.querySelector("[data-popover-layer]")).toBeTruthy();
     });
 
-    it("판 안의 택1 판을 눌러도 부모가 안 닫힌다 — 중첩이라 자식은 바깥이 아니다", () => {
+    it("판 안의 택1 판을 눌러도 부모가 안 닫힌다 — 중첩이라 자식은 바깥이 아니다", async () => {
         localStorage.setItem(KEY, JSON.stringify(["pick"])); // 접어 두면 판 안에서만 만진다
         const c = draw([toggle("a", "선"), {
             kind: "choice", id: "pick", name: "고르기", value: "v0",
@@ -79,10 +87,11 @@ describe("핀 — 헤더에 올릴 것 고르기", () => {
         }]);
         openSheet(c);
         fireEvent.click([...sheet().querySelectorAll("button")].find((b) => b.textContent?.startsWith("값0"))!);
-        const layers = document.body.querySelectorAll("[data-header-popover]");
+        const layers = document.body.querySelectorAll("[data-popover-layer]");
         expect(layers.length).toBe(2); // 부모 판 + 택1 판
+        await armed();
         fireEvent.mouseDown([...layers][1]!);
-        expect(document.body.querySelectorAll("[data-header-popover]").length).toBe(2);
+        expect(document.body.querySelectorAll("[data-popover-layer]").length).toBe(2);
     });
 
     it("available:false 는 이 패널에 없는 것 — 판에도 안 나온다", () => {

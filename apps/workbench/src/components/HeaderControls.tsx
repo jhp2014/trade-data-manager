@@ -22,7 +22,7 @@
 // 구성: 선언 타입 + 줄 자체는 여기, 낱개 손잡이는 controlWidgets, 더보기 판은 ControlSheet,
 // 핀·순서의 순수 로직은 headerPins(테스트 표면) — 소비자는 이 파일 하나만 import 한다.
 import { useCallback, useMemo } from "react";
-import { HeaderPopover } from "./HeaderPopover.js";
+import { TriggerPopover } from "../ui/popover/TriggerPopover.js";
 import { ScrollRow } from "./ControlChrome.js";
 import { DotsIcon } from "./icons.js";
 import { usePersistedState } from "../store/persist.js";
@@ -141,9 +141,8 @@ export function HeaderControls({ controls, storageKey }: {
             <ScrollRow gap={10}>
                 {shown.map((c) => <ControlValue key={c.id} spec={c} />)}
             </ScrollRow>
-            <HeaderPopover
+            <TriggerPopover
                 width={330}
-                closeOnOutside
                 trigger={(open, toggle) => (
                     <button onClick={toggle} title="컨트롤 전부 보기 · 헤더에 올릴 것 고르기 · 순서 바꾸기"
                         style={{
@@ -159,7 +158,7 @@ export function HeaderControls({ controls, storageKey }: {
                 )}
             >
                 {() => <ControlSheet controls={ordered} unpinned={unpinnedSet} onTogglePin={togglePin} onReorder={reorder} />}
-            </HeaderPopover>
+            </TriggerPopover>
         </span>
     );
 }

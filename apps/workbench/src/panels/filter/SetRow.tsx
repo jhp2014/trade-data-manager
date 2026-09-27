@@ -18,7 +18,7 @@
 // ⚠ 판은 **지금 모드의 집합만** 세운다(+ 지금 자리는 늘). 모드가 장부를 가른다(2026-09-22).
 import { useMemo, useState } from "react";
 import { InlineRename } from "../../ui/InlineRename.js";
-import { HeaderPopover } from "../../components/HeaderPopover.js";
+import { TriggerPopover } from "../../ui/popover/TriggerPopover.js";
 import { selectObservedSetId, useWorkbench } from "../../store/workbench.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 import { FAIL } from "../../styles/palette.js";
@@ -54,7 +54,7 @@ export function SetRow(): JSX.Element {
     
     return (
         <div style={{ display: "flex", alignItems: "center", height: 30, padding: "0 8px", flexShrink: 0 }}>
-            <HeaderPopover width={320} align="start" closeOnOutside
+            <TriggerPopover width={320} align="start"
                 trigger={(open, toggleOpen) => (
                     <button onClick={toggleOpen} style={rootChip}
                         title={`집합 목록 — ${name} · 조건 ${observed ? leafCount(observed.expr) : 0}개\n누르면 집합 목록이 섭니다`}>
@@ -62,7 +62,7 @@ export function SetRow(): JSX.Element {
                     </button>
                 )}>
                 {(close) => <SetManager onClose={close} />}
-            </HeaderPopover>
+            </TriggerPopover>
         </div>
     );
 }

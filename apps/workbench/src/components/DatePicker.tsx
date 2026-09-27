@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dataDatesQuery } from "../api/queries.js";
-import { Popover } from "./Popover.js";
+import { TriggerPopover } from "../ui/popover/TriggerPopover.js";
 
 // data-aware 날짜피커 — 전체 달력이 아니라 실제 데이터 있는 년>월>일만 캐스케이드로 보여준다(요일 함께).
 const WD = ["일", "월", "화", "수", "목", "금", "토"];
@@ -98,7 +98,7 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (date
     const tree = useMemo(() => buildTree(dates ?? []), [dates]);
     const label = value ? `${value} (${weekday(value.slice(0, 4), value.slice(5, 7), value.slice(8, 10))})` : "날짜";
     return (
-        <Popover
+        <TriggerPopover side="above" layout="scroll" padding={8}
             trigger={(open, toggle) => (
                 <button
                     onClick={toggle}
@@ -118,6 +118,6 @@ export function DatePicker({ value, onChange }: { value: string; onChange: (date
             )}
         >
             {(close) => <DateGrid tree={tree} value={value} onPick={(d) => { onChange(d); close(); }} />}
-        </Popover>
+        </TriggerPopover>
     );
 }

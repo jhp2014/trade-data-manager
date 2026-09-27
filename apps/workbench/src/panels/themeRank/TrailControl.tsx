@@ -2,7 +2,7 @@
 // 값은 settingsSlice.themeTrailOffsets(영속) 하나 — 날짜·종목과 무관한 보기 취향이라 패널 로컬이 아니다.
 // 상한·정돈(정수·중복·정렬)은 슬라이스의 normalizeTrailOffsets 가 진다 — 여기는 손짓만.
 import { useState, type CSSProperties } from "react";
-import { Popover } from "../../components/Popover.js";
+import { TriggerPopover } from "../../ui/popover/TriggerPopover.js";
 import { useWorkbench } from "../../store/workbench.js";
 
 const TRAIL_CAP = 5; // 슬라이스와 같은 값 — 여기선 "＋ 가 왜 안 먹나"를 미리 말하는 용도
@@ -21,7 +21,7 @@ export function TrailControl(): JSX.Element {
         setDraft("");
     };
     return (
-        <Popover trigger={(open, toggle) => (
+        <TriggerPopover side="above" layout="scroll" padding={8} trigger={(open, toggle) => (
             <button onClick={toggle}
                 title="꼬리 — 지금 분에서 뒤로 이 오프셋(분) 지점들을 이어 그린다. 비우면 꼬리 꺼짐"
                 style={{
@@ -50,7 +50,7 @@ export function TrailControl(): JSX.Element {
                     <button onClick={() => add(draft)} disabled={full} title={full ? `최대 ${TRAIL_CAP}개` : "추가"} style={chip}>＋</button>
                 </div>
             )}
-        </Popover>
+        </TriggerPopover>
     );
 }
 

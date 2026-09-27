@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
     availablePredicates,
     isBoardFilterActive,
@@ -18,7 +18,7 @@ import { AnchoredPopover, MenuItem, MenuLabel } from "../../ui/Dialog.js";
 // 보드 필터 에디터 — DNF(그룹 안 AND, 그룹끼리 OR), **그룹별 처리**(배제 흐리게/숨김 · 선택 나머지 흐리게/숨김
 // · 강조). 술어는 domain 레지스트리.
 // 예전엔 독립 dockview 패널 3개("… 필터")였는데, 필터는 특정 보드의 설정이지 작업면이 아니라서
-// 보드 헤더의 필터 버튼 → HeaderPopover 안으로 들어왔다(패널 카탈로그에서 제거).
+// 보드 헤더의 필터 버튼 → 트리거 판(TriggerPopover) 안으로 들어왔다(패널 카탈로그에서 제거).
 // 보기/편집 분리: 완료된 그룹 = 수식 텍스트 한 덩어리(클릭하면 그 그룹만 편집 모드).
 // 편집 모드 = 같은 수식에서 토큰만 상호작용(종류=클릭 순환, 옵션=클릭 순환, 숫자=인라인 입력) — 셀렉트 없음.
 // 상태·액션은 보드마다 별개(store.boardFilter / replayFilter / liveFilter)이고 표현은 이 FilterEditor 하나를 공유한다.
@@ -48,19 +48,7 @@ function ModeBadge({ mode, onPick }: { mode: BoardFilterMode; onPick: (m: BoardF
     const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
     const ui = MODE_UI[mode] ?? MODE_UI.dim; // 모르는 mode(옛 저장물·손편집) 는 흐리게로 읽는다
 
-    // 판이 열려 있는 동안 Esc 는 **안쪽 판이 먹는다** — 캡처 단계로 가로채 바깥 HeaderPopover(필터 편집 판)까지
-    // 같이 닫히는 걸 막는다. 필터 판은 "열어둔 채 뒤의 보드를 확인"이 본론이라 함께 닫히면 그 자체로 손해다.
-    // (둘 다 document 에 거는 구조라 React 핸들러의 stopPropagation 으로는 못 막는다.)
-    useEffect(() => {
-        if (!anchor) return;
-        const onKey = (e: KeyboardEvent): void => {
-            if (e.key !== "Escape") return;
-            e.stopImmediatePropagation();
-            setAnchor(null);
-        };
-        document.addEventListener("keydown", onKey, true);
-        return () => document.removeEventListener("keydown", onKey, true);
-    }, [anchor]);
+    // 판 안의 판 — Esc·바깥 클릭은 판 스택(ui/popover)이 맨 위(이 택1 판)부터 닫는다.
     return (
         <>
             <button
@@ -154,7 +142,7 @@ function FilterEditor({
     const [editing, setEditing] = useState<number | null>(null); // 편집 중인 그룹 인덱스(한 번에 하나)
 
     return (
-        // 크기는 부모(HeaderPopover: 고정 폭 + maxHeight 플렉스 컬럼)가 정한다 — 본문이 넘치면 안에서 스크롤.
+        // 크기는 부모(TriggerPopover: 고정 폭 + maxHeight 플렉스 컬럼)가 정한다 — 본문이 넘치면 안에서 스크롤.
         <div style={{ display: "flex", flexDirection: "column", minHeight: 0, background: "var(--bg-primary)", color: "var(--text-primary)", fontSize: 13 }}>
             <PanelHeader>
                 <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>{title}</span>

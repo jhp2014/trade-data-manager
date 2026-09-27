@@ -10,7 +10,7 @@ import { StockNameCopy } from "./StockNameCopy.js";
 import { fmtStampKo } from "../lib/date.js";
 import { useLiveSnapshot } from "../lib/LiveSnapshotContext.js";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
-import { Popover } from "./Popover.js";
+import { TriggerPopover } from "../ui/popover/TriggerPopover.js";
 import { GearButton } from "../ui/controls.js";
 import { MirrorSync } from "./MirrorSync.js";
 
@@ -77,7 +77,7 @@ function NameCopyControl({ code }: { code: string }): JSX.Element {
 function TimeControl({ time, setTime }: { time: string | null; setTime: (t: string | null) => void }): JSX.Element {
     const curMin = time ? timeToMin(time) : 15 * 60 + 30; // 기본 15:30
     return (
-        <Popover trigger={(open, toggle) => (
+        <TriggerPopover side="above" layout="scroll" padding={8} trigger={(open, toggle) => (
             <button onClick={toggle} title="시간 선택" style={{ ...textBtn(open), padding: "2px 4px" }}>{time ? time.slice(0, 5) : "시간"}</button>
         )}>
             {() => (
@@ -93,7 +93,7 @@ function TimeControl({ time, setTime }: { time: string | null; setTime: (t: stri
                     />
                 </div>
             )}
-        </Popover>
+        </TriggerPopover>
     );
 }
 
