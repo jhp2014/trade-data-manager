@@ -309,7 +309,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                 />
                                 {/* 조건 그룹 고스트 칩 — **지금 타점**(시간선이 ◇ 위)이 통과한 그룹(탐색판의 그룹·같은 훅 한 벌).
                                     ⚠ unionPoints 가 빈 날은 평가를 안 돈다 — 날짜 자동 스킵이 지나는 빈 날마다
-                                    그룹 5벌(0.25~0.47초씩)을 물지 않게(탐색판의 rows>0 보호와 같은 몫). */}
+                                    그룹 평가(0.25~0.47초씩)를 물지 않게(탐색판의 rows>0 보호와 같은 몫). */}
                                 <GroupChipCard code={code} date={viewDate} time={time}
                                     active={!drifted && ownBundle(minuteQ.data, code) !== undefined
                                         && unionPoints.length > 0 && time !== null}

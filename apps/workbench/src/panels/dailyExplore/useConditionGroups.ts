@@ -1,4 +1,4 @@
-// 조건 그룹(탐색판이 고른 저장 집합 ≤5)의 **평가 한 벌** — 탐색판(열 ●/·)과 기본 차트(고스트 칩)가
+// 조건 그룹(탐색판이 고른 저장 집합 ≤10)의 **평가 한 벌** — 탐색판(열 ●/·)과 기본 차트(고스트 칩)가
 // 같은 이 훅을 쓴다(두 벌이면 판과 차트가 다른 그룹·다른 판정을 말한다).
 //
 // ## 선택의 주인은 탐색판 하나다
@@ -6,9 +6,14 @@
 // duplicable 아님 — w/s 소유가 패널당 1개 전제) 차트가 판 없이도 같은 저장물을 읽으면 된다.
 // null = 자동(보는 집합의 최상위 참조 부품을 따라간다).
 //
-// ## 비용
-// 그룹마다 그날 평가 한 벌(0.25~0.47초, 날짜당 한 번) — 캐시 선반(useCellSet MEMO_CAP 12)에 남아
+// ## 비용 — 차례 평가
+// 그룹마다 그날 평가 한 벌(0.25~0.47초, 날짜당 한 번) — 캐시 선반(useCellSet MEMO_CAP 16)에 남아
 // 탐색판과 차트가 같은 키를 나눠 쓴다(둘이 켜져 있어도 평가는 한 번).
+// 평가는 렌더 중 메인 스레드 동기라 10벌을 한 렌더에 물면 수 초 굳는다. 그래서 그룹 평가는 전부
+// **평가 예산**(useCellSet `budgeted` — 한 태스크에 캐시 미스 한 벌)을 따른다: 못 탄 그룹은 "…"로 섰다가
+// 다음 프레임에 다시 청한다. 날짜 이동·재료 갱신(라벨 토글 등)·두 소비자 어느 원인이든 같은 줄이다.
+// **우선 그룹**(`priorityId` — 탐색판의 좁히기 열)만 예산을 무시한다: 좁힌 목록은 행과 같은 렌더에 서야
+// 날짜 넘기기 착지·빈 날 판정이 좁힌 목록을 본다(한 프레임이라도 늦으면 좁히기 밖 행에 착지한다).
 import { useCallback, useMemo } from "react";
 import type { CellEvalOptions } from "@trade-data-manager/market/domain";
 import { useWorkbench, selectObservedSetId } from "../../store/workbench.js";
@@ -17,7 +22,8 @@ import { useFunnel } from "../filter/FunnelContext.js";
 import { useCellSet } from "../filter/useCellSet.js";
 import { setDisplayName } from "../filter/label.js";
 import type { SetExpr } from "../filter/expr.js";
-import { MAX_GROUPS, autoGroupIds, groupColStateOf, type GroupColState } from "./exploreRows.js";
+import { seriesColor } from "../../styles/palette.js";
+import { MAX_GROUPS, autoGroupIds, groupColStateOf, groupNumberOf, type GroupColState } from "./exploreRows.js";
 
 /** 탐색판의 단일 인스턴스 주소 — 그룹 선택 저장물이 여기 산다(카탈로그 duplicable 아님이 전제). */
 export const EXPLORE_PANEL_ID = "daily-explore-1";
@@ -29,17 +35,17 @@ export const EXPLORE_PANEL_ID = "daily-explore-1";
  */
 const GROUP_OPTS: CellEvalOptions = { limit: 50_000 };
 
-/** 그룹 열 색 — 자리(0~4) 고정. 종류색과 겹치지 않게 중간 채도로 다섯. */
-export const GROUP_COLORS = ["#1d9e75", "#7f77dd", "#ba7517", "#2f7fd0", "#c2557e"] as const;
-
 export interface GroupCol {
     setId: string;
     name: string;
+    /** 원 번호 ①~⑩ — 고른 순서의 자리(빼면 뒤가 당겨진다). 탐색판 열 머리·범례가 같은 값을 쓴다. */
+    num: string;
+    /** 자리 색(seriesColor) — 번호와 같은 자리에 묶인다. */
     color: string;
     state: GroupColState;
 }
 
-export function useConditionGroups(date: string, active: boolean): {
+export function useConditionGroups(date: string, active: boolean, priorityId: string | null = null): {
     picked: string[] | null;
     setPicked: (next: string[] | null) => void;
     groupSets: readonly { id: string; expr: SetExpr; universe: string }[];
@@ -67,19 +73,31 @@ export function useConditionGroups(date: string, active: boolean): {
         [savedSets],
     );
 
-    // 훅은 개수가 고정이어야 한다 — 그룹 칸 5개를 늘 부르고, 빈 칸은 null 식(재료를 안 당긴다).
+    // 훅은 개수가 고정이어야 한다 — 그룹 칸 10개를 늘 부르고, 빈 칸은 null 식(재료를 안 당긴다).
     // ⚠ `active` 가 꺼진 동안도 안 돈다 — 탐색판은 행이 없는 날(빈 날 자동 스킵), 차트는 드리프트를 끈다.
     const gx = (i: number): SetExpr | null => (active ? groupSets[i]?.expr ?? null : null);
-    const g0 = useCellSet(gx(0), funnel.slowSets, date, GROUP_OPTS);
-    const g1 = useCellSet(gx(1), funnel.slowSets, date, GROUP_OPTS);
-    const g2 = useCellSet(gx(2), funnel.slowSets, date, GROUP_OPTS);
-    const g3 = useCellSet(gx(3), funnel.slowSets, date, GROUP_OPTS);
-    const g4 = useCellSet(gx(4), funnel.slowSets, date, GROUP_OPTS);
-    const groupCols = useMemo<GroupCol[]>(() => {
-        const evals = [g0, g1, g2, g3, g4];
-        return groupSets.map((f, i) => ({ setId: f.id, name: groupName(f.id), color: GROUP_COLORS[i]!, state: groupColStateOf(evals[i]!) }));
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [groupSets, groupName, g0.evaluable, g0.hits, g0.isLoading, g0.ready, g0.tooWide, g0.truncated, g0.themesReady, g0.error, g1.evaluable, g1.hits, g1.isLoading, g1.ready, g1.tooWide, g1.truncated, g1.themesReady, g1.error, g2.evaluable, g2.hits, g2.isLoading, g2.ready, g2.tooWide, g2.truncated, g2.themesReady, g2.error, g3.evaluable, g3.hits, g3.isLoading, g3.ready, g3.tooWide, g3.truncated, g3.themesReady, g3.error, g4.evaluable, g4.hits, g4.isLoading, g4.ready, g4.tooWide, g4.truncated, g4.themesReady, g4.error]);
+    /** 예산을 따르나 — 우선 그룹(좁히기 열)만 아니다. */
+    const bx = (i: number): boolean => groupSets[i]?.id !== priorityId;
+    const evals = [
+        useCellSet(gx(0), funnel.slowSets, date, GROUP_OPTS, bx(0)),
+        useCellSet(gx(1), funnel.slowSets, date, GROUP_OPTS, bx(1)),
+        useCellSet(gx(2), funnel.slowSets, date, GROUP_OPTS, bx(2)),
+        useCellSet(gx(3), funnel.slowSets, date, GROUP_OPTS, bx(3)),
+        useCellSet(gx(4), funnel.slowSets, date, GROUP_OPTS, bx(4)),
+        useCellSet(gx(5), funnel.slowSets, date, GROUP_OPTS, bx(5)),
+        useCellSet(gx(6), funnel.slowSets, date, GROUP_OPTS, bx(6)),
+        useCellSet(gx(7), funnel.slowSets, date, GROUP_OPTS, bx(7)),
+        useCellSet(gx(8), funnel.slowSets, date, GROUP_OPTS, bx(8)),
+        useCellSet(gx(9), funnel.slowSets, date, GROUP_OPTS, bx(9)),
+    ];
+    // 열 상태 — 멤버십은 hits 참조로 메모돼(membershipOf) 한 그룹만 바뀌어도 나머지 Set 을 새로 안 짓는다.
+    const stateDeps = evals.flatMap((e) => [e.evaluable, e.hits, e.isLoading, e.ready, e.tooWide, e.truncated, e.themesReady, e.error]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const states = useMemo(() => evals.map((e) => groupColStateOf(e)), stateDeps);
+    const groupCols = useMemo<GroupCol[]>(
+        () => groupSets.map((f, i) => ({ setId: f.id, name: groupName(f.id), num: groupNumberOf(i), color: seriesColor(i), state: states[i]! })),
+        [groupSets, groupName, states],
+    );
 
     return { picked, setPicked, groupSets, groupCols, groupName };
 }

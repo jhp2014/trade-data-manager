@@ -1,11 +1,14 @@
-// 일별 타점 [탐색]의 **순수부** — 행 세우기·조건 그룹 열의 멤버십·자동 그룹 제안.
+// 일별 타점 [탐색]의 **순수부** — 행 세우기·조건 그룹 열의 멤버십·번호·자동 그룹 제안.
 // 규칙: .claude/decisions.md 「일별 타점 [탐색]」. 훅 없는 함수만 둔다(테스트 표면).
 import type { CellHit } from "@trade-data-manager/market/domain";
 import { minuteToHms } from "@trade-data-manager/market/domain";
 import type { SetExpr } from "../filter/expr.js";
 
-/** 조건 그룹 상한 — 열 매트릭스가 읽히는 폭이자, 그룹 평가 훅을 고정 개수로 부르는 근거(훅 규칙). */
-export const MAX_GROUPS = 5;
+/**
+ * 조건 그룹 상한 — 번호 열 ①~⑩ 이 한 화면에 읽히는 폭이자(도트 칸 ~18px × 10), 그룹 평가 훅을
+ * 고정 개수로 부르는 근거(훅 규칙). 올리면 useConditionGroups 의 호출 칸·useCellSet MEMO_CAP 도 같이.
+ */
+export const MAX_GROUPS = 10;
 
 export interface ExploreRow {
     code: string;
@@ -13,8 +16,6 @@ export interface ExploreRow {
     min: number;
     /** "HH:MM:SS" — goToPoint·순회 커서가 쓰는 그대로. */
     time: string;
-    /** 그 분 봉의 거래대금(원). null = 재료에서 그 분을 못 찾음(표시는 "—"). */
-    amount: number | null;
 }
 
 /** 행의 좌표 키 — 그룹 멤버십(`membershipOf`)과 같은 자를 쓴다. */
@@ -23,45 +24,27 @@ export const cellKeyOf = (code: string, min: number): string => `${code}|${min}`
 export type ExploreSort = "stock" | "time";
 
 /**
- * 후보 → 행. 분 대금은 누적대금의 차분(첫 봉은 누적 그대로) — 재료(스냅샷)의 분 배열에서 찾는다.
- * `minuteOf` 가 재료의 (code, unix초 배열)을 분으로 바꾸는 일은 호출자가 안다(시간대 셈을 여기 안 들인다).
- * 정렬: 기본 = **종목순**(종목 안 시간순 — 대부분 종목 단위로 걷는다, 사용자 확정) · "time" = 장 흐름.
+ * 후보 → 행. 정렬: 기본 = **종목순**(종목 안 시간순 — 대부분 종목 단위로 걷는다, 사용자 확정) · "time" = 장 흐름.
+ * (분 대금 열은 2026-09-27 은퇴 — 이 판의 주인공은 조건 그룹 열이고, 대금은 차트가 말한다.)
  */
-export function exploreRowsOf(
-    hits: readonly CellHit[],
-    stockOf: (code: string) => { times: readonly number[]; cumAmount: readonly number[] } | undefined,
-    minuteOf: (unixSec: number) => number,
-    sort: ExploreSort = "stock",
-): ExploreRow[] {
-    /** code → (분 → 배열 인덱스) — 종목당 한 번만 걷는다(행 300 × 분 400 정찰을 피함). */
-    const idx = new Map<string, Map<number, number>>();
-    const indexOf = (code: string, min: number): number | undefined => {
-        let m = idx.get(code);
-        if (!m) {
-            m = new Map();
-            const s = stockOf(code);
-            if (s) for (let i = 0; i < s.times.length; i++) m.set(minuteOf(s.times[i]!), i);
-            idx.set(code, m);
-        }
-        return m.get(min);
-    };
-    const rows = hits.map((h): ExploreRow => {
-        const s = stockOf(h.code);
-        const i = s ? indexOf(h.code, h.min) : undefined;
-        const amount = s === undefined || i === undefined ? null
-            : i === 0 ? s.cumAmount[0]!
-            : s.cumAmount[i]! - s.cumAmount[i - 1]!;
-        return { code: h.code, min: h.min, time: minuteToHms(h.min), amount };
-    });
+export function exploreRowsOf(hits: readonly CellHit[], sort: ExploreSort = "stock"): ExploreRow[] {
+    const rows = hits.map((h): ExploreRow => ({ code: h.code, min: h.min, time: minuteToHms(h.min) }));
     const byCode = (a: ExploreRow, b: ExploreRow): number => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0);
     return sort === "stock"
         ? rows.sort((a, b) => byCode(a, b) || a.min - b.min)
         : rows.sort((a, b) => a.min - b.min || byCode(a, b));
 }
 
-/** 그룹 하나의 그날 결과 → 멤버십 — 행의 ●/· 판정. */
+/**
+ * 그룹 하나의 그날 결과 → 멤버십 — 행의 ●/· 판정. **hits 배열 참조로 메모한다** — 그룹 열 목록은
+ * 어느 한 그룹이 바뀌어도 통째로 다시 서는데(열 10개), 그때마다 5만 건짜리 Set 을 전부 새로 짓지 않게.
+ * hits 는 useCellSet 의 캐시 결과라 같은 평가면 같은 참조다.
+ */
+const MEMBERSHIP = new WeakMap<readonly CellHit[], ReadonlySet<string>>();
 export function membershipOf(hits: readonly CellHit[]): ReadonlySet<string> {
-    return new Set(hits.map((h) => cellKeyOf(h.code, h.min)));
+    let m = MEMBERSHIP.get(hits);
+    if (!m) MEMBERSHIP.set(hits, (m = new Set(hits.map((h) => cellKeyOf(h.code, h.min)))));
+    return m;
 }
 
 /**
@@ -94,3 +77,6 @@ export function groupColStateOf(v: { evaluable: boolean; ready: boolean; isLoadi
     if (!v.ready || v.isLoading || !v.themesReady) return { kind: "loading" };
     return { kind: "ready", member: membershipOf(v.hits) };
 }
+
+/** 그룹 자리(0-base) → 원 번호 ①~⑩ — 열 머리·범례가 같은 자를 쓴다. 번호 = 고른 순서의 자리다. */
+export const groupNumberOf = (i: number): string => (i >= 0 && i < 20 ? String.fromCharCode(0x2460 + i) : `(${i + 1})`);

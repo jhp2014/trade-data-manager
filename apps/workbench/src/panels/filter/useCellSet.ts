@@ -14,7 +14,7 @@
 // 종단 술어(축·결과·그룹…)가 든 칸은 이 우주에서 평가할 수 없다. 그 칸을 그냥 통과시키면 조건이
 // 무제한이 되고, 그냥 탈락시키면 모수가 통째로 죽는다 — 둘 다 거짓말이다. **평가에서 빼고 그 사실을
 // 함께 낸다**(칸 상태 `deficient` + 이유). 화면이 그걸 말할 책임을 진다.
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     candleAxisActive,
     evaluateCellsExpr,
@@ -249,12 +249,12 @@ export function toCellExpr(
 const MEMO = new WeakMap<object, Map<string, CellEvalResult>>();
 /**
  * 한 재료(하루 스냅샷)당 살려 두는 조합 수. 산수는 **동시에 서 있는 서로 다른 조건 벌**이다:
- * 구독 패널 셋(시트·결과·작업 대상) + 차트 + **탐색판의 조건 그룹 최대 5**(2026-09-26 — 그룹마다
- * 그날 평가 한 벌) ≈ 10 이 현실적 상한이고, 조건을 만지는 동안 직전 것도 살아 있어야 편집이
- * 매끄럽다(6 → 12). 넘치면 LRU 스래싱으로 **매 렌더 재평가**가 나는데 그 대가가 0.25~0.47초다 —
+ * 보는 집합·차트 ◇·날짜 경계 판정 몇 벌 + **탐색판의 조건 그룹 최대 10**(2026-09-27 — 그룹마다
+ * 그날 평가 한 벌) ≈ 14 가 현실적 상한이고, 조건을 만지는 동안 직전 것도 살아 있어야 편집이
+ * 매끄럽다(12 → 16). 넘치면 LRU 스래싱으로 **매 렌더 재평가**가 나는데 그 대가가 0.25~0.47초다 —
  * 방금 버린 것이 늘 다음에 필요한 것이 된다. 담는 것은 결과 배열이라 힙 부담은 작다.
  */
-const MEMO_CAP = 12;
+const MEMO_CAP = 16;
 
 /**
  * 참조 → 세대 번호. **키에 못 싣는 객체 참조**(격자 파생·테마 투영)를 문자열 키에 태우는 자다.
@@ -270,7 +270,23 @@ const genOf = (o: object): number => {
     return genSeq;
 };
 
-function evaluateMemo(gen: object, key: string, run: () => CellEvalResult): CellEvalResult {
+/**
+ * **평가 예산 — 한 태스크에 캐시 미스 평가 한 벌.** 평가는 렌더 중 메인 스레드 동기라(0.25~0.47초) 여러
+ * 벌을 한 렌더에 물면 그만큼 굳는다(탐색판 조건 그룹 10벌 = 수 초). 예산을 따르는 호출(`budgeted`)은 이번
+ * 태스크에 이미 누가 평가했으면 **미루고**(null — "모름") 다음 프레임에 다시 청한다. 평가는 예산을 안 따르는
+ * 호출도 **쓴 것으로 적는다** — 보는 집합이 방금 평가된 렌더에 그룹까지 얹히지 않게.
+ * 원인을 가리지 않는다: 새 날짜·재료 세대(오늘 60초 재조회·테마 투영·라벨 토글)·여러 소비자(탐색판+차트 칩)
+ * 전부 같은 한 줄로 막힌다. 평가를 시도조차 않는 대기(재료 오류로 영구 null)는 예산을 안 쓰니 남을 막지 않는다.
+ */
+let evalSpent = false;
+const spendEval = (): void => {
+    if (evalSpent) return;
+    evalSpent = true;
+    setTimeout(() => { evalSpent = false; }, 0);
+};
+
+/** `run` = null 이면 **엿보기** — 캐시에 있으면 돌려주고 없으면 null(평가를 안 문다). */
+function evaluateMemo(gen: object, key: string, run: (() => CellEvalResult) | null): CellEvalResult | null {
     let per = MEMO.get(gen);
     if (!per) MEMO.set(gen, (per = new Map()));
     const hit = per.get(key);
@@ -280,11 +296,16 @@ function evaluateMemo(gen: object, key: string, run: () => CellEvalResult): Cell
         per.set(key, hit);
         return hit;
     }
+    if (run === null) return null;
+    spendEval();
     const made = run();
     per.set(key, made);
     while (per.size > MEMO_CAP) per.delete(per.keys().next().value as string);
     return made;
 }
+
+/** 예산 부족으로 미룬 평가의 표지 — null(재료 대기)과 갈라야 재시도를 건다. */
+const DEFERRED = Symbol("deferred");
 
 const EMPTY_HITS: CellHit[] = [];
 const EMPTY_ITEMS: FunnelItem[] = [];
@@ -303,7 +324,15 @@ export function useCellSet(
     savedSets: readonly { id: string; expr: SetExpr }[],
     date: string,
     opts?: CellEvalOptions,
+    /**
+     * true = **평가 예산을 따른다**(위 `evalSpent`) — 캐시 미스인데 이번 태스크 예산이 없으면 평가를 미루고
+     * null("모름", ready=false)로 섰다가 다음 프레임에 다시 청한다. 캐시 적중은 예산과 무관하게 즉시 선다
+     * (다시 가는 날짜는 깜빡이지 않는다). 탐색판 조건 그룹처럼 **여러 벌이 한꺼번에 서는** 호출만 켠다.
+     */
+    budgeted = false,
 ): CellSetView {
+    // 미룬 평가를 다시 청하는 박자 — 미뤘을 때만 올라간다(메모 deps 에 실어 재시도를 부른다).
+    const [retry, setRetry] = useState(0);
     // ⚠ 늦추는 일은 **호출부가 한다** — 2026-09-22 에 「계산」 관문이 걷히면서 박자의 주인이
     //   깔때기 한 곳(`slowExpr`/`slowSets`)으로 모였다. 여기서 또 늦추면 관문이 두 곳이 된다.
     const narrowedEarly = useMemo(
@@ -343,7 +372,7 @@ export function useCellSet(
     const hardCap = opts?.hardCap;
     const limitBy = opts?.limitBy;
 
-    const result = useMemo(() => {
+    const memo = useMemo((): CellEvalResult | typeof DEFERRED | null => {
         if (!stocks || snapQ.data?.date !== date) return null;
         // ⚠ 재료가 없는 동안은 **null**(값을 모른다)이지 빈 결과가 아니다 — 빈 결과는 "조건에 다 걸렸다"로
         //   읽힌다(useBoundSet 의 UNRESOLVED 규칙). 기준선 재료(/point-grids)가 오기 전 평가하면 이름표가 뒤집힌다.
@@ -363,7 +392,7 @@ export function useCellSet(
             needsBaseline && pointGrids.byDate ? genOf(pointGrids.byDate) : 0,
             labelIx !== null ? genOf(labelIx) : 0,
         ]);
-        return evaluateMemo(stocks, key, () => {
+        const run = (): CellEvalResult => {
             const mat = cellMaterialsOf(stocks, date, themes.proj, needsBaseline
                 ? (code) => pointGrids.gridOf(code, date)?.base ?? null
                 : undefined, labelIx ?? undefined);
@@ -372,9 +401,21 @@ export function useCellSet(
                 ...(hardCap !== undefined ? { hardCap } : {}),
                 ...(limitBy !== undefined ? { limitBy } : {}),
             });
-        });
+        };
+        // 예산을 따르는 호출은 이번 태스크가 이미 평가했으면 엿보기만 — 미스면 미룸(deferred).
+        const got = evaluateMemo(stocks, key, budgeted && evalSpent ? null : run);
+        return got ?? DEFERRED;
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- retry 는 미룬 평가를 다시 청하는 박자다
     }, [stocks, snapQ.data?.date, date, themes.proj, themes.ready, needsTheme, narrowed,
-        limit, hardCap, limitBy, needsBaseline, pointGrids, needsLabel, labelIx, labelsLoading]);
+        limit, hardCap, limitBy, needsBaseline, pointGrids, needsLabel, labelIx, labelsLoading, budgeted, retry]);
+    const deferred = memo === DEFERRED;
+    const result = deferred ? null : memo;
+    // 미뤘으면 다음 프레임에 다시 — 그때도 예산이 없으면 또 미룬다(한 태스크 한 벌이 줄 서는 모양).
+    useEffect(() => {
+        if (!deferred) return;
+        const h = requestAnimationFrame(() => setRetry((v) => v + 1));
+        return () => cancelAnimationFrame(h);
+    }, [deferred, retry]);
 
     const items = useMemo<readonly FunnelItem[]>(
         () => (result ? result.hits.map((h) => cellHitToItem(h, date)) : EMPTY_ITEMS),

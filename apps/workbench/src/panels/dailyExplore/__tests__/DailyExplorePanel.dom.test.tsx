@@ -6,6 +6,7 @@ import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js
 import { useWorkbench } from "../../../store/workbench.js";
 import { exprOfStages } from "../../filter/expr.js";
 import { DailyExplorePanel } from "../DailyExplorePanel.js";
+import { MAX_GROUPS } from "../exploreRows.js";
 
 const SEED: Seed = { candidateDays: [], points: [] };
 const PANEL = "daily-explore-1";
@@ -42,8 +43,9 @@ describe("DailyExplorePanel", () => {
         expect(groupsBtn.textContent).toContain("조건 그룹 2"); // 자동 = a, b
 
         act(() => { fireEvent.click(groupsBtn); });
+        // 팝오버(포털 — 패널 밖)의 항목만 잡는다. 범례 줄에도 같은 이름의 버튼이 선다.
         const item = (text: string): HTMLButtonElement =>
-            [...baseElement.querySelectorAll<HTMLButtonElement>("button")].find((b) => (b.textContent ?? "").includes(text))!;
+            [...baseElement.querySelectorAll<HTMLButtonElement>("button")].find((b) => !container.contains(b) && (b.textContent ?? "").includes(text))!;
         expect(item("자동").textContent).toContain("✓");
         act(() => { fireEvent.click(item("대금")); });
         // 손으로 고르는 순간 현재 목록(a,b) + 대금으로 굳는다.
@@ -53,23 +55,39 @@ describe("DailyExplorePanel", () => {
         expect(useWorkbench.getState().panelUi[PANEL]?.["exploreGroups"]).toEqual(["b", "c"]);
     });
 
-    it("지워진 선택 id 는 상한 5를 못 채운다 — 열 수·판이 산 것만 센다", () => {
+    it("지워진 선택 id 는 상한을 못 채운다 — 열 수·판이 산 것만 센다", () => {
         useWorkbench.setState({
             savedSets: [
                 { id: "edit", expr: exprOfStages([]), universe: "daily" as const },
                 { id: "a", name: "아침돌파", expr: exprOfStages([]), universe: "daily" as const },
                 { id: "b", name: "눌림", expr: exprOfStages([]), universe: "daily" as const },
             ],
-            panelUi: { [PANEL]: { exploreGroups: ["ghost1", "ghost2", "ghost3", "ghost4", "a"] } },
+            panelUi: { [PANEL]: { exploreGroups: [...Array.from({ length: MAX_GROUPS - 1 }, (_, i) => `ghost${i}`), "a"] } },
         });
         const { container, baseElement } = renderExplore();
         const groupsBtn = [...container.querySelectorAll("button")].find((btn) => (btn.textContent ?? "").includes("조건 그룹"))!;
         expect(groupsBtn.textContent, "산 것만 열로").toContain("조건 그룹 1");
         act(() => { fireEvent.click(groupsBtn); });
-        const item = [...baseElement.querySelectorAll<HTMLButtonElement>("button")].find((btn) => (btn.textContent ?? "").includes("눌림"))!;
-        expect(item.disabled, "유령 4 + 산 1 이 상한을 채운 척하면 안 된다").toBe(false);
+        const item = [...baseElement.querySelectorAll<HTMLButtonElement>("button")].find((btn) => !container.contains(btn) && (btn.textContent ?? "").includes("눌림"))!;
+        expect(item.disabled, "유령 + 산 1 이 상한을 채운 척하면 안 된다").toBe(false);
         act(() => { fireEvent.click(item); });
         // 토글 한 번이 걸러진 목록으로 다시 쓴다 — 유령이 청소된다.
         expect(useWorkbench.getState().panelUi[PANEL]?.["exploreGroups"]).toEqual(["a", "b"]);
+    });
+
+    it("범례 줄 = 번호+이름 · 그룹이 없으면 고르라고 말한다", () => {
+        useWorkbench.setState({
+            savedSets: [
+                { id: "edit", expr: { id: "root", of: [ref("a"), ref("b")], ops: ["or" as const], groups: [] }, universe: "daily" as const },
+                { id: "a", name: "아침돌파", expr: exprOfStages([]), universe: "daily" as const },
+                { id: "b", name: "눌림", expr: exprOfStages([]), universe: "daily" as const },
+            ],
+        });
+        const { container, unmount } = renderExplore();
+        expect(container.textContent).toContain("① 아침돌파");
+        expect(container.textContent).toContain("② 눌림");
+        unmount();
+        useWorkbench.setState({ savedSets: [{ id: "edit", expr: exprOfStages([]), universe: "daily" as const }] });
+        expect(renderExplore().container.textContent).toContain("열로 세울 조건 그룹이 없습니다");
     });
 });
