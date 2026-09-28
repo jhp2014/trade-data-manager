@@ -1,7 +1,7 @@
 // 셀 재료 어댑터 — core 엔진(`evaluateCells`)이 요구하는 콜백 둘을 **기존 단일 출처**에 잇는다.
 // 계산 규칙은 여기 없다(core 소유). 재계산기를 새로 쓰면 그 순간 "같은 화면에서 숫자가 둘"이 된다:
 //  · 서수/존 순위 = `sectionAtMinute`(시장 단면 판과 같은 stocks 배열 참조 → WeakMap 단면 캐시 공유)
-//    + core `themeZone.themeAnswerAt`(존 판정식은 타점 정보 패널과 같은 벌 — enter 의 min−1 비교까지 여기).
+//    + core `themeZone.themeAnswerAt`(존 판정식 한 벌 — enter 의 min−1 비교까지 여기).
 //  · 돌파 사슬의 기준선 = `/point-grids` 의 `grid.base`(서버 리졸버 산출 — 기준선 편집 시 이미 무효화된다).
 //
 // 순수 함수인 이유: 훅이 아니어야 dom 테스트 없이 잠글 수 있고, 호출부(useCellSet)의 memo 신원이

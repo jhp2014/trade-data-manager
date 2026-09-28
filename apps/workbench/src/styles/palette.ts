@@ -133,15 +133,6 @@ export function amountColor(frac: number): string {
     return `rgb(${mix(0)}, ${mix(1)}, ${mix(2)})`;
 }
 
-// ── 타점 정보 줄의 **출처 색점** — 뜻은 "이 값이 어디서 왔나" 하나뿐(강약도 성패도 아니다).
-// 값·순서·이름이 이미 줄의 내용을 다 말하므로 이 점은 종류만 갈라 주면 되고, 그래서 구획 머리 대신
-// 점 하나로 끝난다(decisions.md 「타점 정보 패널」 — 종류를 구획으로 안 가른다).
-// 기존 의미색(POINT_DEF 청록 · LEG_HIGH 앰버 · PIN 보라)과 **이웃이지만 다른 값**인 건 의도다:
-// 저들은 각자 제 뜻을 지고 있어서 여기 값이 따라 움직이면 안 된다.
-export const KIND_AXIS = "#1d9e75"; // 축 — 시그널 시점까지의 과거
-export const KIND_OUTCOME = "#ba7517"; // 결과 — 시그널 이후(걷기·시뮬)
-export const KIND_THEME = "#7f77dd"; // 테마 — 그 분의 무리 안 자리
-
 // 돌파 타입(기본 차트 사슬 층의 띠·밴드 면 · 사슬 칩 켜짐색) — 「고가 돌파」 teal, 「기준선 돌파」 보라.
 // 기준선 보라는 GUIDE(+30% 가이드)와 가까운 값이지만 뜻이 다르다(머리 규칙: 이름을 가른다).
 export const BREAKOUT_HIGH = "#16796f";

@@ -12,12 +12,12 @@ import { type SavedSet } from "../store/savedSetsSlice.js";
 import type { SetExpr } from "../panels/filter/expr.js";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, type RenderResult } from "@testing-library/react";
-import type { ChartAnchor, ChartBundle, DailyCommentListItem, DayReplay, StockMeta, ThemeMember } from "@trade-data-manager/wire";
+import type { ChartAnchor, DailyCommentListItem, DayReplay, StockMeta, ThemeMember } from "@trade-data-manager/wire";
 import { hmsToMinute, pointKeyOf, type PointGrid, type ReviewPointKey } from "@trade-data-manager/market/domain";
 import type { Group, GroupMembership, PointGroupMembership } from "../api/groups.js";
 import {
     dataDatesQuery,
-    allAnchorsQuery, allCommentsQuery, allThemeMembersQuery, chartQuery,
+    allAnchorsQuery, allCommentsQuery, allThemeMembersQuery,
     groupMembershipsQuery, groupsQuery, pointGridsQuery, pointGroupMembershipsQuery, stockMasterQuery,
 } from "../api/queries.js";
 import type { DecodedPointGrids } from "../api/pointGrids.js";
@@ -105,13 +105,8 @@ export interface Seed {
     memberships?: GroupMembership[];
     /** 좌표 라벨(타점 grain) 멤버십 — 안 주면 빈 피드. */
     pointMemberships?: PointGroupMembership[];
-    /** 그날 복기 파생(정규화 패널의 테마·거래대금 재료 — useDaySnapshot 키). */
+    /** 그날 복기 파생(시장 단면·조건판 재료 — useDaySnapshot 키). */
     daySnapshot?: { date: string; data: DayReplay };
-    /**
-     * 차트 번들(원주가 분봉 + 2년 일봉) — **캔들 오버레이의 재료**. 종목·날짜별이라 목록으로 받는다.
-     * 안 심고 캔들을 켜면 setup 의 네트워크 그물에 걸린다(그게 의도다 — 빈 캔들로 통과하지 않게).
-     */
-    charts?: { code: string; date: string; data: ChartBundle }[];
     /** 거래일 목록(오름차순) — 없으면 빈 배열(경계 넘김 없음). */
     dataDates?: string[];
     /** 자동 타점 격자(디코딩 후 형태 — usePointGrids 재료). 안 주면 빈 번들(자동 Point 0). */
@@ -172,7 +167,6 @@ export function seededClient(seed: Seed = {}): QueryClient {
     qc.setQueryData(allThemeMembersQuery().queryKey, seed.themeMembers ?? []);
     qc.setQueryData(stockMasterQuery().queryKey, seed.stockNames ?? namesFromFeeds(seed));
     if (seed.daySnapshot) qc.setQueryData(["day-replay-lru", seed.daySnapshot.date], seed.daySnapshot.data);
-    for (const c of seed.charts ?? []) qc.setQueryData(chartQuery(c.code, c.date).queryKey, c.data);
     return qc;
 }
 

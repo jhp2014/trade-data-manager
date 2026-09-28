@@ -114,7 +114,7 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
     const setSessionUi = useWorkbench((s) => s.setSessionUi);
     const originId = useId(); // 시선 변경 출처 태그 — 브레드크럼이 "내가 옮긴 것"만 기억하게 한다
 
-    // ── 그날 스냅샷(복기 파생) — 정규화 패널과 같은 공용 LRU 캐시.
+    // ── 그날 스냅샷(복기 파생) — useDaySnapshot 공용 LRU 캐시.
     const snapQ = useDaySnapshot(subject?.date ?? null);
     const stocks = snapQ.data?.stocks;
 

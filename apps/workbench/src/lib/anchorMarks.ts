@@ -41,7 +41,7 @@ export const displayOf = (param: string): AnchorDisplayDef | undefined => ANCHOR
 
 /**
  * 표식 하나 — **좌표 원본까지만** 안다. 화면 x 는 각 화면이 제 자로 만든다
- * (차트: `timeToCoordinate` / 정규화: `t − baseT`).
+ * (차트: `timeToCoordinate`).
  */
 export interface AnchorMark {
     /**
@@ -71,7 +71,7 @@ const FIELD_LABEL: Record<AnchorField, string> = { high: "고가", low: "저가"
  * `winnerKey` 는 기준선 승자(가격 최저)의 **앵커 전체 키** — 승자만 채운 칩 "기준", 나머지는 빈 칩 "후보".
  * 좌표가 아니라 전체 키인 이유: 같은 봉에 field 만 다른 기준선 둘이 있을 때 좌표로 재면 **둘 다 "기준"** 이
  * 되는데, 가로선은 하나만 하늘색이라 화면이 1 대 2 로 갈린다(실측에서 실제로 났다).
- * **판정은 여기서 하지 않는다**: 정규화는 levelsOf, 차트는 resolveChartAnchorLines 가 유일한 판정자이고
+ * **판정은 여기서 하지 않는다**: resolveChartAnchorLines 가 유일한 판정자이고
  * 이 함수는 그 결과를 받아 글자로 옮길 뿐이다(두 벌이 되면 채운 칩 ≠ 하늘색 선이 조용히 생긴다).
  *
  * 좌표가 그 화면 데이터에 없는 경우(번들 창 밖 등)는 **호출부가 버린다** — x 를 아는 쪽이 거기라서다.

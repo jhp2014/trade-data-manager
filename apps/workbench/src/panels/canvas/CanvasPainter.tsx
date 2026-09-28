@@ -133,21 +133,11 @@ function paintOp(
  *
  * SVG 를 쓸 때는 devtools 로 요소를 집어 좌표·색·순서를 눈으로 확인하고 그 자리에서 고쳤다. 캔버스는
  * 불투명한 사각형이라 그게 통째로 사라진다 — 그 손실을 메우는 자리다. 콘솔에서
- * `$0.__drawList` 로 들여다보고, 화면 테스트도 같은 창구로 그림을 확인한다(DOM 을 세던 것 대신).
+ * `$0.__drawList` 로 들여다본다.
  *
  * 그리기와 무관한 곁가지라 화면에 아무 영향이 없다.
  */
 interface CanvasWithList extends HTMLCanvasElement { __drawList?: readonly DrawLayer[] }
-
-/** 캔버스 노드가 마지막으로 그린 표시목록 — 없으면 null. */
-export function drawListOf(el: Element | null | undefined): readonly DrawLayer[] | null {
-    return (el as CanvasWithList | null | undefined)?.__drawList ?? null;
-}
-
-/** 목록 전체의 op 들을 한 줄로 — 테스트·디버깅이 "무엇이 그려졌나"를 물을 때. */
-export function opsOf(layers: readonly DrawLayer[] | null): DrawOp[] {
-    return (layers ?? []).flatMap((l) => l.groups.flatMap((g) => g.ops));
-}
 
 export interface CanvasLayersProps {
     /** 그릴 층들 — **순서가 곧 그리는 순서**다(먼저가 아래). */

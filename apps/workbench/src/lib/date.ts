@@ -91,9 +91,3 @@ export function parseTime(raw: string): string | null {
  * 레일 좌표·차트 프레이밍·골격 정규화가 전부 시각을 수로 봐야 잰다.
  */
 export const minutesOfDay = (hms: string): number => Number(hms.slice(0, 2)) * 60 + Number(hms.slice(3, 5));
-
-/** 분 → HH:MM(0..1439 로 클램프). 먼저 반올림하고 시·분을 한 값에서 뽑는다 — 따로 뽑으면 599.7분이 "09:00"이 된다. */
-export function timeOfMinutes(min: number): string {
-    const m = Math.max(0, Math.min(1439, Math.round(min)));
-    return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-}

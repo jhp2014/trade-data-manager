@@ -27,7 +27,7 @@ describe("nextLinkedId", () => {
     });
 });
 
-// 읽기 기준 사다리 — 겹침(ThemeScopePanel)·타점 정보가 같은 기준을 본다. 빈 술어를 건너뛰지 않으면
+// 읽기 기준 사다리 — 겹침(ThemeScopePanel)이 이 기준을 본다. 빈 술어를 건너뛰지 않으면
 // [빈 theme, 활성 theme] 순서에서 빈 술어의 값이 "걸린 조건"처럼 그려진다(리뷰 #3).
 describe("themeReadParamsOf", () => {
     const themeOn: FilterStage = {

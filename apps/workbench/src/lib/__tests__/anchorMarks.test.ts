@@ -2,7 +2,7 @@
 //
 // 제일 중요한 건 첫 검사다: **도메인 레지스트리 전수가 표기 레지스트리에 있는가.**
 // 표기는 param 별 명시라(도메인 성질에서 파생하지 않는다 — 사용자 확정) 새 param 을 등록하고
-// 표기를 빠뜨리면 그 param 이 **두 화면(정규화·차트) 어디에도 조용히 안 뜬다** — 이 테스트가 그
+// 표기를 빠뜨리면 그 param 이 **차트에 조용히 안 뜬다** — 이 테스트가 그
 // 침묵을 소리로 바꾼다. 레지스트리가 lib/ 로 올라오며 이 검사도 같이 따라왔다(안 따라오면 무방비).
 import { describe, it, expect } from "vitest";
 import { ANCHOR_PARAMS, BASELINE_PARAM, IGNORE_CANDLE_PARAM, chartAnchorKey, type ChartAnchor } from "@trade-data-manager/market/domain";
