@@ -19,7 +19,7 @@ import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { seriesColor } from "../../styles/palette.js";
 import { groupNumberOf } from "../dailyExplore/exploreRows.js";
-import { GroupLegend, HeadLine, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, ScrollBox, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
+import { GroupLegend, HeadLine, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, ScrollBox, revealRow, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
 import { LabelColMenu } from "./LabelColMenu.js";
 import {
     labelChartsOf, labelColKey, navOrderOf, noPointCellOf, parseLabelCols, pointCellOf, shownRowsOf, stepFrom,
@@ -115,7 +115,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
 
     // ── 포커스 따라가기 — 날짜도 바뀌므로 deps 에 넣는다(탐색판은 날짜 고정이라 빠져 있다).
     const focusRowRef = useRef<HTMLTableRowElement | null>(null);
-    useEffect(() => { focusRowRef.current?.scrollIntoView({ block: "nearest" }); }, [focusDate, focusCode, focusTime]);
+    useEffect(() => { revealRow(focusRowRef.current); }, [focusDate, focusCode, focusTime]);
 
     const note = !g.ready ? (g.isLoading ? "불러오는 중…" : "라벨 데이터를 못 불러왔습니다")
         : charts.length === 0 ? "붙인 라벨이 없습니다 — 차트·목록 우클릭으로 붙입니다"
@@ -136,7 +136,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         if (r.kind === "date") {
             const wd = WEEKDAY[new Date(`${r.date}T00:00:00`).getDay()] ?? "";
             return (
-                <tr key={`d:${r.date}`}>
+                <tr key={`d:${r.date}`} data-head="">
                     <td colSpan={colSpanAll} style={{ ...dateCell, paddingTop: i === 0 ? 3 : 8 }}>
                         <span style={{ ...stickL(0), display: "inline-block", background: "inherit", paddingRight: 8 }}>{r.date} ({wd})</span>
                     </td>
@@ -150,7 +150,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
             // 받을 줄이 여기뿐이다(강조는 안 한다 — 이름줄은 칸이 없는 표제다).
             const follow = r.firstTime !== null && focusTime === null && chart.code === focusCode && chart.date === focusDate;
             return (
-                <tr key={`s:${chart.code}|${chart.date}`} ref={follow ? focusRowRef : undefined}>
+                <tr key={`s:${chart.code}|${chart.date}`} data-head="" ref={follow ? focusRowRef : undefined}>
                     <td colSpan={colSpanAll} style={{ ...headLineCell, paddingTop: 4 }}>
                         <HeadLine onContextMenu={(ev) => openAssign(ev, chart.code, chart.date)}>
                             <button onClick={onHead} className="row-self-marked"

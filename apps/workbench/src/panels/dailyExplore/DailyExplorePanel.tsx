@@ -34,7 +34,7 @@ import { neighborDates } from "./dayCrossing.js";
 import { useDayCrossing } from "./useDayCrossing.js";
 import { stepWithin, type NavKey } from "./walk.js";
 import { MAX_GROUPS, cellKeyOf, exploreRowsOf, type ExploreSort } from "./exploreRows.js";
-import { FragmentRow, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, HeadLine, headLineCell, navBtn, ScrollBox, stickL, thBase, treeTimeCell } from "./exploreTable.js";
+import { FragmentRow, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, HeadLine, headLineCell, navBtn, revealRow, ScrollBox, stickL, thBase, treeTimeCell } from "./exploreTable.js";
 import { useConditionGroups, type GroupCol } from "./useConditionGroups.js";
 
 const EMPTY_DATES: string[] = [];
@@ -163,9 +163,9 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         },
     ], [sortMode, setSortMode, datePinned, setDatePinned, groupCols.length, menuAt]);
 
-    // ── 포커스 행 따라가기 — 걷는 행이 화면 밖으로 나가지 않게.
+    // ── 포커스 행 따라가기 — 걷는 행이 화면 밖으로도, 붙는 머리 밑으로도 안 가게(revealRow).
     const focusRowRef = useRef<HTMLTableRowElement | null>(null);
-    useEffect(() => { focusRowRef.current?.scrollIntoView({ block: "nearest" }); }, [focusCode, focusTime]);
+    useEffect(() => { revealRow(focusRowRef.current); }, [focusCode, focusTime]);
 
     const note = !isDaily ? "하루 모드에서만 섭니다"
         : cellSet.error !== null ? `재료 조회 실패 — ${cellSet.error.message}`
@@ -243,7 +243,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                                 // 이름 덩어리가 제 배경으로 덮는다 — 가로 스크롤 중에도 이름이 왼쪽에 붙어 있게 덩어리만 sticky). 덩어리는 보이는 폭(100cqw)만
                                 // 차지해 표 폭을 안 먹는다 — 넘치면 테마 끝에서 자른다(HeadLine).
                                 const head = tree && (i === 0 || shownRows[i - 1]!.code !== r.code) ? (
-                                    <tr key={`head-${r.code}`}>
+                                    <tr key={`head-${r.code}`} data-head="">
                                         <td colSpan={2 + groupCols.length} style={{ ...headLineCell, paddingTop: i === 0 ? 2 : 6 }}>
                                             <HeadLine onContextMenu={(ev) => openAssign(ev, r.code)}>
                                                 <button onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}

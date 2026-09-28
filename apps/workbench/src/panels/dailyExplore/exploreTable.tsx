@@ -60,10 +60,55 @@ export function ThemeChips({ themes }: { themes: readonly string[] }): JSX.Eleme
  */
 export function ScrollBox({ children }: { children: ReactNode }): JSX.Element {
     return (
-        <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+        <div data-scroll-box="" style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
             <div style={{ containerType: "inline-size" }}>{children}</div>
         </div>
     );
+}
+
+interface Span { top: number; bottom: number }
+
+/**
+ * 따라가기에 필요한 세로 이동량 — `want`(커서 줄 + 문맥)가 `view` 안에 들게. 문맥까지는 안 들어가는 좁은 판이면
+ * **커서 줄만**이라도 들게 한다(문맥 때문에 커서가 밀려나면 본말전도). 둘 다 넘치면 위를 맞춘다.
+ */
+export function revealDelta(view: Span, want: Span, row: Span): number {
+    const t = want.bottom - want.top > view.bottom - view.top ? row : want;
+    if (t.top < view.top) return t.top - view.top;
+    if (t.bottom > view.bottom) return t.bottom - view.bottom;
+    return 0;
+}
+
+const isHead = (el: Element | null): el is HTMLElement => el instanceof HTMLElement && el.dataset.head !== undefined;
+
+/**
+ * 커서 줄 따라가기 — `scrollIntoView({block:"nearest"})` 의 후임(2026-09-28).
+ * ⚠ nearest 는 줄을 스크롤 상자의 **맨 위 가장자리**에 맞추는데, 거기엔 붙는 머리(thead, sticky top:0)가 떠 있어
+ * w 로 위로 걸으면 커서 줄이 **정확히 머리 밑으로** 들어갔다(s 는 아래 가장자리라 멀쩡 — 사용자 지적).
+ * 그래서 머리 높이를 재서 빼고, 커서 **앞뒤 한 줄씩** 여유를 둔다(편집기의 scrolloff). 앞 줄이 머리줄(`data-head`)이면
+ * 이어진 머리줄을 다 데려온다 — 종목·날짜의 첫 타점에 올라왔을 때 "어느 종목·어느 날"이 같이 보이게.
+ * 가로 스크롤은 건드리지 않는다(줄은 표 폭 전체라 가로로 맞출 게 없다).
+ */
+export function revealRow(row: HTMLElement | null): void {
+    const box = row?.closest<HTMLElement>("[data-scroll-box]") ?? null;
+    if (row === null || box === null) return;
+    let first: Element = row;
+    let p = row.previousElementSibling;
+    if (p !== null) {
+        first = p;
+        while (isHead(p) && isHead(p.previousElementSibling)) { p = p.previousElementSibling; first = p; }
+    }
+    const last = row.nextElementSibling ?? row;
+    const b = box.getBoundingClientRect();
+    const headH = box.querySelector("thead")?.getBoundingClientRect().height ?? 0;
+    const top = b.top + box.clientTop;
+    const r = row.getBoundingClientRect();
+    const d = revealDelta(
+        { top: top + headH, bottom: top + box.clientHeight },
+        { top: first.getBoundingClientRect().top, bottom: last.getBoundingClientRect().bottom },
+        { top: r.top, bottom: r.bottom },
+    );
+    if (d !== 0) box.scrollTop += d;
 }
 
 /**
