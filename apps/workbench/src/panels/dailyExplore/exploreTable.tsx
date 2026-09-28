@@ -52,11 +52,19 @@ export function ThemeChips({ themes }: { themes: readonly string[] }): JSX.Eleme
 }
 
 /**
- * 스크롤 상자 — **컨테이너 질의 기준**(`containerType: inline-size`)이라 안쪽 이름줄이 `100cqw`(보이는 폭)를 쓸 수 있다.
+ * 스크롤 상자 — 안쪽 한 겹이 **컨테이너 질의 기준**(`containerType: inline-size`)이라 이름줄이 `100cqw`(보이는 폭)를 쓸 수 있다.
  * 이름줄이 제 글자 폭으로 표의 최소 폭을 정하면, 판이 좁을 때 표가 넓어져 번호 열이 판 밖으로 밀린다
  * (시간 줄 옆은 비어 있는데도 — 2026-09-28 사용자 지적). 그래서 이름줄은 보이는 폭에 맞춰 서고 넘치면 자른다.
+ * ⚠ 기준은 **스크롤 상자 자신이 아니라 안쪽 블록**이다 — 스크롤 상자에 걸면 cqw 가 세로 스크롤바 폭까지 먹어
+ *   (실측 641 vs 649) 표가 스크롤바만큼 넓어져 가로 스크롤이 새로 생긴다. 안쪽 블록은 스크롤바 안쪽 폭 그대로다.
  */
-export const scrollBox: CSSProperties = { flex: 1, minHeight: 0, overflow: "auto", containerType: "inline-size" };
+export function ScrollBox({ children }: { children: ReactNode }): JSX.Element {
+    return (
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            <div style={{ containerType: "inline-size" }}>{children}</div>
+        </div>
+    );
+}
 
 /**
  * 종목 머리줄 안의 덩어리 — 바깥은 보이는 폭(100cqw)에 붙어 서서 표 폭을 안 먹고 가로 스크롤 중에도 왼쪽에 붙는다.

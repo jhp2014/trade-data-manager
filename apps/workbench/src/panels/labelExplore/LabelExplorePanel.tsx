@@ -19,7 +19,7 @@ import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { seriesColor } from "../../styles/palette.js";
 import { groupNumberOf } from "../dailyExplore/exploreRows.js";
-import { GroupLegend, HeadLine, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, scrollBox, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
+import { GroupLegend, HeadLine, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, ScrollBox, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
 import { LabelColMenu } from "./LabelColMenu.js";
 import {
     labelChartsOf, labelColKey, labelCountsByCol, navOrderOf, parseLabelCols, pointCellOf, shownRowsOf, stepFrom,
@@ -210,7 +210,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                     title: colTitle(c, counts.total.get(c.key) ?? 0, g.pathLabel(c.name, c.name)),
                 }))} />
 
-            <div style={scrollBox}>
+            <ScrollBox>
                 {note !== null ? (
                     <div style={{ padding: "10px 12px", fontSize: 11, color: "var(--text-tertiary)" }}>{note}</div>
                 ) : (
@@ -235,7 +235,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                         </tbody>
                     </table>
                 )}
-            </div>
+            </ScrollBox>
 
             {menuAt !== null && (
                 <LabelColMenu anchor={menuAt} cols={cols.map(({ name, scope }) => ({ name, scope }))}

@@ -34,7 +34,7 @@ import { neighborDates } from "./dayCrossing.js";
 import { useDayCrossing } from "./useDayCrossing.js";
 import { stepWithin, type NavKey } from "./walk.js";
 import { MAX_GROUPS, cellKeyOf, exploreRowsOf, type ExploreSort } from "./exploreRows.js";
-import { FragmentRow, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, HeadLine, headLineCell, navBtn, scrollBox, stickL, thBase, treeTimeCell } from "./exploreTable.js";
+import { FragmentRow, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, HeadLine, headLineCell, navBtn, ScrollBox, stickL, thBase, treeTimeCell } from "./exploreTable.js";
 import { useConditionGroups, type GroupCol } from "./useConditionGroups.js";
 
 const EMPTY_DATES: string[] = [];
@@ -213,7 +213,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
             )}
 
             {/* 세로·가로 스크롤 한 상자 — 머리는 위에, 시간(·종목) 열은 왼쪽에 붙는다. */}
-            <div style={scrollBox}>
+            <ScrollBox>
                 {note !== null ? (
                     <div style={{ padding: "10px 12px", fontSize: 11, color: "var(--text-tertiary)" }}>{note}</div>
                 ) : (
@@ -290,7 +290,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                         </tbody>
                     </table>
                 )}
-            </div>
+            </ScrollBox>
 
             {menuAt !== null && (
                 <GroupMenu anchor={menuAt} pickedIds={picked} groupSets={groupSets} savedSets={savedSets} nameOf={groupName}
