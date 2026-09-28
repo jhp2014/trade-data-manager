@@ -2,7 +2,7 @@
 // 규칙: .claude/decisions.md 「라벨 타점 [탐색]」.
 // 행 = 라벨 좌표, 날짜 머리줄 → 종목 머리줄 → 시간(최근순) · 열 = 고른 라벨 ≤10(◆ 타점 / ▣ 하루, 자동 기본 없음).
 // 칸: 직접 ● · 하위 경유 ○(계층 상속) — ▣ 하루 라벨도 그날 타점 줄에 똑같이 찍는다. 종목 이름줄 = 이름 + 테마뿐
-// (타점 없이 하루 라벨만 있는 차트는 테마 옆 ▣ 아이콘 하나 — hover = 어느 라벨).
+// (타점 없이 하루 라벨만 있는 차트는 시간 자리에 「타점 없음」 줄 하나 — 그 줄에 똑같이 찍는다). 열별 집계 숫자는 없다.
 // 날짜 넘기기가 없다 — 라벨은 희소해 한 목록에 다 선다. 기간 = 전 기간(전역 월 시선에 안 묶는다).
 // 재료 = 그룹 멤버십 직독(셀 엔진 평가 없음).
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -19,10 +19,10 @@ import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { seriesColor } from "../../styles/palette.js";
 import { groupNumberOf } from "../dailyExplore/exploreRows.js";
-import { GroupLegend, HeadLine, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, ScrollBox, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
+import { GroupLegend, HeadLine, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, ScrollBox, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
 import { LabelColMenu } from "./LabelColMenu.js";
 import {
-    labelChartsOf, labelColKey, labelCountsByCol, navOrderOf, parseLabelCols, pointCellOf, shownRowsOf, stepFrom,
+    labelChartsOf, labelColKey, navOrderOf, noPointCellOf, parseLabelCols, pointCellOf, shownRowsOf, stepFrom,
     type LabelCell, type LabelCol, type LabelRange, type LabelRow,
 } from "./labelRows.js";
 
@@ -71,7 +71,6 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
 
     const charts = useMemo(() => labelChartsOf(g.memberships, g.pointMemberships, g.groupByName), [g.memberships, g.pointMemberships, g.groupByName]);
     const rows = useMemo(() => (g.ready ? shownRowsOf(charts, cols, range, narrowCol) : []), [g.ready, charts, cols, range, narrowCol]);
-    const counts = useMemo(() => labelCountsByCol(charts, cols), [charts, cols]);
     const totalPoints = useMemo(() => charts.reduce((n, c) => n + c.points.length, 0), [charts]);
     const shownPoints = useMemo(() => rows.reduce((n, r) => n + (r.kind === "point" ? 1 : 0), 0), [rows]);
     const shownDays = useMemo(() => rows.reduce((n, r) => n + (r.kind === "date" ? 1 : 0), 0), [rows]);
@@ -123,7 +122,8 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         : range === "cols" && cols.length === 0 && narrowCol === null ? "열을 고르면 그 라벨이 붙은 타점이 섭니다 — 머리의 「라벨 열」, 또는 「모든 라벨」"
         : rows.length === 0 ? "고른 라벨이 붙은 타점이 없습니다"
         : null;
-    const timeW = TIME_W + TREE_INDENT;
+    // 시간 칸 — 「타점 없음」 글자가 들어가게 라벨판만 넓게 고정(그 줄이 생겼다 없어질 때 폭이 흔들리지 않게).
+    const timeW = LABEL_TIME_W;
     const colSpanAll = 2 + cols.length;
 
     const dot = (cell: LabelCell, color: string): JSX.Element | null =>
@@ -134,57 +134,51 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
 
     const renderRow = (r: LabelRow, i: number): JSX.Element => {
         if (r.kind === "date") {
-            const day = counts.byDate.get(r.date);
             const wd = WEEKDAY[new Date(`${r.date}T00:00:00`).getDay()] ?? "";
             return (
                 <tr key={`d:${r.date}`}>
-                    <td colSpan={2} style={{ ...dateCell, paddingTop: i === 0 ? 3 : 8 }}>
+                    <td colSpan={colSpanAll} style={{ ...dateCell, paddingTop: i === 0 ? 3 : 8 }}>
                         <span style={{ ...stickL(0), display: "inline-block", background: "inherit", paddingRight: 8 }}>{r.date} ({wd})</span>
                     </td>
-                    {cols.map((c) => (
-                        <td key={c.key} style={{ ...dateCell, ...dotCell, paddingTop: i === 0 ? 3 : 8, color: c.color, fontSize: 10 }}>
-                            {day?.get(c.key) ?? <span style={{ color: "var(--text-tertiary)" }}>0</span>}
-                        </td>
-                    ))}
                 </tr>
             );
         }
         const { chart } = r;
         if (r.kind === "stock") {
-            const isFocus = chart.code === focusCode && chart.date === focusDate && focusTime === null;
             const onHead = (): void => go(r.firstTime !== null ? { code: chart.code, date: chart.date, time: r.firstTime } : { code: chart.code, date: chart.date });
             return (
-                <tr key={`s:${chart.code}|${chart.date}`} ref={isFocus ? focusRowRef : undefined}>
+                <tr key={`s:${chart.code}|${chart.date}`}>
                     <td colSpan={colSpanAll} style={{ ...headLineCell, paddingTop: 4 }}>
-                        <HeadLine onContextMenu={(ev) => openAssign(ev, chart.code, chart.date)}
-                            innerStyle={isFocus ? { background: "var(--accent-soft)", boxShadow: "inset 2px 0 0 var(--accent-primary)" } : undefined}>
+                        <HeadLine onContextMenu={(ev) => openAssign(ev, chart.code, chart.date)}>
                             <button onClick={onHead} className="row-self-marked"
-                                title={r.stop ? "좌클릭 = 이 차트로 · 우클릭 = 그룹 배정(하루)" : "좌클릭 = 이 종목의 첫 타점으로 · 우클릭 = 그룹 배정(하루)"}
+                                title={r.firstTime === null ? "좌클릭 = 이 차트로 · 우클릭 = 그룹 배정(하루)" : "좌클릭 = 이 종목의 첫 타점으로 · 우클릭 = 그룹 배정(하루)"}
                                 style={{ border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, padding: 0, color: "var(--text-primary)", whiteSpace: "nowrap", flexShrink: 0 }}>
                                 {nameOf(chart.code)}
                             </button>
                             <ThemeChips themes={themeIndex.themesOf(chart.code)} />
-                            {/* 타점 줄이 없는 차트 — 점을 찍을 줄이 없으니 ▣ 하나로 "하루 라벨로 섰다"만 말한다(어느 라벨인지는 hover). */}
-                            {r.stop && (
-                                <span title={`하루 라벨: ${[...chart.dayDirect].join(" · ")}`} style={{ flexShrink: 0, fontSize: 11, color: "var(--text-tertiary)", cursor: "default" }}>▣</span>
-                            )}
                         </HeadLine>
                     </td>
                 </tr>
             );
         }
-        const { point } = r;
-        const isFocus = chart.code === focusCode && chart.date === focusDate && point.time === focusTime;
+        // 타점 줄 · 「타점 없음」 줄 — 같은 모양. 「타점 없음」은 시각 없이 그 차트로(goToDay), 우클릭은 하루 배정.
+        const time = r.kind === "point" ? r.point.time : null;
+        const isFocus = chart.code === focusCode && chart.date === focusDate && time === focusTime;
         const rowBg = isFocus ? "var(--accent-soft)" : "var(--bg-primary)";
+        const cellOf = (c: LabelCol): LabelCell => (r.kind === "point" ? pointCellOf(chart, r.point, c) : noPointCellOf(chart, c));
         return (
-                <tr key={`p:${chart.code}|${chart.date}|${point.time}`} ref={isFocus ? focusRowRef : undefined}
-                    onClick={() => go({ code: chart.code, date: chart.date, time: point.time })}
-                    onContextMenu={(ev) => openAssign(ev, chart.code, chart.date, point.time)}
-                    title="좌클릭 = 이 타점으로 시선 이동(차트가 따라온다) · 우클릭 = 그룹 배정(좌표 라벨)"
+                <tr key={`p:${chart.code}|${chart.date}|${time ?? "none"}`} ref={isFocus ? focusRowRef : undefined}
+                    onClick={() => go(time !== null ? { code: chart.code, date: chart.date, time } : { code: chart.code, date: chart.date })}
+                    onContextMenu={(ev) => (time !== null ? openAssign(ev, chart.code, chart.date, time) : openAssign(ev, chart.code, chart.date))}
+                    title={time !== null ? "좌클릭 = 이 타점으로 시선 이동(차트가 따라온다) · 우클릭 = 그룹 배정(좌표 라벨)"
+                        : "이 차트엔 라벨 붙은 타점이 없다(하루 라벨만) — 좌클릭 = 이 차트로 · 우클릭 = 그룹 배정(하루)"}
                     style={{ cursor: "pointer", background: rowBg }}>
-                    <Td style={{ ...stickL(0), backgroundColor: rowBg, paddingLeft: 8 + TREE_INDENT, borderBottom: "none", ...treeTimeCell(isFocus) }}>{point.time.slice(0, 5)}</Td>
+                    <Td style={{ ...stickL(0), backgroundColor: rowBg, paddingLeft: 8 + TREE_INDENT, borderBottom: "none", ...treeTimeCell(isFocus),
+                        ...(time === null ? { fontSize: 11, color: isFocus ? "var(--text-secondary)" : "var(--text-tertiary)" } : null) }}>
+                        {time !== null ? time.slice(0, 5) : "타점 없음"}
+                    </Td>
                     <Td style={{ borderBottom: "none" }} />
-                    {cols.map((c) => <Td key={c.key} style={{ ...dotCell, borderBottom: "none" }}>{dot(pointCellOf(chart, point, c), c.color)}</Td>)}
+                    {cols.map((c) => <Td key={c.key} style={{ ...dotCell, borderBottom: "none" }}>{dot(cellOf(c), c.color)}</Td>)}
                 </tr>
         );
     };
@@ -206,8 +200,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                 cols={cols.map((c) => ({
                     key: c.key, num: c.num, color: c.color, clickable: true,
                     name: `${c.scope === "day" ? "▣ " : ""}${c.name}`,
-                    suffix: ` ${counts.total.get(c.key) ?? 0}`,
-                    title: colTitle(c, counts.total.get(c.key) ?? 0, g.pathLabel(c.name, c.name)),
+                    title: colTitle(c, g.pathLabel(c.name, c.name)),
                 }))} />
 
             <ScrollBox>
@@ -221,7 +214,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                                 {/* 빈 칸이 남는 폭을 다 먹어 번호 열을 **시간 반대편**으로 민다(탐색판과 같은 자리). */}
                                 <th style={{ ...thBase, width: "100%" }} />
                                 {cols.map((c) => (
-                                    <th key={c.key} title={colTitle(c, counts.total.get(c.key) ?? 0, g.pathLabel(c.name, c.name))} onClick={() => toggleNarrow(c.key)}
+                                    <th key={c.key} title={colTitle(c, g.pathLabel(c.name, c.name))} onClick={() => toggleNarrow(c.key)}
                                         style={{ ...thBase, ...dotCell, fontSize: 11, cursor: "pointer", color: c.color,
                                             borderBottom: narrowKey === c.key ? `2px solid ${c.color}` : thBase.borderBottom }}>
                                         {c.num}
@@ -245,9 +238,13 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     );
 }
 
-/** 열 머리·범례 hover — 경로·종류·개수·좁히기. */
-const colTitle = (c: Col, n: number, path: string): string =>
-    `${c.num} ${c.scope === "day" ? "▣ 하루" : "◆ 타점"} 라벨 — ${path}\n${c.scope === "day" ? `차트 ${n}` : `타점 ${n}`}(하위·상속 포함)\n클릭 = 이 열 ●/○ 행만(다시 = 해제)`;
+/** 열 머리·범례 hover — 경로·종류·좁히기. (개수는 안 싣는다 — 집계는 이 판의 일이 아니다, 2026-09-28 사용자 확정.) */
+const colTitle = (c: Col, path: string): string =>
+    `${c.num} ${c.scope === "day" ? "▣ 하루" : "◆ 타점"} 라벨 — ${path}
+클릭 = 이 열 ●/○ 행만(다시 = 해제)`;
+
+/** 라벨판 시간 칸 폭 — 들여쓰기(26) + 「타점 없음」(11px) + 여백. */
+const LABEL_TIME_W = 84;
 
 /** 날짜 머리줄 칸 — 옅은 바탕으로 날짜 묶음을 가른다(종목 머리줄의 가는 선보다 한 단 위). */
 const dateCell: React.CSSProperties = {

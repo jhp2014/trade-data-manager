@@ -1,6 +1,6 @@
 // 라벨 타점 [탐색] — 배선(멤버십 피드 → 목록 · 열 판 영속 · w/s · 우클릭 배정). 칸 판정·정렬은 순수부 테스트가 잠근다.
 // 여기서 잠그는 불변식 —
-//  ① w/s 는 날짜 경계를 넘고, 하루 라벨만 있는 머리줄에서 멈춘다(focus.time null — goToDay).
+//  ① w/s 는 날짜 경계를 넘고, 하루 라벨만 있는 차트의 「타점 없음」 줄에서 멈춘다(focus.time null — goToDay).
 //  ② 배정 입구는 **행의 날짜**를 싣는다(행마다 날짜가 다르다 — focus.date 가 아니다).
 //  ③ 열 판에서 고르면 (이름, 종류)로 영속.
 import { describe, it, expect, beforeEach } from "vitest";
@@ -58,7 +58,7 @@ describe("라벨 [탐색] — 목록", () => {
         const { container } = renderLabel();
         expect(container.textContent).toContain("열을 고르면");
         act(() => { useWorkbench.getState().setPanelUi(PANEL, "rowRange", "all"); });
-        expect(rowTexts(container)).toEqual(["2026-09-25 (금)", "에이", "09:12", "씨▣", "2026-09-24 (목)", "비", "09:04"]);
+        expect(rowTexts(container)).toEqual(["2026-09-25 (금)", "에이", "09:12", "씨", "타점 없음", "2026-09-24 (목)", "비", "09:04"]);
     });
 
     it("열 판에서 고르면 (이름, 종류)로 영속되고 그 열 ●/○ 행만 선다", () => {
@@ -69,20 +69,19 @@ describe("라벨 [탐색] — 목록", () => {
         expect(items, "주도는 하루 라벨 절에만").toHaveLength(1);
         act(() => { fireEvent.click(items[0]!); });
         expect(useWorkbench.getState().panelUi[PANEL]?.["labelCols"]).toEqual([{ name: "주도", scope: "day" }]);
-        expect(rowTexts(container), "하루 라벨만 있는 씨 = 이름줄 + ▣ 아이콘(점은 안 찍는다)").toEqual(["2026-09-25 (금)1", "씨▣"]);
-        const icon = [...container.querySelectorAll("span")].find((el) => el.textContent === "▣")!;
-        expect(icon.getAttribute("title")).toBe("하루 라벨: 주도");
+        expect(rowTexts(container), "하루 라벨만 있는 씨 = 「타점 없음」 줄에 ● · 날짜 줄·범례에 개수 없음").toEqual(["2026-09-25 (금)", "씨", "타점 없음●"]);
+        expect(container.textContent).not.toContain("주도 1");
     });
 });
 
 describe("라벨 [탐색] — w/s", () => {
-    it("날짜 경계를 넘고, 하루 라벨만 있는 머리줄에서 멈춘다(time null)", () => {
+    it("날짜 경계를 넘고, 「타점 없음」 줄에서 멈춘다(time null)", () => {
         act(() => { useWorkbench.getState().setPanelUi(PANEL, "rowRange", "all"); });
         renderLabel();
         press("s");
         expect(useWorkbench.getState().focus).toMatchObject({ code: "A", date: "2026-09-25", time: "09:12:00" });
         press("s");
-        expect(useWorkbench.getState().focus, "씨 = 머리줄 멈춤").toMatchObject({ code: "C", date: "2026-09-25", time: null });
+        expect(useWorkbench.getState().focus, "씨 = 「타점 없음」 멈춤").toMatchObject({ code: "C", date: "2026-09-25", time: null });
         press("s");
         expect(useWorkbench.getState().focus, "날짜를 넘는다").toMatchObject({ code: "B", date: "2026-09-24", time: "09:04:00" });
         press("s");
@@ -98,12 +97,12 @@ describe("라벨 [탐색] — w/s", () => {
         });
         await waitFor(() => expect(rowTexts(container)).not.toContain("에이"));
         press("s");
-        expect(useWorkbench.getState().focus, "처음(씨)이 아니라 사라진 A 다음 = 씨 머리줄 — 같은 날 이웃").toMatchObject({ code: "C", time: null });
+        expect(useWorkbench.getState().focus, "처음이 아니라 사라진 A 다음 = 씨 「타점 없음」 — 같은 날 이웃").toMatchObject({ code: "C", time: null });
     });
 });
 
 describe("라벨 [탐색] — 우클릭 배정", () => {
-    it("행의 날짜를 싣는다 — 종목 머리줄 = 하루 · 타점 줄 = 좌표", () => {
+    it("행의 날짜를 싣는다 — 종목 이름줄·「타점 없음」 = 하루 · 타점 줄 = 좌표", () => {
         act(() => { useWorkbench.getState().setPanelUi(PANEL, "rowRange", "all"); });
         const { container } = renderLabel();
         const head = [...container.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === "비")!;
@@ -113,5 +112,9 @@ describe("라벨 [탐색] — 우클릭 배정", () => {
         const pointRow = [...container.querySelectorAll<HTMLTableRowElement>("tbody tr")].find((tr) => tr.textContent === "09:04")!;
         act(() => { fireEvent.contextMenu(pointRow, { clientX: 1, clientY: 2 }); });
         expect(useGroupAssign.getState().target).toEqual({ stockCode: "B", name: "비", date: "2026-09-24", time: "09:04:00" });
+
+        const noPoint = [...container.querySelectorAll<HTMLTableRowElement>("tbody tr")].find((tr) => tr.textContent === "타점 없음")!;
+        act(() => { fireEvent.contextMenu(noPoint, { clientX: 1, clientY: 2 }); });
+        expect(useGroupAssign.getState().target, "「타점 없음」 = 하루 배정(시각 없음)").toEqual({ stockCode: "C", name: "씨", date: "2026-09-25" });
     });
 });

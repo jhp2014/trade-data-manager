@@ -1,8 +1,8 @@
-// 라벨 [탐색] 순수부 — 정렬 3층 · 칸(직접 ● / 하위 경유 ○, ▣ 도 타점 줄에) · 범위 · 개수 · 순회.
+// 라벨 [탐색] 순수부 — 정렬 3층 · 칸(직접 ● / 하위 경유 ○, ▣ 도 타점 줄에) · 「타점 없음」 줄 · 범위 · 순회.
 import { describe, expect, it } from "vitest";
 import type { Group } from "../../../api/groups.js";
 import {
-    labelChartsOf, labelCountsByCol, labelColKey, navOrderOf, parseLabelCols, pointCellOf, renameInLabelCols,
+    labelChartsOf, navOrderOf, noPointCellOf, parseLabelCols, pointCellOf, renameInLabelCols,
     shownRowsOf, stepFrom, stockCellOf, type LabelCol, type LabelRow,
 } from "../labelRows.js";
 
@@ -25,12 +25,12 @@ const P = (name: string): LabelCol => ({ name, scope: "point" });
 const D = (name: string): LabelCol => ({ name, scope: "day" });
 
 const shape = (rows: readonly LabelRow[]): string[] => rows.map((r) =>
-    r.kind === "date" ? r.date : r.kind === "stock" ? `  ${r.chart.code}${r.stop ? " (멈춤)" : ""}` : `    ${r.point.time.slice(0, 5)}`);
+    r.kind === "date" ? r.date : r.kind === "stock" ? `  ${r.chart.code}` : r.kind === "nopoint" ? "    타점 없음" : `    ${r.point.time.slice(0, 5)}`);
 
 describe("labelChartsOf — 정렬 3층", () => {
-    it("날짜 내림 · 종목 코드 오름 · 시각 오름, 하루 라벨만 있는 차트도 선다", () => {
+    it("날짜 내림 · 종목 코드 오름 · 시각 오름, 하루 라벨만 있는 차트는 「타점 없음」 줄로 선다", () => {
         expect(shape(shownRowsOf(charts, [], "all"))).toEqual([
-            "2026-09-25", "  A", "    09:12", "    10:41", "  C (멈춤)",
+            "2026-09-25", "  A", "    09:12", "    10:41", "  C", "    타점 없음",
             "2026-09-24", "  B", "    09:04", "    11:20",
         ]);
     });
@@ -66,12 +66,12 @@ describe("shownRowsOf — 행 범위", () => {
     });
 
     it("▣ 열이 차트에 걸리면 머리줄이 서고 그날 타점은 상속으로 전부 선다", () => {
-        expect(shape(shownRowsOf(charts, [D("주도")], "cols"))).toEqual(["2026-09-25", "  A", "    09:12", "    10:41", "  C (멈춤)"]);
+        expect(shape(shownRowsOf(charts, [D("주도")], "cols"))).toEqual(["2026-09-25", "  A", "    09:12", "    10:41", "  C", "    타점 없음"]);
     });
 
     it("열이 0개면 「고른 라벨」은 비고, 「모든 라벨」은 전부", () => {
         expect(shownRowsOf(charts, [], "cols")).toEqual([]);
-        expect(shownRowsOf(charts, [], "all")).toHaveLength(9);
+        expect(shownRowsOf(charts, [], "all")).toHaveLength(10);
     });
 
     it("좁히기는 범위와 무관하게 그 열 하나로", () => {
@@ -79,30 +79,26 @@ describe("shownRowsOf — 행 범위", () => {
     });
 });
 
-describe("labelCountsByCol — 적용 기준 ●+○", () => {
-    it("◆ 열 = 타점 수(하위 경유 포함) · ▣ 열 = 차트 수 · 날짜별로도", () => {
-        const { total, byDate } = labelCountsByCol(charts, [P("돌파"), D("주도")]);
-        expect(total.get(labelColKey(P("돌파")))).toBe(2);
-        expect(total.get(labelColKey(D("주도")))).toBe(2); // A(경유)·C(직접) 두 차트
-        expect(byDate.get("2026-09-24")?.get(labelColKey(D("주도")))).toBeUndefined();
-    });
-
-    it("개수 = 좁힌 행 수 — 같은 자", () => {
-        const n = shownRowsOf(charts, [P("돌파")], "cols", P("돌파")).filter((r) => r.kind === "point").length;
-        expect(labelCountsByCol(charts, [P("돌파")]).total.get(labelColKey(P("돌파")))).toBe(n);
+describe("「타점 없음」 줄의 칸", () => {
+    it("▣ 는 직접 ● / 하위 경유 ○ · ◆ 는 늘 ·(그 차트엔 타점 라벨이 없다)", () => {
+        const c = charts.find((x) => x.code === "C")!;
+        expect(noPointCellOf(c, D("주도"))).toBe("direct");
+        expect(noPointCellOf(c, P("돌파"))).toBe("none");
+        const a = charts.find((x) => x.code === "A")!;
+        expect(noPointCellOf(a, D("주도"))).toBe("inherited");
     });
 });
 
 describe("순회 — 렌더 순서 그대로, 날짜 경계 없음", () => {
     const order = navOrderOf(shownRowsOf(charts, [], "all"));
 
-    it("타점과 멈춤 머리줄만 밟는다(머리줄 = 시각 없음)", () => {
+    it("타점과 「타점 없음」 줄만 밟는다(「타점 없음」 = 시각 없음)", () => {
         expect(order.map((k) => `${k.date.slice(5)} ${k.code} ${k.time?.slice(0, 5) ?? "▣"}`)).toEqual([
             "09-25 A 09:12", "09-25 A 10:41", "09-25 C ▣", "09-24 B 09:04", "09-24 B 11:20",
         ]);
     });
 
-    it("멈춤 머리줄 커서(time null)에서 다음 날짜로 넘어간다", () => {
+    it("「타점 없음」 커서(time null)에서 다음 날짜로 넘어간다", () => {
         expect(stepFrom(order, { code: "C", date: "2026-09-25", time: null }, 1)).toEqual({ kind: "move", to: order[3] });
     });
 

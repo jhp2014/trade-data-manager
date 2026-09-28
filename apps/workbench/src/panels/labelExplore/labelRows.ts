@@ -1,4 +1,4 @@
-// 라벨 타점 [탐색]의 **순수부** — 행 세우기·칸 상태(●/○/·)·개수·범위·순회 순서.
+// 라벨 타점 [탐색]의 **순수부** — 행 세우기·칸 상태(●/○/·)·범위·순회 순서.
 // 규칙: .claude/decisions.md 「라벨 타점 [탐색]」. 훅 없는 함수만 둔다(테스트 표면).
 //
 // 재료는 그룹 멤버십 피드 두 벌(하루 차트 · 좌표 라벨) **직독**이다 — 셀 엔진 평가가 없다.
@@ -73,7 +73,7 @@ export function labelChartsOf(
 const setCell = (direct: ReadonlySet<string>, applied: ReadonlySet<string>, name: string): LabelCell =>
     direct.has(name) ? "direct" : applied.has(name) ? "inherited" : "none";
 
-/** 종목 머리줄의 ▣ 판정 — 화면엔 안 찍는다(이름줄 = 이름 + 테마뿐). 행 세우기·개수(차트 수)가 쓴다. ◆ 열은 해당 없음. */
+/** 종목 이름줄의 ▣ 판정 — 화면엔 안 찍는다(이름줄 = 이름 + 테마뿐). 행 세우기가 쓴다. ◆ 열은 해당 없음. */
 export function stockCellOf(chart: ChartEntry, col: LabelCol): LabelCell {
     return col.scope === "day" ? setCell(chart.dayDirect, chart.dayApplied, col.name) : "na";
 }
@@ -88,17 +88,29 @@ export function pointCellOf(chart: ChartEntry, p: PointEntry, col: LabelCol): La
 
 const hit = (c: LabelCell): boolean => c === "direct" || c === "inherited";
 
+/**
+ * 타점 줄이 없는 차트(하루 라벨만)의 칸 — 시간 자리에 「타점 없음」 줄을 세워 다른 라벨과 같은 규칙으로 찍는다
+ * (▣ 는 직접 ● / 하위 경유 ○, ◆ 는 그 차트에 타점 라벨이 없으니 늘 ·).
+ */
+export function noPointCellOf(chart: ChartEntry, col: LabelCol): LabelCell {
+    return col.scope === "day" ? setCell(chart.dayDirect, chart.dayApplied, col.name) : "none";
+}
+
 export type LabelRow =
     | { kind: "date"; date: string }
-    /** stop = 보이는 타점 줄이 0개 — w/s 가 이름줄에서 멈춘다. 실제로는 하루 라벨만 있는 차트뿐이다(▣ 열이 차트에 걸리면 그날 타점이 전부 통과하므로). */
-    | { kind: "stock"; chart: ChartEntry; stop: boolean; firstTime: string | null }
-    | { kind: "point"; chart: ChartEntry; point: PointEntry };
+    /** 종목 이름줄 — 이름 + 테마뿐(칸 없음). firstTime = 보이는 첫 타점(없으면 「타점 없음」 줄이 따라온다). */
+    | { kind: "stock"; chart: ChartEntry; firstTime: string | null }
+    | { kind: "point"; chart: ChartEntry; point: PointEntry }
+    /** 보이는 타점 줄이 0개인 차트 — 시간 자리에 「타점 없음」. w/s 멈춤 자리(goToDay). 실제로는 하루 라벨만 있는 차트뿐이다
+     *  (▣ 열이 차트에 걸리면 그날 타점이 전부 통과하므로). */
+    | { kind: "nopoint"; chart: ChartEntry };
 
 /**
  * 보이는 행 — 평탄 배열. 좁히기(`narrow`)는 늘 「고른 라벨」의 부분집합이라 좁히는 동안 범위는 무관하다.
  *  · 타점 줄: 「모든 라벨」 이거나, 대상 열(좁힘 = 그 열 하나, 아니면 고른 열 전부) 중 하나라도 ●/○
  *  · 종목 머리줄: 남은 타점 줄이 있거나, 대상 ▣ 열에서 제 칸이 ●/○ (「모든 라벨」 이면 늘)
  *  · 날짜 머리줄: 남은 자식이 있으면
+ *  · 「타점 없음」 줄: 이름줄은 섰는데 남은 타점 줄이 0개일 때 그 아래 하나
  */
 export function shownRowsOf(charts: readonly ChartEntry[], cols: readonly LabelCol[], range: LabelRange, narrow: LabelCol | null = null): LabelRow[] {
     const everything = range === "all" && narrow === null;
@@ -113,46 +125,24 @@ export function shownRowsOf(charts: readonly ChartEntry[], cols: readonly LabelC
             out.push({ kind: "date", date: chart.date });
             lastDate = chart.date;
         }
-        out.push({ kind: "stock", chart, stop: points.length === 0, firstTime: points[0]?.time ?? null });
+        out.push({ kind: "stock", chart, firstTime: points[0]?.time ?? null });
         for (const point of points) out.push({ kind: "point", chart, point });
+        if (points.length === 0) out.push({ kind: "nopoint", chart });
     }
     return out;
 }
 
-/**
- * 개수 — **적용 기준(●+○)**, 좁히기 결과와 같은 자. ◆ 열 = 타점 수, ▣ 열 = **차트 수**.
- * 범위 토글과 무관하다(보이는 행이 아니라 라벨이 센다).
- */
-export function labelCountsByCol(charts: readonly ChartEntry[], cols: readonly LabelCol[]): { total: Map<string, number>; byDate: Map<string, Map<string, number>> } {
-    const total = new Map<string, number>();
-    const byDate = new Map<string, Map<string, number>>();
-    for (const chart of charts) {
-        let day = byDate.get(chart.date);
-        if (!day) byDate.set(chart.date, (day = new Map()));
-        for (const c of cols) {
-            const n = c.scope === "day"
-                ? (hit(stockCellOf(chart, c)) ? 1 : 0)
-                : chart.points.reduce((acc, p) => acc + (hit(pointCellOf(chart, p, c)) ? 1 : 0), 0);
-            if (n === 0) continue;
-            const k = labelColKey(c);
-            total.set(k, (total.get(k) ?? 0) + n);
-            day.set(k, (day.get(k) ?? 0) + n);
-        }
-    }
-    return { total, byDate };
-}
-
-/** 순회 순서 — 렌더 배열과 같은 한 배열에서 파생(보이는 대로 밟는다). 타점 = 시각 · 멈춤 머리줄 = 시각 없음. */
+/** 순회 순서 — 렌더 배열과 같은 한 배열에서 파생(보이는 대로 밟는다). 타점 = 시각 · 「타점 없음」 = 시각 없음. */
 export function navOrderOf(rows: readonly LabelRow[]): NavKey[] {
     const out: NavKey[] = [];
     for (const r of rows) {
         if (r.kind === "point") out.push({ code: r.chart.code, date: r.chart.date, time: r.point.time });
-        else if (r.kind === "stock" && r.stop) out.push({ code: r.chart.code, date: r.chart.date });
+        else if (r.kind === "nopoint") out.push({ code: r.chart.code, date: r.chart.date });
     }
     return out;
 }
 
-/** 목록 순서의 비교 — 날짜 내림 · 코드 오름 · 머리줄(시각 없음)이 그 차트 맨 앞 · 시각 오름. */
+/** 목록 순서의 비교 — 날짜 내림 · 코드 오름 · 시각 없음(「타점 없음」)이 그 차트 맨 앞 · 시각 오름. */
 function cmpNav(a: { code: string; date: string; time: string | null }, b: { code: string; date: string; time: string | null }): number {
     if (a.date !== b.date) return a.date > b.date ? -1 : 1;
     if (a.code !== b.code) return a.code < b.code ? -1 : 1;
