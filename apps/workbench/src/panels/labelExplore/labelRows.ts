@@ -23,7 +23,7 @@ export const labelColKey = (c: LabelCol): string => `${c.scope}:${c.name}`;
 /** 행 범위 — 「고른 라벨」(고른 열 중 하나라도 ●/○ 인 행만) / 「모든 라벨」(열은 표시만). */
 export type LabelRange = "cols" | "all";
 
-/** 칸 상태 — 직접(●) · 상속(○ — 계층: 하위 그룹 경유 / 층위: 그날 하루 라벨) · 없음(·) · 해당 없음(빈 칸). */
+/** 칸 상태 — 직접(●) · 하위 그룹 경유(○, 계층 상속) · 없음(·) · 해당 없음(빈 칸). ▣ 하루 라벨은 그날 타점 줄에 같은 규칙으로 선다. */
 export type LabelCell = "direct" | "inherited" | "none" | "na";
 
 export interface PointEntry {
@@ -90,14 +90,14 @@ const hit = (c: LabelCell): boolean => c === "direct" || c === "inherited";
 
 export type LabelRow =
     | { kind: "date"; date: string }
-    /** stop = 보이는 타점 줄이 0개 — w/s 가 머리줄에서 멈춘다(하루 라벨만 있는 차트 · 타점이 전부 걸러진 ▣ 차트). */
+    /** stop = 보이는 타점 줄이 0개 — w/s 가 이름줄에서 멈춘다. 실제로는 하루 라벨만 있는 차트뿐이다(▣ 열이 차트에 걸리면 그날 타점이 전부 통과하므로). */
     | { kind: "stock"; chart: ChartEntry; stop: boolean; firstTime: string | null }
     | { kind: "point"; chart: ChartEntry; point: PointEntry };
 
 /**
- * 보이는 행 — 평탄 배열. 좁히기(`narrow`)는 늘 「열 라벨만」의 부분집합이라 좁히는 동안 범위는 무관하다.
- *  · 타점 줄: 「전체」 이거나, 대상 열(좁힘 = 그 열 하나, 아니면 고른 열 전부) 중 하나라도 ●/○
- *  · 종목 머리줄: 남은 타점 줄이 있거나, 대상 ▣ 열에서 제 칸이 ●/○ (「전체」 면 늘)
+ * 보이는 행 — 평탄 배열. 좁히기(`narrow`)는 늘 「고른 라벨」의 부분집합이라 좁히는 동안 범위는 무관하다.
+ *  · 타점 줄: 「모든 라벨」 이거나, 대상 열(좁힘 = 그 열 하나, 아니면 고른 열 전부) 중 하나라도 ●/○
+ *  · 종목 머리줄: 남은 타점 줄이 있거나, 대상 ▣ 열에서 제 칸이 ●/○ (「모든 라벨」 이면 늘)
  *  · 날짜 머리줄: 남은 자식이 있으면
  */
 export function shownRowsOf(charts: readonly ChartEntry[], cols: readonly LabelCol[], range: LabelRange, narrow: LabelCol | null = null): LabelRow[] {

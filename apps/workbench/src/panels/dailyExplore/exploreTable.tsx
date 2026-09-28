@@ -45,8 +45,8 @@ export function ThemeChips({ themes }: { themes: readonly string[] }): JSX.Eleme
     const { shown, rest } = themeChipsOf(themes);
     return (
         <span title={themes.join(" · ")} style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
-            {shown.map((t) => <span key={t} style={{ marginRight: 6 }}>{t}</span>)}
-            {rest > 0 && <span style={{ color: "var(--text-tertiary)" }}>+{rest}</span>}
+            {shown.map((t, i) => <span key={t} style={i > 0 ? { marginLeft: 6 } : undefined}>{t}</span>)}
+            {rest > 0 && <span style={{ marginLeft: 6, color: "var(--text-tertiary)" }}>+{rest}</span>}
         </span>
     );
 }
@@ -69,7 +69,7 @@ export function ScrollBox({ children }: { children: ReactNode }): JSX.Element {
 /**
  * 종목 머리줄 안의 덩어리 — 바깥은 보이는 폭(100cqw)에 붙어 서서 표 폭을 안 먹고 가로 스크롤 중에도 왼쪽에 붙는다.
  * 바탕은 **글자 덩어리(안쪽)에만** 칠한다 — 바깥까지 칠하면 칸 뒤의 가는 가로선(묶음 경계, headLineCell)을 통째로 덮는다.
- * 이름·꼬리는 안 줄고 테마(ThemeChips)만 줄어 끝에서 자른다.
+ * 이름·꼬리는 안 줄고 테마(ThemeChips)만 줄어 끝에서 자른다. 우클릭은 **줄 전체 폭**(바깥)이 받는다 — 글자 덩어리만 받으면 빈 곳 우클릭이 헛돈다.
  */
 export function HeadLine({ children, onContextMenu, innerStyle }: {
     children: ReactNode;
@@ -77,8 +77,8 @@ export function HeadLine({ children, onContextMenu, innerStyle }: {
     innerStyle?: CSSProperties;
 }): JSX.Element {
     return (
-        <div style={{ position: "sticky", left: 0, zIndex: 1, display: "flex", width: "100cqw", boxSizing: "border-box", whiteSpace: "nowrap" }}>
-            <div onContextMenu={onContextMenu}
+        <div onContextMenu={onContextMenu} style={{ position: "sticky", left: 0, zIndex: 1, display: "flex", width: "100cqw", boxSizing: "border-box", whiteSpace: "nowrap" }}>
+            <div
                 style={{ display: "flex", alignItems: "baseline", gap: 7, padding: "2px 8px", minWidth: 0, overflow: "hidden", background: "var(--bg-primary)", ...innerStyle }}>
                 {children}
             </div>

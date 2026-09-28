@@ -165,7 +165,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                             </button>
                             <ThemeChips themes={themeIndex.themesOf(chart.code)} />
                             {/* 타점 줄이 없는 차트 — 점을 찍을 줄이 없으니 ▣ 하나로 "하루 라벨로 섰다"만 말한다(어느 라벨인지는 hover). */}
-                            {r.stop && chart.dayDirect.size > 0 && (
+                            {r.stop && (
                                 <span title={`하루 라벨: ${[...chart.dayDirect].join(" · ")}`} style={{ flexShrink: 0, fontSize: 11, color: "var(--text-tertiary)", cursor: "default" }}>▣</span>
                             )}
                         </HeadLine>

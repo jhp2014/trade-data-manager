@@ -1,4 +1,4 @@
-// 라벨 [탐색] 순수부 — 정렬 3층 · 표시 α(머리줄 ● / 타점 ○) · 계층 상속 · 범위 · 개수 · 순회.
+// 라벨 [탐색] 순수부 — 정렬 3층 · 칸(직접 ● / 하위 경유 ○, ▣ 도 타점 줄에) · 범위 · 개수 · 순회.
 import { describe, expect, it } from "vitest";
 import type { Group } from "../../../api/groups.js";
 import {
@@ -61,7 +61,7 @@ describe("칸 상태 — 직접 ● / 하위 경유 ○", () => {
 });
 
 describe("shownRowsOf — 행 범위", () => {
-    it("열 라벨만: 고른 열 중 하나라도 ●/○ 인 타점만, 머리줄은 자식이 있을 때", () => {
+    it("고른 라벨: 고른 열 중 하나라도 ●/○ 인 타점만, 머리줄은 자식이 있을 때", () => {
         expect(shape(shownRowsOf(charts, [P("돌파")], "cols"))).toEqual(["2026-09-25", "  A", "    09:12", "2026-09-24", "  B", "    09:04"]);
     });
 
@@ -69,7 +69,7 @@ describe("shownRowsOf — 행 범위", () => {
         expect(shape(shownRowsOf(charts, [D("주도")], "cols"))).toEqual(["2026-09-25", "  A", "    09:12", "    10:41", "  C (멈춤)"]);
     });
 
-    it("열이 0개면 「열 라벨만」은 비고, 「전체」는 전부", () => {
+    it("열이 0개면 「고른 라벨」은 비고, 「모든 라벨」은 전부", () => {
         expect(shownRowsOf(charts, [], "cols")).toEqual([]);
         expect(shownRowsOf(charts, [], "all")).toHaveLength(9);
     });
