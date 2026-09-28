@@ -27,6 +27,8 @@ import {
 
 const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"] as const;
 const ORIGIN = "label-explore";
+/** 열 저장물 기본값 — 모듈 상수(usePanelUi 는 저장값이 없으면 기본값을 그대로 돌려준다: 렌더마다 새 [] 면 아래 memo 가 전부 헛돈다). */
+const NO_COLS: readonly unknown[] = [];
 
 interface Col extends LabelCol {
     key: string;
@@ -51,13 +53,14 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const focusCode = useWorkbench((s) => s.focus.code);
     const focusTime = useWorkbench((s) => s.focus.time);
 
-    const [rawCols, setRawCols] = usePanelUi<unknown>(panelId, "labelCols", []);
+    const [rawCols, setRawCols] = usePanelUi<unknown>(panelId, "labelCols", NO_COLS);
     const [range, setRange] = usePanelUi<LabelRange>(panelId, "rowRange", "cols");
     const [legendOpen, setLegendOpen] = usePanelUi<boolean>(panelId, "legendOpen", true);
-    // 사전이 왔을 때만 지워진 이름을 거른다 — 빈 사전(모름)에서 거르면 열이 통째로 사라진다.
+    // 사전이 **왔을 때만** 지워진 이름을 거른다 — 모름(미도착)에서 거르면 열이 통째로 사라진다. 판정은 ready 로
+    // (사전 크기로 재면 마지막 그룹까지 지운 빈 사전이 "모름"으로 읽혀 지워진 이름이 열로 되살아난다).
     const cols = useMemo<Col[]>(() => parseLabelCols(rawCols)
-        .filter((c) => g.groupByName.size === 0 || g.groupByName.has(c.name))
-        .map((c, i) => ({ ...c, key: labelColKey(c), num: groupNumberOf(i), color: seriesColor(i) })), [rawCols, g.groupByName]);
+        .filter((c) => !g.ready || g.groupByName.has(c.name))
+        .map((c, i) => ({ ...c, key: labelColKey(c), num: groupNumberOf(i), color: seriesColor(i) })), [rawCols, g.ready, g.groupByName]);
 
     // ── 좁히기 — 열 머리·범례 클릭 = 그 열 ●/○ 행만(다시 = 해제). 세션 상태.
     const [narrowKey, setNarrowKey] = useState<string | null>(null);
