@@ -9,7 +9,7 @@ import { TextInput } from "../ui/controls.js";
 import type { Group } from "../api/groups.js";
 
 // 그룹 배정 팝오버 — **그룹을 만지는 유일한 표면**(decisions.md 「그룹 편집 출구」).
-// 우클릭(시트/작업대상 행·차트 ◇·타점정보)이 커서 좌표로 연다(store/groupAssign, App 루트 단일 마운트).
+// 우클릭(탐색판·라벨판 행·차트 ◇)이 커서 좌표로 연다(store/groupAssign, App 루트 단일 마운트).
 //
 //  · A안 섹션 스택: 타점 입구 = "이 타점"+"이 날" 두 섹션, day 입구 = "이 날" 하나. 비대칭은 구조적이다
 //    (타점→그날은 유일, 날→타점은 다의 — 어느 분인지 알 수 없다).
