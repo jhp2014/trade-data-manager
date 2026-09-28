@@ -9,7 +9,7 @@ import { CHART_LABEL, CHART_VALUE } from "../styles/palette.js";
 /**
  * 타점 정보 카드 — 세로선 우측에 뜨는 밝은 카드. 현재 시간선·타점 ◇ hover 공용.
  * 담백 readout 한 줄("09:58 | +8.7% | 57억")뿐이다 — 그룹은 하루 층위가 됐고(2026-09-01 타점 그룹
- * 폐지) 그건 차트 헤더 칩이 이미 말한다. 축별 상세는 "타점 정보" 도킹 패널이 그 자리다.
+ * 폐지) 그건 차트 헤더 칩이 이미 말한다.
  */
 export function MarkerCard({ point }: { point: MinutePoint }): JSX.Element {
     const sep = <span style={{ color: "rgba(0,0,0,0.2)" }}>|</span>;

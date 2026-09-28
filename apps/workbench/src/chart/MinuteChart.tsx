@@ -259,7 +259,7 @@ export function MinuteChart({
                     <MarkTriangle />
                 </div>
             )}
-            {/* 타점 hover 카드 — 세로선 우측(공간 없으면 좌측). 축별 상세는 "타점 정보" 패널. */}
+            {/* 타점 hover 카드 — 세로선 우측(공간 없으면 좌측). */}
             {hoveredCard && hoveredCard.point && hoveredCard.x >= 0 && (
                 <AnchoredBox x={hoveredCard.x} top={1} containerWidth={containerWidth} zIndex={10}>
                     <MarkerCard point={hoveredCard.point} />

@@ -1,7 +1,6 @@
 // 차트 패널의 앵커 표식 — **배치 계산**(순수) + 차트에 붙이는 훅.
 //
-// 정규화 패널의 표식(AnchorMarksLayer)과 같은 어휘를 쓰되, x 를 만드는 자가 다르다: 여긴
-// lightweight-charts 의 `timeToCoordinate` 다. 공용 재료(레지스트리·표식 목록·계단식 쌓기)는
+// x 는 lightweight-charts 의 `timeToCoordinate` 로 만든다. 공용 재료(레지스트리·표식 목록·계단식 쌓기)는
 // lib/anchorMarks.ts, 이 파일은 **이 화면의 자와 자리**만 안다.
 //
 // ## 두 층으로 갈리는 자리
@@ -21,8 +20,8 @@ import { IGNORED_CANDLE, PRICE_LINE } from "../styles/palette.js";
 import type { DropLines, DropLineSpec } from "./dropLine.js";
 
 /**
- * 표식 칩의 색 — **그 표식이 가리키는 선/마커의 색**을 그대로 쓴다(정규화는 "색=주인 항목"인데
- * 차트는 주인이 하나뿐이라 색이 비어 있다). 승자 칩과 하늘색 가로선이 같은 색이라 눈이 둘을 잇는다.
+ * 표식 칩의 색 — **그 표식이 가리키는 선/마커의 색**을 그대로 쓴다(차트는 주인이 하나뿐이라
+ * 주인 색이 비어 있다). 승자 칩과 하늘색 가로선이 같은 색이라 눈이 둘을 잇는다.
  */
 export function markColor(m: AnchorMark): string {
     if (m.param === IGNORE_CANDLE_PARAM) return IGNORED_CANDLE;

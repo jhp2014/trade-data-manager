@@ -18,9 +18,6 @@ export const miniBtn: CSSProperties = {
     flexShrink: 0, // 머리글이 가로 스크롤이라 — 안 그으면 넘치는 대신 버튼들이 쭈그러든다(PanelHeader 주석)
 };
 
-/** 비어 있음·불러오는 중 안내 문구 — 패널 본문 자리에 조용히 앉는다. */
-export const mutedNote: CSSProperties = { color: "var(--text-tertiary)", fontSize: 12.5, padding: "16px 12px" };
-
 // 경량 텍스트 토글 — 활성 = 볼드 + 색.
 // 상호배타 선택은 기본색(text-primary), on/off 토글은 activeColor 로 accent 를 넘긴다.
 export function TextToggle({
@@ -169,7 +166,7 @@ export function GazeChip({ label, active, color, title, tabular = false, dashed 
 export function PanelHeader({ gap = 8, padding = "6px 10px", chrome = true, title, style, children }: {
     gap?: number;
     padding?: string;
-    /** 줄 전체에 걸리는 툴팁(타점 정보의 "종목 · 날짜"처럼 좁아서 못 다 쓴 것을 여기서 말할 때). */
+    /** 줄 전체에 걸리는 툴팁(좁아서 못 다 쓴 것을 여기서 말할 때). */
     title?: string;
     /**
      * 바탕·아래 경계선을 이 줄이 그릴까. 머리글이 **두 줄인 패널**(뉴스: 컨트롤 줄 + 날짜 줄)은

@@ -1,92 +1,11 @@
-// 세로선 판독의 **순수 계산** — "이 시각에 누구를 보여주고, 그 칩을 세로 어디에 세울까".
-//
-// ## 왜 뽑아야 하나
-// 테마가 30선이면 값도 30개다. 다 세우면 화면이 숫자로 덮여 정작 아무것도 안 읽힌다.
-// 커서에서 가까운 순 같은 기준은 **왜 그 종목이 뽑혔는지 설명이 안 된다**(그저 마우스가 거기 있었을 뿐).
-// 그래서 뜻이 있는 두 축으로 자른다(사용자 확정): **그 시각 등락률 상위 N** ∪ **누적 거래대금 상위 N**
-// — "센 놈"과 "돈이 몰린 놈". 겹치면 합집합이라 10개보다 적게 나오고, 그건 괜찮다.
+// 세로선 판독 칩의 **세로 자리 계산**(순수) — 겹치는 칩을 한 열에서 위아래로 벌린다.
 //
 // ## 왜 열이 아니라 세로 벌리기인가(사용자 확정)
 // 예전 핀 판독은 겹치면 옆 열로 밀었는데, 열이 늘면 화면 오른쪽을 넘고 "어느 시각 것이냐"를 열로 읽는
-// 규칙까지 따로 배워야 했다. 지시선이 이미 대응을 지고 있으니 **한 열에서 위아래로 벌리면** 그만이다
-// — 거터 이름 라벨과 같은 문법이 되어 이 패널의 라벨 규칙이 하나로 통일된다.
-import type { CSSProperties } from "react";
+// 규칙까지 따로 배워야 했다. 지시선이 이미 대응을 지고 있으니 **한 열에서 위아래로 벌리면** 그만이다.
+// (후보 고르기 — 등락률 상위 ∪ 거래대금 상위 — 는 유일 소비자였던 정규화 패널과 함께 2026-09-28 은퇴.
+//  지금 소비자는 장중 테마 테이프 하나다.)
 import { spreadByY } from "./amountRuns.js";
-
-/** 판독 후보 하나 — 어떤 x 에서 읽은 한 선의 값. */
-export interface ReadoutCandidate {
-    code: string;
-    name: string;
-    /** 뷰 y(값 공간) — 화면 좌표 환산은 호출측의 몫. */
-    y: number;
-    /** 전일 종가 대비 %(칩에 적는 값). */
-    pct: number;
-    /** 그 분 거래대금(원). 그날 유니버스 밖이면 null — 0으로 지어내지 않는다. */
-    amount: number | null;
-    /** 그 시각까지 누적 거래대금(원) — **뽑기 기준**(칩엔 안 적는다). 모르면 0. */
-    cumAmount: number;
-    /** 내 골격선인가 — 주인공은 순위와 무관하게 언제나 남는다. */
-    own?: boolean;
-}
-
-/** 판독 칩의 세로 최소 간격(화면 px) — 크로스헤어·핀 두 판독이 같은 값을 쓴다. */
-export const READOUT_GAP = 15;
-
-/** 세로선 판독의 재료 한 벌 — 선 하나를 x 로 조회하는 함수 묶음(값은 그리는 층이 읽는다). */
-export interface ReadoutSource {
-    code: string;
-    name: string;
-    /** 이 뷰의 원점 시각(벽시계 분) — x → 분 환산. */
-    t0: number;
-    /** 뷰 y → 전일比 % 로 되돌리는 상수. */
-    baseRate: number;
-    own?: boolean;
-    yAt: (x: number) => number | null;
-    amountAt: ((minute: number) => number | null) | null;
-    cumAt: ((minute: number) => number | null) | null;
-}
-
-/**
- * x 시각의 판독 후보 조립 — 크로스헤어와 핀 판독이 **같은 함수**를 탄다(두 판독이 다른 무리를
- * 보여주면 그게 더 헷갈린다 — 사용자 확정으로 규칙을 통일한 이유). y 가 없는 선(범위 밖)은 빠지고,
- * 거래대금 없음은 null 로 남긴다(0으로 지어내지 않는다). `litCode` 는 지금 짚은 선 — own 으로 세워
- * 순위와 무관하게 언제나 남긴다.
- */
-export function readoutCandidatesAt(
-    sources: readonly ReadoutSource[],
-    x: number,
-    litCode: string | null = null,
-): ReadoutCandidate[] {
-    const minute = Math.round(x) + (sources[0]?.t0 ?? 0);
-    const out: ReadoutCandidate[] = [];
-    for (const s of sources) {
-        const y = s.yAt(x);
-        if (y === null) continue;
-        out.push({
-            code: s.code, name: s.name, y, pct: y + s.baseRate,
-            amount: s.amountAt?.(minute) ?? null,
-            cumAmount: s.cumAt?.(minute) ?? 0,
-            ...(s.own || s.code === litCode ? { own: true } : {}),
-        });
-    }
-    return out;
-}
-
-/**
- * 보여줄 후보 고르기 — `own` ∪ 등락률 상위 ∪ 누적 거래대금 상위. 결과는 **값 내림차순**
- * (화면에서 위에 있는 선이 목록에서도 위 — 눈이 안 헤맨다).
- */
-export function pickReadouts(
-    items: readonly ReadoutCandidate[],
-    topRate: number,
-    topAmount: number,
-): ReadoutCandidate[] {
-    const keep = new Set<string>();
-    for (const it of items) if (it.own) keep.add(it.code);
-    for (const it of [...items].sort((a, b) => b.pct - a.pct).slice(0, topRate)) keep.add(it.code);
-    for (const it of [...items].sort((a, b) => b.cumAmount - a.cumAmount).slice(0, topAmount)) keep.add(it.code);
-    return items.filter((it) => keep.has(it.code)).sort((a, b) => b.y - a.y);
-}
 
 /** 자리를 잡은 칩 하나 — 화면 좌표. */
 export interface PlacedRow<T> {
@@ -127,15 +46,3 @@ export function layoutReadoutRows<T>(
     const shift = lo < range.min ? range.min - lo : hi > range.max ? range.max - hi : 0;
     return spread.map((s) => ({ item: s.item, anchorY: s.anchorY, labelY: s.labelY + shift, off: s.off }));
 }
-
-/** 판독 칩이 세로선에서 떨어지는 거리(px) — 크로스헤어·핀 두 판독이 같은 값을 쓴다. */
-export const READOUT_OFFSET = 30;
-
-/** 판독 칩 하나의 상자 — 크로스헤어 판독과 핀 판독이 같은 모양을 쓴다(옛 PinLayer 소유였던 것). */
-export const readoutBox: CSSProperties = {
-    position: "absolute", transform: "translateY(-50%)", pointerEvents: "none",
-    display: "inline-flex", alignItems: "center", gap: 5,
-    background: "var(--bg-primary)", border: "1px solid var(--border-subtle)", borderRadius: 4,
-    padding: "0 5px", fontSize: 10, lineHeight: "16px", whiteSpace: "nowrap",
-    fontVariantNumeric: "tabular-nums",
-};

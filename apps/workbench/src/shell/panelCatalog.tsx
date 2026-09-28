@@ -17,8 +17,6 @@ import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
 import { DailyGenPanel } from "../panels/dailyGen/DailyGenPanel.js";
 import { DailyExplorePanel } from "../panels/dailyExplore/DailyExplorePanel.js";
 import { LabelExplorePanel } from "../panels/labelExplore/LabelExplorePanel.js";
-import { NormOverlayPanel } from "../panels/norm/NormOverlayPanel.js";
-import { PointInfoPanel } from "../panels/PointInfoPanel.js";
 import { NewsPanel } from "../panels/NewsPanel.js";
 import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 import { WatchlistPanel } from "../panels/WatchlistPanel.js";
@@ -106,11 +104,8 @@ export const PANEL_TYPES: PanelType[] = [
     // (종단 트랙 전면 폐기, 2026-09-26 — 시트(rankSheet)·시그널 결과(outcomeRails)·급타점(hotPoints)·
     //  트레이드 시뮬(tradeSim)·타점 정의(pointDef)·정규화 [타점](normPoint) 여섯 판 은퇴. 통계는 나중에
     //  "그룹 → 서버 리포트"로 재설계(decisions 「종단 트랙 전면 폐기」). 저장 배치의 그 칸들은 sanitizeLayout 이 걷는다.)
-    // 정규화 [일봉] — 골격 패널의 후신(골격의 실가치 = 정규화). 실물 캔들/종가선을 원점으로 접어 겹친다.
-    { idBase: "norm-daily", component: "normDaily", title: "정규화 [일봉]", plane: "eod", render: () => <NormOverlayPanel grain="daily" /> },
-    // ⚠ duplicable 아님 — 순서·숨김(wb.pointInfoOrder/Hidden)이 usePointInfoPrefs 의 **전역 단일 소유 키**라
-    //   인스턴스-안전화 조건("영속 키 전부 panelId 낟알")을 못 지킨다. 복제하려면 그 저장물 모양부터.
-    { idBase: "rank-point", component: "rankPoint", title: "타점 정보", plane: "eod", render: (id) => <PointInfoPanel panelId={id} /> },
+    // (2026-09-28 — 정규화 [일봉](normDaily)·타점 정보(rankPoint) 은퇴(사용자 판단: 불필요). 저장 배치의 그 칸은 sanitizeLayout 이
+    //  걷는다. 남은 설정 키 wb.norm*·wb.pointInfo* 는 읽는 코드가 없어 그대로 둔다 — 청소 장치를 새로 짓지 않는다.)
     // 시장 단면(옛 테마 순위 — 2026-09-26 개명: 실체 = 어느 분의 전 종목 단면 산점 + 테마 동료 강조. id 불변)
     // — 판 하나(옛 조건판/관찰판 이원화 개정): View 전용, 깔때기 테마 조건은 읽기
     // 전용 겹침. 옛 [조건]판(component "themeRank")은 은퇴 — sanitizeLayout 이 저장 배치에서 걷어낸다.

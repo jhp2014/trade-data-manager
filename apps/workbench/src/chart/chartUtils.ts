@@ -63,6 +63,3 @@ export const AMOUNT_LEVEL_OF_BUCKET = [1, 2, 2, 3, 4, 5, 5, 5] as const;
 
 /** 단계 → 획 굵기(배수 1 기준). 0 = 구간 아래(가장 가늘다 — 조용함은 물러난다). */
 export const AMOUNT_LEVEL_WIDTH = [0.9, 1.5, 2.3, 3.2, 4.4, 6.0] as const;
-
-/** 굵기 범례에 적을 경계(억) — AMOUNT_LEVEL_OF_BUCKET 이 단계를 바꾸는 지점. */
-export const AMOUNT_LEVEL_EDGES_EOK = [20, 30, 50, 70, 100] as const;

@@ -1,56 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pickReadouts, layoutReadoutRows, readoutCandidatesAt, type ReadoutCandidate, type ReadoutSource } from "../readout.js";
-
-const c = (code: string, pct: number, cumAmount: number, own = false): ReadoutCandidate =>
-    ({ code, name: `${code}사`, y: pct, pct, amount: 0, cumAmount, ...(own ? { own: true } : {}) });
-
-describe("readoutCandidatesAt — 크로스헤어·핀 판독의 공용 후보 조립", () => {
-    const src = (code: string, over: Partial<ReadoutSource> = {}): ReadoutSource => ({
-        code, name: `${code}사`, t0: 570, baseRate: 2,
-        yAt: (x) => x + 1, amountAt: (m) => m * 10, cumAt: (m) => m * 100,
-        ...over,
-    });
-
-    it("y·pct(=y+baseRate)·분 환산(x+t0)이 한 번에 조립된다", () => {
-        const [got] = readoutCandidatesAt([src("A")], 30);
-        expect(got).toMatchObject({ code: "A", y: 31, pct: 33, amount: 6000, cumAmount: 60000 });
-    });
-
-    it("범위 밖(yAt null)은 빠지고, 거래대금 없음은 null 로 남는다(0으로 지어내지 않는다)", () => {
-        const out = readoutCandidatesAt([src("A", { yAt: () => null }), src("B", { amountAt: null, cumAt: null })], 0);
-        expect(out.map((r) => r.code)).toEqual(["B"]);
-        expect(out[0].amount).toBeNull();
-        expect(out[0].cumAmount).toBe(0);
-    });
-
-    it("own 표시 — 소스 자신의 own 또는 litCode 일치", () => {
-        const out = readoutCandidatesAt([src("A", { own: true }), src("B"), src("C")], 0, "C");
-        expect(out.filter((r) => r.own).map((r) => r.code)).toEqual(["A", "C"]);
-    });
-});
-
-describe("pickReadouts — 등락률 상위 ∪ 누적 거래대금 상위", () => {
-    // 등락률 순: E>D>C>B>A / 누적 대금 순: A>B>C>D>E (정확히 반대)
-    const items = [c("A", 1, 500), c("B", 2, 400), c("C", 3, 300), c("D", 4, 200), c("E", 5, 100)];
-
-    it("두 축을 각각 뽑아 합친다 — 겹치면 한 번만(10개가 안 나와도 된다)", () => {
-        expect(pickReadouts(items, 2, 2).map((r) => r.code)).toEqual(["E", "D", "B", "A"]);
-    });
-
-    it("결과는 **값 내림차순** — 그림에서 위에 있는 선이 목록에서도 위", () => {
-        expect(pickReadouts(items, 5, 5).map((r) => r.code)).toEqual(["E", "D", "C", "B", "A"]);
-    });
-
-    it("주인공(own)은 순위와 무관하게 언제나 남는다", () => {
-        const withOwn = [...items, c("ME", -99, 1, true)];
-        expect(pickReadouts(withOwn, 1, 1).map((r) => r.code)).toEqual(["E", "A", "ME"]);
-    });
-
-    it("후보가 상한보다 적으면 전부", () => {
-        expect(pickReadouts([c("A", 1, 1)], 5, 5)).toHaveLength(1);
-        expect(pickReadouts([], 5, 5)).toEqual([]);
-    });
-});
+import { layoutReadoutRows } from "../readout.js";
 
 describe("layoutReadoutRows — 당기고 · 벌리고 · 밀어 넣기", () => {
     const range = { min: 100, max: 200 };

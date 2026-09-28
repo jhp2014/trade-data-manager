@@ -1,4 +1,4 @@
-// 앵커 **표기 레지스트리 + 표식 계산** — 정규화 패널과 차트 패널이 함께 보는 한 곳.
+// 앵커 **표기 레지스트리 + 표식 계산** — 차트 패널(일봉·분봉)이 보는 한 곳. (옛 소비자 정규화 패널은 2026-09-28 은퇴.)
 //
 // ## 표기는 param 별 명시다 — 도메인 성질(needsPrice)에서 파생하지 않는다(사용자 확정)
 // needsPrice 는 **저장 검증**의 관심사(field·market 을 받느냐)지 표기의 관심사가 아니다. 지금은 우연히
@@ -6,13 +6,11 @@
 // 그래서 param 하나 = 표기 한 줄이고, 레지스트리에 없는 param 은 **어느 화면에도 안 뜬다** — 그 침묵이
 // 사고가 되지 않도록 ANCHOR_PARAMS 전수가 여기 있는지 테스트가 잰다(누락 = 새 param 등록 시 표기도 정하라).
 //
-// ## 두 화면이 공유하는 것과 갈리는 것
-//   · **공유** = 레지스트리(어느 param 이 뜨나·무슨 글자)·grain 필터·승자/후보 판정 결과의 소비·계단식 쌓기.
-//     새 param = 아래 한 줄이면 정규화와 차트에 **동시에** 뜬다(차트 컴포넌트는 안 바뀐다).
-//   · **갈림** = x 환산. 차트는 lightweight-charts 의 `Time`(날짜 문자열 / unix초), 정규화는 주인 선 기준
-//     상대 좌표(`t − baseT`)라 단위가 애초에 다르다. 그래서 buildMarks 는 **좌표 원본만 싣고** 환산은 호출부가 한다.
-//   · `AnchorDisplayDef.line`(가로 수준선 + 값 칩 + 좌측 태그)은 **정규화만 소비한다** — 차트는 제 가로선
-//     경로(resolveChartAnchorLines → usePriceLineSet)가 따로 있다. 공유되는 건 `mark` 쪽이다.
+// ## 여기 있는 것과 호출부가 하는 것
+//   · **여기** = 레지스트리(어느 param 이 뜨나·무슨 글자)·grain 필터·승자/후보 판정 결과의 소비·계단식 쌓기.
+//     새 param = 아래 한 줄이면 차트에 뜬다(차트 컴포넌트는 안 바뀐다).
+//   · **호출부** = x 환산(lightweight-charts 의 `Time` — 날짜 문자열 / unix초). buildMarks 는 **좌표 원본만 싣는다**.
+//     가로선은 차트의 제 경로(resolveChartAnchorLines → usePriceLineSet)가 따로 있다 — 여기선 `mark` 만 다룬다.
 import { BASELINE_PARAM, IGNORE_CANDLE_PARAM, anchorParamByKey, chartAnchorKey, type AnchorField, type ChartAnchor } from "@trade-data-manager/market/domain";
 
 /** 표식 칩 한 장의 폭/높이/줄 간격(px) — 계단식 쌓기(stackMarkRows)와 그리기가 같은 값을 봐야 한다. */
@@ -20,23 +18,21 @@ export const MARK_W = 28;
 export const MARK_H = 13;
 export const MARK_ROW_H = 15;
 
-/** 드롭선이 봉 고가에서 떨어지는 간격(px) — 정규화 원점 점선의 LOW_GAP(저가 아래 8px)과 거울 대칭. */
+/** 드롭선이 봉 고가에서 떨어지는 간격(px). */
 export const HIGH_GAP = 8;
 
 /** param 하나의 표기 — 레지스트리에 없는 param 은 화면에 안 뜬다. */
 export interface AnchorDisplayDef {
     /** 태그·표식 칩에 적는 짧은 이름(2자) — AnchorParamDef.name 은 칩 26px 에 안 든다. */
     short: string;
-    /** 가로 수준선 + 값 칩 + 좌측 태그를 받나(정규화 전용). */
-    line: boolean;
     /** 상단 표식 칩 + 드롭선을 받나(패널과 grain 이 같은 앵커만). */
     mark: boolean;
 }
 
 /** param → 표기. **여기 한 줄이 곧 화면 등장**이다. */
 export const ANCHOR_DISPLAY: Readonly<Record<string, AnchorDisplayDef>> = {
-    [BASELINE_PARAM]: { short: "기준", line: true, mark: true },
-    [IGNORE_CANDLE_PARAM]: { short: "무시", line: false, mark: true },
+    [BASELINE_PARAM]: { short: "기준", mark: true },
+    [IGNORE_CANDLE_PARAM]: { short: "무시", mark: true },
 };
 
 export const displayOf = (param: string): AnchorDisplayDef | undefined => ANCHOR_DISPLAY[param];

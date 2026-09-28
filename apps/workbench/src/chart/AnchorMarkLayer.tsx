@@ -5,7 +5,7 @@
 // 있다. 컨테이너가 네이티브 버블로 contextmenu 를 받으므로 그대로 두면 캔들 메뉴가 열린다(의도).
 //
 // 창 밖 ◀▶ 칩은 **눌러서 그리로 간다** — 차트는 기본 프레이밍이 최근 N봉이라 옛 앵커가 거의 늘 창 밖이고,
-// 상시 떠 있는 표식을 읽기만 하게 두면 소음이 된다(정규화는 창이 상수라 이 문제가 없었다).
+// 상시 떠 있는 표식을 읽기만 하게 두면 소음이 된다.
 import { EdgeChip, MarkChip } from "../components/MarkChip.js";
 import { MARK_W } from "../lib/anchorMarks.js";
 import type { AnchorMarkLayout } from "./anchorMarkOverlay.js";
