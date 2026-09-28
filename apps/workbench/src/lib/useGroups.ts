@@ -29,7 +29,7 @@ import {
 import { groupsQuery, groupMembershipsQuery, pointGroupMembershipsQuery, pointGridsQuery } from "../api/queries.js";
 import type { DecodedPointGrids } from "../api/pointGrids.js";
 import { groupGrainSets, type GroupGrainSets } from "./groupGrain.js";
-import { applyGroupToggle, buildGroupIndex, countByGroup, foldPointIndexToDay } from "./groupIndex.js";
+import { applyGroupToggle, buildGroupIndex, countByGroup, foldPointIndexToDay, liveGroupNames } from "./groupIndex.js";
 import { ancestorsOf, expandWithAncestors, groupPathLabel, inheritanceSources } from "./groupTree.js";
 import { chartKey, pointKey } from "./pointKey.js";
 import { useWorkbench } from "../store/workbench.js";
@@ -171,14 +171,13 @@ export function useGroupsValue(): GroupsView {
         return new Map([...folded].map(([k, names]) => [k, expandWithAncestors(names, groupByName)]));
     }, [pointMemberships, groupByName]);
     // 차트별 좌표 라벨 색인 — 차트 표식(라벨=타점)의 재료. 지워진 그룹은 여기서 떨궈 소비자가 규칙을 모른다.
-    // ⚠ 사전이 아직 안 왔으면(빈 사전 + 멤버십 존재) 거르지 않는다 — 모름은 없음이 아니다. 행 원천
-    //   (useLabelRows)과 **같은 가드**여야 초기 로드·마지막 그룹 삭제의 과도 창에서 행과 표식이
+    // ⚠ 사전이 아직 안 왔으면(빈 사전 + 멤버십 존재) 거르지 않는다 — 모름은 없음이 아니다. 라벨 [탐색]
+    //   행 원천과 **같은 가드**(groupIndex `liveGroupNames` 한 벌)여야 초기 로드·마지막 그룹 삭제의 과도 창에서 행과 표식이
     //   타점의 존재를 다르게 말하지 않는다.
     const pointLabelsByChart = useMemo(() => {
-        const dictReady = groupByName.size > 0;
         const m = new Map<string, PointLabel[]>();
         for (const p of pointMemberships) {
-            const names = dictReady ? p.groupNames.filter((n) => groupByName.has(n)) : p.groupNames;
+            const names = liveGroupNames(p.groupNames, groupByName);
             if (names.length === 0) continue;
             const k = chartKey(p);
             const entry: PointLabel = { time: p.time, names };

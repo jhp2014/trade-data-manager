@@ -92,3 +92,54 @@ export function canReparent(
     if (self?.parentName === parentName) return false;
     return true;
 }
+
+// ── 라벨 트리 목록(두 소비자 — 조건판 라벨 팝오버 LabelCondEditor · 라벨 [탐색] 열 고르기 판).
+
+/** 트리 한 줄 — 깊이만큼 들여쓴다. 순서 = 부모 다음에 자식(이름순). */
+export interface TreeRow {
+    group: Group;
+    depth: number;
+}
+
+/** 허용된 그룹만으로 트리를 편다 — 부모가 허용 밖이면 그 자식이 최상위로 선다(끊긴 사슬 관대). */
+export function labelTreeRows(groups: readonly Group[], allowed: ReadonlySet<string>): TreeRow[] {
+    const shown = groups.filter((g) => allowed.has(g.name));
+    const names = new Set(shown.map((g) => g.name));
+    const kids = new Map<string | null, Group[]>();
+    for (const g of shown) {
+        const parent = g.parentName !== null && names.has(g.parentName) ? g.parentName : null;
+        const list = kids.get(parent);
+        if (list) list.push(g);
+        else kids.set(parent, [g]);
+    }
+    const out: TreeRow[] = [];
+    const seen = new Set<string>(); // 순환 방어 — 저장 경로가 막지만 깨진 사전으로 무한 재귀하지 않게
+    const walk = (parent: string | null, depth: number): void => {
+        for (const g of [...(kids.get(parent) ?? [])].sort((a, b) => a.name.localeCompare(b.name, "ko"))) {
+            if (seen.has(g.name)) continue;
+            seen.add(g.name);
+            out.push({ group: g, depth });
+            walk(g.name, depth + 1);
+        }
+    };
+    walk(null, 0);
+    // 순환 고리(A↔B)는 루트가 없어 위 걷기에 안 걸린다 — 조용히 사라지면 체크를 못 푼다(리뷰 L3).
+    // 서버가 순환을 거절하지만, 깨진 사전에서도 목록이 거짓말하지 않게 남은 것을 최상위로 세운다.
+    for (const g of shown) {
+        if (seen.has(g.name)) continue;
+        seen.add(g.name);
+        out.push({ group: g, depth: 0 });
+        walk(g.name, 1);
+    }
+    return out;
+}
+
+/**
+ * 그룹별 라벨 수 — **자손 포함 롤업**(부모를 고르면 자식 라벨도 잡히므로 — 직접 수만 보이면 부모가 0으로 오독된다).
+ * 피드 한 벌(하루 차트 또는 좌표 라벨) 기준 — 두 grain 을 합산하지 않는다(뜻이 다른 두 수다).
+ */
+export function labelCountsOf(feed: readonly { groupNames: readonly string[] }[], groupByName: ReadonlyMap<string, Group>): Map<string, number> {
+    const m = new Map<string, number>();
+    for (const x of feed) for (const n of expandWithAncestors(x.groupNames, groupByName)) m.set(n, (m.get(n) ?? 0) + 1);
+    return m;
+}

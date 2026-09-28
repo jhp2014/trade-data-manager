@@ -10,6 +10,7 @@ export interface NavKey {
 /**
  * 목록 안에서 한 칸 — 끝을 넘으면 `boundary`(호출자가 날짜를 넘길지 정한다).
  * 커서가 목록에 없으면 방향의 첫 항목으로 들어간다.
+ * 시각 없는 칸(하루 라벨만 있는 차트의 머리줄)은 커서 `time: null`(goToDay)과 맞는다 — `undefined` 와 `null` 을 같게 본다.
  */
 export function stepWithin(
     order: readonly NavKey[],
@@ -17,7 +18,7 @@ export function stepWithin(
     dir: 1 | -1,
 ): { kind: "move"; to: NavKey } | { kind: "boundary"; dir: 1 | -1 } | null {
     if (order.length === 0) return null;
-    const at = cursor === null ? -1 : order.findIndex((k) => k.code === cursor.code && k.date === cursor.date && k.time === cursor.time);
+    const at = cursor === null ? -1 : order.findIndex((k) => k.code === cursor.code && k.date === cursor.date && (k.time ?? null) === cursor.time);
     if (at < 0) return { kind: "move", to: dir > 0 ? order[0]! : order[order.length - 1]! };
     const next = at + dir;
     if (next < 0 || next >= order.length) return { kind: "boundary", dir };

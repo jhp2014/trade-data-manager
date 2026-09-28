@@ -33,7 +33,8 @@ import { useGroupAssign } from "../../store/groupAssign.js";
 import { neighborDates } from "./dayCrossing.js";
 import { useDayCrossing } from "./useDayCrossing.js";
 import { stepWithin, type NavKey } from "./walk.js";
-import { MAX_GROUPS, cellKeyOf, exploreRowsOf, themeChipsOf, type ExploreSort } from "./exploreRows.js";
+import { MAX_GROUPS, cellKeyOf, exploreRowsOf, type ExploreSort } from "./exploreRows.js";
+import { FragmentRow, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, navBtn, stickL, thBase, treeTimeCell } from "./exploreTable.js";
 import { useConditionGroups, type GroupCol } from "./useConditionGroups.js";
 
 const EMPTY_DATES: string[] = [];
@@ -201,30 +202,14 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
 
             {/* 범례 줄 — 번호 열의 이름표. 클릭 = 열 머리와 같은 좁히기. 접으면 번호만 한 줄. */}
             {isDaily && (
-                <div style={{ display: "flex", flexWrap: legendOpen ? "wrap" : "nowrap", alignItems: "baseline", gap: "1px 9px", padding: "3px 8px", borderBottom: "0.5px solid var(--border-subtle)", fontSize: 11, overflow: "hidden" }}>
-                    {groupCols.length === 0 ? (
-                        <span style={{ color: "var(--text-tertiary)" }}>열로 세울 조건 그룹이 없습니다 — 머리의 「조건 그룹」에서 고르세요</span>
-                    ) : (
-                        <>
-                            <button onClick={() => setLegendOpen((v) => !v)} title={legendOpen ? "범례 접기" : "범례 펴기"}
-                                style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--text-tertiary)", fontSize: 10, padding: 0 }}>
-                                {legendOpen ? "▾" : "▸"}
-                            </button>
-                            {groupCols.map((c) => (
-                                <button key={c.setId} onClick={() => toggleNarrow(c)} title={colTitle(c)}
-                                    style={{
-                                        border: "none", background: "transparent", padding: 0, font: "inherit", whiteSpace: "nowrap",
-                                        cursor: c.state.kind === "ready" ? "pointer" : "default",
-                                        color: c.state.kind === "unknown" ? "var(--text-tertiary)" : c.color,
-                                        textDecoration: narrowId === c.setId ? "underline" : "none", textUnderlineOffset: 3,
-                                    }}>
-                                    {legendOpen ? `${c.num} ${c.name}` : c.num}
-                                    {legendOpen && c.state.kind === "loading" && <span style={{ color: "var(--text-tertiary)" }}> …</span>}
-                                </button>
-                            ))}
-                        </>
-                    )}
-                </div>
+                <GroupLegend open={legendOpen} onToggleOpen={() => setLegendOpen((v) => !v)} narrowKey={narrowId}
+                    empty="열로 세울 조건 그룹이 없습니다 — 머리의 「조건 그룹」에서 고르세요"
+                    onNarrow={(key) => { const c = groupCols.find((x) => x.setId === key); if (c) toggleNarrow(c); }}
+                    cols={groupCols.map((c) => ({
+                        key: c.setId, num: c.num, name: c.name, color: c.color, title: colTitle(c),
+                        clickable: c.state.kind === "ready", dim: c.state.kind === "unknown",
+                        ...(c.state.kind === "loading" ? { suffix: " …" } : {}),
+                    }))} />
             )}
 
             {/* 세로·가로 스크롤 한 상자 — 머리는 위에, 시간(·종목) 열은 왼쪽에 붙는다. */}
@@ -315,69 +300,11 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     );
 }
 
-/** 머리줄(있으면)과 본 줄을 한 키 아래 묶는 조각 — tbody 직계는 tr 이어야 해서 Fragment 로 잇는다. */
-const FragmentRow = ({ head, children }: { head: React.ReactNode; children: React.ReactNode }): JSX.Element => (
-    <>
-        {head}
-        {children}
-    </>
-);
-
-const TIME_W = 44;
-/** 종목순 들여쓰기 — 가이드선(x=12) 오른쪽으로 시간이 선다. */
-const TREE_INDENT = 18;
-/** 종목 머리줄 칸 — 세로 가운데 1px 가로선(묶음 경계). content-box 기준이라 위 여백(paddingTop)이 선 높이를 안 민다. */
-const headLineCell: React.CSSProperties = {
-    padding: 0, backgroundColor: "var(--bg-primary)",
-    backgroundImage: "linear-gradient(var(--border-default), var(--border-default))",
-    backgroundSize: "100% 1px", backgroundPosition: "0 50%", backgroundRepeat: "no-repeat", backgroundOrigin: "content-box",
-};
-/** 종목순 시간 칸 — 왼쪽 가이드선(본 줄에 괘선이 없어 칸 높이 100% 가 줄줄이 이어진다). 포커스 = 선이 굵은 청록(색 하나 안 늘리고 "지금 여기"). */
-const treeTimeCell = (focus: boolean): React.CSSProperties => {
-    const line = focus ? "var(--accent-primary)" : "var(--border-default)";
-    return {
-        color: focus ? "var(--text-primary)" : "var(--text-secondary)",
-        backgroundImage: `linear-gradient(${line}, ${line})`, backgroundSize: `${focus ? 2 : 1}px 100%`,
-        backgroundPosition: "12px 0", backgroundRepeat: "no-repeat",
-    };
-};
-/**
- * 종목 머리줄의 테마 — 앞 THEME_SHOW 개만 글자로, 나머지는 +N(hover = 전부).
- * **색은 안 칠한다**: 이 판의 계열색(seriesColor)은 이미 조건 그룹 번호 ①~⑩ 이 쓰고 있어, 테마까지 칠하면
- * "초록 = ① 인가 테마인가"가 섞인다(한 판에 색 어휘는 하나).
- */
-function ThemeChips({ themes }: { themes: readonly string[] }): JSX.Element | null {
-    if (themes.length === 0) return null;
-    const { shown, rest } = themeChipsOf(themes);
-    return (
-        <span title={themes.join(" · ")} style={{ display: "inline-flex", gap: 6, fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
-            {shown.map((t) => <span key={t}>{t}</span>)}
-            {rest > 0 && <span style={{ color: "var(--text-tertiary)" }}>+{rest}</span>}
-        </span>
-    );
-}
-const NAME_W = 110;
-/** 왼쪽에 붙는 칸(가로 스크롤 중 시간·종목) — 배경은 호출부가 칠한다(행 강조색을 따라가야 해서). */
-const stickL = (left: number): React.CSSProperties => ({ position: "sticky", left, zIndex: 1 });
-/** 번호 점 칸 — 좁게 고정(①~⑩ 10칸 ≈ 200px). */
-const dotCell: React.CSSProperties = { textAlign: "center", width: 20, minWidth: 20, padding: "2px 3px" };
 /** 열 머리·범례 hover — 이름·그날 통과 수·상태. */
 const colTitle = (c: GroupCol): string => `${c.num} ${c.name}${c.state.kind === "ready"
     ? ` — 그날 통과 ${c.state.member.size.toLocaleString("ko-KR")}\n클릭 = 이 그룹 통과 행만(다시 = 해제)`
     : c.state.kind === "loading" ? " — 계산 중" : ` — ${c.state.why}`}`;
 
-const thBase: React.CSSProperties = {
-    // z: 머리 2 · 머리의 붙는 칸 3 — 본문의 붙는 칸(시간·종목 머리줄, 1)이 세로 스크롤로 머리 밑을 지날 때 덮이게.
-    position: "sticky", top: 0, zIndex: 2, background: "var(--bg-primary)", fontSize: 10, fontWeight: 400,
-    color: "var(--text-tertiary)", textAlign: "left", padding: "3px 8px", borderBottom: "1px solid var(--border-default)", whiteSpace: "nowrap",
-};
-const Th = ({ children, style }: { children?: React.ReactNode; style?: React.CSSProperties }): JSX.Element =>
-    <th style={{ ...thBase, ...style }}>{children}</th>;
-const Td = ({ children, style }: { children?: React.ReactNode; style?: React.CSSProperties }): JSX.Element =>
-    <td style={{ padding: "2px 8px", borderBottom: "0.5px solid var(--border-subtle)", ...style }}>{children}</td>;
-const navBtn: React.CSSProperties = {
-    border: "none", background: "transparent", cursor: "pointer", color: "var(--accent-primary)", fontSize: 11, padding: "0 2px",
-};
 
 /**
  * 조건 그룹 고르기 — 하루 저장 집합 목록에 ✓ 토글(상한 5). 「자동」 = 보는 집합의 최상위 부품을 따라간다

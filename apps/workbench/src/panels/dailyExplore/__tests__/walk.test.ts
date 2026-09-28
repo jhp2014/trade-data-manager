@@ -23,6 +23,11 @@ describe("stepWithin — 끝에서는 경계를 알린다(날짜를 넘길지는
         expect(stepWithin(order, { code: "A", date: D, time: hm(545) }, -1)).toEqual({ kind: "boundary", dir: -1 });
     });
 
+    it("시각 없는 칸(머리줄 멈춤)은 커서 time null 과 맞는다 — undefined·null 을 같게 본다", () => {
+        const withHead = [{ code: "B", date: D }, ...order];
+        expect(stepWithin(withHead, { code: "B", date: D, time: null }, 1)).toEqual({ kind: "move", to: order[0] });
+    });
+
     it("빈 목록은 아무 일도 안 한다", () => {
         expect(stepWithin([], null, 1)).toBeNull();
     });

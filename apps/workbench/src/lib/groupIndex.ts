@@ -57,6 +57,17 @@ export function foldPointIndexToDay(feed: readonly (MembershipRef & { groupNames
 }
 
 /**
+ * 지워진 그룹 이름 떨구기 — **사전이 왔을 때만** 거른다(빈 사전 + 멤버십 존재 = 아직 모름, 모름은 없음이 아니다).
+ * 좌표 라벨 표식(useGroups `pointLabelsOf`)과 라벨 [탐색] 행 원천이 같은 이 한 벌을 쓴다 — 가드가 둘로 갈리면
+ * 초기 로드·그룹 삭제의 과도 창에서 목록과 차트 ◇ 가 타점의 존재를 다르게 말한다.
+ * 거를 게 없으면 **같은 배열**을 돌려준다(흔한 경우 할당 0).
+ */
+export function liveGroupNames(names: string[], groupByName: ReadonlyMap<string, unknown>): string[] {
+    if (groupByName.size === 0) return names;
+    return names.every((n) => groupByName.has(n)) ? names : names.filter((n) => groupByName.has(n));
+}
+
+/**
  * 낙관적 토글 — 멤버십 피드에서 한 그룹을 넣거나 뺀 결과(불변 갱신).
  * 그룹이 0개가 된 항목은 항목째 제거(서버 표현과 동일).
  * item 의 모양(R)이 곧 grain 이다 — day 피드엔 GroupItemRef, point 피드엔 GroupPointItemRef 를 넣는다.

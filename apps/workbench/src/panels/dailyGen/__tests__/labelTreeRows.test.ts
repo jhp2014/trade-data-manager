@@ -1,6 +1,6 @@
 // 라벨 팝오버 트리 — 부모 다음 자식 · 끊긴 사슬 · 순환 고리가 목록에서 사라지지 않는다(체크를 못 푸는 사고 방지).
 import { describe, expect, it } from "vitest";
-import { labelTreeRows } from "../LabelCondEditor.js";
+import { labelTreeRows } from "../../../lib/groupTree.js";
 
 const g = (name: string, parentName: string | null = null) => ({ name, parentName });
 const shape = (rows: ReturnType<typeof labelTreeRows>): string[] => rows.map((r) => `${"  ".repeat(r.depth)}${r.group.name}`);
