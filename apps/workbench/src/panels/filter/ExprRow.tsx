@@ -30,7 +30,10 @@
 //
 // ## 가로 스크롤은 줄마다 독립이다
 // 한 줄이 길다고 다른 줄이 같이 밀리면 "자리가 곧 경로"라는 뜻이 깨진다.
+// 줄은 공용 `ScrollRow`(스크롤바 숨김 + 휠 가로 + 끝 흐림)다 — ⚠ 스크롤바를 드러냈던 때는 그 8px 가
+// 고정 줄 높이(30)를 파먹어 칩 윗단이 잘렸다(칩은 가운데 정렬이라 위로 넘친 몫은 스크롤로도 못 닿는다).
 import { useState, type MouseEvent } from "react";
+import { ScrollRow } from "../../components/ControlChrome.js";
 import { AnchoredPopover } from "../../ui/popover/AnchoredPopover.js";
 import { MENU_PAD, MenuItem, MenuSep } from "../../ui/popover/menu.js";
 import { FAIL, PIN } from "../../styles/palette.js";
@@ -124,11 +127,9 @@ export function ExprRow({ setId, expr, h, open, tail }: {
     };
 
     return (
-        <div data-row={setId} style={{
-            display: "flex", alignItems: "center", height: ROW_H, gap: 0,
-            padding: "0 8px", overflowX: "auto", overflowY: "hidden",
-            borderBottom: "0.5px solid var(--border-subtle)",
-        }}>
+        // 구분선은 바깥 상자에 — 흐림 mask 가 border-box 전체에 걸려 넘친 줄만 괘선 끝이 사라진다.
+        <div style={{ borderBottom: "0.5px solid var(--border-subtle)" }}>
+        <ScrollRow data-row={setId} gap={0} fade style={{ height: ROW_H, padding: "0 8px" }}>
             {pieces.length === 0 && (
                 <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flexShrink: 0 }}>
                     조건 없음 — 제한이 없습니다
@@ -280,6 +281,7 @@ export function ExprRow({ setId, expr, h, open, tail }: {
                     )}
                 </Panel>
             )}
+        </ScrollRow>
         </div>
     );
 }

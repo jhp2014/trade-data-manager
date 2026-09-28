@@ -6,8 +6,8 @@
 // jsdom 은 레이아웃을 안 하므로 scrollWidth/clientWidth 가 둘 다 0 이다(= 안 넘침). 넘침을 손으로
 // 심어 줘야 휠 핸들러의 가드를 통과한다 — 그 심기가 이 테스트의 유일한 인공물이다.
 import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
-import { ScrollRow } from "../ControlChrome.js";
+import { act, render } from "@testing-library/react";
+import { ScrollRow, fadeMask } from "../ControlChrome.js";
 
 /** 넘치는 줄로 만든다 — jsdom 이 안 재 주는 두 값을 심는다. */
 function overflow(el: HTMLElement, scrollWidth = 500, clientWidth = 100): void {
@@ -60,5 +60,55 @@ describe("ScrollRow — 넘친 줄에 손이 닿는다", () => {
 
         expect(row.style.flexWrap).toBe("nowrap");
         expect(row.style.overflowX).toBe("auto");
+    });
+});
+
+// jsdom 은 mask-image 를 모르는 속성이라 버린다 — 잰 끝은 `data-overflow` 로, 그림은 `fadeMask` 로 따로 본다.
+describe("ScrollRow fade — 넘친 쪽 끝만 흐린다", () => {
+    it("안 넘치면 흐릴 끝이 없다", () => {
+        const { container } = render(<ScrollRow fade><span>a</span></ScrollRow>);
+        expect(rowOf(container).dataset.overflow).toBe("");
+        expect(fadeMask({ left: false, right: false })).toBeUndefined();
+    });
+
+    it("왼쪽 끝이면 오른쪽만, 굴리면 양쪽, 끝까지 가면 왼쪽만", () => {
+        const { container } = render(<ScrollRow fade><span>a</span></ScrollRow>);
+        const row = rowOf(container);
+        overflow(row);
+
+        act(() => { row.dispatchEvent(new Event("scroll")); });
+        expect(row.dataset.overflow).toBe("right");
+
+        act(() => { row.scrollLeft = 200; row.dispatchEvent(new Event("scroll")); });
+        expect(row.dataset.overflow).toBe("left right");
+
+        act(() => { row.scrollLeft = 400; row.dispatchEvent(new Event("scroll")); });
+        expect(row.dataset.overflow).toBe("left");
+    });
+
+    it("내용이 늘어 넘치기 시작하면 재렌더만으로 잡는다 — 스크롤이 안 움직이면 scroll 이벤트는 안 온다", () => {
+        const { container, rerender } = render(<ScrollRow fade><span>a</span></ScrollRow>);
+        const row = rowOf(container);
+        expect(row.dataset.overflow).toBe("");
+        overflow(row);
+
+        rerender(<ScrollRow fade><span>a</span><span>b</span></ScrollRow>);
+
+        expect(row.dataset.overflow).toBe("right");
+    });
+
+    it("mask 는 넘친 쪽만 투명으로 끝난다", () => {
+        expect(fadeMask({ left: false, right: true })).toBe("linear-gradient(to right, #000, #000 calc(100% - 20px), transparent)");
+        expect(fadeMask({ left: true, right: false })).toBe("linear-gradient(to right, transparent, #000 20px, #000)");
+    });
+
+    it("fade 를 안 주면 재지도 않는다", () => {
+        const { container } = render(<ScrollRow><span>a</span></ScrollRow>);
+        expect(rowOf(container).hasAttribute("data-overflow")).toBe(false);
+    });
+
+    it("data-* 는 줄에 붙는다", () => {
+        const { container } = render(<ScrollRow data-row="s1"><span>a</span></ScrollRow>);
+        expect(rowOf(container).getAttribute("data-row")).toBe("s1");
     });
 });

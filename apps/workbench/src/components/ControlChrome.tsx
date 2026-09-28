@@ -1,7 +1,7 @@
 // 패널 헤더 컨트롤 공용 조각 — 차트 툴바·보드 헤더가 같은 계열(테두리·채움 없는 경량 텍스트)을 쓴다.
 // 구성: 컨트롤 줄 자체는 HeaderControls 가 그린다 — 여기 남은 건 그 줄이 쓰는 낱개 조각들이다.
 // 머리글 줄 자체(PanelHeader)도 여기 산다 — 넘칠 때의 규약이 패널마다 달라지면 안 되기 때문이다.
-import type { CSSProperties, ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 
 /**
@@ -89,13 +89,20 @@ export function TextToggle({
  *
  * ⚠ 자식은 `flexShrink: 0`(또는 nowrap)이어야 실제로 스크롤이 생긴다. 안 그러면 넘치는 대신
  * 자기들끼리 쭈그러들어 글자가 뭉개진다 — 일부러 줄어들 자리(이름 ellipsis)만 예외로 둔다.
+ *
+ * ## `fade` — 스크롤바 대신 "더 있다"를 말하는 끝 흐림 (2026-09-28)
+ * 숨긴 스크롤바가 하던 말(넘쳤다·어느 쪽으로)을 **넘친 쪽 끝만** 흐려서 대신한다. 흐림은 `mask` 라
+ * 바탕색을 몰라도 된다(열린 칩의 액센트 채움 위에서도 같은 결). 잘린 칩이 "잘렸다"가 아니라
+ * "이어진다"로 읽히는 게 목적이다.
  */
-export function ScrollRow({ scroll = true, gap = 4, align = "center", title, className, onClick, style, children }: {
+export function ScrollRow({ scroll = true, fade = false, gap = 4, align = "center", title, className, onClick, style, children, ...data }: {
     /**
      * 넘칠 때 스크롤할까(기본). false = 넘치면 잘린다 — 폭이 없는 밀집 표기(GroupChips 의 `scroll` 끔)처럼
      * **도달을 포기하는 게 의도인 자리**만 쓴다. 끄면 휠도 안 붙는다(빈 리스너를 남기지 않는다).
      */
     scroll?: boolean;
+    /** 넘친 쪽 끝을 흐린다 — 스크롤바가 없는 줄에서 "더 있다"의 신호. `scroll` 이 꺼지면 무시된다. */
+    fade?: boolean;
     gap?: number;
     align?: CSSProperties["alignItems"];
     /** 줄 전체에 걸리는 툴팁(좁아서 못 다 쓴 것을 여기서 말할 때). */
@@ -106,20 +113,62 @@ export function ScrollRow({ scroll = true, gap = 4, align = "center", title, cla
     /** 자리별 차이(패딩·바탕·글자)만 덮어쓴다. **넘침 규약은 못 덮는다** — 그러라고 모은 자리다. */
     style?: CSSProperties;
     children: ReactNode;
+    /** `data-*` 는 그대로 줄에 붙는다(테스트·주소 찾기가 줄을 집는 손잡이). */
+    [attr: `data-${string}`]: string | undefined;
 }): JSX.Element {
     const wheelRef = useHorizontalWheel<HTMLDivElement>(scroll);
+    const edges = useOverflowEdges(wheelRef, scroll && fade);
+    const mask = edges === null ? undefined : fadeMask(edges);
     return (
-        <div ref={wheelRef} title={title} onClick={onClick}
+        <div ref={wheelRef} title={title} onClick={onClick} {...data}
+            // 잰 결과를 속성으로도 남긴다 — jsdom 은 mask 를 버려서 테스트가 이걸로 읽는다.
+            data-overflow={edges === null ? undefined : [edges.left ? "left" : null, edges.right ? "right" : null].filter((s) => s !== null).join(" ")}
             className={[scroll ? "no-scrollbar" : null, className].filter((c) => c !== null).join(" ") || undefined}
             style={{
                 display: "flex", alignItems: align, gap, minWidth: 0,
                 ...style,
                 // 넘침 규약은 style 뒤에 — 호출부가 실수로 덮어 다시 줄바꿈이 되는 일이 없게.
                 flexWrap: "nowrap", overflowX: scroll ? "auto" : "hidden", overflowY: "hidden",
+                ...(mask === undefined ? {} : { maskImage: mask, WebkitMaskImage: mask }),
             }}>
             {children}
         </div>
     );
+}
+
+const FADE_PX = 20;
+
+/** 흐릴 끝이 없으면 undefined — 안 넘친 줄에 mask 층을 얹지 않는다. */
+export function fadeMask({ left, right }: { left: boolean; right: boolean }): string | undefined {
+    if (!left && !right) return undefined;
+    return `linear-gradient(to right, ${left ? `transparent, #000 ${FADE_PX}px` : "#000"}, ${right ? `#000 calc(100% - ${FADE_PX}px), transparent` : "#000"})`;
+}
+
+/**
+ * 줄의 양 끝 중 **넘쳐서 가려진 쪽** — 스크롤·줄 크기 변화·내용 변화(재렌더)마다 다시 잰다.
+ * 꺼져 있으면 null(리스너도 안 붙는다).
+ */
+function useOverflowEdges(ref: React.RefObject<HTMLDivElement>, enabled: boolean): { left: boolean; right: boolean } | null {
+    const [edges, setEdges] = useState({ left: false, right: false });
+    const measure = useCallback((): void => {
+        const el = ref.current;
+        if (el === null) return;
+        // 소수 scrollLeft(배율·확대)로 끝에 붙어도 1px 미만이 남는다 — 그걸 넘침으로 치지 않는다.
+        const left = el.scrollLeft > 1;
+        const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+        setEdges((p) => (p.left === left && p.right === right ? p : { left, right }));
+    }, [ref]);
+    // 내용이 바뀌는 재렌더(칩 추가·이름 변경)마다 — 줄 상자 크기는 그대로라 ResizeObserver 가 못 잡는다.
+    useLayoutEffect(() => { if (enabled) measure(); });
+    useEffect(() => {
+        const el = ref.current;
+        if (!enabled || el === null) return;
+        el.addEventListener("scroll", measure, { passive: true });
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => { el.removeEventListener("scroll", measure); ro.disconnect(); };
+    }, [enabled, measure, ref]);
+    return enabled ? edges : null;
 }
 
 /**
