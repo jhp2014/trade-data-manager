@@ -75,7 +75,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const shownPoints = useMemo(() => rows.reduce((n, r) => n + (r.kind === "point" ? 1 : 0), 0), [rows]);
     const shownDays = useMemo(() => rows.reduce((n, r) => n + (r.kind === "date" ? 1 : 0), 0), [rows]);
 
-    // ── w/s — 날짜 경계 없이 목록 전체. 멈춤 머리줄 = goToDay(time null).
+    // ── w/s — 날짜 경계 없이 목록 전체. 「타점 없음」 줄 = goToDay(time null).
     const order = useMemo(() => navOrderOf(rows), [rows]);
     const cursor = focusCode ? { code: focusCode, date: focusDate, time: focusTime } : null;
     const go = (to: { code: string; date: string; time?: string }): void => {
@@ -93,7 +93,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         return at < 0 ? null : at + 1;
     }, [order, focusCode, focusDate, focusTime]);
 
-    /** 그룹 배정 — 종목 머리줄 우클릭 = 하루(차트), 타점 줄 우클릭 = 좌표. **행의 날짜**를 넘긴다(행마다 다르다). */
+    /** 그룹 배정 — 종목 이름줄·「타점 없음」 줄 우클릭 = 하루(차트), 타점 줄 우클릭 = 좌표. **행의 날짜**를 넘긴다(행마다 다르다). */
     const openAssign = (ev: React.MouseEvent, code: string, date: string, time?: string): void => {
         ev.preventDefault();
         useGroupAssign.getState().open({ stockCode: code, name: nameOf(code), date, ...(time !== undefined ? { time } : {}) }, { x: ev.clientX, y: ev.clientY });
@@ -146,8 +146,11 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         const { chart } = r;
         if (r.kind === "stock") {
             const onHead = (): void => go(r.firstTime !== null ? { code: chart.code, date: chart.date, time: r.firstTime } : { code: chart.code, date: chart.date });
+            // 시각 없는 커서(다른 판에서 goToDay 로 옴)가 타점 있는 차트를 가리키면 이름줄로 따라간다 — 이 차트엔 「타점 없음」 줄이 없어
+            // 받을 줄이 여기뿐이다(강조는 안 한다 — 이름줄은 칸이 없는 표제다).
+            const follow = r.firstTime !== null && focusTime === null && chart.code === focusCode && chart.date === focusDate;
             return (
-                <tr key={`s:${chart.code}|${chart.date}`}>
+                <tr key={`s:${chart.code}|${chart.date}`} ref={follow ? focusRowRef : undefined}>
                     <td colSpan={colSpanAll} style={{ ...headLineCell, paddingTop: 4 }}>
                         <HeadLine onContextMenu={(ev) => openAssign(ev, chart.code, chart.date)}>
                             <button onClick={onHead} className="row-self-marked"
@@ -174,7 +177,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                         : "이 차트엔 라벨 붙은 타점이 없다(하루 라벨만) — 좌클릭 = 이 차트로 · 우클릭 = 그룹 배정(하루)"}
                     style={{ cursor: "pointer", background: rowBg }}>
                     <Td style={{ ...stickL(0), backgroundColor: rowBg, paddingLeft: 8 + TREE_INDENT, borderBottom: "none", ...treeTimeCell(isFocus),
-                        ...(time === null ? { fontSize: 11, color: isFocus ? "var(--text-secondary)" : "var(--text-tertiary)" } : null) }}>
+                        ...(time === null ? { fontSize: 11, whiteSpace: "nowrap", color: isFocus ? "var(--text-secondary)" : "var(--text-tertiary)" } : null) }}>
                         {time !== null ? time.slice(0, 5) : "타점 없음"}
                     </Td>
                     <Td style={{ borderBottom: "none" }} />
