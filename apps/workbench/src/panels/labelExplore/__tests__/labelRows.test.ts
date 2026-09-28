@@ -42,13 +42,13 @@ describe("labelChartsOf — 정렬 3층", () => {
     });
 });
 
-describe("칸 상태 — 표시 α", () => {
+describe("칸 상태 — 직접 ● / 하위 경유 ○", () => {
     const [a, c] = charts; // 09-25 의 A, C
-    it("▣ 열: 종목 머리줄 = 직접 ● / 하위 경유 ○, 그날 타점 줄 = 늘 ○(층위 상속)", () => {
+    it("▣ 열: 그날 타점 줄에 다른 라벨과 똑같이 — 직접 ● / 하위 경유 ○(하루인지는 범례가 말한다)", () => {
         expect(stockCellOf(c!, D("주도"))).toBe("direct");
         expect(stockCellOf(a!, D("주도"))).toBe("inherited"); // 주도:대장 경유
-        expect(stockCellOf(a!, D("주도:대장"))).toBe("direct");
-        expect(pointCellOf(a!, a!.points[0]!, D("주도:대장"))).toBe("inherited");
+        expect(pointCellOf(a!, a!.points[0]!, D("주도:대장"))).toBe("direct");
+        expect(pointCellOf(a!, a!.points[0]!, D("주도"))).toBe("inherited");
         expect(pointCellOf(a!, a!.points[0]!, D("눌림"))).toBe("none");
     });
 

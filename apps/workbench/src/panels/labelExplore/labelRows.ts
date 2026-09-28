@@ -20,7 +20,7 @@ export interface LabelCol {
 }
 export const labelColKey = (c: LabelCol): string => `${c.scope}:${c.name}`;
 
-/** 행 범위 — 고른 열 중 하나라도 ●/○ 인 행만 / 모든 라벨(열은 표시만). */
+/** 행 범위 — 「고른 라벨」(고른 열 중 하나라도 ●/○ 인 행만) / 「모든 라벨」(열은 표시만). */
 export type LabelRange = "cols" | "all";
 
 /** 칸 상태 — 직접(●) · 상속(○ — 계층: 하위 그룹 경유 / 층위: 그날 하루 라벨) · 없음(·) · 해당 없음(빈 칸). */
@@ -73,15 +73,17 @@ export function labelChartsOf(
 const setCell = (direct: ReadonlySet<string>, applied: ReadonlySet<string>, name: string): LabelCell =>
     direct.has(name) ? "direct" : applied.has(name) ? "inherited" : "none";
 
-/** 종목 머리줄 칸 — ▣ 열만 말한다(◆ 열은 해당 없음). */
+/** 종목 머리줄의 ▣ 판정 — 화면엔 안 찍는다(이름줄 = 이름 + 테마뿐). 행 세우기·개수(차트 수)가 쓴다. ◆ 열은 해당 없음. */
 export function stockCellOf(chart: ChartEntry, col: LabelCol): LabelCell {
     return col.scope === "day" ? setCell(chart.dayDirect, chart.dayApplied, col.name) : "na";
 }
 
-/** 타점 줄 칸 — ◆ 열은 제 라벨, ▣ 열은 그날 하루 라벨의 **층위 상속**(늘 ○, ● 가 아니다). */
+/**
+ * 타점 줄 칸 — ◆ 열은 제 라벨, ▣ 열은 그날 하루 라벨(층위 상속)을 **다른 라벨과 똑같이** 찍는다: 직접 = ●, 하위 경유 = ○.
+ * 하루인지 타점인지는 범례가 말한다 — 칸에서 또 가르지 않는다(2026-09-28 사용자 확정, 옛 "▣ 는 타점 줄에 늘 ○" 를 대체).
+ */
 export function pointCellOf(chart: ChartEntry, p: PointEntry, col: LabelCol): LabelCell {
-    if (col.scope === "point") return setCell(p.direct, p.applied, col.name);
-    return chart.dayApplied.has(col.name) ? "inherited" : "none";
+    return col.scope === "point" ? setCell(p.direct, p.applied, col.name) : setCell(chart.dayDirect, chart.dayApplied, col.name);
 }
 
 const hit = (c: LabelCell): boolean => c === "direct" || c === "inherited";

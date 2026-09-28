@@ -34,7 +34,7 @@ import { neighborDates } from "./dayCrossing.js";
 import { useDayCrossing } from "./useDayCrossing.js";
 import { stepWithin, type NavKey } from "./walk.js";
 import { MAX_GROUPS, cellKeyOf, exploreRowsOf, type ExploreSort } from "./exploreRows.js";
-import { FragmentRow, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, navBtn, stickL, thBase, treeTimeCell } from "./exploreTable.js";
+import { FragmentRow, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, HeadLine, headLineCell, navBtn, scrollBox, stickL, thBase, treeTimeCell } from "./exploreTable.js";
 import { useConditionGroups, type GroupCol } from "./useConditionGroups.js";
 
 const EMPTY_DATES: string[] = [];
@@ -213,7 +213,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
             )}
 
             {/* 세로·가로 스크롤 한 상자 — 머리는 위에, 시간(·종목) 열은 왼쪽에 붙는다. */}
-            <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            <div style={scrollBox}>
                 {note !== null ? (
                     <div style={{ padding: "10px 12px", fontSize: 11, color: "var(--text-tertiary)" }}>{note}</div>
                 ) : (
@@ -240,20 +240,20 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                                 const isFocus = r.code === focusCode && r.time === focusTime;
                                 // 종목순일 때만 종목 머리줄 — 이름 + 테마(앞 THEME_SHOW 개, 나머지 +N). 클릭 = 그 종목 첫 타점 ·
                                 // 우클릭 = 하루 그룹 배정(차트). 묶음 경계는 **이름 뒤 가는 선** 하나다(칸 배경에 그린 1px 가로선을
-                                // 이름 덩어리가 제 배경으로 덮는다 — 가로 스크롤 중에도 이름이 왼쪽에 붙어 있게 덩어리만 sticky).
+                                // 이름 덩어리가 제 배경으로 덮는다 — 가로 스크롤 중에도 이름이 왼쪽에 붙어 있게 덩어리만 sticky). 덩어리는 보이는 폭(100cqw)만
+                                // 차지해 표 폭을 안 먹는다 — 넘치면 테마 끝에서 자른다(HeadLine).
                                 const head = tree && (i === 0 || shownRows[i - 1]!.code !== r.code) ? (
                                     <tr key={`head-${r.code}`}>
                                         <td colSpan={2 + groupCols.length} style={{ ...headLineCell, paddingTop: i === 0 ? 2 : 6 }}>
-                                            <div style={{ ...stickL(0), display: "inline-flex", alignItems: "baseline", gap: 7, padding: "2px 8px", background: "var(--bg-primary)" }}
-                                                onContextMenu={(ev) => openAssign(ev, r.code)}>
+                                            <HeadLine onContextMenu={(ev) => openAssign(ev, r.code)}>
                                                 <button onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}
                                                     className="row-self-marked"
                                                     title="좌클릭 = 이 종목의 첫 타점으로 · 우클릭 = 그룹 배정(하루)"
-                                                    style={{ border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, padding: 0, color: "var(--text-primary)", whiteSpace: "nowrap" }}>
+                                                    style={{ border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, padding: 0, color: "var(--text-primary)", whiteSpace: "nowrap", flexShrink: 0 }}>
                                                     {nameOf(r.code)}
                                                 </button>
                                                 <ThemeChips themes={themeIndex.themesOf(r.code)} />
-                                            </div>
+                                            </HeadLine>
                                         </td>
                                     </tr>
                                 ) : null;

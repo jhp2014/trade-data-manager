@@ -54,11 +54,11 @@ beforeEach(() => {
 });
 
 describe("라벨 [탐색] — 목록", () => {
-    it("기본 = 「열 라벨만」 + 열 0 → 안내, 「전체」로 바꾸면 날짜 → 종목 → 시간(최근순)", () => {
+    it("기본 = 「고른 라벨」 + 열 0 → 안내, 「모든 라벨」로 바꾸면 날짜 → 종목 → 시간(최근순)", () => {
         const { container } = renderLabel();
         expect(container.textContent).toContain("열을 고르면");
         act(() => { useWorkbench.getState().setPanelUi(PANEL, "rowRange", "all"); });
-        expect(rowTexts(container)).toEqual(["2026-09-25 (금)", "에이", "09:12", "씨", "2026-09-24 (목)", "비", "09:04"]);
+        expect(rowTexts(container)).toEqual(["2026-09-25 (금)", "에이", "09:12", "씨▣", "2026-09-24 (목)", "비", "09:04"]);
     });
 
     it("열 판에서 고르면 (이름, 종류)로 영속되고 그 열 ●/○ 행만 선다", () => {
@@ -69,7 +69,9 @@ describe("라벨 [탐색] — 목록", () => {
         expect(items, "주도는 하루 라벨 절에만").toHaveLength(1);
         act(() => { fireEvent.click(items[0]!); });
         expect(useWorkbench.getState().panelUi[PANEL]?.["labelCols"]).toEqual([{ name: "주도", scope: "day" }]);
-        expect(rowTexts(container), "하루 라벨만 있는 씨 = 머리줄만(● 하나)").toEqual(["2026-09-25 (금)1", "씨●"]);
+        expect(rowTexts(container), "하루 라벨만 있는 씨 = 이름줄 + ▣ 아이콘(점은 안 찍는다)").toEqual(["2026-09-25 (금)1", "씨▣"]);
+        const icon = [...container.querySelectorAll("span")].find((el) => el.textContent === "▣")!;
+        expect(icon.getAttribute("title")).toBe("하루 라벨: 주도");
     });
 });
 

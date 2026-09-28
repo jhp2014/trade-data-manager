@@ -1,7 +1,8 @@
 // 라벨 타점 [탐색] — 내가 붙인 라벨을 **전 기간 한 목록**으로 보는 판(2026-09-28). 탐색판(하루 후보를 날짜로 걷기)의 짝.
 // 규칙: .claude/decisions.md 「라벨 타점 [탐색]」.
 // 행 = 라벨 좌표, 날짜 머리줄 → 종목 머리줄 → 시간(최근순) · 열 = 고른 라벨 ≤10(◆ 타점 / ▣ 하루, 자동 기본 없음).
-// 표시 α: ▣ 열은 종목 머리줄에 ●, 그날 타점 줄엔 ○(층위 상속) · 부모 라벨 열은 하위 소속을 ○(계층 상속).
+// 칸: 직접 ● · 하위 경유 ○(계층 상속) — ▣ 하루 라벨도 그날 타점 줄에 똑같이 찍는다. 종목 이름줄 = 이름 + 테마뿐
+// (타점 없이 하루 라벨만 있는 차트는 테마 옆 ▣ 아이콘 하나 — hover = 어느 라벨).
 // 날짜 넘기기가 없다 — 라벨은 희소해 한 목록에 다 선다. 기간 = 전 기간(전역 월 시선에 안 묶는다).
 // 재료 = 그룹 멤버십 직독(셀 엔진 평가 없음).
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -18,10 +19,10 @@ import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { seriesColor } from "../../styles/palette.js";
 import { groupNumberOf } from "../dailyExplore/exploreRows.js";
-import { GroupLegend, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
+import { GroupLegend, HeadLine, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, scrollBox, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
 import { LabelColMenu } from "./LabelColMenu.js";
 import {
-    labelChartsOf, labelColKey, labelCountsByCol, navOrderOf, parseLabelCols, pointCellOf, shownRowsOf, stepFrom, stockCellOf,
+    labelChartsOf, labelColKey, labelCountsByCol, navOrderOf, parseLabelCols, pointCellOf, shownRowsOf, stepFrom,
     type LabelCell, type LabelCol, type LabelRange, type LabelRow,
 } from "./labelRows.js";
 
@@ -102,8 +103,8 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
     const controls = useMemo<ControlSpec[]>(() => [
         {
-            kind: "toggle", id: "range", name: range === "cols" ? "열 라벨만" : "전체", on: range === "cols",
-            help: "열 라벨만 = 고른 열 중 하나라도 ●/○ 인 타점만 · 전체 = 모든 라벨 타점(열은 표시만)",
+            kind: "toggle", id: "range", name: range === "cols" ? "고른 라벨" : "모든 라벨", on: range === "cols",
+            help: "고른 라벨 = 고른 열 중 하나라도 ●/○ 인 타점만 · 모든 라벨 = 라벨 붙은 타점 전부(열은 표시만)",
             set: () => setRange((v) => (v === "cols" ? "all" : "cols")),
         },
         {
@@ -119,7 +120,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
 
     const note = !g.ready ? (g.isLoading ? "불러오는 중…" : "라벨 데이터를 못 불러왔습니다")
         : charts.length === 0 ? "붙인 라벨이 없습니다 — 차트·목록 우클릭으로 붙입니다"
-        : range === "cols" && cols.length === 0 && narrowCol === null ? "열을 고르면 그 라벨이 붙은 타점이 섭니다 — 머리의 「라벨 열」, 또는 「전체」"
+        : range === "cols" && cols.length === 0 && narrowCol === null ? "열을 고르면 그 라벨이 붙은 타점이 섭니다 — 머리의 「라벨 열」, 또는 「모든 라벨」"
         : rows.length === 0 ? "고른 라벨이 붙은 타점이 없습니다"
         : null;
     const timeW = TIME_W + TREE_INDENT;
@@ -153,20 +154,22 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
             const isFocus = chart.code === focusCode && chart.date === focusDate && focusTime === null;
             const onHead = (): void => go(r.firstTime !== null ? { code: chart.code, date: chart.date, time: r.firstTime } : { code: chart.code, date: chart.date });
             return (
-                <tr key={`s:${chart.code}|${chart.date}`} ref={isFocus ? focusRowRef : undefined} onContextMenu={(ev) => openAssign(ev, chart.code, chart.date)}>
-                    <td colSpan={2} style={{ ...headLineCell, paddingTop: 4 }}>
-                        <div style={{ ...stickL(0), display: "inline-flex", alignItems: "baseline", gap: 7, padding: "2px 8px",
-                            background: isFocus ? "var(--accent-soft)" : "var(--bg-primary)",
-                            boxShadow: isFocus ? "inset 2px 0 0 var(--accent-primary)" : undefined }}>
+                <tr key={`s:${chart.code}|${chart.date}`} ref={isFocus ? focusRowRef : undefined}>
+                    <td colSpan={colSpanAll} style={{ ...headLineCell, paddingTop: 4 }}>
+                        <HeadLine onContextMenu={(ev) => openAssign(ev, chart.code, chart.date)}
+                            innerStyle={isFocus ? { background: "var(--accent-soft)", boxShadow: "inset 2px 0 0 var(--accent-primary)" } : undefined}>
                             <button onClick={onHead} className="row-self-marked"
                                 title={r.stop ? "좌클릭 = 이 차트로 · 우클릭 = 그룹 배정(하루)" : "좌클릭 = 이 종목의 첫 타점으로 · 우클릭 = 그룹 배정(하루)"}
-                                style={{ border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, padding: 0, color: "var(--text-primary)", whiteSpace: "nowrap" }}>
+                                style={{ border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, padding: 0, color: "var(--text-primary)", whiteSpace: "nowrap", flexShrink: 0 }}>
                                 {nameOf(chart.code)}
                             </button>
                             <ThemeChips themes={themeIndex.themesOf(chart.code)} />
-                        </div>
+                            {/* 타점 줄이 없는 차트 — 점을 찍을 줄이 없으니 ▣ 하나로 "하루 라벨로 섰다"만 말한다(어느 라벨인지는 hover). */}
+                            {r.stop && chart.dayDirect.size > 0 && (
+                                <span title={`하루 라벨: ${[...chart.dayDirect].join(" · ")}`} style={{ flexShrink: 0, fontSize: 11, color: "var(--text-tertiary)", cursor: "default" }}>▣</span>
+                            )}
+                        </HeadLine>
                     </td>
-                    {cols.map((c) => <Td key={c.key} style={{ ...dotCell, borderBottom: "none", paddingTop: 4 }}>{dot(stockCellOf(chart, c), c.color)}</Td>)}
                 </tr>
             );
         }
@@ -207,7 +210,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                     title: colTitle(c, counts.total.get(c.key) ?? 0, g.pathLabel(c.name, c.name)),
                 }))} />
 
-            <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            <div style={scrollBox}>
                 {note !== null ? (
                     <div style={{ padding: "10px 12px", fontSize: 11, color: "var(--text-tertiary)" }}>{note}</div>
                 ) : (

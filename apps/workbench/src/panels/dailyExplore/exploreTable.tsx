@@ -1,7 +1,7 @@
 // 탐색판 표 부품 한 벌 — 일별 타점 [탐색]·라벨 타점 [탐색] 두 판이 같은 트리 모양(가는 선·가이드선·점 칸·범례)을 쓴다.
 // 두 판의 **행 렌더(tbody)는 공유하지 않는다** — 탐색판은 시간순·종목순 두 모드, 라벨판은 날짜 3층이라
 // 합치면 prop 이 폭증한다. 모양(칸·선·색 규칙)만 여기서 한 벌로 묶어 어긋나지 않게 한다.
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import { themeChipsOf } from "./exploreRows.js";
 
 export const TIME_W = 44;
@@ -35,7 +35,8 @@ export const treeTimeCell = (focus: boolean): CSSProperties => {
 };
 
 /**
- * 종목 머리줄의 테마 — 앞 THEME_SHOW 개만 글자로, 나머지는 +N(hover = 전부).
+ * 종목 머리줄의 테마 — 앞 THEME_SHOW 개만 글자로, 나머지는 +N(hover = 전부). 이름줄 폭이 모자라면 **끝에서 …**
+ * (이 칸이 줄어드는 몫이다 — 이름·꼬리 아이콘은 안 줄어든다).
  * **색은 안 칠한다**: 이 판의 계열색(seriesColor)은 이미 번호 열 ①~⑩ 이 쓰고 있어, 테마까지 칠하면
  * "초록 = ① 인가 테마인가"가 섞인다(한 판에 색 어휘는 하나).
  */
@@ -43,17 +44,44 @@ export function ThemeChips({ themes }: { themes: readonly string[] }): JSX.Eleme
     if (themes.length === 0) return null;
     const { shown, rest } = themeChipsOf(themes);
     return (
-        <span title={themes.join(" · ")} style={{ display: "inline-flex", gap: 6, fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
-            {shown.map((t) => <span key={t}>{t}</span>)}
+        <span title={themes.join(" · ")} style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+            {shown.map((t) => <span key={t} style={{ marginRight: 6 }}>{t}</span>)}
             {rest > 0 && <span style={{ color: "var(--text-tertiary)" }}>+{rest}</span>}
         </span>
     );
 }
 
+/**
+ * 스크롤 상자 — **컨테이너 질의 기준**(`containerType: inline-size`)이라 안쪽 이름줄이 `100cqw`(보이는 폭)를 쓸 수 있다.
+ * 이름줄이 제 글자 폭으로 표의 최소 폭을 정하면, 판이 좁을 때 표가 넓어져 번호 열이 판 밖으로 밀린다
+ * (시간 줄 옆은 비어 있는데도 — 2026-09-28 사용자 지적). 그래서 이름줄은 보이는 폭에 맞춰 서고 넘치면 자른다.
+ */
+export const scrollBox: CSSProperties = { flex: 1, minHeight: 0, overflow: "auto", containerType: "inline-size" };
+
+/**
+ * 종목 머리줄 안의 덩어리 — 바깥은 보이는 폭(100cqw)에 붙어 서서 표 폭을 안 먹고 가로 스크롤 중에도 왼쪽에 붙는다.
+ * 바탕은 **글자 덩어리(안쪽)에만** 칠한다 — 바깥까지 칠하면 칸 뒤의 가는 가로선(묶음 경계, headLineCell)을 통째로 덮는다.
+ * 이름·꼬리는 안 줄고 테마(ThemeChips)만 줄어 끝에서 자른다.
+ */
+export function HeadLine({ children, onContextMenu, innerStyle }: {
+    children: ReactNode;
+    onContextMenu?: (ev: MouseEvent<HTMLDivElement>) => void;
+    innerStyle?: CSSProperties;
+}): JSX.Element {
+    return (
+        <div style={{ position: "sticky", left: 0, zIndex: 1, display: "flex", width: "100cqw", boxSizing: "border-box", whiteSpace: "nowrap" }}>
+            <div onContextMenu={onContextMenu}
+                style={{ display: "flex", alignItems: "baseline", gap: 7, padding: "2px 8px", minWidth: 0, overflow: "hidden", background: "var(--bg-primary)", ...innerStyle }}>
+                {children}
+            </div>
+        </div>
+    );
+}
+
 /** 왼쪽에 붙는 칸(가로 스크롤 중 시간·종목) — 배경은 호출부가 칠한다(행 강조색을 따라가야 해서). */
 export const stickL = (left: number): CSSProperties => ({ position: "sticky", left, zIndex: 1 });
-/** 번호 점 칸 — 좁게 고정(①~⑩ 10칸 ≈ 200px). */
-export const dotCell: CSSProperties = { textAlign: "center", width: 20, minWidth: 20, padding: "2px 3px" };
+/** 번호 점 칸 — 좁게 고정(①~⑩ 10칸 ≈ 200px). 열마다 옅은 왼쪽 세로선 — 세로로 훑을 때 어느 열인지 안 놓치게. */
+export const dotCell: CSSProperties = { textAlign: "center", width: 20, minWidth: 20, padding: "2px 3px", borderLeft: "0.5px solid var(--border-subtle)" };
 
 export const thBase: CSSProperties = {
     // z: 머리 2 · 머리의 붙는 칸 3 — 본문의 붙는 칸(시간·종목 머리줄, 1)이 세로 스크롤로 머리 밑을 지날 때 덮이게.
