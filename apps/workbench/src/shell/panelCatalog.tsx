@@ -16,6 +16,7 @@ import { ReplayBoardPanel } from "../panels/ReplayBoardPanel.js";
 import { RecentHistoryPanel } from "../panels/RecentHistoryPanel.js";
 import { DailyGenPanel } from "../panels/dailyGen/DailyGenPanel.js";
 import { DailyExplorePanel } from "../panels/dailyExplore/DailyExplorePanel.js";
+import { LabelExplorePanel } from "../panels/labelExplore/LabelExplorePanel.js";
 import { NormOverlayPanel } from "../panels/norm/NormOverlayPanel.js";
 import { PointInfoPanel } from "../panels/PointInfoPanel.js";
 import { NewsPanel } from "../panels/NewsPanel.js";
@@ -99,6 +100,9 @@ export const PANEL_TYPES: PanelType[] = [
     // ⚠ duplicable 아님 — w/s 순회(usePublishRowNav)가 **후보 패널 각 1개** 전제의 모듈 전역 단일 소유다
     //   (rowNav 머리 주석). 복제가 필요해지면 rowNav 소유를 인스턴스 낟알로 바꾸는 일이 먼저다.
     { idBase: "daily-explore", component: "dailyExplore", title: "일별 타점 [탐색]", plane: "eod", render: (id) => <DailyExplorePanel panelId={id} baseTitle={slotTitleOf(id)} /> },
+    // 라벨 타점 [탐색] — 붙인 라벨을 전 기간 한 목록으로(탐색판의 짝, 2026-09-28). ⚠ duplicable 아님 — w/s 소유(rowNav)가
+    // 모듈 전역 단일이고, 열 선택 저장물의 개명 승계가 단일 주소(LABEL_EXPLORE_PANEL_ID)로 쓴다.
+    { idBase: "label-explore", component: "labelExplore", title: "라벨 타점 [탐색]", plane: "eod", render: (id) => <LabelExplorePanel panelId={id} baseTitle={slotTitleOf(id)} /> },
     // (종단 트랙 전면 폐기, 2026-09-26 — 시트(rankSheet)·시그널 결과(outcomeRails)·급타점(hotPoints)·
     //  트레이드 시뮬(tradeSim)·타점 정의(pointDef)·정규화 [타점](normPoint) 여섯 판 은퇴. 통계는 나중에
     //  "그룹 → 서버 리포트"로 재설계(decisions 「종단 트랙 전면 폐기」). 저장 배치의 그 칸들은 sanitizeLayout 이 걷는다.)

@@ -29,6 +29,7 @@ import {
 import { groupsQuery, groupMembershipsQuery, pointGroupMembershipsQuery, pointGridsQuery } from "../api/queries.js";
 import type { DecodedPointGrids } from "../api/pointGrids.js";
 import { groupGrainSets, type GroupGrainSets } from "./groupGrain.js";
+import { LABEL_EXPLORE_PANEL_ID, parseLabelCols, renameInLabelCols } from "../panels/labelExplore/labelRows.js";
 import { applyGroupToggle, buildGroupIndex, countByGroup, foldPointIndexToDay, liveGroupNames } from "./groupIndex.js";
 import { ancestorsOf, expandWithAncestors, groupPathLabel, inheritanceSources } from "./groupTree.js";
 import { chartKey, pointKey } from "./pointKey.js";
@@ -240,6 +241,11 @@ export function useGroupsValue(): GroupsView {
             // 이름이 곧 참조다 — 저장 집합의 라벨 술어가 이 이름을 들고 있으므로 서버 성공 직후 클라
             // 저장물도 따라 바꾼다(안 하면 그 조건이 즉시 죽은 참조).
             useWorkbench.getState().renameGroupInSets(name, newName);
+            // 라벨 [탐색] 열도 이름을 들고 있다 — 안 따라가면 개명 즉시 그 열이 "지워짐"으로 빠진다.
+            const wb = useWorkbench.getState();
+            const cols = parseLabelCols(wb.panelUi[LABEL_EXPLORE_PANEL_ID]?.labelCols);
+            const renamed = renameInLabelCols(cols, name, newName);
+            if (renamed !== cols) wb.setPanelUi(LABEL_EXPLORE_PANEL_ID, "labelCols", renamed);
             await invalidateDict(true);
         },
         [invalidateDict],

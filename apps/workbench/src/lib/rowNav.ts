@@ -30,12 +30,13 @@ import { useKeymapDynamic } from "../keymap/dynamic.js";
 //
 // ⚠ 모듈 전역 단일 소유 — 후보 패널은 각 1개 전제(panelCatalog). 인스턴스가 둘이 되면 나중 것이 앞을 덮는다.
 
-export type RowNavOwner = "daily-explore" | "replay-board" | "theme-board";
+export type RowNavOwner = "daily-explore" | "label-explore" | "replay-board" | "theme-board";
 type Step = (dir: 1 | -1) => void;
 
 /** 후보 — **순환 순서이자 폴백 우선순위**. unit 은 도움말 문구("다음 …"), label 은 배지 툴팁·순환 문구. */
 export const ROW_NAV_OWNERS: readonly { owner: RowNavOwner; unit: string; label: string }[] = [
     { owner: "daily-explore", unit: "타점(일별 [탐색])", label: "일별 [탐색]" },
+    { owner: "label-explore", unit: "타점(라벨 [탐색])", label: "라벨 [탐색]" },
     { owner: "replay-board", unit: "종목(테마 [복기])", label: "테마 [복기]" },
     { owner: "theme-board", unit: "종목(테마 [장 마감])", label: "테마 [장 마감]" },
 ];
