@@ -19,6 +19,7 @@ import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { seriesColor } from "../../styles/palette.js";
 import { groupNumberOf } from "../dailyExplore/exploreRows.js";
+import { useWalkCursor } from "../dailyExplore/useWalkCursor.js";
 import { GroupLegend, HeadLine, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, ScrollBox, revealRow, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
 import { LabelColMenu } from "./LabelColMenu.js";
 import {
@@ -75,23 +76,22 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const shownPoints = useMemo(() => rows.reduce((n, r) => n + (r.kind === "point" ? 1 : 0), 0), [rows]);
     const shownDays = useMemo(() => rows.reduce((n, r) => n + (r.kind === "date" ? 1 : 0), 0), [rows]);
 
-    // ── w/s — 날짜 경계 없이 목록 전체. 「타점 없음」 줄 = goToDay(time null).
+    // ── w/s — 날짜 경계 없이 목록 전체(끝 = 멈춤). 「타점 없음」 줄 = goToDay(time null).
+    // 커서 = 책갈피(useWalkCursor — 일별 [탐색]과 한 벌). 전 기간 한 목록이라 scope 는 하나. 책갈피가 없으면
+    // focus 에서, 책갈피 행이 사라졌으면 책갈피에서 정렬상 끼어들 자리로 들어간다(stepFrom).
     const order = useMemo(() => navOrderOf(rows), [rows]);
-    const cursor = focusCode ? { code: focusCode, date: focusDate, time: focusTime } : null;
-    const go = (to: { code: string; date: string; time?: string }): void => {
-        const wb = useWorkbench.getState();
-        if (to.time !== undefined) wb.goToPoint({ date: to.date, code: to.code, time: to.time }, ORIGIN);
-        else wb.goToDay({ date: to.date, code: to.code }, ORIGIN);
-    };
-    navRef.current = (dir): void => {
-        const step = stepFrom(order, cursor, dir);
-        if (step?.kind === "move") go(step.to);
-    };
-    const pos = useMemo(() => {
-        if (!focusCode) return null;
-        const at = order.findIndex((k) => k.code === focusCode && k.date === focusDate && (k.time ?? null) === focusTime);
-        return at < 0 ? null : at + 1;
-    }, [order, focusCode, focusDate, focusTime]);
+    const focusCursor = useMemo(() => (focusCode ? { code: focusCode, date: focusDate, time: focusTime } : null), [focusCode, focusDate, focusTime]);
+    const walk = useWalkCursor({
+        // 책갈피 행이 사라져도(라벨 떼기·열 빼기) 정렬상 자리에서 잇는다 — 앞 행이 여럿 같이 빠져도 이웃이 맞다.
+        order, scope: "all", focus: focusCursor, fallback: stepFrom, rejoin: stepFrom,
+        go: (to) => {
+            const wb = useWorkbench.getState();
+            if (to.time !== undefined) wb.goToPoint({ date: to.date, code: to.code, time: to.time }, ORIGIN);
+            else wb.goToDay({ date: to.date, code: to.code }, ORIGIN);
+        },
+    });
+    const { jump, cursor: cur, pos } = walk;
+    navRef.current = walk.step;
 
     /** 그룹 배정 — 종목 이름줄·「타점 없음」 줄 우클릭 = 하루(차트), 타점 줄 우클릭 = 좌표. **행의 날짜**를 넘긴다(행마다 다르다). */
     const openAssign = (ev: React.MouseEvent, code: string, date: string, time?: string): void => {
@@ -113,9 +113,9 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         },
     ], [range, setRange, cols.length, menuAt]);
 
-    // ── 포커스 따라가기 — 날짜도 바뀌므로 deps 에 넣는다(탐색판은 날짜 고정이라 빠져 있다).
+    // ── 커서 행 따라가기 — 둘러보는 동안엔 커서(책갈피)가 안 움직이므로 목록도 제자리다.
     const focusRowRef = useRef<HTMLTableRowElement | null>(null);
-    useEffect(() => { revealRow(focusRowRef.current); }, [focusDate, focusCode, focusTime]);
+    useEffect(() => { revealRow(focusRowRef.current); }, [cur?.code, cur?.date, cur?.time]);
 
     const note = !g.ready ? (g.isLoading ? "불러오는 중…" : "라벨 데이터를 못 불러왔습니다")
         : charts.length === 0 ? "붙인 라벨이 없습니다 — 차트·목록 우클릭으로 붙입니다"
@@ -145,10 +145,10 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         }
         const { chart } = r;
         if (r.kind === "stock") {
-            const onHead = (): void => go(r.firstTime !== null ? { code: chart.code, date: chart.date, time: r.firstTime } : { code: chart.code, date: chart.date });
+            const onHead = (): void => jump(r.firstTime !== null ? { code: chart.code, date: chart.date, time: r.firstTime } : { code: chart.code, date: chart.date });
             // 시각 없는 커서(다른 판에서 goToDay 로 옴)가 타점 있는 차트를 가리키면 이름줄로 따라간다 — 이 차트엔 「타점 없음」 줄이 없어
             // 받을 줄이 여기뿐이다(강조는 안 한다 — 이름줄은 칸이 없는 표제다).
-            const follow = r.firstTime !== null && focusTime === null && chart.code === focusCode && chart.date === focusDate;
+            const follow = r.firstTime !== null && cur !== null && cur.time === null && chart.code === cur.code && chart.date === cur.date;
             return (
                 <tr key={`s:${chart.code}|${chart.date}`} data-head="" ref={follow ? focusRowRef : undefined}>
                     <td colSpan={colSpanAll} style={{ ...headLineCell, paddingTop: 4 }}>
@@ -166,17 +166,19 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         }
         // 타점 줄 · 「타점 없음」 줄 — 같은 모양. 「타점 없음」은 시각 없이 그 차트로(goToDay), 우클릭은 하루 배정.
         const time = r.kind === "point" ? r.point.time : null;
-        const isFocus = chart.code === focusCode && chart.date === focusDate && time === focusTime;
+        // 커서 행 — 시선이 위에 있으면 칠하고, 둘러보는 중(drifted)이면 선만(= 책갈피 "여기까지 봤다").
+        const isCursor = cur !== null && chart.code === cur.code && chart.date === cur.date && time === cur.time;
+        const isFocus = isCursor && !walk.drifted;
         const rowBg = isFocus ? "var(--accent-soft)" : "var(--bg-primary)";
         const cellOf = (c: LabelCol): LabelCell => (r.kind === "point" ? pointCellOf(chart, r.point, c) : noPointCellOf(chart, c));
         return (
-                <tr key={`p:${chart.code}|${chart.date}|${time ?? "none"}`} ref={isFocus ? focusRowRef : undefined}
-                    onClick={() => go(time !== null ? { code: chart.code, date: chart.date, time } : { code: chart.code, date: chart.date })}
+                <tr key={`p:${chart.code}|${chart.date}|${time ?? "none"}`} ref={isCursor ? focusRowRef : undefined}
+                    onClick={() => jump(time !== null ? { code: chart.code, date: chart.date, time } : { code: chart.code, date: chart.date })}
                     onContextMenu={(ev) => (time !== null ? openAssign(ev, chart.code, chart.date, time) : openAssign(ev, chart.code, chart.date))}
                     title={time !== null ? "좌클릭 = 이 타점으로 시선 이동(차트가 따라온다) · 우클릭 = 그룹 배정(좌표 라벨)"
                         : "이 차트엔 라벨 붙은 타점이 없다(하루 라벨만) — 좌클릭 = 이 차트로 · 우클릭 = 그룹 배정(하루)"}
                     style={{ cursor: "pointer", background: rowBg }}>
-                    <Td style={{ ...stickL(0), backgroundColor: rowBg, paddingLeft: 8 + TREE_INDENT, borderBottom: "none", ...treeTimeCell(isFocus),
+                    <Td style={{ ...stickL(0), backgroundColor: rowBg, paddingLeft: 8 + TREE_INDENT, borderBottom: "none", ...treeTimeCell(isCursor),
                         ...(time === null ? { fontSize: 11, whiteSpace: "nowrap", color: isFocus ? "var(--text-secondary)" : "var(--text-tertiary)" } : null) }}>
                         {time !== null ? time.slice(0, 5) : "타점 없음"}
                     </Td>

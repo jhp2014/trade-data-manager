@@ -7,7 +7,7 @@
 import type { Group, GroupMembership, PointGroupMembership } from "../../api/groups.js";
 import { expandWithAncestors } from "../../lib/groupTree.js";
 import { liveGroupNames } from "../../lib/groupIndex.js";
-import type { NavKey } from "../dailyExplore/walk.js";
+import type { NavKey, WalkCursor, WalkStep } from "../dailyExplore/walk.js";
 
 /** 이 판의 단일 인스턴스 주소 — 열 선택 저장물이 여기 산다(개명 승계가 이 주소로 쓴다 · 카탈로그 duplicable 아님이 전제). */
 export const LABEL_EXPLORE_PANEL_ID = "label-explore-1";
@@ -156,11 +156,7 @@ function cmpNav(a: { code: string; date: string; time: string | null }, b: { cod
  * 한 칸 — 커서가 목록에 있으면 이웃, 없으면(라벨을 떼서 사라짐 · 라벨 아닌 분 · 다른 판에서 옴) **정렬상
  * 끼어들 자리의 이웃**으로 간다(전 기간 목록에서 처음으로 튀면 자리를 잃는다). 끝이면 boundary — 날짜 넘기기는 없다.
  */
-export function stepFrom(
-    order: readonly NavKey[],
-    cursor: { code: string; date: string; time: string | null } | null,
-    dir: 1 | -1,
-): { kind: "move"; to: NavKey } | { kind: "boundary" } | null {
+export function stepFrom(order: readonly NavKey[], cursor: WalkCursor | null, dir: 1 | -1): WalkStep {
     if (order.length === 0) return null;
     if (cursor === null) return { kind: "move", to: dir > 0 ? order[0]! : order[order.length - 1]! };
     const key = (k: NavKey): { code: string; date: string; time: string | null } => ({ code: k.code, date: k.date, time: k.time ?? null });
@@ -172,7 +168,7 @@ export function stepFrom(
         const ins = after < 0 ? order.length : after;
         next = dir > 0 ? ins : ins - 1;
     }
-    if (next < 0 || next >= order.length) return { kind: "boundary" };
+    if (next < 0 || next >= order.length) return { kind: "boundary", dir };
     return { kind: "move", to: order[next]! };
 }
 

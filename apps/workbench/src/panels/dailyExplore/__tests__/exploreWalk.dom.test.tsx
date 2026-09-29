@@ -81,6 +81,61 @@ beforeEach(() => {
     act(() => selectRowNavOwner("daily-explore"));
 });
 
+describe("탐색판 — w/s 커서 = 책갈피(밖에서 온 시선 이동은 커서를 안 옮긴다)", () => {
+    const focus = (): { code: string; time: string | null } => useWorkbench.getState().focus;
+    /** 차트 쪽 손(시간선·a/d·◇ 클릭)을 흉내 — 이 판이 아닌 출처의 시선 이동. */
+    const lookAround = (code: string, time: string): void => act(() => { useWorkbench.getState().goToPoint({ date: DATE, code, time }, "chart"); });
+
+    it("주변을 둘러보다(목록 밖 분) s = 보던 타점의 다음으로 이어진다 — 처음부터가 아니다", () => {
+        renderExplore();
+        press("s"); press("s"); // 유한양행 09:01
+        lookAround("000100", "09:05:00");
+        press("s");
+        expect(focus()).toMatchObject({ code: "000100", time: "09:02:00" });
+    });
+
+    it("둘러보다 목록의 다른 행에 닿아도 흐름이 안 바뀐다 · w = 보던 타점의 이전", () => {
+        renderExplore();
+        press("s"); press("s"); // 유한양행 09:01
+        lookAround("247540", "09:00:00"); // 목록에 있는 에코프로비엠 첫 분
+        press("s");
+        expect(focus(), "에코프로비엠 다음이 아니라 유한양행 09:01 다음").toMatchObject({ code: "000100", time: "09:02:00" });
+        lookAround("247540", "09:01:00");
+        press("w");
+        expect(focus()).toMatchObject({ code: "000100", time: "09:01:00" });
+    });
+
+    it("둘러보는 동안 책갈피 행은 선만 남고(칠 없음), 돌아오면 다시 칠한다", () => {
+        const { container } = renderExplore();
+        press("s"); press("s");
+        const bg = (): string[] => bodyRows(container).map((tr) => tr.style.background);
+        expect(bg()[1]).toBe("var(--accent-soft)");
+        lookAround("000100", "09:05:00");
+        expect(bg().every((b) => b === "var(--bg-primary)"), "시선이 떠나면 칠은 없다").toBe(true);
+        press("w"); press("s");
+        expect(bg()[1]).toBe("var(--accent-soft)");
+    });
+
+    it("작업표시줄로 날짜를 바꾸면 책갈피는 비워진다 — 돌아와도 되살아나지 않고 focus 에서 다시 들어간다", () => {
+        const OTHER = "2026-09-15";
+        const { client } = renderExplore();
+        client.setQueryData(["day-replay-lru", OTHER], { date: OTHER, stocks: [] } satisfies DayReplay);
+        press("s"); press("s"); press("s"); // 유한양행 09:02
+        act(() => { useWorkbench.getState().setDate(OTHER); });
+        act(() => { useWorkbench.getState().setDate(DATE); });
+        press("s");
+        expect(focus(), "옛 책갈피(09:02) 다음이 아니라 처음").toMatchObject({ code: "000100", time: "09:00:00" });
+    });
+
+    it("이 판의 행 클릭은 책갈피를 옮긴다", () => {
+        const { container } = renderExplore();
+        press("s");
+        act(() => { fireEvent.click(bodyRows(container)[3]!); }); // 에코프로비엠 09:00
+        press("s");
+        expect(focus()).toMatchObject({ code: "247540", time: "09:01:00" });
+    });
+});
+
 describe("탐색판 — 종목 머리줄", () => {
     it("이름 + 테마 앞 3개 + 나머지 +N · 접기 손은 없다", () => {
         const { container } = renderExplore([wide], {

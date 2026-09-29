@@ -24,7 +24,7 @@ export const headLineCell: CSSProperties = {
     backgroundSize: "100% 1px", backgroundPosition: "0 50%", backgroundRepeat: "no-repeat", backgroundOrigin: "content-box",
 };
 
-/** 종목순 시간 칸 — 왼쪽 가이드선(본 줄에 괘선이 없어 칸 높이 100% 가 줄줄이 이어진다). 포커스 = 선이 굵은 청록(색 하나 안 늘리고 "지금 여기"). */
+/** 종목순 시간 칸 — 왼쪽 가이드선(본 줄에 괘선이 없어 칸 높이 100% 가 줄줄이 이어진다). 커서 = 선이 굵은 청록(색 하나 안 늘리고 "지금 여기" — 시선이 떠나도 책갈피로 선은 남는다). */
 export const treeTimeCell = (focus: boolean): CSSProperties => {
     const line = focus ? "var(--accent-primary)" : "var(--border-default)";
     return {
@@ -33,6 +33,9 @@ export const treeTimeCell = (focus: boolean): CSSProperties => {
         backgroundPosition: "12px 0", backgroundRepeat: "no-repeat",
     };
 };
+
+/** 평탄한 표(시간순)의 커서 칸 — 트리의 가이드선(treeTimeCell)이 없어 왼쪽 막대로 같은 말을 한다. */
+export const flatCursorMark: CSSProperties = { boxShadow: "inset 2px 0 0 var(--accent-primary)" };
 
 /**
  * 종목 머리줄의 테마 — 앞 THEME_SHOW 개만 글자로, 나머지는 +N(hover = 전부). 이름줄 폭이 모자라면 **끝에서 …**

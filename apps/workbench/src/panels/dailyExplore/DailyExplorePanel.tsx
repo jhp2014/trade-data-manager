@@ -33,8 +33,9 @@ import { useGroupAssign } from "../../store/groupAssign.js";
 import { neighborDates } from "./dayCrossing.js";
 import { useDayCrossing } from "./useDayCrossing.js";
 import { stepWithin, type NavKey } from "./walk.js";
+import { useWalkCursor } from "./useWalkCursor.js";
 import { MAX_GROUPS, cellKeyOf, exploreRowsOf, type ExploreSort } from "./exploreRows.js";
-import { FragmentRow, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, HeadLine, headLineCell, navBtn, revealRow, ScrollBox, stickL, thBase, treeTimeCell } from "./exploreTable.js";
+import { FragmentRow, flatCursorMark, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, HeadLine, headLineCell, navBtn, revealRow, ScrollBox, stickL, thBase, treeTimeCell } from "./exploreTable.js";
 import { useConditionGroups, type GroupCol } from "./useConditionGroups.js";
 
 const EMPTY_DATES: string[] = [];
@@ -104,12 +105,22 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const order = useMemo<NavKey[]>(() => shownRows.map((r) => ({ code: r.code, date: focusDate, time: r.time })), [shownRows, focusDate]);
     const orderRef = useRef(order);
     orderRef.current = order;
+    // ── w/s 커서 = 책갈피(useWalkCursor — 라벨 [탐색]과 한 벌). scope = 날짜: 작업표시줄로 날짜가 바뀌면 책갈피는 없는 셈.
+    // 책갈피가 없으면 focus 에서 들어간다 — 목록 밖이면 방향의 첫 항목(stepWithin).
+    const focusCursor = useMemo(() => (focusTime !== null ? { code: focusCode, date: focusDate, time: focusTime } : null), [focusCode, focusDate, focusTime]);
+    const walk = useWalkCursor({
+        order, scope: focusDate, focus: focusCursor, fallback: stepWithin,
+        go: (to) => useWorkbench.getState().goToPoint({ date: to.date, code: to.code, time: to.time ?? "" }, "daily-explore"),
+        // 끝 = 날짜 넘기기. crossing 은 아래에서 선다 — 이 화살표는 키를 누를 때 불려 그땐 이미 있다.
+        onBoundary: (dir) => { if (canCross) crossing.cross(dir); },
+    });
+    const { jump } = walk;
     const landOn = useCallback((dir: 1 | -1) => {
-        // 착지 — 방향에 맞는 끝 항목으로. 넘긴 **뒤의** 행이 필요해 ref 로 읽는다(콜백 생성 시점의 행이 아니다).
+        // 착지 — 방향에 맞는 끝 항목으로(책갈피도 거기로). 넘긴 **뒤의** 행이 필요해 ref 로 읽는다(콜백 생성 시점의 행이 아니다).
         const o = orderRef.current;
         const to = dir > 0 ? o[0] : o[o.length - 1];
-        if (to) useWorkbench.getState().goToPoint({ date: to.date, code: to.code, time: to.time ?? "" }, "daily-explore");
-    }, []);
+        if (to) jump(to);
+    }, [jump]);
     const crossing = useDayCrossing({
         active: isDaily,
         dates: datesQ.data ?? EMPTY_DATES,
@@ -125,23 +136,10 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     });
     const canCross = isDaily && !cellSet.isLoading && !cellSet.tooWide && cellSet.error === null && !crossing.seeking;
 
-    // ── w/s 순회 — 커서 = focus 그대로(하루 우주의 행은 좌표다).
+    // ── w/s 순회 — 책갈피에서 한 칸(위 useWalkCursor).
     const navRef = usePublishRowNav("daily-explore");
-    navRef.current = (dir): void => {
-        const cur = focusTime !== null ? { code: focusCode, date: focusDate, time: focusTime } : null;
-        const step = stepWithin(order, cur, dir > 0 ? 1 : -1);
-        if (step === null || step.kind === "boundary") {
-            if (canCross) crossing.cross(step === null ? (dir > 0 ? 1 : -1) : step.dir);
-            return;
-        }
-        useWorkbench.getState().goToPoint({ date: step.to.date, code: step.to.code, time: step.to.time ?? "" }, "daily-explore");
-    };
-    /** 순회 위치(1-base) — 커서가 목록에 없으면 null. */
-    const pos = useMemo(() => {
-        if (focusTime === null) return null;
-        const at = order.findIndex((k) => k.code === focusCode && k.time === focusTime);
-        return at < 0 ? null : at + 1;
-    }, [order, focusCode, focusTime]);
+    navRef.current = walk.step;
+    const pos = walk.pos;
 
     // ── 조건 그룹 고르기 판.
     const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
@@ -163,9 +161,11 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         },
     ], [sortMode, setSortMode, datePinned, setDatePinned, groupCols.length, menuAt]);
 
-    // ── 포커스 행 따라가기 — 걷는 행이 화면 밖으로도, 붙는 머리 밑으로도 안 가게(revealRow).
+    // ── 커서 행 따라가기 — 걷는 행이 화면 밖으로도, 붙는 머리 밑으로도 안 가게(revealRow). 둘러보는 동안엔
+    // 커서(책갈피)가 안 움직이므로 목록도 제자리다.
     const focusRowRef = useRef<HTMLTableRowElement | null>(null);
-    useEffect(() => { revealRow(focusRowRef.current); }, [focusCode, focusTime]);
+    const cur = walk.cursor;
+    useEffect(() => { revealRow(focusRowRef.current); }, [cur?.code, cur?.date, cur?.time]);
 
     const note = !isDaily ? "하루 모드에서만 섭니다"
         : cellSet.error !== null ? `재료 조회 실패 — ${cellSet.error.message}`
@@ -237,7 +237,9 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                         </thead>
                         <tbody>
                             {shownRows.map((r, i) => {
-                                const isFocus = r.code === focusCode && r.time === focusTime;
+                                // 커서 행 — 시선이 위에 있으면 칠하고, 둘러보는 중(drifted)이면 선만(= 책갈피 "여기까지 봤다").
+                                const isCursor = cur !== null && r.code === cur.code && r.time === cur.time;
+                                const isFocus = isCursor && !walk.drifted;
                                 // 종목순일 때만 종목 머리줄 — 이름 + 테마(앞 THEME_SHOW 개, 나머지 +N). 클릭 = 그 종목 첫 타점 ·
                                 // 우클릭 = 하루 그룹 배정(차트). 묶음 경계는 **이름 뒤 가는 선** 하나다(칸 배경에 그린 1px 가로선을
                                 // 이름 덩어리가 제 배경으로 덮는다 — 가로 스크롤 중에도 이름이 왼쪽에 붙어 있게 덩어리만 sticky). 덩어리는 보이는 폭(100cqw)만
@@ -246,7 +248,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                                     <tr key={`head-${r.code}`} data-head="">
                                         <td colSpan={2 + groupCols.length} style={{ ...headLineCell, paddingTop: i === 0 ? 2 : 6 }}>
                                             <HeadLine onContextMenu={(ev) => openAssign(ev, r.code)}>
-                                                <button onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}
+                                                <button onClick={() => jump({ date: focusDate, code: r.code, time: r.time })}
                                                     className="row-self-marked"
                                                     title="좌클릭 = 이 종목의 첫 타점으로 · 우클릭 = 그룹 배정(하루)"
                                                     style={{ border: "none", background: "transparent", cursor: "pointer", font: "inherit", fontSize: 12, fontWeight: 600, padding: 0, color: "var(--text-primary)", whiteSpace: "nowrap", flexShrink: 0 }}>
@@ -260,15 +262,15 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                                 const rowBg = isFocus ? "var(--accent-soft)" : "var(--bg-primary)";
                                 return (
                                     <FragmentRow key={cellKeyOf(r.code, r.min)} head={head}>
-                                    <tr ref={isFocus ? focusRowRef : undefined}
-                                        onClick={() => useWorkbench.getState().goToPoint({ date: focusDate, code: r.code, time: r.time }, "daily-explore")}
+                                    <tr ref={isCursor ? focusRowRef : undefined}
+                                        onClick={() => jump({ date: focusDate, code: r.code, time: r.time })}
                                         onContextMenu={(ev) => openAssign(ev, r.code, r.time)}
                                         title="좌클릭 = 이 타점으로 시선 이동(차트가 따라온다) · 우클릭 = 그룹 배정(좌표 라벨)"
                                         style={{ cursor: "pointer", background: rowBg }}>
                                         {/* 붙는 칸은 제 배경을 칠해야 밀려 지나가는 점 열을 가린다. 종목순 = 가이드선 안쪽으로 들여쓴다. */}
                                         {/* paddingLeft 는 두 모드 다 **항상** 준다 — 한쪽에만 두면 모드 전환 때 React 가 그 키를 지우며 Td 의 padding(shorthand)
                                             왼쪽까지 날린다(같은 td 가 재사용된다 — 키가 정렬과 무관). */}
-                                        <Td style={{ ...stickL(0), backgroundColor: rowBg, paddingLeft: tree ? 8 + TREE_INDENT : 8, ...noLine, ...(tree ? treeTimeCell(isFocus) : null) }}>{r.time.slice(0, 5)}</Td>
+                                        <Td style={{ ...stickL(0), backgroundColor: rowBg, paddingLeft: tree ? 8 + TREE_INDENT : 8, ...noLine, ...(tree ? treeTimeCell(isCursor) : isCursor ? flatCursorMark : null) }}>{r.time.slice(0, 5)}</Td>
                                         {/* 종목순에선 열 자체를 접는다 — 머리줄이 이름을 말하는데 빈 열이 폭만 먹는다. */}
                                         {sortMode === "time" && (
                                             <Td style={{ ...stickL(TIME_W), background: rowBg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: NAME_W }}>{nameOf(r.code)}</Td>

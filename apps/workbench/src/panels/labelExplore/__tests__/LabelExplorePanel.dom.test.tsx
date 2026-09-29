@@ -88,6 +88,15 @@ describe("라벨 [탐색] — w/s", () => {
         expect(useWorkbench.getState().focus, "끝 = 그대로").toMatchObject({ code: "B", time: "09:04:00" });
     });
 
+    it("둘러보다 목록의 다른 행(다른 날)에 닿아도 s 는 보던 타점 다음으로 — 커서 = 책갈피", () => {
+        act(() => { useWorkbench.getState().setPanelUi(PANEL, "rowRange", "all"); });
+        renderLabel();
+        press("s"); // A 09:12
+        act(() => { useWorkbench.getState().goToPoint({ date: "2026-09-24", code: "B", time: "09:04:00" }, "chart"); });
+        press("s");
+        expect(useWorkbench.getState().focus, "비 끝이 아니라 에이 다음 = 씨").toMatchObject({ code: "C", date: "2026-09-25", time: null });
+    });
+
     it("라벨을 떼서 커서 행이 사라지면 다음 s 는 그 자리의 이웃으로", async () => {
         act(() => { useWorkbench.getState().setPanelUi(PANEL, "rowRange", "all"); });
         const { container, client } = renderLabel();

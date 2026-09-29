@@ -109,7 +109,7 @@ describe("순회 — 렌더 순서 그대로, 날짜 경계 없음", () => {
     });
 
     it("끝은 boundary(넘기지 않는다) · 커서 없음 = 방향의 첫 칸", () => {
-        expect(stepFrom(order, { code: "B", date: "2026-09-24", time: "11:20:00" }, 1)).toEqual({ kind: "boundary" });
+        expect(stepFrom(order, { code: "B", date: "2026-09-24", time: "11:20:00" }, 1)).toEqual({ kind: "boundary", dir: 1 });
         expect(stepFrom(order, null, -1)).toEqual({ kind: "move", to: order[4] });
     });
 });
