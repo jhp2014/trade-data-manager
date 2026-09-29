@@ -125,6 +125,7 @@ export function MinuteChart({
     anchorMarks,
     chainOverlay = null,
     amountCorner,
+    amountCornerRight,
     nowMarkId,
 }: {
     points: MinutePoint[];
@@ -158,6 +159,8 @@ export function MinuteChart({
     chainOverlay?: ChainOverlayInput | null;
     /** 거래대금 pane **좌상단**(구분선 바로 아래)에 붙일 것 — 구분선 드래그·리사이즈를 따라간다. */
     amountCorner?: ReactNode;
+    /** 거래대금 pane **우상단**(가격축 안쪽) — 좌상단과 한 줄을 나눠 쓴다(각자 절반 폭까지). */
+    amountCornerRight?: ReactNode;
     /**
      * 시간선 표식(▼ 또는 그 분의 ◇)에 `data-now-mark` 로 다는 이름 — 라벨 단축키(e)가 "지금 시점"의 화면 자리를
      * DOM 에서 찾는다(chartHooks). 복기 차트만 준다(실시간 차트는 다른 시선이라 안 준다).
@@ -285,14 +288,16 @@ export function MinuteChart({
                     <MarkerCard point={overlay.current.point} />
                 </AnchoredBox>
             )}
-            {amountCorner != null && series.amountTop !== null && (
-                // 폭 = 오른쪽 가격축 자리를 뺀 만큼 — 안의 카드가 maxWidth 100% 로 이 폭에서 줄어든다.
+            {(amountCorner != null || amountCornerRight != null) && series.amountTop !== null && (
+                // 폭 = 오른쪽 가격축 자리를 뺀 만큼 — 좌·우 칸이 각자 절반까지, 안의 카드가 maxWidth 100% 로 그 칸에서 줄어든다
+                // (둘 다 길어도 가운데서 안 부딪힌다).
                 // 감싸개는 손을 안 받는다(카드만 hover) — 빈 자리의 크로스헤어·클릭을 먹지 않게.
                 // GROUP_MARKER_ATTR = 캔들 우클릭 리스너가 비켜주는 표식 — 컨테이너 자식이라 안 달면 칩 위
                 // 우클릭이 선 판정·봉 메뉴로 샌다(◇ 와 같은 사정).
                 <div {...{ [GROUP_MARKER_ATTR]: "" }}
-                    style={{ position: "absolute", top: series.amountTop + AMOUNT_CORNER_GAP, left: 8, right: 72, zIndex: 8, display: "flex", pointerEvents: "none" }}>
-                    {amountCorner}
+                    style={{ position: "absolute", top: series.amountTop + AMOUNT_CORNER_GAP, left: 8, right: 72, zIndex: 8, display: "flex", justifyContent: "space-between", gap: 8, pointerEvents: "none" }}>
+                    <div style={{ display: "flex", minWidth: 0, maxWidth: "50%" }}>{amountCorner}</div>
+                    <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 0, maxWidth: "50%" }}>{amountCornerRight}</div>
                 </div>
             )}
             {tip.visible && (

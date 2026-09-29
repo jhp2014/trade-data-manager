@@ -30,6 +30,7 @@ import { usePresenceOf } from "../lib/usePresence.js";
 import { PresenceBadges } from "../components/PresenceBadges.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import { GroupChips } from "../components/GroupChips.js";
+import { PointLabelCard } from "../components/PointLabelCard.js";
 import { useGroupAssign } from "../store/groupAssign.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import {
@@ -315,6 +316,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                                 && unionPoints.length > 0 && time !== null}
                                             isPoint={time !== null && unionPoints.some((u) => u.hms === time)} />
                                     }
+                                    // 지금 타점의 라벨(◆ 직접 + 하위를 거친 조상 흐리게) — 조건 그룹 칩의 짝.
+                                    amountCornerRight={<PointLabelCard code={code} date={viewDate} time={time} />}
                                 />
                             ) : null
                         }
