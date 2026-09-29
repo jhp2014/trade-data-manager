@@ -64,7 +64,8 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
     // 복제 입구 — 인스턴스 생성의 유일한 정문(복제 가능 타입에만). 헤더 구조가 제각각인 패널들을
     // 재편하지 않고도 전 타입이 한 번에 정문을 얻는 자리라 탭이다(2026-09-16 확정).
     const duplicable = panelTypeOf(props.api.id)?.duplicable === true;
-    // w/s 순회 자리 — 걷는 중 = 채운 칩, 참여 = 윤곽 칩, 빠짐·후보 아님 = 없음(lib/rowNav 「참여」).
+    // w/s 순회 자리 — 걷는 중 = 채운 칩, 참여 = 옅은 글자만(테두리·바탕 없음), 빠짐·후보 아님 = 없음(lib/rowNav 「참여」).
+    // 두 상태가 **같은 상자**(투명 테두리까지)라 참여 → 걷는 중에서 바탕만 채워지고 제목은 안 밀린다.
     // 탭이 이 표시를 맡는 이유: 배경 탭이어도 보이고, 판 컨트롤은 접혀 있어도 된다.
     const walkRole = useRowNavRole(rowNavOwnerOfBase(panelTypeOf(props.api.id)?.idBase));
     return (
@@ -73,9 +74,10 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
                 <span title={walkRole === "walk" ? "w/s 가 이 창을 걷는다 (q: 다음 참여 창으로)" : "w/s 순회 참여 — q 로 여기로 옮길 수 있다"}
                     style={{
                         fontSize: 10.5, lineHeight: "14px", padding: "0 4px", borderRadius: 3, fontWeight: 700, flexShrink: 0,
+                        border: "1px solid transparent",
                         ...(walkRole === "walk"
-                            ? { background: "var(--walk)", color: "#fff", border: "1px solid var(--walk)" }
-                            : { color: "var(--walk)", border: "1px solid var(--walk)", opacity: 0.7, fontWeight: 400 }),
+                            ? { background: "var(--walk)", color: "#fff" }
+                            : { color: "var(--walk-faint)" }), // 굵기도 같게 — 700/400 이면 폭이 1px 남짓 갈려 제목이 밀린다
                     }}>w/s</span>
             )}
             <span style={{ fontWeight: active ? 700 : 400, opacity: active ? 1 : 0.85 }}>{title}</span>

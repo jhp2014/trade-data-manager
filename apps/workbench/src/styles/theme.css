@@ -23,9 +23,9 @@
     --plane-live-soft: #fbeede;
     --plane-eod: #16796f;
     --plane-eod-soft: #e7f5f2;
-    /* w/s 순회 — 탭 칩(걷는 중 = 채움, 참여 = 윤곽)·판 컨트롤. 플레인 색(앰버·청록)·활성 타점(하늘)과 겹치지 않는 파랑. */
+    /* w/s 순회 — 탭 칩(걷는 중 = 채움, 참여 = 옅은 글자)·판 컨트롤. 플레인 색(앰버·청록)·활성 타점(하늘)과 겹치지 않는 파랑. */
     --walk: #185fa5;
-    --walk-soft: #e6f1fb;
+    --walk-faint: #85b7eb;
     --chart-bg: #101418;
     --chart-grid: #242b33;
     --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
