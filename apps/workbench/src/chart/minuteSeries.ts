@@ -18,6 +18,7 @@ import { amountBucketIndex, AMOUNT_BUCKETS_EOK } from "@trade-data-manager/marke
 import { type VertLines } from "./vertLine.js";
 import { type DropLines } from "./dropLine.js";
 import { asChainPrimitive, ChainLayer } from "./chainLayer.js";
+import { asProbePrimitive, PANE_SEPARATOR_PX, PaneHeightProbe } from "./paneProbe.js";
 import { type MinutePoint } from "../lib/derive.js";
 
 export interface MinuteSeries {
@@ -35,6 +36,8 @@ export interface MinuteSeries {
     bumpOverlay: () => void;
     /** 시리즈 세대 — 재생성될 때마다 오른다. 규약·이유는 DailySeries.gen 주석 참조(같은 규칙 한 벌). */
     gen: number;
+    /** 거래대금 pane 윗변 y(px, 컨테이너 기준) — 첫 페인트 전엔 null. 구분선 드래그·리사이즈를 따라간다. */
+    amountTop: number | null;
 }
 
 /** 시리즈 수명주기 — 캔들(pane0, % 축) + 거래대금(pane1, 억) 1회 생성, 마커 플러그인·세로선 primitive 부착/정리. */
@@ -49,6 +52,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
     const [overlayTick, setOverlayTick] = useState(0);
     const bumpOverlay = (): void => setOverlayTick((v) => v + 1);
     const [gen, setGen] = useState(0);
+    const [amountTop, setAmountTop] = useState<number | null>(null);
 
     useEffect(() => {
         const chart = chartRef.current;
@@ -86,6 +90,9 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
         // 다리 표식은 분봉만의 것 — 공용 골조(buildCandleAmountSeries)에 넣지 않고 여기서 직접 붙인다.
         const chains = new ChainLayer();
         s.candle.attachPrimitive(asChainPrimitive(chains));
+        // 캔들 pane 높이 탐침 — 거래대금 pane 윗변에 붙는 DOM(차트 그룹 칩)의 자리.
+        const probe = new PaneHeightProbe((h) => setAmountTop(h + PANE_SEPARATOR_PX));
+        s.candle.attachPrimitive(asProbePrimitive(probe));
         candleRef.current = s.candle;
         amountRef.current = s.amount;
         markersRef.current = s.markers;
@@ -106,6 +113,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
             if (chartRef.current !== null) {
                 ts.unsubscribeVisibleLogicalRangeChange(bumpOverlay);
                 s.candle.detachPrimitive(asChainPrimitive(chains));
+                s.candle.detachPrimitive(asProbePrimitive(probe));
                 s.dispose();
             }
             candleRef.current = null;
@@ -119,7 +127,7 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    return { candleRef, amountRef, markersRef, candleVertsRef, amountVertsRef, dropRef, chainRef, overlayTick, bumpOverlay, gen };
+    return { candleRef, amountRef, markersRef, candleVertsRef, amountVertsRef, dropRef, chainRef, overlayTick, bumpOverlay, gen, amountTop };
 }
 
 export interface MinuteLookups {

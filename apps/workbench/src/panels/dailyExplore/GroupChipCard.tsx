@@ -1,4 +1,4 @@
-// 기본 분봉 차트 좌하단 고스트 칩 — **지금 타점(시간선)이 통과한 조건 그룹만** 이름으로(탐색판의 그룹 그대로).
+// 기본 분봉 차트의 거래대금 pane 좌상단 고스트 칩 — **지금 타점(시간선)이 통과한 조건 그룹만** 이름으로(탐색판의 그룹 그대로).
 // 시장 단면 판의 고스트 툴바와 같은 결(평소 반투명·hover 진해짐). 그룹을 안 골랐으면 아예 안 선다.
 // 판정·색·이름은 useConditionGroups 한 벌 — 탐색판 열과 이 칩이 다른 답을 말할 수 없다.
 import { cellKeyOf } from "./exploreRows.js";
@@ -31,11 +31,13 @@ export function GroupChipCard({ code, date, time, active, isPoint }: {
     const unknown = groupCols.filter((c) => c.state.kind === "unknown");
     if (passed.length === 0 && loading.length === 0 && unknown.length === 0) return null;
     return (
-        // 자리 = **좌하단**(시간축 위) — 좌상단은 표식 ◇ 클릭 상자·앵커 칩·크로스헤어가 사는 층이라 덮으면
-        // 개장 구간의 손이 죽는다(리뷰가 잡은 자리). 겉은 시장 단면 판과 같은 고스트 카드(.plane-ctl).
+        // 자리는 부모(MinuteChart amountCorner)가 준다 = **거래대금 pane 좌상단**(구분선 바로 아래). 차트 좌상단은
+        // 표식 ◇ 클릭 상자·앵커 칩·크로스헤어가 사는 층이라 덮으면 개장 구간의 손이 죽고(리뷰가 잡은 자리),
+        // 시간축 바로 위(옛 자리)는 눈에 안 띄었다(2026-09-29 사용자). 막대 꼭대기는 대개 비어 덜 덮는다.
+        // 겉은 시장 단면 판과 같은 고스트 카드(.plane-ctl). 감싸개가 손을 안 받으므로 카드가 되받는다.
         <div className="plane-ctl" style={{
-            position: "absolute", bottom: 28, left: 8, zIndex: 8, display: "flex", alignItems: "center", gap: 7,
-            padding: "2px 8px", fontSize: 10.5, lineHeight: "16px", maxWidth: "calc(100% - 80px)", overflow: "hidden",
+            display: "flex", alignItems: "center", gap: 7, pointerEvents: "auto",
+            padding: "2px 8px", fontSize: 10.5, lineHeight: "16px", maxWidth: "100%", overflow: "hidden",
         }}>
             {passed.map((c) => (
                 // 넘치면 **이름이 줄어든다**(minWidth 0 + 말줄임) — 끝의 "…"·"—N" 표식은 안 줄어 늘 보인다.

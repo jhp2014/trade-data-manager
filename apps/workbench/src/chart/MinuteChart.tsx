@@ -72,6 +72,8 @@ function AnchoredBox({
  * 상자는 **클릭 표적**의 크기다(그림이 6.5px 로 작아져도 손은 18px 그대로 — 줄이지 말 것).
  */
 const MARKER_BOX = { w: MARK_HIT_W, h: MARK_BAND_H } as const;
+/** 거래대금 pane 좌상단 슬롯이 구분선에서 떨어지는 간격(px). */
+const AMOUNT_CORNER_GAP = 4;
 
 // prop 기본값은 모듈 상수로 — `= []` 인라인이면 렌더마다 새 참조라 오버레이 effect 가 매 렌더 발화한다.
 const NO_AUTO: AutoPointInput[] = [];
@@ -121,6 +123,7 @@ export function MinuteChart({
     capturePriceArmed = false,
     anchorMarks,
     chainOverlay = null,
+    amountCorner,
 }: {
     points: MinutePoint[];
     frameKey: string; // 데이터셋 정체성(code:date) — 이게 바뀔 때만 표시범위 리프레임(라이브 틱엔 뷰 보존).
@@ -151,6 +154,8 @@ export function MinuteChart({
     anchorMarks?: readonly AnchorMark[];
     /** 사슬 층(돌파 사슬 띠·후보 봉 세로 줄·밴드 면) — null/생략 = 없음(실시간 차트·층 꺼짐). */
     chainOverlay?: ChainOverlayInput | null;
+    /** 거래대금 pane **좌상단**(구분선 바로 아래)에 붙일 것 — 구분선 드래그·리사이즈를 따라간다. */
+    amountCorner?: ReactNode;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -270,6 +275,16 @@ export function MinuteChart({
                 <AnchoredBox x={overlay.current.x} top={1} containerWidth={containerWidth} zIndex={9}>
                     <MarkerCard point={overlay.current.point} />
                 </AnchoredBox>
+            )}
+            {amountCorner != null && series.amountTop !== null && (
+                // 폭 = 오른쪽 가격축 자리를 뺀 만큼 — 안의 카드가 maxWidth 100% 로 이 폭에서 줄어든다.
+                // 감싸개는 손을 안 받는다(카드만 hover) — 빈 자리의 크로스헤어·클릭을 먹지 않게.
+                // GROUP_MARKER_ATTR = 캔들 우클릭 리스너가 비켜주는 표식 — 컨테이너 자식이라 안 달면 칩 위
+                // 우클릭이 선 판정·봉 메뉴로 샌다(◇ 와 같은 사정).
+                <div {...{ [GROUP_MARKER_ATTR]: "" }}
+                    style={{ position: "absolute", top: series.amountTop + AMOUNT_CORNER_GAP, left: 8, right: 72, zIndex: 8, display: "flex", pointerEvents: "none" }}>
+                    {amountCorner}
+                </div>
             )}
             {tip.visible && (
                 <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>
