@@ -11,6 +11,8 @@ import { indexAtOrBefore } from "./chartFrame.js";
 import { useChartPoints } from "./useChartPoints.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
 import { useWorkbench } from "../store/workbench.js";
+import { NOW_MARK_ATTR, useGroupAssign } from "../store/groupAssign.js";
+import { useStockNamesDict } from "./StockNamesContext.js";
 import type { Command } from "../keymap/types.js";
 
 /**
@@ -38,8 +40,7 @@ export function resolveChartWalk(
  * 차트 단축키 — **전역 1회 등록**(App). 패널별 등록이 아니라 focus 를 따라간다 → 차트 여러 개여도 커맨드 충돌 없고,
  * 패널 마운트/포커스 상태에 안 흔들린다(옛 패널별 등록의 "가끔 안 먹음" 버그 해결). 입력창 포커스 중 mod-less 는 디스패처가 가드.
  *   a/d=±1분봉 · shift+a/d=±jumpBars · ctrl+a/d=타점 순회 wrap(표식 ◇ = 라벨 ∪ 조건 후보 — 아래 chartWalk) ·
- *   f=일봉+분봉 확대/축소(store chartZoom, 두 차트 동시).
- * 그룹 부착은 골격 패널/분석 시트의 BulkGroupMenu 가 유일한 입구다.
+ *   f=일봉+분봉 확대/축소(store chartZoom, 두 차트 동시) · e=지금 시점에 라벨(그룹 배정 팝오버 — 아래 labelAnchorOf).
  * 핸들러는 매 렌더 최신 클로저로 h.current 갱신(안정 ref), 등록 effect 는 1회.
  */
 export function useChartHotkeys(): void {
@@ -55,7 +56,8 @@ export function useChartHotkeys(): void {
     const pointTimes = useChartPoints(code, date); // 순회 대상 = 그 차트의 자동 타점(정의 노브를 그대로 따른다)
 
     // 매 렌더 최신 클로저로 핸들러 갱신(안정 ref 유지) → 등록된 run 은 항상 최신 상태를 본다.
-    const h = useRef({ moveBar: (_: number) => {}, jump: (_: number) => {}, navPoint: (_: number) => {} });
+    const { nameOf } = useStockNamesDict();
+    const h = useRef({ moveBar: (_: number) => {}, jump: (_: number) => {}, navPoint: (_: number) => {}, label: () => {} });
     h.current.moveBar = (delta) => {
         if (minutePoints.length === 0) return;
         let idx = minutePoints.findIndex((p) => p.tradeTime === time);
@@ -66,6 +68,24 @@ export function useChartHotkeys(): void {
         useWorkbench.getState().setTime(minutePoints[ni].tradeTime);
     };
     h.current.jump = (dir) => h.current.moveBar(dir * jumpBars);
+    // e — 지금 보는 (종목, 차트 날짜, 시각)에 라벨. 시각이 없으면 하루 라벨(우클릭 입구들과 같은 grain 규칙 — time 유무).
+    // 날짜는 차트가 보는 날(검색날짜 우선) — 차트의 시간선과 같은 자리에 붙어야 한다.
+    h.current.label = () => {
+        if (!code) return;
+        // 날짜는 **보이는 차트의 표식**이 말하는 날을 먼저 믿는다 — 분봉 고정(pinMinute) 차트는 검색날짜가 아니라
+        // 기준 날짜를 그리므로, 이 훅의 date 와 화면이 갈릴 수 있다. 표식이 없으면(차트 숨김) 이 훅의 날짜.
+        const seen = visibleNowMark(code);
+        const day = seen?.date ?? date;
+        // 시각은 봉 시각으로 맞춘다(그 이하 마지막 봉) — ◇ 우클릭이 봉 시각을 넘기는 것과 같은 좌표에 붙게.
+        // 봉 목록은 이 훅의 날짜 것이라 날짜가 갈렸으면 맞추지 않는다.
+        const snapped = time && day === date && minutePoints.length > 0
+            ? minutePoints[indexAtOrBefore(minutePoints, time, (p) => p.tradeTime)]?.tradeTime ?? time
+            : time;
+        useGroupAssign.getState().open(
+            { stockCode: code, name: nameOf(code), date: day, ...(snapped ? { time: snapped } : {}) },
+            seen?.at ?? { x: window.innerWidth / 2, y: window.innerHeight / 3 },
+        );
+    };
     h.current.navPoint = (dir) => {
         // 표식과 같은 배열 — 차트가 게시한 ◇(라벨 ∪ 조건 후보)가 있으면 그걸 걷는다.
         const walk = resolveChartWalk(chartWalk.current, code, date, pointTimes);
@@ -91,6 +111,22 @@ export function useChartHotkeys(): void {
         put({ id: "chart.nav.prevPoint", title: "이전 타점", category: "차트", keys: "ctrl+a", blockedInInput: true, run: () => h.current.navPoint(-1) });
         put({ id: "chart.nav.nextPoint", title: "다음 타점", category: "차트", keys: "ctrl+d", blockedInInput: true, run: () => h.current.navPoint(1) });
         put({ id: "chart.zoom.toggle", title: "확대/축소", category: "차트", keys: "f", run: () => useWorkbench.getState().toggleChartZoom() });
+        put({ id: "chart.label.assign", title: "지금 시점에 라벨", category: "차트", keys: "e", run: () => h.current.label() });
         return () => ids.forEach(unregister);
     }, []);
+}
+
+/**
+ * 라벨 팝오버의 자리·날짜 — **보이는** 복기 차트 중 그 종목의 시간선 표식(▼/◇). 자리는 DOM 이 진실이다:
+ * 차트가 여럿이어도(차트 2) 그 종목의 보이는 표식만 맞고, 탭 뒤로 숨은 차트는 dockview 가 element 를 떼어
+ * 두므로 저절로 빠진다. 없으면(시간선 없음·차트 숨김) null — 호출자가 화면 위쪽 가운데로 물러선다.
+ */
+export function visibleNowMark(code: string): { date: string; at: { x: number; y: number } } | null {
+    for (const el of document.querySelectorAll<HTMLElement>(`[${NOW_MARK_ATTR}]`)) {
+        const [c, d] = (el.getAttribute(NOW_MARK_ATTR) ?? "").split("|");
+        if (c !== code || !d) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return { date: d, at: { x: r.left + r.width / 2, y: r.bottom } };
+    }
+    return null;
 }

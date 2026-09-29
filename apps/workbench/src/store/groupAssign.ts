@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-// 그룹 배정 팝오버 상태 — 우클릭(탐색판·라벨판 행·차트 ◇)이 open(대상+커서좌표), 팝오버가 close.
+// 그룹 배정 팝오버 상태 — 우클릭(탐색판·라벨판 행·차트 ◇)·차트 단축키 e 가 open(대상+화면 자리), 팝오버가 close.
 // 테마 배정(store/assign)과 같은 결: 연동버스와 무관한 순수 UI 상태라 workbench 스토어 밖 전용 스토어 +
 // App 루트 단일 마운트. **time 유무가 곧 입구 grain 이다** — 있으면 타점 입구(두 섹션), 없으면 day 입구(한 섹션).
 export interface GroupAssignTarget {
@@ -17,6 +17,12 @@ interface GroupAssignState {
     open: (target: GroupAssignTarget, anchor: { x: number; y: number }) => void;
     close: () => void;
 }
+
+/**
+ * 복기 차트의 시간선 표식(▼/◇)에 붙는 DOM 이름표(값 = "종목|날짜") — 라벨 단축키(e)가 팝오버를 **그 자리**에
+ * 띄우려고 찾는다(chartHooks.labelAnchorOf ↔ MinuteChart nowMarkId). 차트와 단축키가 문자열을 따로 적지 않게 여기 둔다.
+ */
+export const NOW_MARK_ATTR = "data-now-mark";
 
 export const useGroupAssign = create<GroupAssignState>((set) => ({
     target: null,

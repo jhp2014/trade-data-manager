@@ -79,7 +79,8 @@ export interface ToggleSpec extends ControlBase {
 
 export interface ChoiceSpec extends ControlBase {
     kind: "choice";
-    values: readonly { v: string; label: string }[];
+    /** `color` = 그 값일 때의 글자색(순환 손잡이만) — 값 하나가 "켜짐" 같은 뜻을 가질 때(w/s 걷는 중). */
+    values: readonly { v: string; label: string; color?: string }[];
     value: string;
     set: (v: string) => void;
 }

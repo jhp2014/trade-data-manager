@@ -14,7 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { dataDatesQuery } from "../../api/queries.js";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
-import { RowNavBadge } from "../../components/RowNavBadge.js";
+import { useRowNavControl } from "../../components/rowNavControl.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { usePublishRowNav } from "../../lib/rowNav.js";
@@ -143,7 +143,9 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
 
     // ── 조건 그룹 고르기 판.
     const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+    const rowNavCtl = useRowNavControl("daily-explore");
     const controls = useMemo<ControlSpec[]>(() => [
+        rowNavCtl,
         {
             kind: "toggle", id: "sort", name: sortMode === "stock" ? "종목순" : "시간순", on: sortMode === "stock",
             help: "종목순 = 종목 머리줄 아래 시간순(기본 — 한 종목을 다 걷고 다음 종목) · 시간순 = 장 흐름대로 평탄",
@@ -159,7 +161,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
             help: `열로 세울 조건 그룹(저장 집합) 고르기 — 최대 ${MAX_GROUPS}개. 기본은 보는 집합의 최상위 부품`,
             run: (at) => setMenuAt((v) => (v === null ? { x: at.clientX, y: at.clientY } : null)),
         },
-    ], [sortMode, setSortMode, datePinned, setDatePinned, groupCols.length, menuAt]);
+    ], [rowNavCtl, sortMode, setSortMode, datePinned, setDatePinned, groupCols.length, menuAt]);
 
     // ── 커서 행 따라가기 — 걷는 행이 화면 밖으로도, 붙는 머리 밑으로도 안 가게(revealRow). 둘러보는 동안엔
     // 커서(책갈피)가 안 움직이므로 목록도 제자리다.
@@ -183,7 +185,6 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
             <PanelHeader padding="4px 10px" style={{ whiteSpace: "nowrap" }}>
-                <RowNavBadge owner="daily-explore" />
                 <button onClick={() => crossing.cross(-1)} disabled={crossing.seeking} title="이전 거래일 (목록 처음에서 w 로도 넘어간다)" style={navBtn}>◀</button>
                 <span className="tabular" style={{ fontSize: 11.5, fontWeight: 600 }}>{focusDate} ({weekday})</span>
                 <button onClick={() => crossing.cross(1)} disabled={crossing.seeking} title="다음 거래일 (목록 끝에서 s 로도 넘어간다)" style={navBtn}>▶</button>

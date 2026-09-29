@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { PanelHeader } from "../../components/ControlChrome.js";
 import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
-import { RowNavBadge } from "../../components/RowNavBadge.js";
+import { useRowNavControl } from "../../components/rowNavControl.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
@@ -100,7 +100,9 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     };
 
     const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
+    const rowNavCtl = useRowNavControl("label-explore");
     const controls = useMemo<ControlSpec[]>(() => [
+        rowNavCtl,
         {
             kind: "toggle", id: "range", name: range === "cols" ? "고른 라벨" : "모든 라벨", on: range === "cols",
             help: "고른 라벨 = 고른 열 중 하나라도 ●/○ 인 타점만 · 모든 라벨 = 라벨 붙은 타점 전부(열은 표시만)",
@@ -111,7 +113,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
             help: "열로 세울 라벨 고르기 — ◆ 타점 / ▣ 하루, 최대 10개. 부모를 고르면 하위가 ○ 로 잡힌다",
             run: (at) => setMenuAt((v) => (v === null ? { x: at.clientX, y: at.clientY } : null)),
         },
-    ], [range, setRange, cols.length, menuAt]);
+    ], [rowNavCtl, range, setRange, cols.length, menuAt]);
 
     // ── 커서 행 따라가기 — 둘러보는 동안엔 커서(책갈피)가 안 움직이므로 목록도 제자리다.
     const focusRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -191,7 +193,6 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
             <PanelHeader padding="4px 10px" style={{ whiteSpace: "nowrap" }}>
-                <RowNavBadge owner="label-explore" />
                 <span style={{ fontSize: 11.5, fontWeight: 600 }}>라벨 타점</span>
                 <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}
                     title={`보이는 타점 ${shownPoints} / 전체 라벨 타점 ${totalPoints} · ${shownDays}일 · ${pos !== null ? `순회 위치 ${pos}` : "커서 없음"}${narrowCol ? `\n좁히기: ${narrowCol.name}` : ""}`}>

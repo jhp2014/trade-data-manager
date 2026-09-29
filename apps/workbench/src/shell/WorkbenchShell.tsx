@@ -9,6 +9,7 @@ import {
 import "dockview-react/dist/styles/dockview.css";
 import { loadLastLayout, useDock } from "../store/dock.js";
 import { panelComponents, panelTypeOf, planeOf } from "./panelCatalog.js";
+import { rowNavOwnerOfBase, useRowNavRole } from "../lib/rowNav.js";
 import { duplicatePanel } from "../lib/openPanel.js";
 
 // dockview 도킹 셸 — 패널 목록·렌더는 전부 panelCatalog 가 소유하고, 여기는 셸(탭·헤더 액션·복원)만.
@@ -63,8 +64,20 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
     // 복제 입구 — 인스턴스 생성의 유일한 정문(복제 가능 타입에만). 헤더 구조가 제각각인 패널들을
     // 재편하지 않고도 전 타입이 한 번에 정문을 얻는 자리라 탭이다(2026-09-16 확정).
     const duplicable = panelTypeOf(props.api.id)?.duplicable === true;
+    // w/s 순회 자리 — 걷는 중 = 채운 칩, 참여 = 윤곽 칩, 빠짐·후보 아님 = 없음(lib/rowNav 「참여」).
+    // 탭이 이 표시를 맡는 이유: 배경 탭이어도 보이고, 판 컨트롤은 접혀 있어도 된다.
+    const walkRole = useRowNavRole(rowNavOwnerOfBase(panelTypeOf(props.api.id)?.idBase));
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 6, height: "100%", padding: "0 8px", fontSize: 12, color, background: `var(--plane-${plane}-soft)`, borderBottom: `2px solid ${color}` }}>
+            {(walkRole === "walk" || walkRole === "join") && (
+                <span title={walkRole === "walk" ? "w/s 가 이 창을 걷는다 (q: 다음 참여 창으로)" : "w/s 순회 참여 — q 로 여기로 옮길 수 있다"}
+                    style={{
+                        fontSize: 10.5, lineHeight: "14px", padding: "0 4px", borderRadius: 3, fontWeight: 700, flexShrink: 0,
+                        ...(walkRole === "walk"
+                            ? { background: "var(--walk)", color: "#fff", border: "1px solid var(--walk)" }
+                            : { color: "var(--walk)", border: "1px solid var(--walk)", opacity: 0.7, fontWeight: 400 }),
+                    }}>w/s</span>
+            )}
             <span style={{ fontWeight: active ? 700 : 400, opacity: active ? 1 : 0.85 }}>{title}</span>
             {duplicable && (
                 <button

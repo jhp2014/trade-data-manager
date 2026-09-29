@@ -52,7 +52,7 @@ import type { ControlSpec } from "../components/HeaderControls.js";
 // 차트 앵커 편집은 chartAnchorHooks(param 하나 = 훅 하나), 타점 조회는 useReviewPointData — 여긴 뷰 파생+렌더.
 // 선 = 기준선 후보(차트 소유) — 타점 선택 없이 긋고 지운다. 확정 기준선(가격 최저)은 하늘색으로 표시.
 // 분봉 ctrl+클릭·더블클릭=시각 이동, ctrl+a/d=자동 타점 순회 — 전역 useChartHotkeys.
-// 그룹 편집 입구는 골격 패널뿐(BulkGroupMenu) — 차트는 결과 칩(GroupChips)만 보여준다.
+// 라벨(그룹 배정) 입구 — ◇ 우클릭 · 캔들 메뉴 · 단축키 e(지금 시점 — 시간선 표식에 nowMarkId 를 단다). 목적지는 store/groupAssign.
 export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const { code, anchorDate, viewDate: searchDate, time, setTime, setSearchDate } = usePlaneBus("replay");
     const mode = useWorkbench((s) => s.chartPriceMode);
@@ -305,6 +305,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                     onLineContext={(l, at) => openMenu(at, { nearLine: l })}
                                     anchorMarks={minuteMarks}
                                     chainOverlay={chain.input}
+                                    nowMarkId={`${code}|${viewDate}`}
                                     amountCorner={
                                         // 조건 그룹 고스트 칩 — **지금 타점**(시간선이 ◇ 위)이 통과한 그룹(탐색판의 그룹·같은 훅 한 벌).
                                         // ⚠ unionPoints 가 빈 날은 평가를 안 돈다 — 날짜 자동 스킵이 지나는 빈 날마다

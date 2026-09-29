@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useKeymapDynamic } from "../../keymap/dynamic.js";
-import { usePublishRowNav, useRowNavHotkeys, effectiveOwner, nextOwner, selectRowNavOwner } from "../rowNav.js";
+import { usePublishRowNav, useRowNavHotkeys, useRowNavRole, effectiveOwner, nextOwner, selectRowNavOwner, setRowNavRole } from "../rowNav.js";
 
 const cmdsFor = (key: string): unknown[] => Object.values(useKeymapDynamic.getState().commands).filter((c) => c.keys === key);
 const press = (key: "w" | "s" | "q"): void => {
@@ -18,6 +18,8 @@ const titleOf = (id: string): string => useKeymapDynamic.getState().commands[id]
 beforeEach(() => {
     localStorage.clear();
     useKeymapDynamic.setState({ commands: {} });
+    act(() => selectRowNavOwner("daily-explore"));
+    act(() => { setRowNavRole("daily-explore", "join"); setRowNavRole("label-explore", "join"); setRowNavRole("replay-board", "join"); setRowNavRole("theme-board", "join"); });
     act(() => selectRowNavOwner("daily-explore"));
 });
 afterEach(() => { useKeymapDynamic.setState({ commands: {} }); });
@@ -126,5 +128,49 @@ describe("행 순회 소유권", () => {
         unmount();
         expect(cmdsFor("w")).toHaveLength(0);
         expect(cmdsFor("q")).toHaveLength(0);
+    });
+});
+
+describe("참여(걷는 중 / 참여 / 빠짐)", () => {
+    const mount = (seen: string[]): void => {
+        renderHook(() => {
+            useRowNavHotkeys();
+            usePublishRowNav("daily-explore").current = (d) => seen.push(`explore${d}`);
+            usePublishRowNav("replay-board").current = (d) => seen.push(`replay${d}`);
+            usePublishRowNav("theme-board").current = (d) => seen.push(`theme${d}`);
+        });
+    };
+
+    it("빠진 판은 q 순환에 안 선다", () => {
+        mount([]);
+        act(() => setRowNavRole("replay-board", "out"));
+        press("q");
+        expect(titleOf("nav.row.next"), "복기를 건너뛴다").toContain("테마 [장 마감]");
+    });
+
+    it("걷는 판을 빼면 다음 참여 판이 걷는다 · 참여 판이 없으면 w/s 가 조용하다", () => {
+        const seen: string[] = [];
+        mount(seen);
+        const roles = renderHook(() => [useRowNavRole("daily-explore"), useRowNavRole("replay-board")]);
+        expect(roles.result.current).toEqual(["walk", "join"]);
+        act(() => setRowNavRole("daily-explore", "out"));
+        expect(roles.result.current).toEqual(["out", "walk"]);
+        press("s");
+        expect(seen).toEqual(["replay1"]);
+        act(() => { setRowNavRole("replay-board", "out"); setRowNavRole("theme-board", "out"); });
+        press("s");
+        expect(seen, "모두 빠짐 = 빠진 판을 걷지 않는다").toEqual(["replay1"]);
+        expect(titleOf("nav.row.next"), "도움말도 거짓말하지 않는다").toContain("참여 판 없음");
+    });
+
+    it("걷기 = 빠짐에서 되돌리고 주인으로 · 빠짐 목록은 영속", () => {
+        const seen: string[] = [];
+        mount(seen);
+        act(() => setRowNavRole("theme-board", "out"));
+        expect(JSON.parse(localStorage.getItem("wb.rowNavOut") ?? "[]")).toEqual(["theme-board"]);
+        act(() => setRowNavRole("theme-board", "walk"));
+        expect(JSON.parse(localStorage.getItem("wb.rowNavOut") ?? "[]")).toEqual([]);
+        press("s");
+        expect(seen).toEqual(["theme1"]);
     });
 });

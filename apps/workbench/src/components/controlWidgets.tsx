@@ -69,11 +69,12 @@ function CycleControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
     const idx = Math.max(0, spec.values.findIndex((o) => o.v === spec.value));
     const next = spec.values[(idx + 1) % spec.values.length]!;
     const cur = spec.values[idx]!;
+    const color = toneColor(spec) ?? cur.color;
     return (
         <WidthLock alts={spec.values.map((o) => <span key={o.v} style={face}>{o.label} ⇄</span>)}>
             <button onClick={() => spec.set(next.v)}
                 title={`${spec.help ?? spec.name} · 클릭 = ${next.label}`}
-                style={{ ...faceButton, ...face, ...(toneColor(spec) !== undefined ? { color: toneColor(spec) } : null) }}>
+                style={{ ...faceButton, ...face, ...(color !== undefined ? { color } : null) }}>
                 {cur.label} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>⇄</span>
             </button>
         </WidthLock>

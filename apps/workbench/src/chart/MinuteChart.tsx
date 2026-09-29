@@ -19,6 +19,7 @@ import {
     type AutoPointInput,
 } from "./minuteOverlays.js";
 import { useMinuteInteraction, GROUP_MARKER_ATTR } from "./minuteInteraction.js";
+import { NOW_MARK_ATTR } from "../store/groupAssign.js";
 import type { MinutePoint } from "../lib/derive.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import { MARK_BAND_H, MARK_HIT_W, MarkDiamond, MarkTriangle } from "./markerGlyphs.js";
@@ -124,6 +125,7 @@ export function MinuteChart({
     anchorMarks,
     chainOverlay = null,
     amountCorner,
+    nowMarkId,
 }: {
     points: MinutePoint[];
     frameKey: string; // 데이터셋 정체성(code:date) — 이게 바뀔 때만 표시범위 리프레임(라이브 틱엔 뷰 보존).
@@ -156,6 +158,11 @@ export function MinuteChart({
     chainOverlay?: ChainOverlayInput | null;
     /** 거래대금 pane **좌상단**(구분선 바로 아래)에 붙일 것 — 구분선 드래그·리사이즈를 따라간다. */
     amountCorner?: ReactNode;
+    /**
+     * 시간선 표식(▼ 또는 그 분의 ◇)에 `data-now-mark` 로 다는 이름 — 라벨 단축키(e)가 "지금 시점"의 화면 자리를
+     * DOM 에서 찾는다(chartHooks). 복기 차트만 준다(실시간 차트는 다른 시선이라 안 준다).
+     */
+    nowMarkId?: string;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -243,6 +250,7 @@ export function MinuteChart({
                     <div
                         key={`auto-${a.time}`}
                         {...{ [GROUP_MARKER_ATTR]: "" }}
+                        {...(nowMarkId !== undefined && a.time === currentSnapped ? { [NOW_MARK_ATTR]: nowMarkId } : null)}
                         onMouseEnter={() => setHoveredAuto(a.time)}
                         onMouseLeave={() => setHoveredAuto((cur) => (cur === a.time ? null : cur))}
                         onClick={() => a.point && onMovePoint(a.point.tradeTime)}
@@ -260,7 +268,8 @@ export function MinuteChart({
             })}
             {/* 시간선 ▼ — 표식이 없는 자리에서만. ◇ 가 서면 그 ◇ 가 MARKER_NOW 로 칠해진다. */}
             {overlay.current && !overlay.marks.some((a) => a.time === currentSnapped) && overlay.current.x >= 0 && (
-                <div title="현재 시간선" style={{ ...markerBoxStyle(overlay.current.x, 7), pointerEvents: "none" }}>
+                <div title="현재 시간선" {...(nowMarkId !== undefined ? { [NOW_MARK_ATTR]: nowMarkId } : null)}
+                    style={{ ...markerBoxStyle(overlay.current.x, 7), pointerEvents: "none" }}>
                     <MarkTriangle />
                 </div>
             )}
