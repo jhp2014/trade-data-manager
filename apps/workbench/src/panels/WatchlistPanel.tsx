@@ -24,7 +24,7 @@ import { useStockName } from "../lib/useStockName.js";
 import { RuleForm, newPredicate } from "../components/RuleForm.js";
 import { StockRow } from "../components/board/StockRow.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
-import { PanelHeader } from "../components/ControlChrome.js";
+import { usePanelHeader } from "../components/header/registry.js";
 import { liveToBoardStock } from "../lib/boardViewModel.js";
 
 // 실시간 모니터링(watchlist) 패널 — 실시간 플레인. 승격한 선택 종목을 항상 폴링·표시하고(2층 구조),
@@ -36,7 +36,7 @@ import { liveToBoardStock } from "../lib/boardViewModel.js";
 const ORDER_KEY = "wb.watchlistOrder";
 const parseOrder = (v: unknown): string[] | null => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : null);
 
-export function WatchlistPanel(): JSX.Element {
+export function WatchlistPanel({ panelId }: { panelId: string }): JSX.Element {
     const { snapshot, error } = useLiveSnapshot();
     const focusCode = useWorkbench((s) => s.liveFocus.code);
     const setCode = useWorkbench((s) => s.setLiveCode);
@@ -97,24 +97,28 @@ export function WatchlistPanel(): JSX.Element {
         addM.mutate(code);
     };
 
+    // 헤더 선언 — 종목 수 = 정보, 연결 오류 = 일시 알림, 기준 시장 = 순환(실시간 보드와 같은 렌즈).
+    // ⚠ 아래 조기 반환(로딩·오류)보다 먼저 — 등록이 깜빡이면 셸의 라인·판이 같이 깜빡인다.
+    usePanelHeader(panelId, {
+        info: [
+            { id: "count", name: "종목 수", tabular: true, help: "모니터링(승격) 종목 수", text: () => `${codes.length}종목` },
+            { id: "error", name: "연결", transient: true, help: "실시간 스냅샷 연결 오류", text: () => (error ? "연결 오류" : null) },
+        ],
+        controls: [
+            {
+                kind: "choice", id: "market", name: "기준 시장",
+                help: "% 의 분모가 되는 전일종가를 어느 시장에서 볼까 — 실시간 보드와 공유",
+                values: [{ v: "krx", label: "KRX" }, { v: "un", label: "UN" }],
+                value: market, set: (v) => setBoardMarket("live", v as "krx" | "un"),
+            },
+        ],
+    });
+
     if (view.isLoading) return <BoardCenter text="모니터링 로딩중…" />;
     if (view.isError) return <BoardCenter text={`오류: ${(view.error as Error).message} — apps/live 서버 확인`} />;
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            {/* 헤더 — 점·건수 + 시장 토글(등락률·순위 공용, 보드와 공유) */}
-            <PanelHeader chrome={false} gap={6} padding="3px 10px"
-                style={{ fontSize: 11, color: "var(--text-tertiary)", borderBottom: "1px solid var(--border-subtle)" }}>
-                <span style={{ width: 5, height: 5, borderRadius: 999, background: "var(--plane-live)", flexShrink: 0 }} />
-                <span style={{ color: "var(--plane-live)", flexShrink: 0 }}>실시간 모니터링</span>
-                <span className="tabular" style={{ flexShrink: 0 }}>{codes.length}종목</span>
-                {error && <span style={{ color: "var(--rise)", flexShrink: 0 }}>연결 오류</span>}
-                <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }} title="기준 시장(등락률·순위) — 실시간 보드와 공유">
-                    <span>시장</span>
-                    <button onClick={() => setBoardMarket("live", market === "un" ? "krx" : "un")} style={{ ...plainBtn("var(--accent-primary)"), fontWeight: 600 }}>{market.toUpperCase()}</button>
-                </span>
-            </PanelHeader>
-
             {/* 본문 — 종목별 섹션(시세 행 + 순위줄 + 조건들) */}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>

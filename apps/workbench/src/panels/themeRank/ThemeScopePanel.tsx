@@ -6,9 +6,8 @@
 // 돌려 판정이 조용히 꺼지는" 경로를 코드 구조로 막는다(2026-09-17 판 이원화, decisions.md).
 // 십자선은 항상 자유 자(회색·인스턴스 영속)다. 검색(조건화)은 조건판·편성 보드의 몫.
 import { useEffect, useMemo } from "react";
-import { PanelHeader } from "../../components/ControlChrome.js";
+import { usePanelHeader } from "../../components/header/registry.js";
 import { SubjectBadge } from "../../components/SubjectBadge.js";
-import { TriggerPopover } from "../../ui/popover/TriggerPopover.js";
 import { useDock } from "../../store/dock.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { subjectStatus } from "../../lib/subject.js";
@@ -69,55 +68,62 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
         return x === null && y === null ? null : { x, y };
     }, [zone, axes]);
 
+    // ── 헤더 선언 — 축·존은 **정보(요약)와 컨트롤(판)으로 갈라** 중복 선언한다(규약: 섞인 표면 분리).
+    // 판 내용(AxisControls·ZoneMenu)은 그대로, 껍데기는 판형 컨트롤을 연 쪽(팝오버 공용층)이 진다.
+    usePanelHeader(panelId, {
+        info: [
+            {
+                id: "axis", name: "축 요약",
+                help: "이 창의 축 — 편집은 컨트롤 판의 「축」(인스턴스마다 따로 저장, ⧉ 복제 시 사본이 같이 간다)",
+                text: () => `축: ${axisSummary}`,
+            },
+            {
+                id: "zone", name: "존 출처", tone: "accent",
+                help: zone
+                    ? `빨간 점선 = 「${zone.from}」의 존 정의 사본(원본을 고쳐도 안 따라간다 · 축·창이 일치하는 변만). 판정 없음`
+                    : "걸린 테마 조건에서 존 값을 복사해 빨간 점선으로 겹친다 — 컨트롤 판의 「존」",
+                text: () => (zone ? `존: ${zone.from}` : null),
+            },
+            {
+                id: "zoneHidden", name: "존 선 상태", transient: true,
+                help: "존의 창·모드와 지금 축이 달라 선을 긋지 않는다 — 「존」에서 다시 고르면 축이 맞춰진다",
+                text: () => (zone && overlay === null ? "존 선 숨김(축 다름)" : null),
+            },
+            {
+                id: "subject", name: "주체", tabular: true,
+                help: "지금 단면의 주체(전역 시선의 종목·날짜·분)",
+                text: () => (subject ? `${nameOf(subject.code)} · ${subject.date}${plane.minute !== null ? ` ${fmtMin(plane.minute)}` : ""}` : null),
+            },
+            {
+                id: "subjectBadge", name: "주체 배지", text: () => null,
+                help: "주체가 이 단면에 서 있는지(값 없음·숨김)",
+                renderLine: () => (
+                    <SubjectBadge subject={subject} name={subject ? nameOf(subject.code) : undefined} absentLabel="그 분 값 없음"
+                        status={section
+                            ? subjectStatus(
+                                section.indexOf(subject?.code ?? "") !== null && plane.participants.some((p) => p.code === subject?.code),
+                                plane.participants.some((p) => p.code === subject?.code),
+                            )
+                            : "shown"} />
+                ),
+            },
+        ],
+        controls: [
+            {
+                kind: "popover", id: "axes", name: "축", width: 340, nav: true,
+                help: "이 창의 축 설정 — 인스턴스마다 따로 저장된다(⧉ 복제 시 사본이 같이 간다)",
+                renderPopover: () => <AxisControls axes={axes} onChange={setAxesRaw} rateTicks={rateTicks} onRateTicks={setRateTicks} />,
+            },
+            {
+                kind: "popover", id: "zone", name: "존", width: 360, nav: true, on: zone !== null, activeColor: "var(--accent-primary)",
+                help: "걸린 테마 조건에서 존 값을 복사해 빨간 점선으로 겹친다(판정 없음 — 조건은 일별 타점 [생성])",
+                renderPopover: (close) => <ZoneMenu zone={zone} onPick={(z) => { pickZone(z); close(); }} />,
+            },
+        ],
+    });
+
     return (
         <div style={wrap}>
-            <PanelHeader chrome={false} gap={8} style={{ borderBottom: "1px solid var(--border-default)", background: "var(--bg-primary)" }}>
-                <TriggerPopover width={340} align="start"
-                    trigger={(open, toggle) => (
-                        <button onClick={toggle}
-                            style={{ ...label, cursor: "pointer", border: "1px solid var(--border-default)", borderRadius: 8, padding: "0 6px", background: open ? "var(--bg-tertiary)" : "none" }}
-                            title="이 창의 축 설정 — 인스턴스마다 따로 저장된다(⧉ 복제 시 사본이 같이 간다)">
-                            축: {axisSummary} ▾
-                        </button>
-                    )}>
-                    {() => <AxisControls axes={axes} onChange={setAxesRaw} rateTicks={rateTicks} onRateTicks={setRateTicks} />}
-                </TriggerPopover>
-                <TriggerPopover width={360} align="start"
-                    trigger={(open, toggle) => (
-                        <button onClick={toggle}
-                            style={{
-                                ...label, cursor: "pointer", border: "1px solid var(--border-default)", borderRadius: 8, padding: "0 6px",
-                                maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis",
-                                background: open ? "var(--bg-tertiary)" : "none",
-                                ...(zone ? { color: "var(--text-primary)" } : {}),
-                            }}
-                            title={zone
-                                ? `빨간 점선 = 「${zone.from}」의 존 정의 사본(원본을 고쳐도 안 따라간다 · 축·창이 일치하는 변만). 판정 없음`
-                                : "걸린 테마 조건에서 존 값을 복사해 빨간 점선으로 겹친다(판정 없음 — 조건은 일별 타점 [생성])"}>
-                            {zone ? `존: ${zone.from}` : "존"} ▾
-                        </button>
-                    )}>
-                    {(close) => <ZoneMenu zone={zone} onPick={(z) => { pickZone(z); close(); }} />}
-                </TriggerPopover>
-                {zone && overlay === null && (
-                    <span style={{ ...label, color: "var(--text-tertiary)" }} title="존의 창·모드와 지금 축이 달라 선을 긋지 않는다 — 존 ▾ 에서 다시 고르면 축이 맞춰진다">
-                        존 선 숨김(축 다름)
-                    </span>
-                )}
-                {subject && (
-                    <span style={{ ...label, color: "var(--text-tertiary)" }}>
-                        {nameOf(subject.code)} · {subject.date}{plane.minute !== null && ` ${fmtMin(plane.minute)}`}
-                    </span>
-                )}
-                <SubjectBadge subject={subject} name={subject ? nameOf(subject.code) : undefined} absentLabel="그 분 값 없음"
-                    status={section
-                        ? subjectStatus(
-                            section.indexOf(subject?.code ?? "") !== null && plane.participants.some((p) => p.code === subject?.code),
-                            plane.participants.some((p) => p.code === subject?.code),
-                        )
-                        : "shown"} />
-            </PanelHeader>
-
             {/* 렌즈 칩 — 시선 도구(판정 진단은 조건판 몫이라 verdicts 없음 = 이름만). */}
             {(plane.subjectThemes.length > 0 || (subject !== null && plane.themesStatus !== "ready")) && (
                 <div style={chipsRow}>
@@ -165,5 +171,4 @@ function ZoneMenu({ zone, onPick }: { zone: ScopeZone | null; onPick: (z: ScopeZ
 }
 
 const wrap: React.CSSProperties = { display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" };
-const label: React.CSSProperties = { fontSize: 11, color: "var(--text-secondary)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 };
 const chipsRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderBottom: "1px solid var(--border-subtle)", overflowX: "auto", flexShrink: 0 };

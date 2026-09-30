@@ -63,7 +63,7 @@ export const PANEL_TYPES: PanelType[] = [
     { idBase: "live-chart", component: "liveChart", title: "실시간 차트", plane: "live", seedSlots: 2, render: (id) => <RealtimeChartPanel panelId={id} /> },
     { idBase: "live-news", component: "liveNews", title: "실시간 뉴스", plane: "live", render: () => <NewsPanel plane="live" /> },
     { idBase: "live-telegram", component: "liveTelegram", title: "실시간 텔레그램", plane: "live", render: () => <TelegramNewsPanel plane="live" /> },
-    { idBase: "live-watchlist", component: "liveWatchlist", title: "실시간 모니터링", plane: "live", render: () => <WatchlistPanel /> },
+    { idBase: "live-watchlist", component: "liveWatchlist", title: "실시간 모니터링", plane: "live", render: (id) => <WatchlistPanel panelId={id} /> },
     { idBase: "live-tape", component: "liveTape", title: "테마 궤적 [실시간]", plane: "live", render: (id) => <LiveTapePanel panelId={id} /> },
     { idBase: "live-alert-log", component: "liveAlertLog", title: "알람 로그", plane: "live", render: () => <AlertLogPanel /> },
     { idBase: "live-universe-rules", component: "liveUniverseRules", title: "유니버스 알람", plane: "live", render: () => <UniverseRulesPanel /> },
@@ -88,7 +88,7 @@ export const PANEL_TYPES: PanelType[] = [
     // (옛 "탐색 후보"(probe, 2026-09-18 작업 대상에 흡수)와 「작업 대상」(workset, 2026-09-27 은퇴 — 탐색판이
     //  접기·우클릭 배정을, 라벨 조건이 라벨 층을 승계)은 없다. 저장 레이아웃의 그 칸은 sanitizeLayout 이
     //  미등록으로 걷어낸다 — 사용자 화면의 그 탭은 다음 로드에 사라진다.)
-    { idBase: "history", component: "recentHistory", title: "최근 탐색", plane: "eod", render: () => <RecentHistoryPanel /> },
+    { idBase: "history", component: "recentHistory", title: "최근 탐색", plane: "eod", render: (id) => <RecentHistoryPanel panelId={id} /> },
     // 일별 타점 [생성] — 하루 조건 묶음(집합)이 태어나는 자리(다른 패널은 그 집합을 구독만 한다).
     // 옛 「집합 편성」(2026-09-24 은퇴)의 idBase·component 를 **승계**한다 — 저장 배치·프리셋의 자리가 그대로
     // 새 패널이 되고(테마 [조건]판 선례), 두 패널 공존이 원리적으로 불가능하다. 옛 제목은 패널이 정규화한다.

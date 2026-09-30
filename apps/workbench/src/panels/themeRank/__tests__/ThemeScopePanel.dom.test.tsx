@@ -7,14 +7,21 @@ import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js
 import { useWorkbench } from "../../../store/workbench.js";
 import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 import { ThemeScopePanel } from "../ThemeScopePanel.js";
+import { PanelFrame } from "../../../components/header/PanelFrame.js";
+import { ControlBoard } from "../../../components/header/ControlBoard.js";
 
 const SEED: Seed = { points: [] };
 const PANEL = "theme-scope-1";
 
+// 헤더는 셸(PanelFrame·모음 판)이 그린다 — 실제 배치처럼 틀에 감싸고, 컨트롤 판은 상시 렌더해 손잡이에 닿는다.
 const renderPanel = (): ReturnType<typeof render> =>
-    render(<ThemeScopePanel panelId={PANEL} />, {
-        wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers>,
-    });
+    render(
+        <>
+            <PanelFrame panelId={PANEL}><ThemeScopePanel panelId={PANEL} /></PanelFrame>
+            <ControlBoard panelId={PANEL} />
+        </>,
+        { wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers> },
+    );
 
 const RESET = { savedSets: [], sessionUi: {}, panelUi: {} };
 beforeEach(() => { useWorkbench.setState(RESET); });
@@ -33,7 +40,7 @@ describe("관찰판 — 연동·판정이 원리적으로 없다", () => {
 
 describe("존 ▾ — 걸린 테마 조건에서 존 값을 **복사**한다", () => {
     const openZone = (container: HTMLElement): void => {
-        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("존"))!;
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "") === "존")!;
         act(() => { fireEvent.click(trigger); });
     };
     const item = (text: string): HTMLElement =>
@@ -86,7 +93,7 @@ describe("존 ▾ — 걸린 테마 조건에서 존 값을 **복사**한다", (
 describe("축 ▾ — 창 임의 분 입력이 인스턴스 영속으로 커밋된다", () => {
     it("45분 입력(Enter) → panelUi axes.windowMin=45, 헤더 요약이 따라온다", () => {
         const { container } = renderPanel();
-        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("축:"))!;
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "") === "축")!;
         act(() => { fireEvent.click(trigger); });
         const input = document.body.querySelector("input")!;
         act(() => {
@@ -99,7 +106,7 @@ describe("축 ▾ — 창 임의 분 입력이 인스턴스 영속으로 커밋�
 
     it("모드 택(등락 값) → 저장 + 요약 반영", () => {
         const { container } = renderPanel();
-        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("축:"))!;
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "") === "축")!;
         act(() => { fireEvent.click(trigger); });
         // 팝오버의 "등락" 줄 안 "값" 버튼 — 줄(span)로 좁혀 찾는다.
         const row = [...document.body.querySelectorAll("span")].find((s) => (s.textContent ?? "").startsWith("등락순위값"))
@@ -112,7 +119,7 @@ describe("축 ▾ — 창 임의 분 입력이 인스턴스 영속으로 커밋�
 
 describe("축 ▾ — % 선 칩(panelUi rateTicks, 부재 = 기본)", () => {
     const open = (container: HTMLElement): void => {
-        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("축:"))!;
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "") === "축")!;
         act(() => { fireEvent.click(trigger); });
     };
     const chipRow = (): HTMLElement => [...document.body.querySelectorAll("span")].find((s) => (s.textContent ?? "").startsWith("% 선"))!;

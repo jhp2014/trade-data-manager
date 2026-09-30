@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useWorkbench } from "../store/workbench.js";
 import { useStockNames } from "../lib/useStockNames.js";
 import { weekdayOf } from "../lib/date.js";
-import { PanelHeader } from "../components/ControlChrome.js";
+import { usePanelHeader } from "../components/header/registry.js";
 
 // 최근 탐색 패널 — 세션 방문기록(EOD)을 최신순 flat 목록으로. focus 초크포인트가 기록하므로 워크셋·가설·차트·보드 어디서 이동하든 모임.
 // 단위 = (날짜,종목) 1행 + 마지막 방문 시각. 행 클릭 = 그 시각으로(time 있으면 goToPoint / 없으면 setFocus) 되돌아가기.
@@ -10,7 +10,7 @@ function fmtDate(date: string): string {
     return `${date.slice(5).replace("-", ".")} (${weekdayOf(date)})`;
 }
 
-export function RecentHistoryPanel(): JSX.Element {
+export function RecentHistoryPanel({ panelId }: { panelId: string }): JSX.Element {
     const history = useWorkbench((s) => s.history);
     const historyCursor = useWorkbench((s) => s.historyCursor);
     const clearHistory = useWorkbench((s) => s.clearHistory);
@@ -18,6 +18,19 @@ export function RecentHistoryPanel(): JSX.Element {
     const setFocus = useWorkbench((s) => s.setFocus);
     const focusCode = useWorkbench((s) => s.focus.code);
     const focusDate = useWorkbench((s) => s.focus.date);
+
+    // 헤더 선언 — 기록 수는 탭 칩 기본(짧고 tabular — 헤더 라인이 0줄이 된다), 비우기는 모음 판.
+    usePanelHeader(panelId, {
+        info: [
+            { id: "count", name: "기록 수", tabular: true, defaultPlace: "tab", help: "세션 탐색 기록 수", text: () => `${history.length}` },
+        ],
+        controls: [
+            {
+                kind: "action", id: "clear", name: "기록 비우기", disabled: history.length === 0,
+                help: "탐색 기록 비우기", run: () => { clearHistory(); return "탐색 기록 비움"; },
+            },
+        ],
+    });
 
     // Alt+W/S 순환 시 커서 행이 항상 보이도록 스크롤. block:"nearest" 라 이미 보이면 안 움직임.
     const rowRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -31,22 +44,6 @@ export function RecentHistoryPanel(): JSX.Element {
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-secondary)", fontSize: 13 }}>
-            <PanelHeader chrome={false} style={{ borderBottom: "1px solid var(--border-default)" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", flexShrink: 0 }}>최근 탐색</span>
-                <span className="tabular" style={{ fontSize: 11, color: "var(--text-tertiary)", flexShrink: 0 }}>{history.length}</span>
-                {history.length > 0 && (
-                    <button
-                        onClick={() => clearHistory()}
-                        title="탐색 기록 비우기"
-                        style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", padding: "2px 3px", border: "none", background: "none", color: "var(--text-tertiary)", cursor: "pointer", lineHeight: 0 }}
-                    >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                        </svg>
-                    </button>
-                )}
-            </PanelHeader>
-
             <div style={{ overflowY: "auto", flex: 1 }}>
                 {history.length === 0 && <div style={{ padding: 10, color: "var(--text-tertiary)", fontSize: 12, textAlign: "center" }}>아직 탐색 기록 없음</div>}
                 {history.map((e) => {
