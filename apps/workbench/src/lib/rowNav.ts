@@ -75,7 +75,7 @@ interface RowNavStore {
     setOut: (out: readonly RowNavOwner[]) => void;
 }
 
-/** 빠진 판(영속) — 참여 목록이 아니라 **빠짐 목록**으로 적는다: 나중에 생긴 후보가 목록에 없다는 이유로 빠지지 않게(헤더 핀과 같은 이유). */
+/** 빠진 판(영속) — 참여 목록이 아니라 **빠짐 목록**으로 적는다: 나중에 생긴 후보가 목록에 없다는 이유로 빠지지 않게(헤더 장부의 "예외만 저장"과 같은 이유). */
 const OUT = persistedField<RowNavOwner[]>(
     "wb.rowNavOut",
     (v) => (Array.isArray(v) ? v.filter((o): o is RowNavOwner => ORDER.includes(o as RowNavOwner)) : null),

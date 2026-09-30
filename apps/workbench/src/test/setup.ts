@@ -11,7 +11,7 @@ if (typeof window !== "undefined") {
     /**
      * 글자 찾기는 `aria-hidden` 을 건너뛴다.
      *
-     * 머리글 컨트롤의 폭 잠금(HeaderControls.WidthLock)이 **있을 수 있는 모든 모습을 겹쳐 쌓아** 칸을
+     * 헤더 컨트롤의 폭 잠금(components/header/widgets 의 WidthLock)이 **있을 수 있는 모든 모습을 겹쳐 쌓아** 칸을
      * 잡는다 — 즉 라벨이 화면에 하나, 숨은 사본으로 하나 더 있다. 기본 설정이면 `getByText("목록")` 이
      * 둘을 집어 "여러 개 찾음"으로 터진다(실제로 맵 테스트가 그렇게 깨졌다).
      *

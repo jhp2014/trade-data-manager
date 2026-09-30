@@ -1,6 +1,6 @@
-// 패널 헤더 컨트롤 공용 조각 — 차트 툴바·보드 헤더가 같은 계열(테두리·채움 없는 경량 텍스트)을 쓴다.
-// 구성: 컨트롤 줄 자체는 HeaderControls 가 그린다 — 여기 남은 건 그 줄이 쓰는 낱개 조각들이다.
-// 머리글 줄 자체(PanelHeader)도 여기 산다 — 넘칠 때의 규약이 패널마다 달라지면 안 되기 때문이다.
+// 줄·칩·토글 공용 조각 — 경량 텍스트 계열(테두리·채움 없음)과 넘침 규약(ScrollRow)이 여기 산다.
+// 헤더 자체는 components/header/(선언 등록 + 셸 렌더)로 갔다 — 여기 남은 PanelHeader 는
+// 본문 작업줄(뉴스·알람 로그의 검색 폼 줄 등)이 쓰는 줄 껍데기다.
 import { useCallback, useEffect, useLayoutEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { useHorizontalWheel } from "../lib/useHorizontalWheel.js";
 
@@ -34,8 +34,8 @@ export function TextToggle({
     onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
     title: string;
     /**
-     * 켜짐과 **무관하게** 이 색으로 — 경고 물들임(HeaderControls 의 `tone`)이 쓴다.
-     * activeColor 로는 이 일을 못 한다: 그건 켜졌을 때만 칠하는데, 경고는 꺼져 있을 때도 보여야 한다.
+     * 켜짐과 **무관하게** 이 색으로. activeColor 로는 이 일을 못 한다:
+     * 그건 켜졌을 때만 칠하는데, 경고류는 꺼져 있을 때도 보여야 한다.
      */
     color?: string;
     activeColor?: string;
@@ -64,13 +64,8 @@ export function TextToggle({
     );
 }
 
-// 구분 기호(Dot ·, Sep │)는 둘 다 사라졌다. 컨트롤 순서를 손이 정하는 순간 묶음 경계는 우연이 되고,
-// 재정렬할 때마다 기호가 늘었다 줄었다 한다. 택1임은 **켜진 하나만 굵게 서는 것**으로 보이고, 갈래는
-// 더보기 판에서 이름 앞에 붙어 그 일을 대신한다.
-
-// ControlGroup(구분자 사이 묶음)·ControlBox(라벨 붙은 옅은 박스)는 사라졌다.
-// 묶음은 이제 **선언의 `group`** 이고, 그 이름은 헤더가 아니라 더보기 판에서 **이름 앞에** 붙는다
-// (라벨은 헤더에 없다 — HeaderControls 규약 ①). 헤더는 묶음을 아예 표시하지 않는다.
+// 구분 기호(Dot ·, Sep │)·ControlGroup·ControlBox 는 사라졌다 — 묶음 표기의 역사는 git 에.
+// 컨트롤은 이제 선언(components/header/spec)으로 등록되고 모음 판이 전부를 든다.
 
 /**
  * **넘치면 줄을 바꾸지 않고 가로로 스크롤하는 한 줄** — 칩 줄·컨트롤 줄·머리글이 다 이것이다.
@@ -238,6 +233,5 @@ export function PanelHeader({ gap = 8, padding = "6px 10px", chrome = true, titl
     );
 }
 
-// ControlBar(줄 전체를 셰브론으로 접던 것)는 사라졌다 — 접는 단위가 줄 전체라 하나를 보려면 다 펼쳐야
-// 했고, 컨트롤별 핀(HeaderControls 의 더보기 판)이 같은 일을 더 잘한다. 접힘 상태를 담던 store 슬라이스
-// (panelSlice)도 같이 없앴다.
+// ControlBar(줄 접기)·HeaderControls(핀 레지스트리)는 은퇴 — 컨트롤은 기본 전부 모음 판이고
+// 항해형만 배치 장부로 첫 줄에 선다(components/header/, decisions.md 「패널 헤더 재편」).
