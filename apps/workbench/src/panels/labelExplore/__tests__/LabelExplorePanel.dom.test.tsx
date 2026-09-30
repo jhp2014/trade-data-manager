@@ -13,6 +13,8 @@ import { useWorkbench } from "../../../store/workbench.js";
 import { pointGroupMembershipsQuery } from "../../../api/queries.js";
 import { LabelExplorePanel } from "../LabelExplorePanel.js";
 import { LABEL_EXPLORE_PANEL_ID as PANEL } from "../labelRows.js";
+import { PanelFrame } from "../../../components/header/PanelFrame.js";
+import { ControlBoard } from "../../../components/header/ControlBoard.js";
 
 const seed: Seed = {
     groups: [{ name: "돌파", parentName: null }, { name: "주도", parentName: null }],
@@ -28,9 +30,15 @@ const seed: Seed = {
     ],
 };
 
+// 헤더는 셸(PanelFrame·모음 판)이 그린다 — 실제 배치처럼 틀에 감싸고, 컨트롤 판은 상시 렌더해 손잡이에 닿는다.
 function Harness(): JSX.Element {
     useRowNavHotkeys();
-    return <LabelExplorePanel panelId={PANEL} />;
+    return (
+        <>
+            <PanelFrame panelId={PANEL}><LabelExplorePanel panelId={PANEL} /></PanelFrame>
+            <ControlBoard panelId={PANEL} />
+        </>
+    );
 }
 
 const renderLabel = (s: Seed = seed): ReturnType<typeof render> & { client: ReturnType<typeof seededClient> } => {

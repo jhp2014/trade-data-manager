@@ -60,6 +60,12 @@ function ShortcutPopover({ panelId, anchorRef }: {
     return <ShortcutSurface key={pending.seq} seq={pending.seq} spec={spec} anchorRef={anchorRef} />;
 }
 
+/**
+ * 지금 살아 있는 단축키 판의 seq — 진짜 언마운트와 StrictMode 이중 effect(정리 직후 재실행)를 가른다.
+ * cleanup 에서 곧장 지우면 StrictMode 가 판을 여는 즉시 죽인다(개발 서버에서만 나는 유령 버그).
+ */
+let aliveSeq = 0;
+
 function ShortcutSurface({ seq, spec, anchorRef }: {
     seq: number;
     spec: ControlSpec;
@@ -68,9 +74,18 @@ function ShortcutSurface({ seq, spec, anchorRef }: {
     const close = (): void => useHeaderRegistry.getState().clearPopover();
     // 판이 사라지는 모든 길(활성 전환·그룹 소멸)에서 요청을 청소 — 안 하면 그 패널로 돌아올 때
     // 판이 유령처럼 다시 열린다. seq 가 다르면(그새 새 요청) 남의 것이니 안 지운다.
-    useEffect(() => () => {
-        const s = useHeaderRegistry.getState();
-        if (s.pendingPopover?.seq === seq) s.clearPopover();
+    // 청소는 microtask 뒤에 — StrictMode 의 정리→재실행이 동기(같은 커밋)라, 재실행이 aliveSeq 를
+    // 되살려 두면 "죽은 척"이 걸러진다.
+    useEffect(() => {
+        aliveSeq = seq;
+        return () => {
+            if (aliveSeq === seq) aliveSeq = -seq;
+            queueMicrotask(() => {
+                if (aliveSeq === seq) return; // StrictMode 재실행 — 살아 있다
+                const s = useHeaderRegistry.getState();
+                if (s.pendingPopover?.seq === seq) s.clearPopover();
+            });
+        };
     }, [seq]);
     return (
         <FloatingSurface

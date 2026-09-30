@@ -12,8 +12,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { dataDatesQuery } from "../../api/queries.js";
-import { PanelHeader } from "../../components/ControlChrome.js";
-import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
+import { usePanelHeader } from "../../components/header/registry.js";
 import { useRowNavControl } from "../../components/rowNavControl.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
@@ -22,7 +21,6 @@ import { useDayReplayPrefetch } from "../../lib/useDaySnapshot.js";
 import { useDock } from "../../store/dock.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
-import { AnchoredPopover } from "../../ui/Dialog.js";
 import { MENU_PAD, MenuItem, MenuSep } from "../../ui/popover/menu.js";
 import { PIN } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
@@ -141,27 +139,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     navRef.current = walk.step;
     const pos = walk.pos;
 
-    // ── 조건 그룹 고르기 판.
-    const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
     const rowNavCtl = useRowNavControl("daily-explore");
-    const controls = useMemo<ControlSpec[]>(() => [
-        rowNavCtl,
-        {
-            kind: "toggle", id: "sort", name: sortMode === "stock" ? "종목순" : "시간순", on: sortMode === "stock",
-            help: "종목순 = 종목 머리줄 아래 시간순(기본 — 한 종목을 다 걷고 다음 종목) · 시간순 = 장 흐름대로 평탄",
-            set: () => setSortMode((v) => (v === "stock" ? "time" : "stock")),
-        },
-        {
-            kind: "toggle", id: "datePin", name: "날짜 고정", on: datePinned,
-            help: "목록 끝에서 w/s·◀▶ 가 날짜를 안 넘긴다 — '이 날만 보겠다'는 선언",
-            set: () => setDatePinned((v) => !v),
-        },
-        {
-            kind: "action", id: "groups", name: `조건 그룹 ${groupCols.length}`, on: menuAt !== null,
-            help: `열로 세울 조건 그룹(저장 집합) 고르기 — 최대 ${MAX_GROUPS}개. 기본은 보는 집합의 최상위 부품`,
-            run: (at) => setMenuAt((v) => (v === null ? { x: at.clientX, y: at.clientY } : null)),
-        },
-    ], [rowNavCtl, sortMode, setSortMode, datePinned, setDatePinned, groupCols.length, menuAt]);
 
     // ── 커서 행 따라가기 — 걷는 행이 화면 밖으로도, 붙는 머리 밑으로도 안 가게(revealRow). 둘러보는 동안엔
     // 커서(책갈피)가 안 움직이므로 목록도 제자리다.
@@ -182,29 +160,66 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const timeW = tree ? TIME_W + TREE_INDENT : TIME_W;
     const noLine: React.CSSProperties | undefined = tree ? { borderBottom: "none" } : undefined;
 
+    // ── 헤더 선언 — 그리는 것은 셸(PanelFrame·탭 칩·모음 판). 날짜는 컨트롤(◀▶ 샌드위치)이자
+    // 정보(기본 숨김 — 탭에 올리고 싶을 때를 위한 중복 선언, 규약 "중복 허용")다.
+    usePanelHeader(panelId, {
+        info: [
+            {
+                id: "date", name: "날짜", tabular: true, defaultPlace: "hidden",
+                help: "보는 날짜 — 첫 줄의 ◀ 날짜 ▶ 가 같은 값을 든다",
+                text: () => `${focusDate} (${weekday})`,
+            },
+            {
+                id: "count", name: "후보·순회", tabular: true,
+                help: `그날 후보 ${rows.length}${cellSet.truncated ? " (상한 잘림)" : ""} · ${pos !== null ? `순회 위치 ${pos}` : "커서 없음"}${narrowCol ? `\n좁히기: ${narrowCol.name}` : ""}`,
+                text: () => `${narrowCol ? (narrowCol.state.kind === "ready" ? `후보 ${rows.length} · ${narrowCol.name} ${shownRows.length}` : `후보 ${rows.length} · ${narrowCol.name} …`) : `후보 ${rows.length}${pos !== null ? ` · ${pos}/${shownRows.length}` : ""}`}${cellSet.truncated ? " · 잘림" : ""}`,
+            },
+            {
+                id: "crossing", name: "날짜 넘김", transient: true,
+                help: "빈 날 스킵·상한 등 날짜 넘기기의 일시 알림",
+                text: () => (crossing.seeking ? `날짜 넘기는 중…${crossing.skipped > 0 ? ` (${crossing.skipped}일 건너뜀)` : ""}` : crossing.note),
+            },
+        ],
+        controls: [
+            {
+                kind: "action", id: "dateNav", name: "다음 거래일", nav: true,
+                help: "◀▶ = 이전/다음 거래일(빈 날 스킵) — 목록 끝의 w/s 로도 넘어간다. 단축키 호출 = 다음",
+                run: () => { crossing.cross(1); return "다음 거래일로"; },
+                renderInline: () => (
+                    <span className="tabular" style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                        <button onClick={() => crossing.cross(-1)} disabled={crossing.seeking} title="이전 거래일 (목록 처음에서 w 로도 넘어간다)" style={navBtn}>◀</button>
+                        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-primary)" }}>{focusDate} ({weekday})</span>
+                        <button onClick={() => crossing.cross(1)} disabled={crossing.seeking} title="다음 거래일 (목록 끝에서 s 로도 넘어간다)" style={navBtn}>▶</button>
+                    </span>
+                ),
+            },
+            rowNavCtl,
+            {
+                kind: "choice", id: "sort", name: "정렬", value: sortMode, set: (v) => setSortMode(v as ExploreSort),
+                values: [{ v: "stock", label: "종목순" }, { v: "time", label: "시간순" }],
+                help: "종목순 = 종목 머리줄 아래 시간순(기본 — 한 종목을 다 걷고 다음 종목) · 시간순 = 장 흐름대로 평탄",
+            },
+            {
+                kind: "toggle", id: "datePin", name: "날짜 고정", on: datePinned,
+                help: "목록 끝에서 w/s·◀▶ 가 날짜를 안 넘긴다 — '이 날만 보겠다'는 선언",
+                set: () => setDatePinned((v) => !v),
+            },
+            {
+                kind: "popover", id: "groups", name: "조건 그룹", label: `조건 그룹 ${groupCols.length}`, width: 230,
+                help: `열로 세울 조건 그룹(저장 집합) 고르기 — 최대 ${MAX_GROUPS}개. 기본은 보는 집합의 최상위 부품`,
+                renderPopover: () => (
+                    <GroupMenuContent pickedIds={picked} groupSets={groupSets} savedSets={savedSets} nameOf={groupName} onPick={setPicked} />
+                ),
+            },
+        ],
+    });
+
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
-            <PanelHeader padding="4px 10px" style={{ whiteSpace: "nowrap" }}>
-                <button onClick={() => crossing.cross(-1)} disabled={crossing.seeking} title="이전 거래일 (목록 처음에서 w 로도 넘어간다)" style={navBtn}>◀</button>
-                <span className="tabular" style={{ fontSize: 11.5, fontWeight: 600 }}>{focusDate} ({weekday})</span>
-                <button onClick={() => crossing.cross(1)} disabled={crossing.seeking} title="다음 거래일 (목록 끝에서 s 로도 넘어간다)" style={navBtn}>▶</button>
-                <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}
-                    title={`그날 후보 ${rows.length}${cellSet.truncated ? " (상한 잘림)" : ""} · ${pos !== null ? `순회 위치 ${pos}` : "커서 없음"}${narrowCol ? `\n좁히기: ${narrowCol.name}` : ""}`}>
-                    {narrowCol ? (narrowCol.state.kind === "ready" ? `후보 ${rows.length} · ${narrowCol.name} ${shownRows.length}` : `후보 ${rows.length} · ${narrowCol.name} …`) : `후보 ${rows.length}${pos !== null ? ` · ${pos}/${shownRows.length}` : ""}`}
-                    {cellSet.truncated ? " · 잘림" : ""}
-                </span>
-                {(crossing.seeking || crossing.note !== null) && (
-                    <span style={{ fontSize: 10.5, color: "var(--warning)" }}>
-                        {crossing.seeking ? `날짜 넘기는 중…${crossing.skipped > 0 ? ` (${crossing.skipped}일 건너뜀)` : ""}` : crossing.note}
-                    </span>
-                )}
-                <HeaderControls controls={controls} storageKey="wb.headerPins.dailyExplore" />
-            </PanelHeader>
-
             {/* 범례 줄 — 번호 열의 이름표. 클릭 = 열 머리와 같은 좁히기. 접으면 번호만 한 줄. */}
             {isDaily && (
                 <GroupLegend open={legendOpen} onToggleOpen={() => setLegendOpen((v) => !v)} narrowKey={narrowId}
-                    empty="열로 세울 조건 그룹이 없습니다 — 머리의 「조건 그룹」에서 고르세요"
+                    empty="열로 세울 조건 그룹이 없습니다 — 우상단 컨트롤 판의 「조건 그룹」에서 고르세요"
                     onNarrow={(key) => { const c = groupCols.find((x) => x.setId === key); if (c) toggleNarrow(c); }}
                     cols={groupCols.map((c) => ({
                         key: c.setId, num: c.num, name: c.name, color: c.color, title: colTitle(c),
@@ -295,10 +310,6 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                 )}
             </ScrollBox>
 
-            {menuAt !== null && (
-                <GroupMenu anchor={menuAt} pickedIds={picked} groupSets={groupSets} savedSets={savedSets} nameOf={groupName}
-                    onPick={setPicked} onClose={() => setMenuAt(null)} />
-            )}
         </div>
     );
 }
@@ -312,15 +323,14 @@ const colTitle = (c: GroupCol): string => `${c.num} ${c.name}${c.state.kind === 
 /**
  * 조건 그룹 고르기 — 하루 저장 집합 목록에 ✓ 토글(상한 5). 「자동」 = 보는 집합의 최상위 부품을 따라간다
  * (집합을 바꾸면 열도 따라 바뀐다). 손으로 하나라도 고르면 그 목록으로 굳는다.
+ * **속만 있다** — 껍데기(닫힘·배치)는 판형 컨트롤을 연 쪽(팝오버 공용층)의 몫이다.
  */
-function GroupMenu({ anchor, pickedIds, groupSets, savedSets, nameOf, onPick, onClose }: {
-    anchor: { x: number; y: number };
+function GroupMenuContent({ pickedIds, groupSets, savedSets, nameOf, onPick }: {
     pickedIds: string[] | null;
     groupSets: readonly { id: string }[];
     savedSets: readonly { id: string; name?: string; universe: string }[];
     nameOf: (id: string) => string;
     onPick: (next: string[] | null) => void;
-    onClose: () => void;
 }): JSX.Element {
     const daily = savedSets.filter((f) => f.universe === "daily");
     // 지워진 집합 id 는 세지 않는다 — 유령이 상한 5를 채우면 더 고를 수도, 뺄 수도 없다(리뷰가 잡은 자리).
@@ -329,27 +339,25 @@ function GroupMenu({ anchor, pickedIds, groupSets, savedSets, nameOf, onPick, on
     // 손 이름 먼저, 자동 이름(묶음)은 흐리게 뒤로 — 집합 목록 판과 같은 결.
     const sorted = [...daily].sort((a, b) => Number(a.name === undefined) - Number(b.name === undefined));
     return (
-        <AnchoredPopover anchor={anchor} onClose={onClose} width={230} padding={0} placement="beside" offset={6}>
-            <div style={{ maxHeight: 300, overflowY: "auto", padding: MENU_PAD }}>
-                <MenuItem mark="check" on={pickedIds === null} onClick={() => onPick(null)}
-                    title="보는 집합의 최상위 부품(참조 항)을 그대로 따라간다 — 집합을 바꾸면 열도 바뀐다">
-                    자동 — 보는 집합의 부품
-                </MenuItem>
-                <MenuSep />
-                {sorted.length === 0 && <div style={{ padding: "4px 12px", fontSize: 11, color: "var(--text-tertiary)" }}>하루 집합이 없습니다</div>}
-                {sorted.map((f) => {
-                    const on = current.includes(f.id);
-                    const full = !on && current.length >= MAX_GROUPS;
-                    return (
-                        <MenuItem key={f.id} mark="check" on={on} disabled={full}
-                            onClick={() => onPick(on ? current.filter((x) => x !== f.id) : [...current, f.id])}
-                            why={`최대 ${MAX_GROUPS}개 — 하나를 빼야 더 고를 수 있습니다`}
-                            title={on ? "열에서 빼기" : "열로 세우기"}>
-                            <span style={{ color: full ? undefined : PIN }}>{nameOf(f.id)}</span>
-                        </MenuItem>
-                    );
-                })}
-            </div>
-        </AnchoredPopover>
+        <div style={{ maxHeight: 300, overflowY: "auto", padding: MENU_PAD }}>
+            <MenuItem mark="check" on={pickedIds === null} onClick={() => onPick(null)}
+                title="보는 집합의 최상위 부품(참조 항)을 그대로 따라간다 — 집합을 바꾸면 열도 바뀐다">
+                자동 — 보는 집합의 부품
+            </MenuItem>
+            <MenuSep />
+            {sorted.length === 0 && <div style={{ padding: "4px 12px", fontSize: 11, color: "var(--text-tertiary)" }}>하루 집합이 없습니다</div>}
+            {sorted.map((f) => {
+                const on = current.includes(f.id);
+                const full = !on && current.length >= MAX_GROUPS;
+                return (
+                    <MenuItem key={f.id} mark="check" on={on} disabled={full}
+                        onClick={() => onPick(on ? current.filter((x) => x !== f.id) : [...current, f.id])}
+                        why={`최대 ${MAX_GROUPS}개 — 하나를 빼야 더 고를 수 있습니다`}
+                        title={on ? "열에서 빼기" : "열로 세우기"}>
+                        <span style={{ color: full ? undefined : PIN }}>{nameOf(f.id)}</span>
+                    </MenuItem>
+                );
+            })}
+        </div>
     );
 }

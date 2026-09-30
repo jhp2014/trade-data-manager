@@ -6,8 +6,7 @@
 // 날짜 넘기기가 없다 — 라벨은 희소해 한 목록에 다 선다. 기간 = 전 기간(전역 월 시선에 안 묶는다).
 // 재료 = 그룹 멤버십 직독(셀 엔진 평가 없음).
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PanelHeader } from "../../components/ControlChrome.js";
-import { HeaderControls, type ControlSpec } from "../../components/HeaderControls.js";
+import { usePanelHeader } from "../../components/header/registry.js";
 import { useRowNavControl } from "../../components/rowNavControl.js";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
@@ -21,7 +20,7 @@ import { seriesColor } from "../../styles/palette.js";
 import { groupNumberOf } from "../dailyExplore/exploreRows.js";
 import { useWalkCursor } from "../dailyExplore/useWalkCursor.js";
 import { GroupLegend, HeadLine, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, ScrollBox, revealRow, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
-import { LabelColMenu } from "./LabelColMenu.js";
+import { LabelColMenuContent } from "./LabelColMenu.js";
 import {
     labelChartsOf, labelColKey, navOrderOf, noPointCellOf, parseLabelCols, pointCellOf, shownRowsOf, stepFrom,
     type LabelCell, type LabelCol, type LabelRange, type LabelRow,
@@ -99,21 +98,38 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         useGroupAssign.getState().open({ stockCode: code, name: nameOf(code), date, ...(time !== undefined ? { time } : {}) }, { x: ev.clientX, y: ev.clientY });
     };
 
-    const [menuAt, setMenuAt] = useState<{ x: number; y: number } | null>(null);
     const rowNavCtl = useRowNavControl("label-explore");
-    const controls = useMemo<ControlSpec[]>(() => [
-        rowNavCtl,
-        {
-            kind: "toggle", id: "range", name: range === "cols" ? "고른 라벨" : "모든 라벨", on: range === "cols",
-            help: "고른 라벨 = 고른 열 중 하나라도 ●/○ 인 타점만 · 모든 라벨 = 라벨 붙은 타점 전부(열은 표시만)",
-            set: () => setRange((v) => (v === "cols" ? "all" : "cols")),
-        },
-        {
-            kind: "action", id: "cols", name: `라벨 열 ${cols.length}`, on: menuAt !== null,
-            help: "열로 세울 라벨 고르기 — ◆ 타점 / ▣ 하루, 최대 10개. 부모를 고르면 하위가 ○ 로 잡힌다",
-            run: (at) => setMenuAt((v) => (v === null ? { x: at.clientX, y: at.clientY } : null)),
-        },
-    ], [rowNavCtl, range, setRange, cols.length, menuAt]);
+
+    // ── 헤더 선언 — 그리는 것은 셸(PanelFrame·탭 칩·모음 판).
+    usePanelHeader(panelId, {
+        info: [
+            {
+                id: "counts", name: "타점·일수", tabular: true,
+                help: `보이는 타점 ${shownPoints} / 전체 라벨 타점 ${totalPoints} · ${shownDays}일 · ${pos !== null ? `순회 위치 ${pos}` : "커서 없음"}`,
+                text: () => `◆ ${shownPoints} / ${totalPoints} · ${shownDays}일${pos !== null ? ` · ${pos}/${order.length}` : ""}`,
+            },
+            {
+                id: "narrow", name: "좁히기", defaultPlace: "hidden",
+                help: "열 머리·범례 클릭으로 좁힌 열 — 세션 시선(저장물이 아니다)",
+                text: () => (narrowCol !== null ? `좁히기: ${narrowCol.name}` : null),
+            },
+        ],
+        controls: [
+            rowNavCtl,
+            {
+                kind: "choice", id: "range", name: "행 범위", value: range, set: (v) => setRange(v as LabelRange),
+                values: [{ v: "cols", label: "고른 라벨" }, { v: "all", label: "모든 라벨" }],
+                help: "고른 라벨 = 고른 열 중 하나라도 ●/○ 인 타점만 · 모든 라벨 = 라벨 붙은 타점 전부(열은 표시만)",
+            },
+            {
+                kind: "popover", id: "cols", name: "라벨 열", label: `라벨 열 ${cols.length}`, width: 250,
+                help: "열로 세울 라벨 고르기 — ◆ 타점 / ▣ 하루, 최대 10개. 부모를 고르면 하위가 ○ 로 잡힌다",
+                renderPopover: () => (
+                    <LabelColMenuContent cols={cols.map(({ name, scope }) => ({ name, scope }))} onPick={(next) => setRawCols(next)} />
+                ),
+            },
+        ],
+    });
 
     // ── 커서 행 따라가기 — 둘러보는 동안엔 커서(책갈피)가 안 움직이므로 목록도 제자리다.
     const focusRowRef = useRef<HTMLTableRowElement | null>(null);
@@ -121,7 +137,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
 
     const note = !g.ready ? (g.isLoading ? "불러오는 중…" : "라벨 데이터를 못 불러왔습니다")
         : charts.length === 0 ? "붙인 라벨이 없습니다 — 차트·목록 우클릭으로 붙입니다"
-        : range === "cols" && cols.length === 0 && narrowCol === null ? "열을 고르면 그 라벨이 붙은 타점이 섭니다 — 머리의 「라벨 열」, 또는 「모든 라벨」"
+        : range === "cols" && cols.length === 0 && narrowCol === null ? "열을 고르면 그 라벨이 붙은 타점이 섭니다 — 우상단 컨트롤 판의 「라벨 열」, 또는 「모든 라벨」"
         : rows.length === 0 ? "고른 라벨이 붙은 타점이 없습니다"
         : null;
     // 시간 칸 — 「타점 없음」 글자가 들어가게 라벨판만 넓게 고정(그 줄이 생겼다 없어질 때 폭이 흔들리지 않게).
@@ -192,17 +208,8 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
-            <PanelHeader padding="4px 10px" style={{ whiteSpace: "nowrap" }}>
-                <span style={{ fontSize: 11.5, fontWeight: 600 }}>라벨 타점</span>
-                <span className="tabular" style={{ fontSize: 10.5, color: "var(--text-tertiary)" }}
-                    title={`보이는 타점 ${shownPoints} / 전체 라벨 타점 ${totalPoints} · ${shownDays}일 · ${pos !== null ? `순회 위치 ${pos}` : "커서 없음"}${narrowCol ? `\n좁히기: ${narrowCol.name}` : ""}`}>
-                    ◆ {shownPoints} / {totalPoints} · {shownDays}일{pos !== null ? ` · ${pos}/${order.length}` : ""}
-                </span>
-                <HeaderControls controls={controls} storageKey="wb.headerPins.labelExplore" />
-            </PanelHeader>
-
             <GroupLegend open={legendOpen} onToggleOpen={() => setLegendOpen((v) => !v)} narrowKey={narrowKey} onNarrow={toggleNarrow}
-                empty="열로 세울 라벨이 없습니다 — 머리의 「라벨 열」에서 고르세요"
+                empty="열로 세울 라벨이 없습니다 — 우상단 컨트롤 판의 「라벨 열」에서 고르세요"
                 cols={cols.map((c) => ({
                     key: c.key, num: c.num, color: c.color, clickable: true,
                     name: `${c.scope === "day" ? "▣ " : ""}${c.name}`,
@@ -236,10 +243,6 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                 )}
             </ScrollBox>
 
-            {menuAt !== null && (
-                <LabelColMenu anchor={menuAt} cols={cols.map(({ name, scope }) => ({ name, scope }))}
-                    onPick={(next) => setRawCols(next)} onClose={() => setMenuAt(null)} />
-            )}
         </div>
     );
 }

@@ -8,17 +8,15 @@
 import { useMemo } from "react";
 import { useGroups } from "../../lib/GroupsContext.js";
 import { labelCountsOf, labelTreeRows } from "../../lib/groupTree.js";
-import { AnchoredPopover } from "../../ui/popover/AnchoredPopover.js";
 import { MENU_PAD, MenuHead, MenuItem } from "../../ui/popover/menu.js";
 import { MAX_GROUPS } from "../dailyExplore/exploreRows.js";
 import { labelColKey, type LabelCol, type LabelScope } from "./labelRows.js";
 
-export function LabelColMenu({ anchor, cols, onPick, onClose }: {
-    anchor: { x: number; y: number };
+/** **속만 있다** — 껍데기(닫힘·배치)는 판형 컨트롤을 연 쪽(팝오버 공용층)의 몫이다. */
+export function LabelColMenuContent({ cols, onPick }: {
     /** 지금 고른 열(사전에 살아 있는 것만 — 호출부가 거른다). */
     cols: readonly LabelCol[];
     onPick: (next: LabelCol[]) => void;
-    onClose: () => void;
 }): JSX.Element {
     const g = useGroups();
     const pointRows = useMemo(() => labelTreeRows(g.groups, g.grainSets.pointGrain), [g.groups, g.grainSets.pointGrain]);
@@ -64,17 +62,15 @@ export function LabelColMenu({ anchor, cols, onPick, onClose }: {
     const dayItems = section("day");
 
     return (
-        <AnchoredPopover anchor={anchor} onClose={onClose} width={250} padding={0} placement="beside" offset={6}>
-            <div style={{ maxHeight: 360, overflowY: "auto", padding: MENU_PAD }}>
-                <MenuHead title="그 분 좌표에 붙인 라벨 — 개수 = 타점 수(하위 포함)">◆ 타점 라벨</MenuHead>
-                {pointItems.length > 0 ? pointItems : <div style={emptyNote}>타점 라벨이 없습니다 — 차트 봉 우클릭으로 붙입니다</div>}
-                <MenuHead sep title="그 종목·날에 붙인 라벨 — 그날 모든 타점 줄에 찍힌다(타점이 없으면 「타점 없음」 줄). 개수 = 차트 수(하위 포함)">▣ 하루 라벨</MenuHead>
-                {dayItems.length > 0 ? dayItems : <div style={emptyNote}>하루 라벨이 없습니다 — 차트·목록 우클릭으로 붙입니다</div>}
-                <div style={{ ...emptyNote, borderTop: "1px solid var(--border-subtle)", marginTop: 4, paddingTop: 5 }}>
-                    {cols.length} / {MAX_GROUPS} · 번호 = 고른 순서
-                </div>
+        <div style={{ maxHeight: 360, overflowY: "auto", padding: MENU_PAD }}>
+            <MenuHead title="그 분 좌표에 붙인 라벨 — 개수 = 타점 수(하위 포함)">◆ 타점 라벨</MenuHead>
+            {pointItems.length > 0 ? pointItems : <div style={emptyNote}>타점 라벨이 없습니다 — 차트 봉 우클릭으로 붙입니다</div>}
+            <MenuHead sep title="그 종목·날에 붙인 라벨 — 그날 모든 타점 줄에 찍힌다(타점이 없으면 「타점 없음」 줄). 개수 = 차트 수(하위 포함)">▣ 하루 라벨</MenuHead>
+            {dayItems.length > 0 ? dayItems : <div style={emptyNote}>하루 라벨이 없습니다 — 차트·목록 우클릭으로 붙입니다</div>}
+            <div style={{ ...emptyNote, borderTop: "1px solid var(--border-subtle)", marginTop: 4, paddingTop: 5 }}>
+                {cols.length} / {MAX_GROUPS} · 번호 = 고른 순서
             </div>
-        </AnchoredPopover>
+        </div>
     );
 }
 

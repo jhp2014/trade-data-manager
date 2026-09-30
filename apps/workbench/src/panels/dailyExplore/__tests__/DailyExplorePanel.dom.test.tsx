@@ -7,6 +7,8 @@ import { useWorkbench } from "../../../store/workbench.js";
 import { exprOfStages } from "../../filter/expr.js";
 import { DailyExplorePanel } from "../DailyExplorePanel.js";
 import { MAX_GROUPS } from "../exploreRows.js";
+import { PanelFrame } from "../../../components/header/PanelFrame.js";
+import { ControlBoard } from "../../../components/header/ControlBoard.js";
 
 const SEED: Seed = { candidateDays: [], points: [] };
 const PANEL = "daily-explore-1";
@@ -14,10 +16,15 @@ const RESET = { savedSets: [], editingSetId: "edit", editPath: ["edit"], session
 beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
+// 헤더는 셸(PanelFrame·모음 판)이 그린다 — 실제 배치처럼 틀에 감싸고, 컨트롤 판은 상시 렌더해 손잡이에 닿는다.
 const renderExplore = (): ReturnType<typeof render> =>
-    render(<DailyExplorePanel panelId={PANEL} />, {
-        wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers>,
-    });
+    render(
+        <>
+            <PanelFrame panelId={PANEL}><DailyExplorePanel panelId={PANEL} /></PanelFrame>
+            <ControlBoard panelId={PANEL} />
+        </>,
+        { wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers> },
+    );
 
 const ref = (setId: string) => ({ kind: "ref" as const, id: `r-${setId}`, setId });
 

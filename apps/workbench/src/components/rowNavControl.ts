@@ -3,7 +3,7 @@
 // 걷는 중에서 한 번 = 빼기(다음 참여 판으로 넘어간다). 지금 상태는 탭 칩이 늘 말하므로 접혀 있어도 된다.
 import { useMemo } from "react";
 import { setRowNavRole, useRowNavRole, type RowNavOwner, type RowNavRole } from "../lib/rowNav.js";
-import type { ChoiceSpec } from "./HeaderControls.js";
+import type { ChoiceSpec } from "./header/spec.js";
 
 const VALUES: ChoiceSpec["values"] = [
     { v: "join", label: "w/s 참여" },
