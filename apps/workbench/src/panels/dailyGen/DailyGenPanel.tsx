@@ -11,9 +11,11 @@ import { useEffect } from "react";
 import { useDock } from "../../store/dock.js";
 import { SetRow } from "../filter/SetRow.js";
 import { DailyConditionBoard } from "./DailyConditionBoard.js";
-import { DailyGenHeader } from "./DailyGenHeader.js";
+import { useDailyGenHeader } from "./DailyGenHeader.js";
 
 export function DailyGenPanel({ panelId, baseTitle }: { panelId: string; baseTitle?: string }): JSX.Element {
+    // 헤더는 선언·등록뿐 — 그리는 것은 셸(PanelFrame·탭 칩·모음 판)이다.
+    useDailyGenHeader(panelId);
 
     // 탭 제목 = 카탈로그 이름 — 옛 저장 배치에 남은 "집합 편성" 을 되돌린다(테마 [조건]판 선례).
     useEffect(() => {
@@ -24,7 +26,6 @@ export function DailyGenPanel({ panelId, baseTitle }: { panelId: string; baseTit
 
     return (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
-            <DailyGenHeader panelId={panelId} />
             <SetRow />
             <div style={{ flex: 1, minHeight: 0 }}>
                 <DailyConditionBoard />

@@ -11,6 +11,7 @@ import { useWorkbench } from "../../../store/workbench.js";
 import type { SavedSet } from "../../../store/savedSetsSlice.js";
 import { DailyGenPanel } from "../DailyGenPanel.js";
 import { orderSets } from "../../filter/SetRow.js";
+import { PanelFrame } from "../../../components/header/PanelFrame.js";
 
 /** 연산자가 균일한 식 — 괄호가 없는 줄(대부분의 검사가 이 모양이다). */
 const mk = (op: "and" | "or", id: string, of: SetTerm[]): SetExpr => ({ id, of, ops: of.slice(1).map(() => op), groups: [] });
@@ -25,8 +26,9 @@ const points: SeedPoint[] = [{ stockCode: A, date: DATES[0], time: "09:30:00", n
 const SEED: Seed = { candidateDays, points };
 
 const PANEL = "filter-funnel-1";
+// 헤더가 셸(PanelFrame)로 빠졌으므로 머리글 단언은 실제 배치처럼 틀에 감싸 잰다.
 const renderPanel = (): ReturnType<typeof render> =>
-    render(<DailyGenPanel panelId={PANEL} />, {
+    render(<PanelFrame panelId={PANEL}><DailyGenPanel panelId={PANEL} /></PanelFrame>, {
         wrapper: ({ children }: { children: ReactNode }) => <Providers client={seededClient(SEED)}>{children}</Providers>,
     });
 
