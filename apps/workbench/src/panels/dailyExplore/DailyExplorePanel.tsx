@@ -190,7 +190,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                 kind: "popover", id: "dateNav", name: "거래일 이동", nav: true, width: 250,
                 // 트리거 요약 = 연도 포함 압축("26.09.28") — 월일만으로는 해가 다른 복기에서 어느 해인지 안 보인다(사용자 확정).
                 label: focusDate.slice(2).replaceAll("-", "."),
-                help: "◀▶ = 이전/다음 거래일(빈 날 스킵·날짜 고정 규칙) · 판 = 거래일 목록·날짜 입력으로 점프(명시 선택 — 스킵·고정과 무관)",
+                help: "◀▶ = 이전/다음 거래일(빈 날 스킵·날짜 고정 규칙) · 판 = 연/월/일로 좁혀 점프(명시 선택 — 스킵·고정과 무관)",
                 renderPopover: (close) => (
                     <DateJumpMenu dates={datesQ.data ?? EMPTY_DATES} current={focusDate} seeking={crossing.seeking}
                         onPick={(d) => { useWorkbench.getState().setDate(d, "explore-cross"); close(); }}
@@ -200,7 +200,7 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                     <span className="tabular" style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                         <button onClick={() => crossing.cross(-1)} disabled={crossing.seeking} title="이전 거래일 (목록 처음에서 w 로도 넘어간다)" style={navBtn}>◀</button>
                         <TriggerPopover width={250} trigger={(open, toggle) => (
-                            <button onClick={toggle} title="거래일 목록·날짜 입력으로 점프"
+                            <button onClick={toggle} title="연/월/일로 좁혀 거래일 점프"
                                 style={{
                                     border: "none", background: "none", padding: 0, cursor: "pointer", font: "inherit",
                                     fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap",
