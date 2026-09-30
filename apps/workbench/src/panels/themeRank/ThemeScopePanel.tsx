@@ -1,5 +1,7 @@
 // 「시장 단면」 판(옛 테마 순위 — 2026-09-26 개명) — 어느 분의 전 종목 단면 산점 + 테마 동료 강조.
-// 축 자유(창 = 임의 분 입력, 대금/등락 각 순위|값). 연동이 원리적으로 없다:
+// 축 자유(창 = 임의 분 입력, 대금/등락 각 순위|값). 존 선은 「존 ▾」에서 고른 테마 조건의 **복사본**이다
+// (2026-09-30 — 옛 "첫 켜진 테마 조건 자동 겹침" 폐지: 참조가 아니라 복사라 원본을 고쳐도 판은 안 흔들린다).
+// 연동이 원리적으로 없다:
 // 판정(컷·존·✓/✗·카운트·재적 띠) 코드가 이 파일에 아예 없다 — 종류 분리가 "연동해 놓고 값 모드로
 // 돌려 판정이 조용히 꺼지는" 경로를 코드 구조로 막는다(2026-09-17 판 이원화, decisions.md).
 // 십자선은 항상 자유 자(회색·인스턴스 영속)다. 검색(조건화)은 조건판·편성 보드의 몫.
@@ -16,9 +18,11 @@ import { ThemeLensStrip } from "./ThemeLensStrip.js";
 import { ThemePlaneView } from "./ThemePlaneView.js";
 import { parseThemeRankAxes, windowLabel } from "./axisModel.js";
 import { parseRateTicks } from "./rateTicks.js";
-import { useThemeReadParams } from "../filter/themeLink.js";
-import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
-import { isPredicateEmpty } from "../filter/stage.js";
+import { selectObservedExpr, useWorkbench } from "../../store/workbench.js";
+import { themeZoneLabel } from "../filter/label.js";
+import { MENU_PAD, MenuHead, MenuItem, MenuSep } from "../../ui/popover/menu.js";
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
+import { defaultScopeZone, parseScopeZone, themeZoneSourcesOf, type ScopeZone } from "./zoneSources.js";
 import { fmtMin, useThemePlane } from "./useThemePlane.js";
 
 export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseTitle?: string }): JSX.Element {
@@ -46,25 +50,24 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
 
     const axisSummary = `${windowLabel(axes.windowMin)} 대금 ${axes.xMode === "rank" ? "순위" : "값"} × 등락 ${axes.yMode === "rank" ? "순위" : "값"}`;
 
-    // 깔때기 테마 조건의 **읽기 전용 겹침**(2026-09-26) — 첫 켜진 theme 조건 하나, **축이 일치하는 변만**
-    // (창까지 같아야 대금 선이 선다 — 다른 창의 N 을 이 축에 그으면 거짓말이다). 수정은 조건판 팝오버.
-    const stages = useWorkbench(selectEditingStages);
-    const readParams = useThemeReadParams();
-    // 빈 술어(활성 컷 0)는 조건이 아니다 — 겹침을 세우면 "걸린 것"처럼 읽혀 거짓말이 된다.
-    const hasThemeCond = useMemo(
-        () => stages.some((s) => s.enabled && s.predicates.some((p) => p.kind === "theme" && !isPredicateEmpty(p))),
-        [stages],
-    );
+    // 존 — 「존 ▾」에서 고른 조건의 **사본**(panelUi "zone", ⧉ 복제 시 같이 간다). 고를 때 창·축 모드도 그
+    // 조건에 맞추지만, 그 뒤 손으로 축을 바꾸면 **축이 일치하는 변만** 긋는다(다른 창의 N 을 이 축에 그으면 거짓말).
+    const [zoneRaw, setZone] = usePanelUi<unknown>(panelId, "zone", null);
+    const zone = useMemo(() => parseScopeZone(zoneRaw), [zoneRaw]);
+    const pickZone = (z: ScopeZone | null): void => {
+        setZone(z);
+        if (z) setAxesRaw({ ...axes, windowMin: z.window, xMode: "rank", yMode: z.rate.mode });
+    };
     const overlay = useMemo(() => {
-        if (!hasThemeCond) return null;
-        const x = axes.xMode === "rank" && axes.windowMin === readParams.window ? readParams.zoneAmountN : null;
-        const y = axes.yMode === readParams.rate.mode
+        if (!zone) return null;
+        const x = axes.xMode === "rank" && axes.windowMin === zone.window ? zone.zoneAmountN : null;
+        const y = axes.yMode === zone.rate.mode
             // 값 축은 **하한만** 선이 된다 — 틴트가 선의 위(≥ 쪽)를 칠하므로 상한을 넘기면 존 밖을 존처럼 칠한다
             // (리뷰 지적). 상한만인 존은 겹침을 안 세운다 · 양끝이면 틴트가 상한 위로 번지는 건 알려진 근사.
-            ? (readParams.rate.mode === "rank" ? readParams.rate.max : readParams.rate.minPct ?? null)
+            ? (zone.rate.mode === "rank" ? zone.rate.max : zone.rate.minPct ?? null)
             : null;
         return x === null && y === null ? null : { x, y };
-    }, [hasThemeCond, axes, readParams]);
+    }, [zone, axes]);
 
     return (
         <div style={wrap}>
@@ -79,10 +82,28 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
                     )}>
                     {() => <AxisControls axes={axes} onChange={setAxesRaw} rateTicks={rateTicks} onRateTicks={setRateTicks} />}
                 </TriggerPopover>
-                <span style={{ ...label, color: "var(--text-tertiary)" }}
-                    title="빨간 점선 = 깔때기 첫 테마 조건(읽기 전용 — 축·창이 일치하는 변만). 수정은 일별 타점 [생성]의 테마 팝오버">
-                    {overlay !== null ? "조건 겹침(읽기 전용)" : "관찰 — 판정 없음(조건은 일별 타점 [생성])"}
-                </span>
+                <TriggerPopover width={360} align="start"
+                    trigger={(open, toggle) => (
+                        <button onClick={toggle}
+                            style={{
+                                ...label, cursor: "pointer", border: "1px solid var(--border-default)", borderRadius: 8, padding: "0 6px",
+                                maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis",
+                                background: open ? "var(--bg-tertiary)" : "none",
+                                ...(zone ? { color: "var(--text-primary)" } : {}),
+                            }}
+                            title={zone
+                                ? `빨간 점선 = 「${zone.from}」의 존 정의 사본(원본을 고쳐도 안 따라간다 · 축·창이 일치하는 변만). 판정 없음`
+                                : "걸린 테마 조건에서 존 값을 복사해 빨간 점선으로 겹친다(판정 없음 — 조건은 일별 타점 [생성])"}>
+                            {zone ? `존: ${zone.from}` : "존"} ▾
+                        </button>
+                    )}>
+                    {(close) => <ZoneMenu zone={zone} onPick={(z) => { pickZone(z); close(); }} />}
+                </TriggerPopover>
+                {zone && overlay === null && (
+                    <span style={{ ...label, color: "var(--text-tertiary)" }} title="존의 창·모드와 지금 축이 달라 선을 긋지 않는다 — 존 ▾ 에서 다시 고르면 축이 맞춰진다">
+                        존 선 숨김(축 다름)
+                    </span>
+                )}
                 {subject && (
                     <span style={{ ...label, color: "var(--text-tertiary)" }}>
                         {nameOf(subject.code)} · {subject.date}{plane.minute !== null && ` ${fmtMin(plane.minute)}`}
@@ -106,6 +127,39 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
             )}
 
             <ThemePlaneView plane={plane} guideKeys={guideKeys} overlay={overlay} />
+        </div>
+    );
+}
+
+/** 「존 ▾」 판 — 보는 집합의 테마 조건 전부(묶음 속·꺼진 줄 포함). 고르면 존 정의를 **복사**한다. */
+function ZoneMenu({ zone, onPick }: { zone: ScopeZone | null; onPick: (z: ScopeZone | null) => void }): JSX.Element {
+    const expr = useWorkbench(selectObservedExpr);
+    const sets = useWorkbench((s) => s.savedSets);
+    const sources = useMemo(() => themeZoneSourcesOf(expr, sets), [expr, sets]);
+    const def = defaultScopeZone();
+    return (
+        <div style={{ padding: MENU_PAD }}>
+            <MenuHead title="고르면 그 조건의 존 정의(창·대금 순위·등락 축)를 이 판에 복사한다 — 참조가 아니라 원본을 고쳐도 안 따라간다. 컷(재적·순위)은 판정이라 안 가져온다">
+                걸린 테마 조건
+            </MenuHead>
+            {sources.length === 0 && (
+                <div style={{ padding: "2px 12px", fontSize: 11, color: "var(--text-tertiary)" }}>보는 집합에 테마 조건이 없다</div>
+            )}
+            {sources.map((src) => (
+                <MenuItem key={src.key} mark="radio" on={zone?.key === src.key} dim={!src.enabled}
+                    title={src.enabled ? src.label : `${src.label} — 꺼진 줄(복사는 된다)`}
+                    onClick={() => onPick(src.zone)}>
+                    {src.label}
+                </MenuItem>
+            ))}
+            <MenuSep />
+            <MenuItem mark="radio" on={zone?.key === def.key} onClick={() => onPick(def)}
+                title={`테마 조건 기본값의 존 — ${themeZoneLabel({ kind: "theme", ...DEFAULT_THEME_ZONE })}`}>
+                기본값으로
+            </MenuItem>
+            <MenuItem mark="radio" on={zone === null} onClick={() => onPick(null)} title="존 선을 안 긋는다">
+                끄기
+            </MenuItem>
         </div>
     );
 }

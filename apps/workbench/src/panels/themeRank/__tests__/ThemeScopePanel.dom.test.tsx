@@ -5,7 +5,7 @@ import { act, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { Providers, seededClient, type Seed } from "../../../test/renderPanel.js";
 import { useWorkbench } from "../../../store/workbench.js";
-import { DEFAULT_THEME_ZONE, themeCutsOff } from "@trade-data-manager/market/domain";
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 import { ThemeScopePanel } from "../ThemeScopePanel.js";
 
 const SEED: Seed = { points: [] };
@@ -21,19 +21,65 @@ beforeEach(() => { useWorkbench.setState(RESET); });
 afterEach(() => { useWorkbench.setState(RESET); localStorage.clear(); });
 
 describe("관찰판 — 연동·판정이 원리적으로 없다", () => {
-    it("테마 행+바인딩이 있어도 연동 배지·조건 ▾·카운트가 안 선다(이 판은 목록 밖)", () => {
-        act(() => useWorkbench.getState().addFilterStage([{ kind: "theme", ...DEFAULT_THEME_ZONE, ...themeCutsOff() }]));
-        const { container } = renderPanel();
-        expect(container.textContent).toContain("관찰 — 판정 없음");
-        expect(container.textContent).not.toContain("조건 ▾");
-        expect(container.textContent).not.toContain("통과");
-        expect(container.textContent).not.toContain("미연동"); // "미연동"조차 조건판의 말이다
-    });
-
-    it("켜진 테마 조건이 있으면 읽기 전용 겹침 배지가 선다(축 일치 변만 — 수정은 팝오버)", () => {
+    it("테마 행이 있어도 연동 배지·조건 ▾·카운트가 안 서고, 존은 고르기 전엔 없다(자동 겹침 폐지)", () => {
         act(() => useWorkbench.getState().addFilterStage([{ kind: "theme", ...DEFAULT_THEME_ZONE }]));
         const { container } = renderPanel();
-        expect(container.textContent).toContain("조건 겹침(읽기 전용)");
+        expect(container.textContent).not.toContain("조건 ▾");
+        expect(container.textContent).not.toContain("통과");
+        expect(container.textContent).not.toContain("미연동");
+        expect(useWorkbench.getState().panelUi[PANEL]?.["zone"]).toBeUndefined();
+    });
+});
+
+describe("존 ▾ — 걸린 테마 조건에서 존 값을 **복사**한다", () => {
+    const openZone = (container: HTMLElement): void => {
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("존"))!;
+        act(() => { fireEvent.click(trigger); });
+    };
+    const item = (text: string): HTMLElement =>
+        [...document.body.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes(text))!;
+
+    it("고르면 존·축이 판에 복사되고, 원본을 고쳐도 안 따라간다", () => {
+        act(() => useWorkbench.getState().addFilterStage([{ kind: "theme", ...DEFAULT_THEME_ZONE, window: 30, zoneAmountN: 25, rate: { mode: "value", minPct: 7 } }]));
+        const { container } = renderPanel();
+        openZone(container);
+        act(() => { fireEvent.click(item("대금≤25")); });
+        const ui = useWorkbench.getState().panelUi[PANEL]!;
+        expect(ui["zone"]).toMatchObject({ window: 30, zoneAmountN: 25, rate: { mode: "value", minPct: 7 } });
+        expect(ui["axes"]).toMatchObject({ windowMin: 30, xMode: "rank", yMode: "value" });
+        expect(container.textContent).toContain("존: 테마 30분");
+        // 원본 수정 — 판의 사본은 그대로.
+        const st = useWorkbench.getState();
+        const leaf = st.savedSets.find((x) => x.id === st.editingSetId)!.expr.of.find((t) => t.kind === "cond")!;
+        if (leaf.kind !== "cond") throw new Error("cond");
+        act(() => useWorkbench.getState().setFilterStagePredicates(leaf.stage.id, [{ kind: "theme", ...DEFAULT_THEME_ZONE, zoneAmountN: 99 }]));
+        expect(useWorkbench.getState().panelUi[PANEL]!["zone"]).toMatchObject({ zoneAmountN: 25 });
+    });
+
+    it("고른 뒤 축을 손으로 바꾸면 그 변은 숨고 「존 선 숨김(축 다름)」이 말한다 · ● 는 출처 주소로", () => {
+        act(() => useWorkbench.getState().addFilterStage([{ kind: "theme", ...DEFAULT_THEME_ZONE, window: 30 }]));
+        act(() => useWorkbench.getState().addFilterStage([{ kind: "theme", ...DEFAULT_THEME_ZONE, window: 30 }])); // 같은 값 두 줄
+        const { container } = renderPanel();
+        openZone(container);
+        const rows = [...document.body.querySelectorAll("button")].filter((b) => (b.textContent ?? "").includes("테마 30분"));
+        expect(rows).toHaveLength(2);
+        act(() => { fireEvent.click(rows[1]!); });
+        openZone(container);
+        const marked = [...document.body.querySelectorAll("button")].filter((b) => (b.textContent ?? "").includes("테마 30분") && (b.textContent ?? "").includes("●"));
+        expect(marked, "같은 값 두 줄 중 고른 것 하나만 ●").toHaveLength(1);
+        act(() => { fireEvent.keyDown(document, { key: "Escape" }); });
+        act(() => useWorkbench.getState().setPanelUi(PANEL, "axes", { xMode: "rank", yMode: "value", windowMin: null }));
+        expect(container.textContent).toContain("존 선 숨김(축 다름)");
+    });
+
+    it("끄기 = null · 기본값으로 = 기본 존", () => {
+        const { container } = renderPanel();
+        openZone(container);
+        act(() => { fireEvent.click(item("기본값으로")); });
+        expect(useWorkbench.getState().panelUi[PANEL]!["zone"]).toMatchObject({ zoneAmountN: DEFAULT_THEME_ZONE.zoneAmountN, from: "기본값" });
+        openZone(container);
+        act(() => { fireEvent.click(item("끄기")); });
+        expect(useWorkbench.getState().panelUi[PANEL]!["zone"]).toBeNull();
     });
 });
 

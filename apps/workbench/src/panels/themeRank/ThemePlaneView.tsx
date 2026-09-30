@@ -20,8 +20,8 @@ import { CLICK_SLOP, LBL_H, LBL_PAD, LBL_W, ZOOM_MIN_SPAN, fmtHms, rateTickEdges
 export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
     plane: ThemePlane;
     /**
-     * 깔때기 테마 조건의 **읽기 전용** 겹침(2026-09-26) — 자유 자와 **동시에** 선다(자를 안 끈다:
-     * 수정은 조건판 팝오버, 여긴 "보는 것과 걸린 것의 눈맞춤"뿐). 값은 데이터 공간(서수·%·분).
+     * 「존 ▾」로 복사해 온 존의 겹침(2026-09-30 — 참조가 아니라 사본) — 자유 자와 **동시에** 선다(자를 안 끈다:
+     * 여긴 "보는 것과 걸린 것의 눈맞춤"뿐, 판정 없음). 값은 데이터 공간(서수·%·분).
      */
     overlay?: { x: number | null; y: number | null } | null;
     /** 자의 저장 키(x·y) — 축 모드별(창 무시 — ThemeScopePanel 의 키 규칙). */
