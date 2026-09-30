@@ -12,9 +12,10 @@ import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { FILTER } from "../../styles/palette.js";
 import { panAmountDom, panRateDom, zoomAmountDom, zoomRateDom, type ValueDom } from "./axisModel.js";
 import { tooltipBoxOf } from "./tooltipBox.js";
+import { tickLabelParts, type RateTickLayout, type TickTone } from "./rateTicks.js";
 import { TimelineBar } from "./TimelineBar.js";
 import { TrailControl } from "./TrailControl.js";
-import { CLICK_SLOP, LBL_H, LBL_PAD, LBL_W, ZOOM_MIN_SPAN, fmtHms, type ThemePlane } from "./useThemePlane.js";
+import { CLICK_SLOP, LBL_H, LBL_PAD, LBL_W, ZOOM_MIN_SPAN, fmtHms, rateTickEdges, type ThemePlane } from "./useThemePlane.js";
 
 export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
     plane: ThemePlane;
@@ -253,11 +254,13 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
                         {yScale.ticks.map((t) => (
                             <g key={`y${t.v}`}>
                                 <line x1={box.left} y1={yScale.px(t.v)} x2={box.left + box.width} y2={yScale.px(t.v)} stroke="var(--border-subtle)" />
-                                {/* 눈금 글자는 양쪽 — 주 시선(1위 코너)이 오른쪽이라 오른쪽 스케일이 본론이고, 왼쪽은 보조다. */}
-                                <text x={box.left - 6} y={yScale.px(t.v) + 3} textAnchor="end" style={axisText}>{t.label}</text>
+                                {/* 눈금 글자는 양쪽 — 주 시선(1위 코너)이 오른쪽이라 오른쪽 스케일이 본론이고, 왼쪽은 보조다.
+                                    % 눈금이 켜지면 왼쪽은 % 자리다(이중 축 — 순위 글자와 겹침 규칙이 필요 없게). */}
+                                {p.rateTicks === null && <text x={box.left - 6} y={yScale.px(t.v) + 3} textAnchor="end" style={axisText}>{t.label}</text>}
                                 <text x={box.left + box.width + 6} y={yScale.px(t.v) + 3} textAnchor="start" style={axisText}>{t.label}</text>
                             </g>
                         ))}
+                        {p.rateTicks !== null && <RateTickMarks ticks={p.rateTicks} box={box} />}
                         <line x1={box.left} y1={box.top} x2={box.left} y2={box.top + box.height} stroke="var(--border-strong)" />
                         <line x1={box.left} y1={box.top + box.height} x2={box.left + box.width} y2={box.top + box.height} stroke="var(--border-strong)" />
                         {/* y 제목은 왼쪽-위 가로(2026-09-17 — 세로 회전 폐지, 왼 여백은 등락 배지의 자리다). */}
@@ -365,3 +368,32 @@ const underSvg: React.CSSProperties = { position: "absolute", inset: 0, pointerE
 const overSvg: React.CSSProperties = { position: "absolute", inset: 0, touchAction: "none", userSelect: "none" };
 const axisText: React.CSSProperties = { fontSize: 10, fill: "var(--text-tertiary)" };
 const footer: React.CSSProperties = { display: "flex", alignItems: "center", gap: 12, padding: "4px 10px", borderTop: "1px solid var(--border-default)", fontSize: 11, color: "var(--text-secondary)", flexWrap: "wrap" };
+
+const TONE_FILL: Record<TickTone, string> = { rise: "var(--rise)", fall: "var(--fall)", flat: "var(--text-secondary)" };
+
+/**
+ * 등락 순위 축의 % 눈금 — 점선은 점 캔버스 **아래** 층(점이 선을 덮는다), 글자는 왼쪽 여백(등락 관례색).
+ * 뷰 밖의 선은 가장자리 「…% ↑/↓」로 남긴다 — "선이 화면 밖"이라는 것 자체가 그날 장세다.
+ */
+function RateTickMarks({ ticks, box }: { ticks: RateTickLayout; box: { left: number; top: number; width: number; height: number } }): JSX.Element {
+    const edge = rateTickEdges(box);
+    const label = (parts: readonly number[], y: number, suffix = "", maxParts = 2): JSX.Element => (
+        <text x={box.left - 6} y={y} textAnchor="end" style={axisText}>
+            {tickLabelParts(parts, maxParts).map((c, i) => (
+                <tspan key={i} fill={c.tone === null ? "var(--text-tertiary)" : TONE_FILL[c.tone]}>{c.text}</tspan>
+            ))}
+            {suffix !== "" && <tspan fill="var(--text-tertiary)">{suffix}</tspan>}
+        </text>
+    );
+    return (
+        <g pointerEvents="none">
+            {ticks.lines.map((l) => (
+                <line key={l.pct} x1={box.left} y1={l.py} x2={box.left + box.width} y2={l.py}
+                    stroke="var(--text-tertiary)" strokeWidth={1} strokeDasharray="1 3" opacity={0.8} />
+            ))}
+            {ticks.labels.map((g) => <g key={g.parts.join(",")}>{label(g.parts, g.py + 3)}</g>)}
+            {ticks.above.length > 0 && label(ticks.above, edge.top + 3, " ↑", 1)}
+            {ticks.below.length > 0 && label(ticks.below, edge.bottom + 3, " ↓", 1)}
+        </g>
+    );
+}

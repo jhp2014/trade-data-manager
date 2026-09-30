@@ -2,8 +2,15 @@
 // (panelUi "axes", ⧉ 복제 시 사본이 같이 간다). 조건판에는 이 손잡이가 없다(창 = 연동 행의 소유).
 import { useState, type CSSProperties } from "react";
 import { WINDOW_CHOICES, windowLabel, type AxisMode, type ThemeRankAxes } from "./axisModel.js";
+import { RATE_TICK_HI, RATE_TICK_LO, RATE_TICK_MAX, commitRateTicks, fmtTick, parseTickInput } from "./rateTicks.js";
 
-export function AxisControls({ axes, onChange }: { axes: ThemeRankAxes; onChange: (next: ThemeRankAxes) => void }): JSX.Element {
+export function AxisControls({ axes, onChange, rateTicks, onRateTicks }: {
+    axes: ThemeRankAxes;
+    onChange: (next: ThemeRankAxes) => void;
+    /** 등락 순위 축의 % 눈금 값(정규화된 목록 — 빈 목록 = 끔). */
+    rateTicks: readonly number[];
+    onRateTicks: (next: number[]) => void;
+}): JSX.Element {
     // 입력 초안 — 타이핑 중간값(빈칸·"6")으로 축을 흔들지 않게, 커밋은 blur/Enter 에 한 번.
     const [draft, setDraft] = useState<string | null>(null);
     const commitDraft = (): void => {
@@ -48,10 +55,66 @@ export function AxisControls({ axes, onChange }: { axes: ThemeRankAxes; onChange
             </span>
             {modeRow("대금", "xMode")}
             {modeRow("등락", "yMode")}
+            <RateTickChips values={rateTicks} onChange={onRateTicks} inert={axes.yMode !== "rank"} />
             <span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>
                 여기는 보기 축일 뿐 — 조건은 조건판 테마 팝오버에서(창 T 자유, 클라 즉석 계산).
             </span>
         </div>
+    );
+}
+
+/**
+ * % 눈금 칩 줄 — 칩 클릭 = 그 자리 숫자 편집(blur/Enter 커밋, Esc 취소) · × 삭제 · ＋ 추가.
+ * 정규화(오름차순·중복 무시·최대 8·범위 클램프)는 commitRateTicks 한 곳. 전부 빼면 끔.
+ * ⚠ 이 줄은 창 입력 **뒤에** 선다 — 판의 첫 input 이 창 입력이라는 가정이 DOM 테스트에 있다.
+ */
+function RateTickChips({ values, onChange, inert }: { values: readonly number[]; onChange: (next: number[]) => void; inert: boolean }): JSX.Element {
+    // 편집 중인 칩 — index(기존 값) 또는 "new"(＋) · 초안 글자.
+    const [edit, setEdit] = useState<{ at: number | "new"; text: string } | null>(null);
+    const commit = (): void => {
+        if (edit === null) return;
+        const v = parseTickInput(edit.text);
+        setEdit(null);
+        if (v === null) return; // 못 읽는 글자 = 취소(원래 값 유지 — 조용히 지우지 않는다)
+        const next = [...values];
+        if (edit.at === "new") { if (v !== "") next.push(v); }
+        else if (v === "") next.splice(edit.at, 1); // 비우고 커밋 = 삭제
+        else next[edit.at] = v;
+        const out = commitRateTicks(next);
+        // 안 바뀌었으면 쓰지 않는다 — 키 없는 판(기본값)을 빈 커밋 한 번이 저장물로 굳히지 않게.
+        if (out.length !== values.length || out.some((x, i) => x !== values[i])) onChange(out);
+    };
+    const input = (
+        <input autoFocus value={edit?.text ?? ""} inputMode="decimal"
+            onChange={(e) => setEdit((d) => (d ? { ...d, text: e.target.value } : d))}
+            onBlur={commit}
+            onKeyDown={(e) => {
+                if (e.key === "Enter") commit();
+                if (e.key === "Escape") { e.preventDefault(); setEdit(null); }
+            }}
+            style={{ width: 40, fontSize: 11, padding: "0 4px", border: "1px solid var(--accent-primary)", borderRadius: 4, background: "var(--bg-primary)", color: "var(--text-primary)" }} />
+    );
+    return (
+        <span style={{ ...row, flexWrap: "wrap", opacity: inert ? 0.5 : 1 }}
+            title={`등락 순위 축의 % 경계선 — 그 값 이상 종목 수 자리에 정확히 선다(${RATE_TICK_LO}~${RATE_TICK_HI}%, 최대 ${RATE_TICK_MAX}개, 전부 빼면 끔)`}>
+            <span style={{ width: 32, color: "var(--text-tertiary)" }}>% 선</span>
+            {values.map((v, i) => (edit?.at === i
+                ? <span key={v}>{input}</span>
+                : (
+                    <span key={v} style={{ ...chip, display: "inline-flex", alignItems: "center", gap: 3, padding: "0 4px 0 7px", color: v > 0 ? "var(--rise)" : v < 0 ? "var(--fall)" : "var(--text-secondary)" }}>
+                        <button onClick={() => setEdit({ at: i, text: String(v) })} title="클릭 = 값 고치기(비우면 삭제)"
+                            style={{ color: "inherit", fontSize: 10.5, padding: 0 }}>{fmtTick(v)}</button>
+                        <button onClick={() => onChange(values.filter((_, k) => k !== i))} aria-label={`${fmtTick(v)}% 선 빼기`}
+                            style={{ color: "var(--text-tertiary)", fontSize: 10.5, padding: 0 }}>×</button>
+                    </span>
+                )))}
+            {edit?.at === "new"
+                ? input
+                : values.length < RATE_TICK_MAX && (
+                    <button onClick={() => setEdit({ at: "new", text: "" })} style={{ ...chip, color: "var(--text-tertiary)" }} title="선 추가">＋</button>
+                )}
+            {inert && <span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>값 축에선 안 씀</span>}
+        </span>
     );
 }
 

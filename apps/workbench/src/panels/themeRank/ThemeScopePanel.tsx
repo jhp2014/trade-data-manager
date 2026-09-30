@@ -15,6 +15,7 @@ import { AxisControls } from "./AxisControls.js";
 import { ThemeLensStrip } from "./ThemeLensStrip.js";
 import { ThemePlaneView } from "./ThemePlaneView.js";
 import { parseThemeRankAxes, windowLabel } from "./axisModel.js";
+import { parseRateTicks } from "./rateTicks.js";
 import { useThemeReadParams } from "../filter/themeLink.js";
 import { selectEditingStages, useWorkbench } from "../../store/workbench.js";
 import { isPredicateEmpty } from "../filter/stage.js";
@@ -26,7 +27,10 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
     // 축 설정 — 인스턴스 영속(⧉ 복제 시 사본이 같이 간다). 관찰판만의 손잡이다.
     const [axesRaw, setAxesRaw] = usePanelUi<unknown>(panelId, "axes", null);
     const axes = useMemo(() => parseThemeRankAxes(axesRaw), [axesRaw]);
-    const plane = useThemePlane(panelId, axes);
+    // % 눈금 값 — 별도 키(부재 = 기본 0·5·10·20, [] = 끔). axes 에 안 넣는 이유: 기하 memo 가 칩 편집마다 재계산된다.
+    const [rateTicksRaw, setRateTicks] = usePanelUi<unknown>(panelId, "rateTicks", undefined);
+    const rateTicks = useMemo(() => parseRateTicks(rateTicksRaw), [rateTicksRaw]);
+    const plane = useThemePlane(panelId, axes, rateTicks);
     const { subject, section } = plane;
 
     // 자 키는 모드별(창 무시 — 임의 분이라 창을 키에 넣으면 무한히 번진다. 조건판과 키 규칙이 다른 건 의도).
@@ -73,7 +77,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
                             축: {axisSummary} ▾
                         </button>
                     )}>
-                    {() => <AxisControls axes={axes} onChange={setAxesRaw} />}
+                    {() => <AxisControls axes={axes} onChange={setAxesRaw} rateTicks={rateTicks} onRateTicks={setRateTicks} />}
                 </TriggerPopover>
                 <span style={{ ...label, color: "var(--text-tertiary)" }}
                     title="빨간 점선 = 깔때기 첫 테마 조건(읽기 전용 — 축·창이 일치하는 변만). 수정은 일별 타점 [생성]의 테마 팝오버">

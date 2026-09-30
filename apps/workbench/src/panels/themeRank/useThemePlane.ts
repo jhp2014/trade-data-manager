@@ -17,6 +17,12 @@ import {
     type AxisScale, type ThemeRankAxes, type ValueDom,
 } from "./axisModel.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
+import { valuesAtMinute } from "./sectionSeries.js";
+import { layoutRateTicks, rateTickCounts, type RateTickLayout } from "./rateTicks.js";
+
+/** 가장자리 「↑/↓」 글자의 가운데 px — 뷰모델(밀어 앉히기)과 렌더(자리)가 같은 수를 본다. */
+export const rateTickEdges = (box: { top: number; height: number }): { top: number; bottom: number } =>
+    ({ top: box.top + 6, bottom: box.top + box.height - 6 });
 import { scatterLayer } from "./scatterLayer.js";
 import { themeColorMap } from "./themeColor.js";
 import { trailLayer, type Trail, type TrailPoint } from "./trailLayer.js";
@@ -90,6 +96,8 @@ export interface ThemePlane {
     yScale: AxisScale;
     scales: { x: (v: number) => number; y: (v: number) => number };
     foldedRate: number;
+    /** 등락 순위 축의 % 눈금 — y 순위 모드 · 설정 목록이 비지 않았을 때만(없으면 null = 왼쪽 여백은 순위 글자). */
+    rateTicks: RateTickLayout | null;
     size: { w: number; h: number };
     box: { left: number; top: number; width: number; height: number };
     /** 스케일이 쓰는 안쪽 상자(INNER_PAD) — 팬·휠의 px→도메인 비율도 이걸 써야 1:1 로 따라온다. */
@@ -105,7 +113,7 @@ export interface ThemePlane {
     goBack: () => void;
 }
 
-export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane {
+export function useThemePlane(panelId: string, axes: ThemeRankAxes, rateTickPcts: readonly number[] = []): ThemePlane {
     const subject = useSubject();
     const setCode = useWorkbench((s) => s.setCode);
     const setFocus = useWorkbench((s) => s.setFocus);
@@ -283,6 +291,18 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [axes.yMode, section, slice, subject?.code, peerThemes, axes.yMode === "value" ? vy.lo : 0]);
 
+    // ── % 눈금 — 순위와 **같은 배열**(valuesAtMinute().rate)을 센다(rateTicks.ts 머리 주석). "켜짐"은 보이는
+    // 선 수가 아니라 설정 목록으로 가른다 — 스크럽 중 count 가 0↔1 로 바뀔 때 왼쪽 여백이 깜빡이지 않게.
+    const rateTickKey = rateTickPcts.join(",");
+    const rateTicks = useMemo((): RateTickLayout | null => {
+        if (axes.yMode !== "rank" || rateTickPcts.length === 0) return null;
+        const empty: RateTickLayout = { lines: [], labels: [], above: [], below: [] };
+        if (!stocks || !subject || minute === null) return empty;
+        const counts = rateTickCounts(valuesAtMinute(stocks, subject.date, minute).rate, rateTickPcts);
+        return layoutRateTicks(counts, yScale, dom.y0, rateTickEdges(box));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [axes.yMode, rateTickKey, stocks, subject?.date, minute, yScale, dom.y0, box.top, box.height]);
+
     // ── 꼬리 — 상대 오프셋(전역 영속 설정). 꼭짓점도 현재 축 설정의 좌표다.
     const trailOffsets = useWorkbench((s) => s.themeTrailOffsets);
     const trailMinutes = useMemo(() => {
@@ -378,7 +398,7 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes): ThemePlane 
         minute, minuteRange, section, stocks,
         participants, hitPoints, subjectThemes, peerThemes, themeColors, themesStatus, lens, setLens,
         maxRank, dom, domSpan, defaultSpan, clampDom0, vx, vy, rawVdom, zoom, viewMoved, resetView, writeZoom, writeVdom,
-        xScale, yScale, scales, foldedRate, size, box, inner, wrapRef,
+        xScale, yScale, scales, foldedRate, rateTicks, size, box, inner, wrapRef,
         trails, layers, trailMinutes, pointMinutes, nearestAt, navigate, anchor, goBack,
     };
 }
