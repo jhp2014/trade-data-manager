@@ -290,6 +290,15 @@ describe("돌파 생성기 + 캔들·분봉 대금 필터", () => {
         expect(mins(evaluateCellsExpr([s], NO_MAT, bo({ chain: all })))).toEqual([0, 1, 2, 3]);
     });
 
+    it("사슬 테마 칩 — 재료는 종목으로 묶여 가고(분 = 자정기준), 모름이면 그 종목 발화 0", () => {
+        const THEME: ChainCond = { kind: "theme", ...DEFAULT_THEME_ZONE };
+        const themeAt = vi.fn((_code: string, min: number) => ({ pass: min >= MIN0 + 2, zoneRank: null, theme: null }));
+        const r = evaluateCellsExpr([s], { themeAt }, bo({ chain: cf(1, THEME) }));
+        expect(mins(r)).toEqual([2]); // 처음 존을 만족한 봉
+        expect(themeAt.mock.calls.every((c) => c[0] === "A")).toBe(true);
+        expect(evaluateCellsExpr([s], NO_MAT, bo({ chain: cf(1, THEME) })).hits, "모름 = 발화 없음").toEqual([]);
+    });
+
     it("사슬 필터 N억 처음 만족 = 대금 ≥ N + 처음 1개", () => {
         expect(mins(evaluateCellsExpr([s], NO_MAT, bo({ chain: cf(1, { kind: "amount", minEok: 45 }) })))).toEqual([1]);
     });

@@ -586,6 +586,51 @@ describe("테마 조건 — 팝오버가 편집면(2026-09-26)", () => {
     });
 });
 
+describe("사슬 필터 테마 칩 — 조건판 테마 팝오버를 자식 판으로(2026-09-30)", () => {
+    const term = (): { firstK?: number; cond: Record<string, unknown> } =>
+        (stages()[0]!.predicates[0] as unknown as { chain: { expr: { of: never[] } } }).chain.expr.of[0]!;
+
+    it("＋ 조건 → 테마 = 기본 테마 칩으로 태어나고 테마 팝오버(존 정의·컷·발화 + 칩 순번)가 겹쳐 뜬다 · Esc 는 맨 위 하나만", async () => {
+        seedEditing(exprOfStages([BO_STAGE]));
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(chipByText(container, "돌파")!); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+        const dialog = baseElement.querySelector('[role="dialog"]') as HTMLElement;
+        act(() => { fireEvent.click([...dialog.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("＋ 조건"))!); });
+        pickItem(container, "테마");
+        expect(term().cond).toMatchObject({ kind: "theme", zoneAmountN: DEFAULT_THEME_ZONE.zoneAmountN, count: { on: true, min: 3 } });
+        const dialogs = (): HTMLElement[] => [...baseElement.querySelectorAll<HTMLElement>('[role="dialog"]')];
+        expect(dialogs(), "돌파 팝오버 + 테마 팝오버").toHaveLength(2);
+        const themeDlg = dialogs()[1]!;
+        expect(themeDlg.textContent).toContain("존 정의");
+        expect(themeDlg.textContent).toContain("칩 순번");
+        expect(dialog.textContent).toContain("테마 재적≥3"); // 칩 본문 = 컷만
+
+        // 칩 순번 「처음 1」 — RankPick 의 첫 K 칸
+        const rank = [...themeDlg.querySelectorAll("button")].find((b) => b.textContent === "처음")!;
+        act(() => { fireEvent.click(rank); });
+        expect(term().firstK, "칩 순번 = 처음 1").toBe(1);
+        expect(dialog.textContent).toContain("처음 1");
+
+        act(() => { fireEvent.keyDown(document, { key: "Escape" }); });
+        expect(dialogs(), "테마 판만 닫힘").toHaveLength(1);
+    });
+
+    it("열린 테마 칩을 다시 누르면 닫힌다(칩은 판의 「안」 — mousedown 이 먼저 닫고 click 이 다시 여는 일이 없다)", async () => {
+        const chain = { expr: { id: "chain", of: [{ kind: "check", id: "th", cond: { kind: "theme", ...DEFAULT_THEME_ZONE } }], ops: [], groups: [] }, firstK: 1 };
+        seedEditing(exprOfStages([{ ...BO_STAGE, predicates: [{ ...BO_STAGE.predicates[0]!, chain }] }] as never));
+        const { container, baseElement } = renderBoard();
+        act(() => { fireEvent.click(chipByText(container, "돌파")!); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+        const chip = baseElement.querySelector<HTMLElement>('[role="dialog"] [data-chip="th"]')!;
+        act(() => { fireEvent.mouseDown(chip); fireEvent.click(chip); });
+        await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+        expect(baseElement.querySelectorAll('[role="dialog"]'), "열림").toHaveLength(2);
+        act(() => { fireEvent.mouseDown(chip); fireEvent.click(chip); });
+        expect(baseElement.querySelectorAll('[role="dialog"]'), "다시 누르면 닫힘").toHaveLength(1);
+    });
+});
+
 describe("＋ 집합 — 세 칸 판", () => {
     const leaf = { kind: "cond" as const, stage: RATE_STAGE };
     const set = (id: string, expr = exprOfStages([RATE_STAGE]), name: string | undefined = id) =>

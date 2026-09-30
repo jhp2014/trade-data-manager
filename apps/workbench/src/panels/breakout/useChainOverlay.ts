@@ -21,7 +21,9 @@
 // 같다. 밴드 면만 값이 % 라 UN 분모(스냅샷 basePrice.un) → 가격 → 차트 분모로 옮긴다(정확 환산).
 import { useMemo } from "react";
 import type { Time } from "lightweight-charts";
-import { breakoutOfStock, chainVerdicts, type BreakoutChainResult, type CellPredicate, type ChainVerdict } from "@trade-data-manager/market/domain";
+import { breakoutOfStock, chainUsesTheme, chainVerdicts, type BreakoutChainResult, type CellPredicate, type ChainVerdict } from "@trade-data-manager/market/domain";
+import { useThemeProjection } from "../../lib/useThemeProjection.js";
+import { cellMaterialsOf } from "../filter/cellMaterials.js";
 import type { ChainFillSpec, ChainOverlayInput } from "../../chart/chainLayer.js";
 import { usePointGrids } from "../../lib/PointGridsContext.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
@@ -90,22 +92,29 @@ export function useChainOverlay(args: {
     const snapQ = useDaySnapshot(active ? date : null);
     const pointGrids = usePointGrids();
     const stocks = snapQ.data?.date === date ? snapQ.data.stocks : null;
+    // 사슬 필터의 테마 칩 — ◇ 평가(useCellSet)와 **같은 재료**(같은 스냅샷 배열 → sectionSeries 단면 캐시 공유,
+    // 같은 투영 모듈 캐시, 같은 판정 함수). 재료가 오기 전엔 모른다 — 먼저 그리면 후보가 뒤집힌다.
+    const themes = useThemeProjection();
+    const needsTheme = source !== null && chainUsesTheme(source.pred.chain);
 
     const computed = useMemo(() => {
         if (!active || !source || !stocks || pointGrids.byDate === null) return null;
+        if (needsTheme && !themes.ready) return null;
         const stock = stocks.find((s) => s.code === code);
         if (!stock) return { stock: null } as const;
         const p = source.pred;
         const res = breakoutOfStock(stock, pointGrids.gridOf(code, date)?.base ?? null, { zigzagPct: p.zigzagPct, bandPct: p.bandPct }, { trace: showBands });
-        const verdicts = chainVerdicts(res.bars, stock, p.chain);
+        const mat = needsTheme ? cellMaterialsOf(stocks, date, themes.proj) : null;
+        // null = 모름(테마 재료) — 사슬 띠만 그리고 후보는 안 그린다(why 가 말한다).
+        const verdicts = chainVerdicts(res.bars, stock, p.chain, mat ? { themeAt: (m, q) => mat.themeAt(code, m, q) } : undefined);
         return { stock, res, verdicts } as const;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [active, source, stocks, pointGrids.byDate, code, date, showBands]);
+    }, [active, source, stocks, pointGrids.byDate, code, date, showBands, needsTheme, themes.ready, themes.proj]);
 
     const input = useMemo<ChainOverlayInput | null>(() => {
         if (!ownBars || computed === null || computed.stock === null) return null;
         const { stock, res, verdicts } = computed;
-        return chainOverlayInputOf(stock.times, res, verdicts, keptTimes, showBands ? { unBase: stock.basePrice.un, chartBase } : null);
+        return chainOverlayInputOf(stock.times, res, verdicts ?? [], keptTimes, showBands ? { unBase: stock.basePrice.un, chartBase } : null);
     }, [ownBars, computed, showBands, chartBase, keptTimes]);
 
     let why: string | null = null;
@@ -115,6 +124,9 @@ export function useChainOverlay(args: {
         else if (snapQ.error) why = `분봉 재료 조회 실패: ${(snapQ.error as Error).message}`;
         else if (pointGrids.error) why = `기준선 재료 조회 실패: ${pointGrids.error.message}`;
         else if (computed?.stock === null) why = "그날 유니버스 밖 종목";
+        else if (needsTheme && themes.error) why = "테마 재료 조회 실패 — 사슬 필터의 테마 칩을 판정 못 해 후보를 안 그린다";
+        else if (needsTheme && !themes.ready) why = "테마 재료 대기 중";
+        else if (computed !== null && computed.verdicts === null) why = "테마 재료 없음 — 후보 모름(사슬 띠만)";
     }
     return { rows, source, input: on ? input : null, why };
 }

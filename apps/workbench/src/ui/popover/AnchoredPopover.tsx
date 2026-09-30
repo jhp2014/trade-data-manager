@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import { FloatingSurface } from "./FloatingSurface.js";
 
 /**
@@ -25,6 +25,7 @@ export function AnchoredPopover({
     shiftX,
     role,
     style,
+    insideRefs,
     children,
 }: {
     anchor: { x: number; y: number };
@@ -41,6 +42,8 @@ export function AnchoredPopover({
     role?: string;
     /** 껍데기 위에 덧대는 모양(글자 크기·flex 간격 등). */
     style?: CSSProperties;
+    /** 판 밖이지만 "안"으로 칠 요소(판을 여닫는 칩) — 그 위 mousedown 이 판을 먼저 닫아 클릭 토글이 다시 여는 것을 막는다. */
+    insideRefs?: RefObject<Element | null>[];
     children: ReactNode;
 }): JSX.Element {
     const off = placement === "beside" ? offset : 0;
@@ -55,6 +58,7 @@ export function AnchoredPopover({
             padding={padding}
             cap={maxHeight}
             role={role}
+            insideRefs={insideRefs}
             style={{ fontSize: 13, ...style }}
         >
             {children}

@@ -10,6 +10,8 @@ import {
     type ChainTerm,
     type FoldedFlat,
 } from "@trade-data-manager/market/domain";
+import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
+import { themeChipText } from "../filter/themeLabel.js";
 
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
 
@@ -21,6 +23,7 @@ export const COND_NAME: Record<ChainCondKind, string> = {
     sessionHigh: "세션 고가 돌파",
     label: "돌파 타입",
     time: "시각",
+    theme: "테마",
 };
 
 export const COND_HINT: Record<ChainCondKind, string> = {
@@ -31,6 +34,7 @@ export const COND_HINT: Record<ChainCondKind, string> = {
     sessionHigh: "그 봉 고가 ≥ 직전까지 세션 최고가(터치 포함) — 아님은 NOT",
     label: "그 봉이 어떤 돌파인가 — 기준선 돌파 / 고가 돌파",
     time: "그 봉 시각이 구간 중 하나에 든다(양끝 포함) — NOT 이면 그 시간대 봉은 줄 서기에서 빠진다(09:03 이후 첫 봉이 처음 1)",
+    theme: "그 봉 분의 테마 존 판정(조건판 테마와 같은 조건) — 처음 1 을 붙이면 사슬 안에서 처음 존을 만족한 봉",
 };
 
 /** 조건을 새로 걸 때의 첫 값 — 걸자마자 무언가를 거르도록. */
@@ -43,6 +47,7 @@ export function defaultCond(kind: ChainCondKind): ChainCond {
         case "sessionHigh": return { kind: "sessionHigh" };
         case "label": return { kind: "label", label: "baseline" };
         case "time": return { kind: "time", ranges: [{ from: "09:00", to: "09:02" }] };
+        case "theme": return { kind: "theme", ...DEFAULT_THEME_ZONE };
     }
 }
 
@@ -65,6 +70,7 @@ export function condText(c: ChainCond): string {
         case "sessionHigh": return "세션 고가 돌파";
         case "label": return c.label === "baseline" ? "기준선 돌파" : "고가 돌파";
         case "time": return `시각 ${c.ranges.map((r) => `${r.from}~${r.to}`).join(" · ")}`;
+        case "theme": return themeChipText(c);
     }
 }
 

@@ -19,7 +19,7 @@ import { ThemePlaneView } from "./ThemePlaneView.js";
 import { parseThemeRankAxes, windowLabel } from "./axisModel.js";
 import { parseRateTicks } from "./rateTicks.js";
 import { selectObservedExpr, useWorkbench } from "../../store/workbench.js";
-import { themeZoneLabel } from "../filter/label.js";
+import { themeZoneLabel } from "../filter/themeLabel.js";
 import { MENU_PAD, MenuHead, MenuItem, MenuSep } from "../../ui/popover/menu.js";
 import { DEFAULT_THEME_ZONE } from "@trade-data-manager/market/domain";
 import { defaultScopeZone, parseScopeZone, themeZoneSourcesOf, type ScopeZone } from "./zoneSources.js";
@@ -154,7 +154,7 @@ function ZoneMenu({ zone, onPick }: { zone: ScopeZone | null; onPick: (z: ScopeZ
             ))}
             <MenuSep />
             <MenuItem mark="radio" on={zone?.key === def.key} onClick={() => onPick(def)}
-                title={`테마 조건 기본값의 존 — ${themeZoneLabel({ kind: "theme", ...DEFAULT_THEME_ZONE })}`}>
+                title={`테마 조건 기본값의 존 — ${themeZoneLabel(DEFAULT_THEME_ZONE)}`}>
                 기본값으로
             </MenuItem>
             <MenuItem mark="radio" on={zone === null} onClick={() => onPick(null)} title="존 선을 안 긋는다">

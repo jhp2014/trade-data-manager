@@ -11,7 +11,7 @@
 // 값의 기준은 UN 한 벌이다 — rate·minuteHigh 가 전부 "전일 종가 대비 %" 라
 // 같은 공간에서 비교된다.
 
-import { DEFAULT_CHAIN_FILTER, chainFilterKey, parseChainFilter, type ChainFilter } from "./chainFilter.js";
+import { DEFAULT_CHAIN_FILTER, chainFilterKey, chainUsesTheme, parseChainFilter, type ChainFilter } from "./chainFilter.js";
 import { DEFAULT_THEME_ZONE, anyThemeCondOn, parseThemeZoneParams, themeCutsOff, type ThemeZoneParams } from "./themeZone.js";
 
 // (전이 수식어 — firstOfDay·firstTrue·improve — 는 2026-09-27 은퇴했다. 실사용 뜻이 "진입"
@@ -256,9 +256,15 @@ export function breakoutKeyOf(p: Extract<CellPredicate, { kind: "breakout" }>): 
 }
 
 
-/** 이 조건 묶음이 테마 재료(분 단면·멤버십)를 쓰는가 — 로딩 표시·게으름 게이트가 본다. */
+/** 술어 하나가 테마 재료(분 단면·멤버십)를 쓰는가 — 테마 술어 + **사슬 필터 속 켜진 테마 칩**(2026-09-30).
+ *  재료 게이트가 돌파 속 칩을 못 보면 빈 투영으로 평가돼 `NOT 테마` 칩이 전부 통과한다. */
+export function predicateUsesTheme(p: CellPredicate): boolean {
+    return p.kind === "theme" || (p.kind === "breakout" && chainUsesTheme(p.chain));
+}
+
+/** 이 조건 묶음이 테마 재료를 쓰는가 — 로딩 표시·게으름 게이트가 본다. */
 export function usesTheme(conditions: CellConditions): boolean {
-    return conditions.some((c) => c.enabled && c.predicates.some((p) => p.kind === "theme"));
+    return conditions.some((c) => c.enabled && c.predicates.some(predicateUsesTheme));
 }
 
 // ── 파서 ──────────────────────────────────────────────────────────────────

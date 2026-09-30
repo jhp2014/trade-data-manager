@@ -153,7 +153,12 @@ function breakoutMinutes(
         chains.set(sk, r);
     }
     const out = new Set<number>();
-    for (const b of chainCandidatesOf(r.bars, s, p.chain)) out.add(minuteOfDayOf(s.times[b.i]));
+    // 사슬 필터의 테마 칩은 셀 테마 술어와 같은 재료(themeAt)를 종목으로 묶어 쓴다. 모름(null)이면 발화 없음 —
+    // CellMaterials.themeAt 계약과 같은 방향(⚠ 셀 층 NOT(돌파) 위에선 참으로 뒤집히는 건 셀 테마 술어와 같은 한계 —
+    // workbench 는 테마 재료 게이트(useCellSet)로 이 경로에 닿지 않는다).
+    const picked = chainCandidatesOf(r.bars, s, p.chain, { themeAt: (min, q) => mat.themeAt(s.code, min, q) });
+    if (picked === null) return out;
+    for (const b of picked) out.add(minuteOfDayOf(s.times[b.i]));
     return out;
 }
 

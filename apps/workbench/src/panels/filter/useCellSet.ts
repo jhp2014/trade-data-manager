@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
     candleAxisActive,
+    predicateUsesTheme,
     evaluateCellsExpr,
     minuteToHms,
     type CellEvalOptions,
@@ -350,7 +351,8 @@ export function useCellSet(
     const narrowed = narrowedEarly;
     // ⚠ **트리를 걸어야 한다** — 평평한 2중 루프로 재면 묶음 안의 격자·존순위 술어를 못 보고,
     //   그 조건은 화면에 오류 없이 **조용히 아무것도 안 건다**(재료를 안 당기므로).
-    const needsTheme = useMemo(() => usesCellPred(narrowed.expr, (p) => p.kind === "theme"), [narrowed]);
+    // 돌파 사슬 속 켜진 테마 칩도 센다(predicateUsesTheme — 안 세면 빈 투영으로 평가돼 `NOT 테마` 칩이 전부 통과).
+    const needsTheme = useMemo(() => usesCellPred(narrowed.expr, predicateUsesTheme), [narrowed]);
     // 돌파 생성기 — 기준선(/point-grids)을 이름표 재료로 쓴다. 안 쓰면 게이트도 안 선다.
     // 오늘은 /point-grids 가 기준선을 안 굽는다 → 이름표가 전부 「고가 돌파」(복기만 쓴다 — decisions).
     // 기준선 재료가 필요한 술어 = 돌파 사슬 ∪ **기준선 축이 켜진 캔들**(2026-09-27).

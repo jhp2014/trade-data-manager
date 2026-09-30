@@ -27,7 +27,7 @@ describe("chainOverlayInputOf", () => {
         const s = series([[0, -0.5, 20], [0.1, 0, 10], [0.2, 0.1, 10], [0, 0, 0], [0, 0, 0], [0, 0, 0]]);
         const r = breakoutChainsOf(s, null, K, { trace: true });
         expect(r.chains[0]!.end).toBeNull();
-        const out = chainOverlayInputOf(times, r, chainVerdicts(r.bars, s, DEFAULT_CHAIN_FILTER), null, null);
+        const out = chainOverlayInputOf(times, r, chainVerdicts(r.bars, s, DEFAULT_CHAIN_FILTER)!, null, null);
         expect(out.chains).toEqual([{ from: times[0], to: times[2], baselineFrom: null }]);
         expect(out.candidates).toEqual([{ time: times[0], label: "high", kept: false }]);
         expect(out.fills).toEqual([]); // 밴드 끔
@@ -36,7 +36,7 @@ describe("chainOverlayInputOf", () => {
     it("후보는 ◇ 로 남았는지로 갈린다 — 모르면(null) 전부 통과(연한 쪽)", () => {
         const s = series([[0, -0.5, 20], [0.1, 0, 10], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]);
         const r = breakoutChainsOf(s, null, K);
-        const v = chainVerdicts(r.bars, s, DEFAULT_CHAIN_FILTER);
+        const v = chainVerdicts(r.bars, s, DEFAULT_CHAIN_FILTER)!;
         expect(chainOverlayInputOf(times, r, v, new Set([times[0]!]), null).candidates[0]!.kept).toBe(true);
         expect(chainOverlayInputOf(times, r, v, new Set(), null).candidates[0]!.kept).toBe(false);
         expect(chainOverlayInputOf(times, r, v, null, null).candidates[0]!.kept).toBe(false);

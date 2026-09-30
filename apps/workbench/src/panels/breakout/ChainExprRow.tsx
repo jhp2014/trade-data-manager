@@ -5,6 +5,7 @@
 // 구조 규칙(한 겹 괄호·숨은 우선순위 없음·수식어 괄호)은 core `flatExpr` 한 벌이다 — 이 줄은 그리기와 손만.
 // 항 종류가 달라(봉 조건) ExprRow 를 그대로 못 쓰고, 판 껍데기(Panel·Item·Sep)만 같은 것을 쓴다.
 import { useState, type MouseEvent } from "react";
+import { themeZoneLabel } from "../filter/themeLabel.js";
 import {
     absorbChainGroup,
     canRemoveChainTerm,
@@ -49,7 +50,8 @@ export function ChainExprRow({ expr, open, onPick, onChange, tail }: {
     expr: ChainExpr;
     /** 아랫줄에 열린 항 id(없으면 null). */
     open: string | null;
-    onPick: (id: string) => void;
+    /** 칩 좌클릭 — 좌표는 칩이 자기 판(테마 칩의 중첩 팝오버)을 띄울 자리. */
+    onPick: (id: string, at: { x: number; y: number }, el: HTMLElement) => void;
     onChange: (next: ChainExpr) => void;
     tail?: JSX.Element;
 }): JSX.Element {
@@ -92,9 +94,11 @@ export function ChainExprRow({ expr, open, onPick, onChange, tail }: {
         if (opened) pieces.push(<Paren key={`paren-open-${i}`} side="(" g={opened} onCtx={rc((e) => ({ kind: "paren", at: opened.from, x: e.clientX, y: e.clientY }))} />);
         const isOpen = open === t.id;
         pieces.push(
-            <button key={`term-${t.id}`} data-chip={t.id} onClick={() => onPick(t.id)}
+            <button key={`term-${t.id}`} data-chip={t.id} onClick={(e) => onPick(t.id, { x: e.clientX, y: e.clientY }, e.currentTarget)}
                 onContextMenu={rc((e) => ({ kind: "term", id: t.id, neg: t.neg === true, x: e.clientX, y: e.clientY }))}
-                title={`${COND_HINT[t.cond.kind]} — 눌러서 아랫줄에서 값·순번을 고칩니다. 우클릭 = NOT·지우기`}
+                title={t.cond.kind === "theme"
+                    ? `${themeZoneLabel(t.cond)} — 눌러서 테마 팝오버에서 값·칩 순번을 고칩니다. 우클릭 = NOT·지우기`
+                    : `${COND_HINT[t.cond.kind]} — 눌러서 아랫줄에서 값·순번을 고칩니다. 우클릭 = NOT·지우기`}
                 style={isOpen ? openChip : { ...chipBase, background: "var(--bg-tertiary)", border: "1px solid transparent", color: "var(--text-primary)" }}>
                 {t.neg === true && <span style={{ color: isOpen ? "#fff" : FAIL, fontWeight: 600, marginRight: 4 }}>NOT</span>}
                 {condText(t.cond)}

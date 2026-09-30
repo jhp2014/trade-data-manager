@@ -11,9 +11,17 @@
 // 순번은 그 봉 **이전 봉만** 센다(사슬마다 새로) — 어디에 붙여도 미래를 안 본다.
 // 한 칩·괄호 안에서 순번이 먼저, NOT 이 나중이다 — `NOT(대금≥50억 · 처음 1)` = "첫 50억 봉만 뺀 나머지".
 //
-// ## 순번 셈은 단락하지 않는다
-// AND/OR 를 단락 평가하면 뒤 칩의 순번 셈이 봉마다 들쭉날쭉 건너뛰어진다 — 칩의 순번은 **그 칩 조건이 참인
-// 모든 봉**을 세야 뜻이 선다. 그래서 모든 항을 끝까지 평가한다(사슬 봉 수만큼이라 비용은 무시할 만하다).
+// ## 순번 있는 항은 단락하지 않는다
+// AND/OR 를 무턱대고 단락하면 뒤 칩의 순번 셈이 봉마다 들쭉날쭉 건너뛰어진다 — 칩의 순번은 **그 칩 조건이 참인
+// 모든 봉**을 세야 뜻이 선다. 그래서 **순번이 든 항(그 아래 어디든 firstK)은 늘 평가한다**. 순번 없는 항은
+// 부작용이 없으니 결과가 정해진 뒤엔 건너뛰고, 테마 칩(분 단면 — 비싸다)이 든 항은 맨 뒤에 본다(2026-09-30 —
+// 「대금≥50억 AND 테마」에서 대금 탈락 봉은 테마를 안 부른다). 결과는 전부 평가한 것과 같다.
+//
+// ## 테마 칩 — 조건판 테마와 한 벌(2026-09-30)
+// 칩 = 테마 술어 payload 통째(`{ kind: "theme" } & ThemeZoneParams`) — 파서·판정·편집면이 조건판 테마와 같다.
+// 판정은 주입 재료(`ChainMaterials.themeAt` — 엔진의 CellMaterials.themeAt 을 종목으로 묶은 것)가 한다. 컷이
+// 하나도 안 켜진 칩은 재료 없이 참(빈 술어 = 조건 아님). 재료가 없거나 한 번이라도 모름(null)이면 **그 종목 사슬
+// 판정 전체가 모름**(null) — 거짓으로 치면 `NOT 테마` 가 "전부 통과"라고 거짓말한다.
 //
 // ## 생성소의 조건과의 경계
 // 차이는 하나 — **순번 셈에 드는가**. 순번은 이 식의 칩·괄호가 가르고, 생성소의 조건은 순번이 정해진 뒤에 거른다.
@@ -36,6 +44,7 @@ import {
 } from "../expr/flatExpr.js";
 import { minuteOfDayOf } from "../replay/dayReplay.js";
 import type { BreakoutLabel, ChainBar, ChainSeries } from "./breakoutChain.js";
+import { anyThemeCondOn, parseThemeZoneParams, themeZoneKeyOf, type ThemeAnswer, type ThemeZoneParams } from "./themeZone.js";
 
 /** 양끝 포함 구간 — 한쪽이 없으면 반열림. */
 export interface ChainRange {
@@ -67,9 +76,23 @@ export type ChainCond =
     /** 그 봉 시점 이름표. */
     | { kind: "label"; label: BreakoutLabel }
     /** 그 봉 시각이 구간 중 하나에 든다(구간끼리 OR). 주 용도는 NOT — 「그 시간대 봉은 줄 서기에서 뺀다」. */
-    | { kind: "time"; ranges: ChainTimeRange[] };
+    | { kind: "time"; ranges: ChainTimeRange[] }
+    /** 그 봉 분의 테마 존 판정 — 조건판 테마 술어와 같은 payload·같은 판정(themeAnswerAt). */
+    | ({ kind: "theme" } & ThemeZoneParams);
 export type ChainCondKind = ChainCond["kind"];
-export const CHAIN_COND_KINDS: readonly ChainCondKind[] = ["pos", "amount", "openHigh", "openClose", "sessionHigh", "label", "time"];
+export type ChainThemeCond = Extract<ChainCond, { kind: "theme" }>;
+export const CHAIN_COND_KINDS: readonly ChainCondKind[] = ["pos", "amount", "openHigh", "openClose", "sessionHigh", "label", "time", "theme"];
+
+/** 사슬 필터의 주입 재료 — 종목은 호출자가 묶는다. 부재 = 재료 없음. */
+export interface ChainMaterials {
+    /** 테마 칩의 답(그 분 · 그 칩 파라미터). null = 재료 없음(모름). */
+    themeAt?: (min: number, p: ThemeZoneParams) => ThemeAnswer | null;
+}
+
+/** 켜진 컷이 있는 테마 칩이 식에 있나 — 재료 게이트(테마 재료 대기)의 기준. */
+export function chainUsesTheme(f: ChainFilter): boolean {
+    return f.expr.of.some((t) => t.cond.kind === "theme" && anyThemeCondOn(t.cond));
+}
 
 /** 식의 항 — 봉 조건 칩 하나. `kind` 는 접힌 묶음(and/or)과 겹치지 않는다. */
 export interface ChainTerm {
@@ -131,8 +154,8 @@ export const movePct = (a: number, b: number): number => (lv(b) / lv(a) - 1) * 1
 /** "HH:MM" → 자정부터의 분. */
 const hmMin = (hm: string): number => Number(hm.slice(0, 2)) * 60 + Number(hm.slice(3, 5));
 
-/** 봉 조건 하나 — 순번·NOT 없는 맨 조건. */
-export function chainCondHolds(c: ChainCond, b: ChainBar, s: ChainFilterSeries): boolean {
+/** 봉 조건 하나 — 순번·NOT 없는 맨 조건. 테마 칩은 재료가 있어야 서므로 null(모름)을 낼 수 있다. */
+export function chainCondHolds(c: ChainCond, b: ChainBar, s: ChainFilterSeries, mat?: ChainMaterials): boolean | null {
     switch (c.kind) {
         case "pos": return inRange(b.pos, c);
         case "amount": return b.tv >= c.minEok * 1e8;
@@ -143,6 +166,12 @@ export function chainCondHolds(c: ChainCond, b: ChainBar, s: ChainFilterSeries):
         case "time": {
             const m = minuteOfDayOf(s.times[b.i]);
             return c.ranges.some((r) => m >= hmMin(r.from) && m <= hmMin(r.to));
+        }
+        case "theme": {
+            // 빈 술어 = 조건 아님 — 재료도 안 부른다(enter 만 켠 칩이 영원히 거짓인 함정도 피한다).
+            if (!anyThemeCondOn(c)) return true;
+            const ans = mat?.themeAt?.(minuteOfDayOf(s.times[b.i]), c) ?? null;
+            return ans === null ? null : ans.pass;
         }
     }
 }
@@ -156,13 +185,37 @@ export interface ChainVerdict {
     picked: boolean;
 }
 
+type ChainNode = ChainTerm | FoldedFlat<ChainTerm>;
+
 /**
- * 사슬 봉 전부의 판정 — 순번 셈은 사슬마다 새로. 셀 엔진(picked)·격자판(수)·기본 차트 사슬 층이 같은 이 함수를 쓴다.
+ * 사슬 봉 전부의 판정 — 순번 셈은 사슬마다 새로. 셀 엔진(picked)·기본 차트 사슬 층이 같은 이 함수를 쓴다.
+ * **null = 모름**(테마 칩의 재료가 없거나 한 번이라도 모름) — 그 종목 사슬 판정 전체를 말할 수 없다.
  */
-export function chainVerdicts(bars: readonly ChainBar[], s: ChainFilterSeries, f: ChainFilter): ChainVerdict[] {
+export function chainVerdicts(bars: readonly ChainBar[], s: ChainFilterSeries, f: ChainFilter, mat?: ChainMaterials): ChainVerdict[] | null {
+    if (chainUsesTheme(f) && mat?.themeAt === undefined) return null;
     const tree = foldFlat(f.expr);
     const empty = f.expr.of.length === 0;
     const counts = new Map<string, number>();
+    let unknown = false;
+    // 항의 성질(식당 한 번) — 순번이 든 항(늘 평가) · 켜진 테마 칩이 든 항(맨 뒤).
+    const rankedOf = new Map<ChainNode, boolean>();
+    const themedOf = new Map<ChainNode, boolean>();
+    const hasRanked = (x: ChainNode): boolean => {
+        let v = rankedOf.get(x);
+        if (v === undefined) {
+            v = x.firstK !== undefined || (isFoldedFlat(x) && x.of.some(hasRanked));
+            rankedOf.set(x, v);
+        }
+        return v;
+    };
+    const hasTheme = (x: ChainNode): boolean => {
+        let v = themedOf.get(x);
+        if (v === undefined) {
+            v = isFoldedFlat(x) ? x.of.some(hasTheme) : x.cond.kind === "theme" && anyThemeCondOn(x.cond);
+            themedOf.set(x, v);
+        }
+        return v;
+    };
     /** 순번 수식어 — 참인 봉을 세어 처음 K개만 참으로. */
     const ranked = (id: string, v: boolean, k: number | undefined): boolean => {
         if (k === undefined || !v) return v;
@@ -170,15 +223,25 @@ export function chainVerdicts(bars: readonly ChainBar[], s: ChainFilterSeries, f
         counts.set(id, c + 1);
         return c < k;
     };
-    const ev = (x: ChainTerm | FoldedFlat<ChainTerm>, b: ChainBar): boolean => {
+    const ev = (x: ChainNode, b: ChainBar): boolean => {
         if (isFoldedFlat(x)) {
-            // ⚠ 단락하지 않는다 — 뒤 항의 순번 셈이 건너뛰어지면 안 된다.
-            const vals = x.of.map((y) => ev(y, b));
-            const v = x.kind === "and" ? vals.every(Boolean) : vals.some(Boolean);
-            const r = ranked(x.id, v, x.firstK);
+            // 순번 든 항은 늘 → 나머지는 결과가 안 정해졌을 때만, 테마 없는 것 먼저(부작용 없는 항은 건너뛰어도 뜻 불변).
+            const and = x.kind === "and";
+            let acc = and;
+            const take = (y: ChainNode): void => {
+                const v = ev(y, b);
+                acc = and ? acc && v : acc || v;
+            };
+            const decided = (): boolean => (and ? !acc : acc);
+            for (const y of x.of) if (hasRanked(y)) take(y);
+            for (const y of x.of) if (!hasRanked(y) && !hasTheme(y) && !decided()) take(y);
+            for (const y of x.of) if (!hasRanked(y) && hasTheme(y) && !decided()) take(y);
+            const r = ranked(x.id, acc, x.firstK);
             return x.neg === true ? !r : r;
         }
-        const r = ranked(x.id, chainCondHolds(x.cond, b, s), x.firstK);
+        const h = chainCondHolds(x.cond, b, s, mat);
+        if (h === null) unknown = true;
+        const r = ranked(x.id, h === true, x.firstK);
         return x.neg === true ? !r : r;
     };
     const out: ChainVerdict[] = [];
@@ -191,16 +254,19 @@ export function chainVerdicts(bars: readonly ChainBar[], s: ChainFilterSeries, f
             counts.clear();
         }
         const pass = empty || ev(tree, bar);
+        if (unknown) return null;
         const r = pass ? rank++ : null;
         out.push({ bar, pass, rank: r, picked: r !== null && (f.firstK === null || r < f.firstK) });
     }
     return out;
 }
 
-/** 후보(최종 통과 봉)만. */
-export function chainCandidatesOf(bars: readonly ChainBar[], s: ChainFilterSeries, f: ChainFilter): ChainBar[] {
+/** 후보(최종 통과 봉)만 — null = 모름(chainVerdicts). */
+export function chainCandidatesOf(bars: readonly ChainBar[], s: ChainFilterSeries, f: ChainFilter, mat?: ChainMaterials): ChainBar[] | null {
+    const vs = chainVerdicts(bars, s, f, mat);
+    if (vs === null) return null;
     const out: ChainBar[] = [];
-    for (const v of chainVerdicts(bars, s, f)) if (v.picked) out.push(v.bar);
+    for (const v of vs) if (v.picked) out.push(v.bar);
     return out;
 }
 
@@ -209,7 +275,8 @@ export function chainCandidatesOf(bars: readonly ChainBar[], s: ChainFilterSerie
 /** 판정 키 — 항 id 는 뜻이 없어 빼고 모양만(엔진 후보 메모의 단위). */
 export function chainFilterKey(f: ChainFilter): string {
     return JSON.stringify([
-        f.expr.of.map((t) => [t.cond, t.neg === true ? 1 : 0, t.firstK ?? 0]),
+        // 테마 칩은 파라미터 키로 — 필드 순서만 다른 같은 칩이 메모를 가르지 않게.
+        f.expr.of.map((t) => [t.cond.kind === "theme" ? themeZoneKeyOf(t.cond) : t.cond, t.neg === true ? 1 : 0, t.firstK ?? 0]),
         f.expr.ops,
         f.expr.groups.map((g) => [g.from, g.to, g.neg === true ? 1 : 0, g.firstK ?? 0]),
         f.firstK,
@@ -253,6 +320,11 @@ export function parseChainCond(raw: unknown): ChainCond | null {
                 ranges.push(r.from <= r.to ? { from: r.from, to: r.to } : { from: r.to, to: r.from });
             }
             return ranges.length > 0 ? { kind: "time", ranges } : null;
+        }
+        case "theme": {
+            // 조건판 테마와 같은 파서 한 벌 — 테마 payload 가 바뀌면 두 자리가 같이 바뀐다.
+            const p = parseThemeZoneParams(raw);
+            return p === null ? null : { kind: "theme", ...p };
         }
         default: return null;
     }

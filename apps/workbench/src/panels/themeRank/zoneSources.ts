@@ -7,7 +7,7 @@
 // `zoneSourcesOfPredicate` 한 곳).
 import { DEFAULT_THEME_ZONE, parseThemeZoneParams, type ThemeZoneParams } from "@trade-data-manager/market/domain";
 import { deepLeavesOf, type SetExpr } from "../filter/expr.js";
-import { themeZoneLabel } from "../filter/label.js";
+import { themeZoneLabel } from "../filter/themeLabel.js";
 import type { FilterPredicate } from "../filter/stage.js";
 import type { SavedSet } from "../../store/savedSetsSlice.js";
 
@@ -29,10 +29,13 @@ export interface ZoneSource {
 const zoneOf = (p: ThemeZoneParams, from: string, key: string): ScopeZone =>
     ({ window: p.window, zoneAmountN: p.zoneAmountN, rate: p.rate, from, key });
 
-/** 조건 하나가 내놓는 존 출처들 — 조건 종류가 늘면 여기 한 자리. */
-function zoneSourcesOfPredicate(p: FilterPredicate): { text: string; params: ThemeZoneParams }[] {
+/** 조건 하나가 내놓는 존 출처들 — 조건 종류가 늘면 여기 한 자리. `sub` = 조건 안 주소(칩 id — 순서가 바뀌어도 ● 가 안 옮는다). */
+function zoneSourcesOfPredicate(p: FilterPredicate): { sub: string; text: string; params: ThemeZoneParams }[] {
     switch (p.kind) {
-        case "theme": return [{ text: themeZoneLabel(p), params: p }];
+        case "theme": return [{ sub: "", text: themeZoneLabel(p), params: p }];
+        // 사슬 필터 속 테마 칩 — 칩마다 한 줄(조건판 테마와 같은 payload).
+        case "breakout": return p.chain.expr.of.flatMap((t) =>
+            t.cond.kind === "theme" ? [{ sub: t.id, text: `돌파 사슬 › ${themeZoneLabel(t.cond)}`, params: t.cond }] : []);
         default: return [];
     }
 }
@@ -44,9 +47,9 @@ export function themeZoneSourcesOf(expr: SetExpr, sets: readonly SavedSet[]): Zo
     for (const { stage, via } of deepLeavesOf(expr, (id) => setOf(id)?.expr)) {
         const path = via.map((id) => `${nameOf(id)} › `).join("") + (stage.name ? `${stage.name} › ` : "");
         stage.predicates.forEach((p, pi) => {
-            zoneSourcesOfPredicate(p).forEach((src, si) => {
+            zoneSourcesOfPredicate(p).forEach((src) => {
                 const label = `${path}${src.text}`;
-                const key = `${stage.id}:${pi}:${si}`;
+                const key = `${stage.id}:${pi}:${src.sub}`;
                 out.push({ key, label, zone: zoneOf(src.params, label, key), enabled: stage.enabled });
             });
         });

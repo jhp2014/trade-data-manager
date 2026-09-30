@@ -4,7 +4,7 @@
 // 「＋ 조건」 판은 이 판의 자식 판이다 — 판 스택(ui/popover)이 부모 사슬로 안/밖을 가르므로 portal 로
 //   떨어져 있어도 그 판을 누른 것이 이 판의 바깥이 아니다. 입력 중 바깥 클릭은 스택이 blur 로 먼저 커밋한다.
 //   호출부는 key={stageId} 로 세운다 — 열린 칩 상태가 다른 줄의 같은 id(옮겨 읽은 저장물 m0·m1…)로 새지 않게.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
     BREAKOUT_BAND_MAX_PCT,
     BREAKOUT_ZIGZAG_MAX_PCT,
@@ -23,6 +23,7 @@ import { MenuItem } from "../../ui/popover/menu.js";
 import { ChainCondEditor } from "../breakout/ChainCondEditor.js";
 import { ChainExprRow, RankPick } from "../breakout/ChainExprRow.js";
 import { COND_HINT, COND_NAME, defaultCond } from "../breakout/chainChecks.js";
+import { ThemeCondEditor } from "./ThemeCondEditor.js";
 
 type BreakoutPred = Extract<CellPredicate, { kind: "breakout" }>;
 
@@ -37,15 +38,20 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
     const setExpr = (expr: ChainExpr): void => onWrite({ ...pred, chain: { ...pred.chain, expr } });
 
     // 아랫줄에 열린 칩 — 지워졌으면 닫힌다(수명은 팝오버와 같다 — 호출부의 key={stageId}).
+    // 테마 칩은 아랫줄 대신 **조건판 테마 팝오버**(한 벌)를 이 판의 자식 판으로 띄운다 — 그 자리가 openAt.
     const [openId, setOpenId] = useState<string | null>(null);
+    const [openAt, setOpenAt] = useState<{ x: number; y: number } | null>(null);
+    const openChipRef = useRef<Element | null>(null);
     const openTerm = pred.chain.expr.of.find((t) => t.id === openId) ?? null;
     const [addAt, setAddAt] = useState<{ x: number; y: number } | null>(null);
     const addCond = (kind: ChainTerm["cond"]["kind"], neg = false): void => {
         const t: ChainTerm = { kind: "check", id: newChainTermId(), cond: defaultCond(kind), ...(neg ? { neg: true } : {}) };
         setExpr(appendFlat(pred.chain.expr, t));
         setOpenId(t.id);
+        setOpenAt(addAt);
         setAddAt(null);
     };
+    const writeTerm = (next: ChainTerm): void => setExpr({ ...pred.chain.expr, of: pred.chain.expr.of.map((t) => (t.id === next.id ? next : t)) });
     const hasInnerRank = pred.chain.expr.of.some((t) => t.firstK !== undefined) || pred.chain.expr.groups.some((g) => g.firstK !== undefined);
 
     return (
@@ -66,7 +72,7 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
 
             <Layer n="2" title="사슬 필터" hint="격자 위 사슬 봉을 거르는 식 — 칩 좌클릭 = 값·순번, 우클릭 = NOT·지우기, 연산자 클릭 = AND/OR, 연산자 우클릭 = 괄호, 괄호 우클릭 = NOT·순번">
                 <ChainExprRow expr={pred.chain.expr} open={openTerm?.id ?? null}
-                    onPick={(id) => setOpenId((cur) => (cur === id ? null : id))}
+                    onPick={(id, at, el) => { setOpenId((cur) => (cur === id ? null : id)); setOpenAt(at); openChipRef.current = el; }}
                     onChange={setExpr}
                     tail={
                         <button onClick={(e) => setAddAt({ x: e.clientX, y: e.clientY })} title="봉 조건 더하기 — 줄의 바깥 연산자로 이어 붙는다"
@@ -74,10 +80,7 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
                             ＋ 조건 ▾
                         </button>
                     } />
-                {openTerm !== null && (
-                    <ChainCondEditor term={openTerm}
-                        onChange={(next) => setExpr({ ...pred.chain.expr, of: pred.chain.expr.of.map((t) => (t.id === next.id ? next : t)) })} />
-                )}
+                {openTerm !== null && openTerm.cond.kind !== "theme" && <ChainCondEditor term={openTerm} onChange={writeTerm} />}
                 <div style={{ display: "flex", alignItems: "center", gap: 4, borderTop: "1px dashed var(--border-subtle)", marginTop: 6, paddingTop: 2 }}
                     title={hasInnerRank && pred.chain.firstK !== null
                         ? `식 전체도 ${pred.chain.firstK}개로 잘리는 중 — 칩·괄호마다 순번을 쓸 때는 보통 「전부」로 둔다`
@@ -87,6 +90,28 @@ export function BreakoutCondEditor({ at, pred, onWrite, onClose }: {
                     {hasInnerRank && pred.chain.firstK !== null && <span style={{ fontSize: 10, color: "var(--warning)" }}>ⓘ</span>}
                 </div>
             </Layer>
+
+            {openTerm !== null && openTerm.cond.kind === "theme" && openAt !== null && (() => {
+                const term = openTerm;
+                const cond = openTerm.cond;
+                return (
+                    <ThemeCondEditor key={term.id} at={openAt} pred={cond} insideRefs={[openChipRef]}
+                        onWrite={(next) => writeTerm({ ...term, cond: next })}
+                        onClose={() => setOpenId(null)}
+                        footer={
+                            <div title="이 칩 조건이 참인 봉 중 사슬 안 처음 K개 — 「처음 1」 = 사슬 안에서 처음 존을 만족한 봉"
+                                style={{ display: "flex", alignItems: "center", gap: 6, borderTop: "1px dashed var(--border-strong)", marginTop: 8, paddingTop: 6 }}>
+                                <span style={{ color: "var(--accent-primary)", fontWeight: 600 }}>칩 순번</span>
+                                <RankPick value={term.firstK}
+                                    onChange={(k) => {
+                                        const { firstK: _drop, ...rest } = term;
+                                        writeTerm(k === undefined ? rest : { ...rest, firstK: k });
+                                    }} />
+                                <span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>사슬 칩에만 있는 줄</span>
+                            </div>
+                        } />
+                );
+            })()}
 
             {addAt !== null && (
                 <Panel at={addAt} onClose={() => setAddAt(null)}>

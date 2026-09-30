@@ -8,7 +8,7 @@
 //   에만 걸리므로 이 머리에 산다. 옛 모양은 부호가 한 벌(≤)이라 재적(실제 ≥)이 거꾸로 적혔다.
 // · 발화 — 상시 / 진입 시만.
 // 표는 열을 맞춘 grid 라 폭 안에서 줄바꿈이 없다(옛 flex-wrap 은 「존 정의」 줄이 넘쳐 값이 다음 줄로 떨어졌다).
-import { useMemo } from "react";
+import { useMemo, type ReactNode, type RefObject } from "react";
 import { THEME_WINDOW_MAX_MIN, type CellPredicate, type ThemeCut } from "@trade-data-manager/market/domain";
 import { NumField } from "../../components/NumField.js";
 import { RangePair } from "../../components/RangePair.js";
@@ -24,11 +24,15 @@ type ThemePred = Extract<CellPredicate, { kind: "theme" }>;
 const lbl: React.CSSProperties = { color: "var(--text-secondary)", fontWeight: 600, whiteSpace: "nowrap" };
 const grid = (cols: string): React.CSSProperties => ({ display: "grid", gridTemplateColumns: cols, alignItems: "center", columnGap: 6, rowGap: 4 });
 
-export function ThemeCondEditor({ at, pred, onWrite, onClose }: {
+export function ThemeCondEditor({ at, pred, onWrite, onClose, footer, insideRefs }: {
     at: { x: number; y: number };
     pred: ThemePred;
     onWrite: (next: ThemePred) => void;
     onClose: () => void;
+    /** 판 밑에 덧붙는 줄 — 사슬 필터 테마 칩의 「칩 순번」(조건판 테마 줄엔 없다). 나머지는 조건판과 한 벌. */
+    footer?: ReactNode;
+    /** 판을 연 칩 — 판의 "안"(다시 누르면 토글로 닫히게). */
+    insideRefs?: RefObject<Element | null>[];
 }): JSX.Element {
     const w = (patch: Partial<ThemePred>): void => onWrite({ ...pred, ...patch });
 
@@ -49,7 +53,7 @@ export function ThemeCondEditor({ at, pred, onWrite, onClose }: {
     const W = 340;
     return (
         <AnchoredPopover anchor={at} onClose={onClose} role="dialog" width={W} padding="8px 12px 10px"
-            placement="beside" offset={6} shiftX={-6} maxHeight="100vh" style={{ fontSize: 11 }}>
+            placement="beside" offset={6} shiftX={-6} maxHeight="100vh" style={{ fontSize: 11 }} insideRefs={insideRefs}>
             <Section title="존 정의" hint="존 = 대금 서수 ≤ N ∧ 등락 축 — 그날 그 분의 상위 무리"
                 right={
                     <button
@@ -135,6 +139,7 @@ export function ThemeCondEditor({ at, pred, onWrite, onClose }: {
                 <Seg options={[["always", "상시"], ["enter", "진입 시만"]]} value={pred.enter === true ? "enter" : "always"}
                     onPick={(v) => w(v === "enter" ? { enter: true } : { enter: undefined })} />
             </Section>
+            {footer}
         </AnchoredPopover>
     );
 }

@@ -1,11 +1,12 @@
 // 사슬 필터 식 — 순번은 **붙은 자리**가 뜻이다(칩·괄호·식 전체), 순번 셈은 단락하지 않는다, 사슬마다 새로 센다.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ChainBar } from "../breakoutChain.js";
 import {
     absorbChainGroup,
     canRemoveChainTerm,
     chainCandidatesOf,
     chainFilterKey,
+    chainUsesTheme,
     chainVerdicts,
     parseChainFilter,
     type ChainCond,
@@ -15,6 +16,7 @@ import {
 } from "../chainFilter.js";
 import { pruneFlat, type FlatGroup, type Op } from "../../expr/flatExpr.js";
 import { kstToUnix } from "../../kst.js";
+import { DEFAULT_THEME_ZONE, themeCutsOff, type ThemeAnswer, type ThemeZoneParams } from "../themeZone.js";
 
 // 한 사슬 봉 8개 — 대금≥50억: 1·3·4·6 / 양봉: 0·2·3·5·6·7 / 세션고가: 0·2·5.
 const AMT = [20, 60, 20, 60, 60, 20, 60, 20];
@@ -39,7 +41,7 @@ const SESS: ChainCond = { kind: "sessionHigh" };
 const t = (id: string, cond: ChainCond, x: { neg?: boolean; firstK?: number } = {}): ChainTerm => ({ kind: "check", id, cond, ...x });
 const f = (of: ChainTerm[], ops: Op[], groups: FlatGroup[] = [], firstK: number | null = null): ChainFilter =>
     ({ expr: { id: "chain", of, ops, groups }, firstK });
-const pick = (flt: ChainFilter, b = bars()) => chainCandidatesOf(b, s, flt).map((x) => x.i);
+const pick = (flt: ChainFilter, b = bars()) => chainCandidatesOf(b, s, flt)!.map((x) => x.i);
 
 describe("순번의 자리가 뜻이다", () => {
     it("① 칩 순번 — 「첫 50억 봉이 양봉이면」: 첫 50억 봉(1)이 음봉 → 없음", () => {
@@ -79,7 +81,7 @@ describe("식 전체", () => {
     });
 
     it("꼬리 순번은 식을 통과한 봉끼리 센다(rank)", () => {
-        const v = chainVerdicts(bars(), s, f([t("a", AMOUNT)], [], [], 2));
+        const v = chainVerdicts(bars(), s, f([t("a", AMOUNT)], [], [], 2))!;
         expect(v.map((x) => x.rank)).toEqual([null, 0, null, 1, 2, null, 3, null]);
         expect(v.filter((x) => x.picked).map((x) => x.bar.i)).toEqual([1, 3]);
     });
@@ -190,5 +192,64 @@ describe("parseChainFilter", () => {
         expect(parseChainFilter({ expr: { of: [] }, firstK: null }).firstK).toBeNull();
         const r = parseChainFilter({ expr: { of: [{ kind: "check", id: "p", cond: { kind: "pos", min: 5, max: 2 } }] }, firstK: 1 });
         expect(r.expr.of[0]!.cond).toEqual({ kind: "pos", min: 2, max: 5 });
+    });
+});
+
+describe("테마 칩 — 조건판 테마와 한 벌(2026-09-30)", () => {
+    // 봉 0~7 = 09:00~09:07 → 자정기준 분 540~547. 테마는 09:03(543) 부터 통과.
+    const THEME: ChainCond = { kind: "theme", ...DEFAULT_THEME_ZONE };
+    const ans = (pass: boolean): ThemeAnswer => ({ pass, zoneRank: null, theme: null });
+    const mat = (fn: (min: number, p: ThemeZoneParams) => ThemeAnswer | null) => ({ themeAt: vi.fn(fn) });
+    const from903 = () => mat((min) => ans(min >= 543));
+
+    it("「테마 · 처음 1」 = 사슬 안에서 처음 존을 만족한 봉(3)", () => {
+        expect(chainCandidatesOf(bars(), s, f([t("th", THEME, { firstK: 1 })], []), from903())!.map((x) => x.i)).toEqual([3]);
+    });
+
+    it("「대금≥50억 AND 테마」 · 꼬리 처음 1 = 둘 다인 첫 봉(3) — 대금 탈락 봉은 테마를 안 부른다", () => {
+        const m = from903();
+        expect(chainCandidatesOf(bars(), s, f([t("a", AMOUNT), t("th", THEME)], ["and"], [], 1), m)!.map((x) => x.i)).toEqual([3]);
+        // 대금≥50억 봉 = 1·3·4·6 → 테마 호출은 그 넷뿐.
+        expect(m.themeAt.mock.calls.map((c) => c[0])).toEqual([541, 543, 544, 546]);
+    });
+
+    it("순번 붙은 테마 칩은 결과가 정해져도 늘 센다 — 「대금≥50억 AND 테마·처음1」", () => {
+        const m = from903();
+        // 테마 첫 통과 봉 = 3(대금 60 → 통과). 대금 탈락 봉(0·2)에서도 테마를 세야 뜻이 선다.
+        expect(chainCandidatesOf(bars(), s, f([t("a", AMOUNT), t("th", THEME, { firstK: 1 })], ["and"]), m)!.map((x) => x.i)).toEqual([3]);
+        expect(m.themeAt).toHaveBeenCalledTimes(8);
+    });
+
+    it("순번 든 칩이 순번 없는 괄호 안에 있고 앞 형제가 결과를 정해도 늘 센다 — 세션고가 OR (양봉 AND 대금·처음1)", () => {
+        // 세션고가 = 0·2·5 → OR 가 참으로 정해진 봉에서도 괄호 속 「대금·처음1」은 센다: 첫 50억 봉 = 1(음봉) → 괄호는 영영 거짓.
+        const e = f([t("s", SESS), t("b", BULLC), t("a", AMOUNT, { firstK: 1 })], ["or", "and"], [{ from: 1, to: 2 }]);
+        expect(pick(e)).toEqual([0, 2, 5]);
+        // 봉 1 이 세션고가여서 OR 가 먼저 정해져도 괄호 속 「대금·처음1」은 봉 1 에서 소모된다 — 봉 3(양봉·60억)은 괄호로 안 뽑힌다.
+        const s2 = bars().map((b) => (b.i === 1 ? { ...b, sessionHigh: true } : b));
+        expect(pick(e, s2)).toEqual([0, 1, 2, 5]);
+    });
+
+    it("재료 없음·모름은 그 종목 판정 전체가 모름(null) — NOT 테마가 전부 통과라고 거짓말하지 않게", () => {
+        const neg = f([t("th", THEME, { neg: true })], []);
+        expect(chainVerdicts(bars(), s, neg)).toBeNull();
+        expect(chainVerdicts(bars(), s, neg, mat((min) => (min === 545 ? null : ans(false))))).toBeNull();
+        expect(chainCandidatesOf(bars(), s, neg, mat(() => ans(false)))!.map((x) => x.i)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    });
+
+    it("컷이 안 켜진 칩 = 조건 아님(참) — 재료를 부르지도 않고, 없어도 모름이 아니다", () => {
+        const off: ChainCond = { kind: "theme", ...DEFAULT_THEME_ZONE, ...themeCutsOff(), enter: true };
+        const flt = f([t("th", off)], []);
+        expect(chainUsesTheme(flt)).toBe(false);
+        expect(pick(flt)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    });
+
+    it("파서 왕복 · 키는 필드 순서에 불변", () => {
+        const flt = f([t("th", { ...THEME, count: { on: true, min: 3, max: 5 } }, { firstK: 1 })], []);
+        const back = parseChainFilter(JSON.parse(JSON.stringify(flt)));
+        expect(back.expr.of[0]!.cond).toEqual({ ...THEME, count: { on: true, min: 3, max: 5 } });
+        const cond = flt.expr.of[0]!.cond;
+        const reversed = Object.fromEntries(Object.entries(cond).reverse()) as ChainCond;
+        const shuffled = f([t("th", reversed, { firstK: 1 })], []);
+        expect(chainFilterKey(shuffled)).toBe(chainFilterKey(flt));
     });
 });
