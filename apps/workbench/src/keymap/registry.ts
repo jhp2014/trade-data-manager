@@ -4,6 +4,8 @@ import { useUi } from "../store/ui.js";
 import { useDock, PRESET_COUNT } from "../store/dock.js";
 import { useWorkbench } from "../store/workbench.js";
 import { useKeymapDynamic } from "./dynamic.js";
+import { pressSlot } from "../components/header/shortcut.js";
+import { SLOT_DIGITS } from "../components/header/spec.js";
 
 // 화면(프리셋)별 Tab 순환 링 — 링 출처 화면의 링에서 지금 배치에 살아있는 멤버만 골라 setActive 로 순환.
 // 링/멤버가 부족하면 false 반환(호출부가 활성그룹 탭 순환으로 폴백). setActive 는 같은그룹 탭전환·타그룹 포커스이동 둘 다 커버.
@@ -60,7 +62,17 @@ const historyCommands: Command[] = [
     { id: "history.nav.newer", title: "위로·더 최근(최근 탐색)", category: "탐색", keys: "alt+w", run: () => useWorkbench.getState().stepHistory(-1) },
     { id: "history.nav.older", title: "아래로·더 과거(최근 탐색)", category: "탐색", keys: "alt+s", run: () => useWorkbench.getState().stepHistory(1) },
 ];
-const staticRaw: Command[] = [...appCommands, ...presetCommands, ...dockCommands, ...historyCommands];
+// 패널 컨트롤 단축키 — 맨숫자 1~5, **활성 패널** 대상(w/s 소유자와 다른 축 — 이건 "지금 보는 판").
+// 배정은 컨트롤 모음 판의 숫자 배지(대기 상태를 pressSlot 이 소비 — 같은 키를 두 곳이 등록하지 않는다).
+// 입력창 포커스 중 무시는 디스패처의 isEditable 가드(수식키 없음)가 이미 진다. Ctrl+1~5(프리셋)와 별개.
+const headerSlotCommands: Command[] = SLOT_DIGITS.map((n) => ({
+    id: `header.slot.${n}`,
+    title: `패널 컨트롤 ${n} (활성 패널)`,
+    category: "패널",
+    keys: `${n}`,
+    run: () => pressSlot(useDock.getState().api?.activePanel?.id, n),
+}));
+const staticRaw: Command[] = [...appCommands, ...presetCommands, ...dockCommands, ...historyCommands, ...headerSlotCommands];
 
 export const staticCommands: Command[] = staticRaw.map((c) => ({ ...c, keys: canonicalChord(c.keys) }));
 

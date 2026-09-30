@@ -7,6 +7,7 @@
 // plane = 데이터 평면: live(브로커 실시간, 종목만 구동) / eod(DB 복기·분석, 종목+날짜+시간).
 import type { FunctionComponent } from "react";
 import type { IDockviewPanelProps } from "dockview-react";
+import { PanelFrame } from "../components/header/PanelFrame.js";
 import { ChartPanel, defaultChartView } from "../panels/ChartPanel.js";
 import { useWorkbench } from "../store/workbench.js";
 import { ThemeBoardPanel } from "../panels/ThemeBoardPanel.js";
@@ -151,9 +152,13 @@ export const SEED_SLOT_IDS: string[] = PANEL_TYPES.flatMap((t) =>
     Array.from({ length: t.seedSlots ?? 1 }, (_, i) => slotIdOf(t.idBase, i + 1)),
 );
 
-/** dockview 에 넘길 components 맵 — 카탈로그에서 파생한다(별도 맵을 손으로 유지하지 않는다). */
+/**
+ * dockview 에 넘길 components 맵 — 카탈로그에서 파생한다(별도 맵을 손으로 유지하지 않는다).
+ * 모든 패널은 PanelFrame(헤더 첫 줄·바닥 줄·오버레이 칩)에 감싸인다 — 패널이 헤더 선언을 등록하면
+ * 틀이 그린다. 등록 없는 패널에는 본문뿐인 틀이라 화면이 안 변한다.
+ */
 export function panelComponents(): Record<string, FunctionComponent<IDockviewPanelProps>> {
     const out: Record<string, FunctionComponent<IDockviewPanelProps>> = {};
-    for (const t of PANEL_TYPES) out[t.component] ??= (props) => t.render(props.api.id);
+    for (const t of PANEL_TYPES) out[t.component] ??= (props) => <PanelFrame panelId={props.api.id}>{t.render(props.api.id)}</PanelFrame>;
     return out;
 }

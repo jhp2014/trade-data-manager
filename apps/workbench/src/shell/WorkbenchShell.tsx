@@ -11,6 +11,8 @@ import { loadLastLayout, useDock } from "../store/dock.js";
 import { panelComponents, panelTypeOf, planeOf } from "./panelCatalog.js";
 import { rowNavOwnerOfBase, useRowNavRole } from "../lib/rowNav.js";
 import { duplicatePanel } from "../lib/openPanel.js";
+import { HeaderButtons } from "../components/header/HeaderButtons.js";
+import { TabInfoChips } from "../components/header/TabInfoChips.js";
 
 // dockview 도킹 셸 — 패널 목록·렌더는 전부 panelCatalog 가 소유하고, 여기는 셸(탭·헤더 액션·복원)만.
 const components = panelComponents();
@@ -50,12 +52,17 @@ function onReady(event: DockviewReadyEvent): void {
 function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
     const [title, setTitle] = useState(props.api.title);
     const [active, setActive] = useState(props.api.isActive);
+    // 정보 칩은 그룹마다 **보이는 탭**에만 붙는다(isVisible) — api.isActive 는 화면 전체에 하나라
+    // 다른 그룹을 누를 때마다 온 탭 줄이 출렁인다.
+    const [visible, setVisible] = useState(props.api.isVisible);
     useEffect(() => {
         const d1 = props.api.onDidTitleChange(() => setTitle(props.api.title));
         const d2 = props.api.onDidActiveChange(() => setActive(props.api.isActive));
+        const d3 = props.api.onDidVisibilityChange(() => setVisible(props.api.isVisible));
         return () => {
             d1.dispose();
             d2.dispose();
+            d3.dispose();
         };
     }, [props.api]);
     // 플레인 탭 구분(점 없이 UI 색으로) — 실시간=앰버 / 복기=teal. 텍스트색 + 옅은 배경 + 하단 2px 색띠(배경 겹쳐도 또렷).
@@ -81,6 +88,7 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
                     }}>w/s</span>
             )}
             <span style={{ fontWeight: active ? 700 : 400, opacity: active ? 1 : 0.85 }}>{title}</span>
+            <TabInfoChips panelId={props.api.id} visible={visible} />
             {duplicable && (
                 <button
                     onClick={(e) => {
@@ -107,29 +115,12 @@ function PanelTab(props: IDockviewPanelHeaderProps): JSX.Element {
     );
 }
 
-// 그룹 헤더 우측 액션 — 플로팅 ↔ 도킹 토글(dockview 는 드래그 기본 UI 가 없어 버튼으로 트리거).
-// 플로팅: 그리드 위에 떠서 겹침. 도킹: 기존 그리드 그룹 오른쪽으로 복귀.
+// 그룹 헤더 우측 액션 — **활성 패널의 모음 버튼 둘**(ⓘ 정보 · 슬라이더 컨트롤). 컨트롤은 어차피
+// 활성 패널 대상이라 그룹당 한 벌이면 되고, activePanel 은 dockview 가 탭 전환마다 갱신해 준다.
+// (옛 플로팅 ↔ 도킹 토글 ⧉ 은 기능째 은퇴 — 미사용, 2026-09-30 사용자 확정. 저장 배치에 이미 떠 있는
+// 그룹은 그대로 로드되고, 탭 드래그로 그리드에 되붙일 수 있다.)
 function HeaderActions(props: IDockviewHeaderActionsProps): JSX.Element {
-    const floating = props.api.location.type === "floating";
-    const toggle = (): void => {
-        if (floating) {
-            const target = props.containerApi.groups.find((g) => g.api.location.type === "grid" && g.id !== props.group.id);
-            props.api.moveTo(target ? { group: target, position: "right" } : { position: "center" });
-        } else {
-            props.containerApi.addFloatingGroup(props.group, { position: { left: 140, top: 90 }, width: 580, height: 440 });
-        }
-    };
-    return (
-        <div style={{ display: "flex", alignItems: "center", height: "100%", padding: "0 6px" }}>
-            <button
-                onClick={toggle}
-                title={floating ? "도킹으로 복귀" : "플로팅 창으로 띄우기"}
-                style={{ padding: "0 6px", color: floating ? "var(--accent-primary)" : "var(--text-tertiary)", fontSize: 14, lineHeight: 1, cursor: "pointer" }}
-            >
-                {floating ? "⊟" : "⧉"}
-            </button>
-        </div>
-    );
+    return <HeaderButtons panelId={props.activePanel?.id} />;
 }
 
 /**

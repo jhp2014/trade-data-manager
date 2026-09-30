@@ -18,7 +18,7 @@ export function App(): JSX.Element {
     useRowNavHotkeys();
     // 첫 시선 날짜를 데이터 있는 날로 1회 보정 — 주말·휴장일에 켜면 전부 빈 화면이 된다.
     useSnapFocusDate();
-    useChartHotkeys(); // 차트 단축키(space·1~9·a/d·shift·ctrl·f) 전역 1회 등록 — focus 따라감, 차트 여러 개여도 무충돌.
+    useChartHotkeys(); // 차트 단축키(a/d·shift+a/d·ctrl+a/d·f·e) 전역 1회 등록 — focus 따라감, 차트 여러 개여도 무충돌.
     const settingsOpen = useUi((s) => s.settingsOpen);
     const closeSettings = useUi((s) => s.closeSettings);
     return (
