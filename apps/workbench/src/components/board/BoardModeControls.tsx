@@ -63,7 +63,8 @@ export function useBoardHeader({ panelId, dotColor, label, count, mode, setMode,
         ],
         controls: [
             {
-                kind: "popover", id: "filter", name: "배제 필터", label: "필터", width: 400,
+                // label = 판의 열기 트리거 요약 — 걸린 개수(없으면 「없음」). 이름은 줄이 이미 말한다.
+                kind: "popover", id: "filter", name: "배제 필터", label: filterOn && filter ? `${filter.groups.length}개` : "없음", width: 400,
                 available: !!filter && !!filterEditor, on: filterOn, activeColor: "var(--accent-primary)",
                 help: filterOn && filter ? `배제 필터 ${filter.groups.length}개 적용중 — 열어서 편집` : "배제 필터 편집",
                 renderPopover: (close) => filterEditor?.(close),

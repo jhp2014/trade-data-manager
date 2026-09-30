@@ -46,8 +46,9 @@ describe("DailyExplorePanel", () => {
             ],
         });
         const { container, baseElement } = renderExplore();
-        const groupsBtn = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("조건 그룹"))!;
-        expect(groupsBtn.textContent).toContain("조건 그룹 2"); // 자동 = a, b
+        // 판형 컨트롤의 열기 트리거 — 이름은 줄(span)이 말하고 트리거는 요약("N개 ▾")만 든다. title 로 집는다.
+        const groupsBtn = [...container.querySelectorAll("button")].find((b) => (b.title ?? "").startsWith("열로 세울 조건 그룹"))!;
+        expect(groupsBtn.textContent).toContain("2개"); // 자동 = a, b
 
         act(() => { fireEvent.click(groupsBtn); });
         // 팝오버(포털 — 패널 밖)의 항목만 잡는다. 범례 줄에도 같은 이름의 버튼이 선다.
@@ -72,8 +73,8 @@ describe("DailyExplorePanel", () => {
             panelUi: { [PANEL]: { exploreGroups: [...Array.from({ length: MAX_GROUPS - 1 }, (_, i) => `ghost${i}`), "a"] } },
         });
         const { container, baseElement } = renderExplore();
-        const groupsBtn = [...container.querySelectorAll("button")].find((btn) => (btn.textContent ?? "").includes("조건 그룹"))!;
-        expect(groupsBtn.textContent, "산 것만 열로").toContain("조건 그룹 1");
+        const groupsBtn = [...container.querySelectorAll("button")].find((btn) => (btn.title ?? "").startsWith("열로 세울 조건 그룹"))!;
+        expect(groupsBtn.textContent, "산 것만 열로").toContain("1개");
         act(() => { fireEvent.click(groupsBtn); });
         const item = [...baseElement.querySelectorAll<HTMLButtonElement>("button")].find((btn) => !container.contains(btn) && (btn.textContent ?? "").includes("눌림"))!;
         expect(item.disabled, "유령 + 산 1 이 상한을 채운 척하면 안 된다").toBe(false);

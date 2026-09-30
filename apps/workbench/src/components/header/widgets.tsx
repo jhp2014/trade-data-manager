@@ -15,14 +15,112 @@ import type { ActionSpec, ChoiceSpec, ControlSpec, PopoverSpec, ToggleSpec } fro
 const TRIGGER_MAX_W = 96;
 
 /**
- * 컨트롤 하나의 손잡이 — 첫 줄 배치(renderInline 이 없을 때)와 모음 판이 같은 것을 쓴다(학습이 한 벌).
- * 첫 줄에서는 패널이 renderInline 을 선언했다면 그것이 이긴다 — 그 갈림은 호출하는 쪽(PanelFrame)의 몫.
+ * 컨트롤 하나의 손잡이 — **첫 줄 배치**용(renderInline 이 없을 때). 헤더 줄의 규약(폭 잠금·순환·
+ * 경량 텍스트)을 따른다. 모음 판은 BoardControlValue 를 쓴다 — 판은 자리가 넉넉해 성격이 그대로
+ * 보이는 조작(스위치·세그먼트·버튼)이 서고, 줄은 폭이 귀해 글자 조작이 선다(자리가 다르면 표기도 다르다).
  */
 export function ControlValue({ spec }: { spec: ControlSpec }): JSX.Element {
     if (spec.kind === "toggle") return <ToggleControl spec={spec} />;
     if (spec.kind === "action") return <ActionControl spec={spec} />;
     if (spec.kind === "popover") return <PopoverControl spec={spec} />;
     return spec.values.length <= CYCLE_MAX ? <CycleControl spec={spec} /> : <PickControl spec={spec} />;
+}
+
+/**
+ * 모음 판의 손잡이 — 성격이 모양으로 보인다: 토글 = 스위치 · 택1 = 세그먼트(값이 다 보이고 하나가
+ * 채워짐 — 순환은 "다음이 뭔지 모른다"는 약점이 있어 자리가 있으면 세그먼트가 낫다) ·
+ * 액션 = 테두리 버튼(누르면 일이 일어남) · 판형 = 열기 트리거(▾).
+ */
+export function BoardControlValue({ spec }: { spec: ControlSpec }): JSX.Element {
+    if (spec.kind === "toggle") return <SwitchControl spec={spec} />;
+    if (spec.kind === "action") return <BoardActionButton spec={spec} />;
+    if (spec.kind === "popover") return <BoardPopoverOpener spec={spec} />;
+    return spec.values.length <= SEGMENT_MAX ? <SegmentControl spec={spec} /> : <PickControl spec={spec} />;
+}
+
+/** 세그먼트로 세울 최대 값 수 — 넘으면 고르기 판(칸이 판 폭을 밀어낸다). */
+const SEGMENT_MAX = 4;
+
+/** 판의 토글 — 스위치(켜짐 = 트랙 채움). 켜짐 색은 activeColor(기본 액센트). */
+function SwitchControl({ spec }: { spec: ToggleSpec }): JSX.Element {
+    const on = spec.on;
+    const color = spec.activeColor ?? "var(--accent-primary)";
+    return (
+        <button role="switch" aria-checked={on} aria-label={spec.name} onClick={() => spec.set(!on)}
+            disabled={spec.disabled} title={spec.help ?? spec.name}
+            style={{
+                width: 26, height: 14, borderRadius: 7, border: "none", padding: 0, flexShrink: 0,
+                background: on ? color : "var(--border-strong)", position: "relative",
+                cursor: spec.disabled ? "default" : "pointer", opacity: spec.disabled ? 0.4 : 1,
+                transition: "background 120ms ease",
+            }}>
+            <span style={{
+                position: "absolute", top: 2, left: on ? 14 : 2, width: 10, height: 10, borderRadius: 5,
+                background: "#fff", transition: "left 120ms ease",
+            }} />
+        </button>
+    );
+}
+
+/** 판의 택1 — 세그먼트. 값마다 색이 있으면(w/s 걷는 중) 고른 칸이 그 색을 입는다. */
+function SegmentControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
+    return (
+        <span title={spec.help ?? spec.name}
+            style={{ display: "inline-flex", flexShrink: 0, border: "1px solid var(--border-default)", borderRadius: 4, overflow: "hidden" }}>
+            {spec.values.map((o) => {
+                const on = o.v === spec.value;
+                return (
+                    <button key={o.v} onClick={() => spec.set(o.v)}
+                        style={{
+                            border: "none", cursor: "pointer", fontSize: 10.5, padding: "2px 8px", whiteSpace: "nowrap",
+                            background: on ? "var(--accent-soft)" : "none",
+                            color: on ? (o.color ?? "var(--accent-hover)") : "var(--text-tertiary)",
+                            fontWeight: on ? 600 : 400,
+                        }}>
+                        {o.label}
+                    </button>
+                );
+            })}
+        </span>
+    );
+}
+
+/** 판의 액션 — 테두리 버튼(누르면 일이 일어난다는 얼굴). 할 게 없으면 사라지지 않고 흐려진다. */
+export function BoardActionButton({ spec }: { spec: ActionSpec }): JSX.Element {
+    return (
+        <button onClick={() => spec.run()} disabled={spec.disabled} title={spec.help ?? spec.name}
+            style={{
+                fontSize: 11, padding: "2px 10px", borderRadius: 4, flexShrink: 0, whiteSpace: "nowrap",
+                border: "1px solid var(--border-default)", background: "none", color: "var(--text-secondary)",
+                cursor: spec.disabled ? "default" : "pointer", opacity: spec.disabled ? 0.4 : 1,
+            }}>
+            {spec.label ?? spec.name}
+        </button>
+    );
+}
+
+/** 판의 판형 — 열기 트리거(`요약 ▾`). label = 짧은 값 요약("3개"), 없으면 「열기」. 켜짐(on)은 색으로. */
+function BoardPopoverOpener({ spec }: { spec: PopoverSpec }): JSX.Element {
+    const active = spec.on === true;
+    const color = spec.activeColor ?? "var(--accent-primary)";
+    return (
+        <TriggerPopover
+            width={spec.width}
+            trigger={(open, toggle) => (
+                <button onClick={toggle} disabled={spec.disabled} title={spec.help ?? spec.name}
+                    style={{
+                        fontSize: 11, padding: "2px 10px", borderRadius: 4, flexShrink: 0, whiteSpace: "nowrap",
+                        border: `1px solid ${active ? color : "var(--border-default)"}`, background: open ? "var(--bg-tertiary)" : "none",
+                        color: active ? color : "var(--text-secondary)", fontWeight: active ? 600 : 400,
+                        cursor: spec.disabled ? "default" : "pointer", opacity: spec.disabled ? 0.4 : 1,
+                    }}>
+                    {spec.label ?? "열기"} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>▾</span>
+                </button>
+            )}
+        >
+            {(close) => spec.renderPopover(close)}
+        </TriggerPopover>
+    );
 }
 
 /**

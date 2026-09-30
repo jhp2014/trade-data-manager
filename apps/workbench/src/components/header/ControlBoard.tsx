@@ -4,7 +4,7 @@
 import { useEffect } from "react";
 import { useHeaderLedger, controlPlaceOf, digitOf, typeKeyOf } from "./ledger.js";
 import { useHeaderDecl, useHeaderRegistry } from "./registry.js";
-import { ControlValue } from "./widgets.js";
+import { BoardActionButton, BoardControlValue } from "./widgets.js";
 import type { ControlSpec } from "./spec.js";
 
 export function ControlBoard({ panelId }: { panelId: string }): JSX.Element {
@@ -47,11 +47,18 @@ function BoardRow({ spec, panelId, typeKey, digit, armed }: {
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px" }}>
             <DigitBadge panelId={panelId} typeKey={typeKey} controlId={spec.id} digit={digit} armed={armed} />
-            <span style={{ flex: 1, minWidth: 0, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {spec.name}
-            </span>
+            {spec.kind === "action" ? (
+                // 액션은 이름 자리가 곧 버튼 — 이름 옆에 같은 글자의 버튼을 또 세우면 판이 말을 두 번 한다.
+                <span style={{ flex: 1, minWidth: 0 }}><BoardActionButton spec={spec} /></span>
+            ) : (
+                <>
+                    <span style={{ flex: 1, minWidth: 0, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {spec.name}
+                    </span>
+                    <BoardControlValue spec={spec} />
+                </>
+            )}
             {spec.nav === true && <PlacePin spec={spec} typeKey={typeKey} />}
-            <ControlValue spec={spec} />
             <HelpDot help={spec.help} />
         </div>
     );

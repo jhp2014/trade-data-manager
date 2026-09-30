@@ -207,7 +207,8 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                 set: () => setDatePinned((v) => !v),
             },
             {
-                kind: "popover", id: "groups", name: "조건 그룹", label: `조건 그룹 ${groupCols.length}`, width: 230,
+                // label = 판의 열기 트리거 요약("N개") — 이름은 줄이 이미 말한다.
+                kind: "popover", id: "groups", name: "조건 그룹", label: `${groupCols.length}개`, width: 230,
                 help: `열로 세울 조건 그룹(저장 집합) 고르기 — 최대 ${MAX_GROUPS}개. 기본은 보는 집합의 최상위 부품`,
                 renderPopover: () => (
                     <GroupMenuContent pickedIds={picked} groupSets={groupSets} savedSets={savedSets} nameOf={groupName} onPick={setPicked} />

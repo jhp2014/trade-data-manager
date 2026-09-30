@@ -71,7 +71,8 @@ describe("라벨 [탐색] — 목록", () => {
 
     it("열 판에서 고르면 (이름, 종류)로 영속되고 그 열 ●/○ 행만 선다", () => {
         const { container, baseElement } = renderLabel();
-        const colsBtn = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("라벨 열"))!;
+        // 판형 컨트롤의 열기 트리거 — 이름은 줄(span)이 말하고 트리거는 요약("N개 ▾")만 든다. title 로 집는다.
+        const colsBtn = [...container.querySelectorAll("button")].find((b) => (b.title ?? "").startsWith("열로 세울 라벨"))!;
         act(() => { fireEvent.click(colsBtn); });
         const items = [...baseElement.querySelectorAll<HTMLButtonElement>("button")].filter((b) => !container.contains(b) && (b.textContent ?? "").includes("주도"));
         expect(items, "주도는 하루 라벨 절에만").toHaveLength(1);

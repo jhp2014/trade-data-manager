@@ -5,10 +5,12 @@ import { useMemo } from "react";
 import { setRowNavRole, useRowNavRole, type RowNavOwner, type RowNavRole } from "../lib/rowNav.js";
 import type { ChoiceSpec } from "./header/spec.js";
 
+// 라벨에 "w/s" 접두가 없다 — 이름("w/s 순회")이 이미 말하고, 모음 판의 세그먼트는 세 값이 나란히
+// 서므로 접두가 세 번 반복되면 시끄럽다(값 하나만 보이던 옛 순환 시절의 표기).
 const VALUES: ChoiceSpec["values"] = [
-    { v: "join", label: "w/s 참여" },
-    { v: "walk", label: "w/s 걷는 중", color: "var(--walk)" },
-    { v: "out", label: "w/s 빠짐" },
+    { v: "join", label: "참여" },
+    { v: "walk", label: "걷는 중", color: "var(--walk)" },
+    { v: "out", label: "빠짐" },
 ];
 
 /** `owner: null` = 이 판은 후보가 아니다(보드 공용 머리가 실시간 보드에 쓰일 때) → `available: false`. */

@@ -122,7 +122,8 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                 help: "고른 라벨 = 고른 열 중 하나라도 ●/○ 인 타점만 · 모든 라벨 = 라벨 붙은 타점 전부(열은 표시만)",
             },
             {
-                kind: "popover", id: "cols", name: "라벨 열", label: `라벨 열 ${cols.length}`, width: 250,
+                // label = 판의 열기 트리거 요약("N개") — 이름은 줄이 이미 말한다.
+                kind: "popover", id: "cols", name: "라벨 열", label: `${cols.length}개`, width: 250,
                 help: "열로 세울 라벨 고르기 — ◆ 타점 / ▣ 하루, 최대 10개. 부모를 고르면 하위가 ○ 로 잡힌다",
                 renderPopover: () => (
                     <LabelColMenuContent cols={cols.map(({ name, scope }) => ({ name, scope }))} onPick={(next) => setRawCols(next)} />

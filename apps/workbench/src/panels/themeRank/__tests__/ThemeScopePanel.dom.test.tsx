@@ -40,7 +40,7 @@ describe("관찰판 — 연동·판정이 원리적으로 없다", () => {
 
 describe("존 ▾ — 걸린 테마 조건에서 존 값을 **복사**한다", () => {
     const openZone = (container: HTMLElement): void => {
-        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "") === "존")!;
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.title ?? "").startsWith("걸린 테마 조건에서"))!;
         act(() => { fireEvent.click(trigger); });
     };
     const item = (text: string): HTMLElement =>
@@ -93,7 +93,7 @@ describe("존 ▾ — 걸린 테마 조건에서 존 값을 **복사**한다", (
 describe("축 ▾ — 창 임의 분 입력이 인스턴스 영속으로 커밋된다", () => {
     it("45분 입력(Enter) → panelUi axes.windowMin=45, 헤더 요약이 따라온다", () => {
         const { container } = renderPanel();
-        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "") === "축")!;
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.title ?? "").startsWith("이 창의 축 설정"))!;
         act(() => { fireEvent.click(trigger); });
         const input = document.body.querySelector("input")!;
         act(() => {
@@ -106,7 +106,7 @@ describe("축 ▾ — 창 임의 분 입력이 인스턴스 영속으로 커밋�
 
     it("모드 택(등락 값) → 저장 + 요약 반영", () => {
         const { container } = renderPanel();
-        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "") === "축")!;
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.title ?? "").startsWith("이 창의 축 설정"))!;
         act(() => { fireEvent.click(trigger); });
         // 팝오버의 "등락" 줄 안 "값" 버튼 — 줄(span)로 좁혀 찾는다.
         const row = [...document.body.querySelectorAll("span")].find((s) => (s.textContent ?? "").startsWith("등락순위값"))
@@ -119,7 +119,7 @@ describe("축 ▾ — 창 임의 분 입력이 인스턴스 영속으로 커밋�
 
 describe("축 ▾ — % 선 칩(panelUi rateTicks, 부재 = 기본)", () => {
     const open = (container: HTMLElement): void => {
-        const trigger = [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "") === "축")!;
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.title ?? "").startsWith("이 창의 축 설정"))!;
         act(() => { fireEvent.click(trigger); });
     };
     const chipRow = (): HTMLElement => [...document.body.querySelectorAll("span")].find((s) => (s.textContent ?? "").startsWith("% 선"))!;
