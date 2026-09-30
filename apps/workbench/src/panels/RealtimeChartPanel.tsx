@@ -106,7 +106,7 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
         searchLineControl(showLine, () => setShowLine((v) => !v)),
         guideControl(showGuide, () => setShowGuide((v) => !v)),
         {
-            kind: "toggle", id: "alarmLines", name: "알람선", activeColor: ALARM,
+            kind: "toggle", id: "alarmLines", name: "알람 가격선", label: "알람선", activeColor: ALARM,
             help: "이 종목 알람의 가격 조건을 수평선으로", on: showAlarmLines, set: () => setShowAlarmLines((v) => !v),
         },
         marketControl(mode, setMode),

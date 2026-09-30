@@ -146,7 +146,7 @@ export function ChartPanes({
 
 /** 영역 전환 — 일봉만 / 분봉만 / 둘 다. 셋이라 순환이다. */
 export const viewControl = (view: ChartView, setView: (v: ChartView) => void): ControlSpec => ({
-    kind: "choice", id: "view", name: "영역", help: "일봉만 · 분봉만 · 둘 다",
+    kind: "choice", id: "view", name: "차트 영역", help: "일봉만 · 분봉만 · 둘 다",
     values: [{ v: "daily", label: "일봉" }, { v: "minute", label: "분봉" }, { v: "both", label: "일봉+분봉" }],
     value: view, set: (v) => setView(v as ChartView),
 });
@@ -158,20 +158,22 @@ export const resetSearchControl = (drifted: boolean, reset: () => void): Control
     run: () => { reset(); return "기준일로 복귀"; },
 });
 
+// 이름은 판에서 홀로 읽혀도 뜻이 서게(2026-09-30 검수) — 옛 헤더 시절의 압축 이름("고정"·"스케일"·"30%")은
+// 이웃 문맥 없이는 수수께끼였다. ⚠ id 는 그대로 — 바꾸면 그 컨트롤의 배치·단축키 장부가 초기화된다.
 export const pinControl = (on: boolean, toggle: () => void): ControlSpec => ({
-    kind: "toggle", id: "pinMinute", name: "고정", activeColor: ACCENT,
+    kind: "toggle", id: "pinMinute", name: "분봉 기준일 고정", label: "고정", activeColor: ACCENT,
     help: "분봉을 기준일에 고정(일봉 봉 클릭을 무시한다)",
     on, set: toggle,
 });
 
 export const scaleControl = (on: boolean, toggle: () => void): ControlSpec => ({
-    kind: "toggle", id: "lockScale", name: "스케일", activeColor: ACCENT,
+    kind: "toggle", id: "lockScale", name: "분봉 시간축 고정", label: "스케일", activeColor: ACCENT,
     help: "분봉 시간축 고정 — 종목·날짜를 바꿔도 보던 창을 유지한다",
     on, set: toggle,
 });
 
 export const amountMarkerControl = (on: boolean, toggle: () => void): ControlSpec => ({
-    kind: "toggle", id: "amountMarker", name: "분봉 대금", activeColor: ACCENT,
+    kind: "toggle", id: "amountMarker", name: "분봉 대금 마커", label: "대금", activeColor: ACCENT,
     help: "분봉 거래대금 마커", on, set: toggle,
 });
 
@@ -182,12 +184,12 @@ export const anchorMarkControl = (on: boolean, toggle: () => void): ControlSpec 
 });
 
 export const searchLineControl = (on: boolean, toggle: () => void): ControlSpec => ({
-    kind: "toggle", id: "searchLine", name: "검색 날짜", activeColor: ACCENT,
+    kind: "toggle", id: "searchLine", name: "검색 날짜 선", label: "검색선", activeColor: ACCENT,
     help: "검색 날짜 세로선", on, set: toggle,
 });
 
 export const guideControl = (on: boolean, toggle: () => void): ControlSpec => ({
-    kind: "toggle", id: "guide", name: "30%", activeColor: ACCENT,
+    kind: "toggle", id: "guide", name: "+30% 가이드선", label: "30%", activeColor: ACCENT,
     help: "+30% 가이드선(검색일 전일종가 기준)", on, set: toggle,
 });
 

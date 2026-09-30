@@ -110,12 +110,12 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
         ],
         controls: [
             {
-                kind: "popover", id: "axes", name: "축", width: 340, nav: true,
+                kind: "popover", id: "axes", name: "축 설정", label: "축", width: 340, nav: true,
                 help: "이 창의 축 설정 — 인스턴스마다 따로 저장된다(⧉ 복제 시 사본이 같이 간다)",
                 renderPopover: () => <AxisControls axes={axes} onChange={setAxesRaw} rateTicks={rateTicks} onRateTicks={setRateTicks} />,
             },
             {
-                kind: "popover", id: "zone", name: "존", width: 360, nav: true, on: zone !== null, activeColor: "var(--accent-primary)",
+                kind: "popover", id: "zone", name: "존 겹침", label: zone !== null ? zone.from : "존", width: 360, nav: true, on: zone !== null, activeColor: "var(--accent-primary)",
                 help: "걸린 테마 조건에서 존 값을 복사해 빨간 점선으로 겹친다(판정 없음 — 조건은 일별 타점 [생성])",
                 renderPopover: (close) => <ZoneMenu zone={zone} onPick={(z) => { pickZone(z); close(); }} />,
             },

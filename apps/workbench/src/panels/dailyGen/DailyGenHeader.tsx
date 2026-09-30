@@ -45,8 +45,8 @@ export function useDailyGenHeader(panelId: string): void {
         ],
         controls: [
             {
-                kind: "action", id: "clearStages", name: "비우기", disabled: exprIsEmpty,
-                help: "걸린 조건 전부 지우기 — 저장한 다른 집합은 안 변한다",
+                kind: "action", id: "clearStages", name: "조건 전부 비우기", disabled: exprIsEmpty,
+                help: "이 집합에 걸린 조건 전부 지우기 — 저장한 다른 집합은 안 변한다",
                 run: () => { clearStages(); return "조건 비움"; },
             },
         ],

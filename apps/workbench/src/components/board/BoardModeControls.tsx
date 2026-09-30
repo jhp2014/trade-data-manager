@@ -76,11 +76,11 @@ export function useBoardHeader({ panelId, dotColor, label, count, mode, setMode,
                 value: mode, set: (v) => setMode(v as BoardMode),
             },
             {
-                kind: "toggle", id: "reasons", name: "필터칩", activeColor: "var(--accent-primary)",
+                kind: "toggle", id: "reasons", name: "제외 사유 칩", label: "필터칩", activeColor: "var(--accent-primary)",
                 help: "가려진 종목에 제외 사유 칩을 붙인다", on: showReasons, set: toggleReasons,
             },
             {
-                kind: "action", id: "refresh", name: "새로고침", available: !!onRefresh, disabled: refreshing,
+                kind: "action", id: "refresh", name: "테마 새로고침", available: !!onRefresh, disabled: refreshing,
                 help: "테마 새로고침(시트 배정·수동편집 반영)", run: () => { onRefresh?.(); return "테마 새로고침"; },
             },
             {

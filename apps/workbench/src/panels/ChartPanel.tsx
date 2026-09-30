@@ -201,7 +201,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         pinControl(pinMinute, () => setPinMinute((v) => !v)),
         scaleControl(lockScale, () => setLockScale((v) => !v)),
         {
-            kind: "toggle", id: "pointInfo", name: "타점정보", activeColor: "var(--accent-primary)",
+            kind: "toggle", id: "pointInfo", name: "타점 값 읽기", label: "타점정보", activeColor: "var(--accent-primary)",
             help: "현재 타점(시간선)의 값 읽기", on: showPointInfo, set: () => setShowPointInfo((v) => !v),
         },
         amountMarkerControl(showMarkers, () => setShowMarkers((v) => !v)),
@@ -209,7 +209,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         guideControl(showGuide, () => setShowGuide((v) => !v)),
         anchorMarkControl(showAnchorMarks, () => setShowAnchorMarks((v) => !v)),
         {
-            kind: "popover", id: "chainLayer", name: "사슬", width: 240, activeColor: BREAKOUT_HIGH, on: showChain,
+            kind: "popover", id: "chainLayer", name: "돌파 사슬 층", label: "사슬", width: 240, activeColor: BREAKOUT_HIGH, on: showChain,
             help: `돌파 사슬 — 판에서 사슬·밴드 켜기, 돌파 줄 고르기${chain.source ? ` · ${chain.source.text}` : ""}${chain.why ? ` — ${chain.why}` : ""}`,
             renderPopover: () => (
                 <ChainLayerMenuContent overlay={chain} on={showChain} onToggle={() => setShowChain((v) => !v)}
@@ -217,8 +217,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
             ),
         },
         {
-            kind: "action", id: "clearLines", name: "선 지우기",
-            help: "가격선 전체 지우기", run: () => { lines.clear(); return "가격선 지움"; }, disabled: !lines.hasLines,
+            kind: "action", id: "clearLines", name: "가격선 전체 지우기",
+            help: "이 차트에 그은 가격선(D/M)을 전부 지운다", run: () => { lines.clear(); return "가격선 지움"; }, disabled: !lines.hasLines,
         },
         marketControl(mode, setMode),
     ];

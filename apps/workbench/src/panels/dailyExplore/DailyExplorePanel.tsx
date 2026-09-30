@@ -21,6 +21,7 @@ import { useDayReplayPrefetch } from "../../lib/useDaySnapshot.js";
 import { useDock } from "../../store/dock.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
+import { TriggerPopover } from "../../ui/popover/TriggerPopover.js";
 import { MENU_PAD, MenuItem, MenuSep } from "../../ui/popover/menu.js";
 import { PIN } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
@@ -30,6 +31,7 @@ import { isHeavyCellPredicate } from "../filter/stage.js";
 import { useGroupAssign } from "../../store/groupAssign.js";
 import { neighborDates } from "./dayCrossing.js";
 import { useDayCrossing } from "./useDayCrossing.js";
+import { DateJumpMenu } from "./DateJumpMenu.js";
 import { stepWithin, type NavKey } from "./walk.js";
 import { useWalkCursor } from "./useWalkCursor.js";
 import { MAX_GROUPS, cellKeyOf, exploreRowsOf, type ExploreSort } from "./exploreRows.js";
@@ -182,15 +184,36 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         ],
         controls: [
             {
-                kind: "action", id: "dateNav", name: "다음 거래일", nav: true, disabled: crossing.seeking,
-                help: "◀▶ = 이전/다음 거래일(빈 날 스킵) — 목록 끝의 w/s 로도 넘어간다. 단축키 호출 = 다음",
-                // 피드백은 cross 의 판정 하나를 따른다 — 안 넘었으면(고정·끝 거래일) 조용히(null),
-                // 이유는 crossing.note 의 일시 알림이 말한다. 여기서 판정을 중복하면 모순 칩이 나란히 선다.
-                run: () => (crossing.cross(1) ? "다음 거래일로" : null),
+                // 거래일 이동 — ◀▶(crossing 규칙: 빈 날 스킵·고정·상한) + 판(거래일 목록·날짜 입력 점프 = 명시 선택).
+                // 첫 줄에서는 날짜 글자 자체가 판의 입구다(▾) — 정보이자 컨트롤인 표면의 분리 규약을
+                // renderInline 안에서 다시 합친 것: 중복 선언(정보 「날짜」)이 있으니 합쳐도 규칙이 안 깨진다.
+                kind: "popover", id: "dateNav", name: "거래일 이동", nav: true, width: 250,
+                label: focusDate.slice(5),
+                help: "◀▶ = 이전/다음 거래일(빈 날 스킵·날짜 고정 규칙) · 판 = 거래일 목록·날짜 입력으로 점프(명시 선택 — 스킵·고정과 무관)",
+                renderPopover: (close) => (
+                    <DateJumpMenu dates={datesQ.data ?? EMPTY_DATES} current={focusDate} seeking={crossing.seeking}
+                        onPick={(d) => { useWorkbench.getState().setDate(d, "explore-cross"); close(); }}
+                        onStep={(dir) => crossing.cross(dir)} />
+                ),
                 renderInline: () => (
                     <span className="tabular" style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                         <button onClick={() => crossing.cross(-1)} disabled={crossing.seeking} title="이전 거래일 (목록 처음에서 w 로도 넘어간다)" style={navBtn}>◀</button>
-                        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-primary)" }}>{focusDate} ({weekday})</span>
+                        <TriggerPopover width={250} trigger={(open, toggle) => (
+                            <button onClick={toggle} title="거래일 목록·날짜 입력으로 점프"
+                                style={{
+                                    border: "none", background: "none", padding: 0, cursor: "pointer", font: "inherit",
+                                    fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap",
+                                    color: open ? "var(--accent-primary)" : "var(--text-primary)",
+                                }}>
+                                {focusDate} ({weekday}) <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>▾</span>
+                            </button>
+                        )}>
+                            {(close) => (
+                                <DateJumpMenu dates={datesQ.data ?? EMPTY_DATES} current={focusDate} seeking={crossing.seeking}
+                                    onPick={(d) => { useWorkbench.getState().setDate(d, "explore-cross"); close(); }}
+                                    onStep={(dir) => crossing.cross(dir)} />
+                            )}
+                        </TriggerPopover>
                         <button onClick={() => crossing.cross(1)} disabled={crossing.seeking} title="다음 거래일 (목록 끝에서 s 로도 넘어간다)" style={navBtn}>▶</button>
                     </span>
                 ),
