@@ -14,7 +14,7 @@ import { minuteToHms } from "@trade-data-manager/market/domain";
 import { unionMarkPoints, type AutoPointInput } from "../chart/minuteOverlays.js";
 import { BREAKOUT_HIGH } from "../styles/palette.js";
 import { useChainOverlay } from "./breakout/useChainOverlay.js";
-import { ChainLayerMenu } from "./breakout/ChainLayerMenu.js";
+import { ChainLayerMenuContent } from "./breakout/ChainLayerMenu.js";
 
 /** 집합 평가를 끄는 상수 — 빈 배열 리터럴이면 매 렌더 새 참조라 memo 가 헛돈다. */
 
@@ -36,17 +36,19 @@ import { DailyChart } from "../chart/DailyChart.js";
 import {
     amountMarkerControl,
     anchorMarkControl,
+    badgeInfo,
     Center,
-    ChartHeader,
     ChartPanes,
     guideControl,
     marketControl,
     pinControl,
+    resetSearchControl,
     scaleControl,
     searchLineControl,
+    useChartHeader,
     viewControl,
 } from "./ChartPanelChrome.js";
-import type { ControlSpec } from "../components/HeaderControls.js";
+import type { ControlSpec } from "../components/header/spec.js";
 
 // 차트 패널(복기 플레인) — 일봉(상) + 분봉(하) 듀얼. 껍데기(헤더·2단·토글)는 ChartPanelChrome 공용.
 // 소스는 chartQuery(DB) — useChartHotkeys·RankFilterPanel 과 **같은 RQ 키**라 캐시를 공유한다(중복 페치 0).
@@ -79,7 +81,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [showChain, setShowChain] = usePanelUi(panelId, "showChain", true);
     const [chainBands, setChainBands] = usePanelUi(panelId, "chainBands", false);
     const [chainSource, setChainSource] = usePanelUi(panelId, "chainSource", "");
-    const [chainMenuAt, setChainMenuAt] = useState<{ x: number; y: number } | null>(null);
 
     const name = useStockName(code); // 마스터 메타 경량 조회(code 키·날짜무관)
     const { chartGroupsOf, pathLabel, pointLabelsOf } = useGroups();
@@ -192,9 +193,10 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         return { un: num(d?.un), krx: num(d?.krx) };
     }, [candleMenu, dailyQ.data, minuteQ.data]);
 
-    // 헤더 컨트롤 선언 — 공통 문구는 ChartPanelChrome 의 공장이 들고, 이 패널에만 있는 것(타점정보·
-    // 지우기)만 여기서 만든다. 지우기는 할 게 없으면 사라지는 대신 흐려진다(자리 고정 규약).
-    const controls = useMemo<ControlSpec[]>(() => [
+    // 헤더 선언 — 공통 문구·신원은 ChartPanelChrome 의 공장이 들고, 이 패널에만 있는 것(타점정보·
+    // 사슬 판·지우기·큐레이션 배지)만 여기서 만든다. 지우기는 할 게 없으면 사라지는 대신 흐려진다.
+    const controls: ControlSpec[] = [
+        resetSearchControl(drifted, () => setSearchDate(null)),
         viewControl(view, setView),
         pinControl(pinMinute, () => setPinMinute((v) => !v)),
         scaleControl(lockScale, () => setLockScale((v) => !v)),
@@ -207,54 +209,46 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         guideControl(showGuide, () => setShowGuide((v) => !v)),
         anchorMarkControl(showAnchorMarks, () => setShowAnchorMarks((v) => !v)),
         {
-            kind: "action", id: "chainLayer", name: "사슬", group: "마커", activeColor: BREAKOUT_HIGH, on: showChain,
-            help: `돌파 사슬 — 누르면 판(사슬·밴드 켜기, 돌파 줄 고르기)${chain.source ? ` · ${chain.source.text}` : ""}${chain.why ? ` — ${chain.why}` : ""}`,
-            run: (at) => setChainMenuAt({ x: at.clientX, y: at.clientY }),
+            kind: "popover", id: "chainLayer", name: "사슬", width: 240, activeColor: BREAKOUT_HIGH, on: showChain,
+            help: `돌파 사슬 — 판에서 사슬·밴드 켜기, 돌파 줄 고르기${chain.source ? ` · ${chain.source.text}` : ""}${chain.why ? ` — ${chain.why}` : ""}`,
+            renderPopover: () => (
+                <ChainLayerMenuContent overlay={chain} on={showChain} onToggle={() => setShowChain((v) => !v)}
+                    showBands={chainBands} onToggleBands={() => setChainBands((v) => !v)} onPickSource={setChainSource} />
+            ),
         },
         {
-            kind: "action", id: "clearLines", name: "선 지우기", group: "지우기",
-            help: "가격선 전체 지우기", run: lines.clear, disabled: !lines.hasLines,
+            kind: "action", id: "clearLines", name: "선 지우기",
+            help: "가격선 전체 지우기", run: () => { lines.clear(); return "가격선 지움"; }, disabled: !lines.hasLines,
         },
         marketControl(mode, setMode),
-    ], [view, setView, pinMinute, setPinMinute, lockScale, setLockScale, showPointInfo, setShowPointInfo,
-        showMarkers, setShowMarkers, showLine, setShowLine, showGuide, setShowGuide,
-        showAnchorMarks, setShowAnchorMarks,
-        showChain, setShowChain, chain.source, chain.why,
-        lines.clear, lines.hasLines, mode, setMode]);
+    ];
+    useChartHeader({
+        panelId, plane: "replay", code, name, anchorDate, viewDate, drifted,
+        baseFallback: minuteView?.baseFallback, controls,
+        extraInfo: [
+            // 존재 배지(day 줄) — 이 날의 큐레이션 요약. 뒤에 이 날의 그룹 칩(그룹은 하루 층위 하나뿐).
+            badgeInfo("presence", "큐레이션·그룹", "이 날의 큐레이션 존재 요약 + 그룹 칩 — 칩 영역 우클릭 = 하루 그룹 배정", () => (
+                <>
+                    <PresenceBadges presence={presence} />
+                    {/* 칩 영역 우클릭 = 이 날 그룹 배정(입구 규칙: 좌클릭=시선/우클릭=라벨 — 어휘 통일). */}
+                    <span
+                        onContextMenu={(e) => {
+                            e.preventDefault();
+                            useGroupAssign.getState().open({ stockCode: code, name: name ?? undefined, date: viewDate }, { x: e.clientX, y: e.clientY });
+                        }}
+                        style={{ display: "inline-flex", minWidth: 0, flexShrink: 1 }}
+                    >
+                        {/* empty 문구 필수 — 칩 0개면 span 폭이 0이라 첫 그룹을 붙일 우클릭 면적 자체가 없다. */}
+                        <GroupChips groups={chartGroupsOf({ stockCode: code, date: viewDate })} empty="그룹 없음" pathOf={(id) => pathLabel(id, "(지워짐)")} style={{ maxWidth: 180, flexShrink: 1 }} />
+                    </span>
+                </>
+            )),
+        ],
+    });
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
-            <ChartHeader
-                plane="replay"
-                code={code}
-                name={name}
-                anchorDate={anchorDate}
-                viewDate={viewDate}
-                drifted={drifted}
-                onResetSearch={() => setSearchDate(null)}
-                baseFallback={minuteView?.baseFallback}
-                controls={controls}
-                storageKey="wb.headerPins.chart.replay"
-                badges={
-                    <>
-                        {/* 존재 배지(day 줄) — 이 날의 큐레이션 요약. 뒤에 이 날의 그룹 칩(그룹은 하루 층위 하나뿐). */}
-                        <PresenceBadges presence={presence} />
-                        {/* 칩 영역 우클릭 = 이 날 그룹 배정(입구 규칙: 좌클릭=시선/우클릭=라벨 — 헤더라 좌클릭 충돌은 없지만 어휘를 통일). */}
-                        <span
-                            onContextMenu={(e) => {
-                                e.preventDefault();
-                                useGroupAssign.getState().open({ stockCode: code, name: name ?? undefined, date: viewDate }, { x: e.clientX, y: e.clientY });
-                            }}
-                            style={{ display: "inline-flex", minWidth: 0, flexShrink: 1 }}
-                        >
-                            {/* empty 문구 필수 — 칩 0개면 span 폭이 0이라 첫 그룹을 붙일 우클릭 면적 자체가 없다. */}
-                            <GroupChips groups={chartGroupsOf({ stockCode: code, date: viewDate })} empty="그룹 없음" pathOf={(id) => pathLabel(id, "(지워짐)")} style={{ maxWidth: 180, flexShrink: 1 }} />
-                        </span>
-                    </>
-                }
-            />
-
-            <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+        <div style={{ height: "100%", background: "var(--bg-primary)" }}>
+            <div style={{ height: "100%", minHeight: 0, position: "relative" }}>
                 {!code && <Center text="종목을 선택하세요" />}
                 {code && (dailyQ.isLoading || minuteQ.isLoading) && !dailyView && <Center text={`${code} 로딩중…`} />}
                 {(dailyQ.isError || minuteQ.isError) && <Center text="오류 — 재시도 중…" />}
@@ -324,19 +318,6 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     />
                 )}
             </div>
-
-            {chainMenuAt && (
-                <ChainLayerMenu
-                    anchor={chainMenuAt}
-                    overlay={chain}
-                    on={showChain}
-                    onToggle={() => setShowChain((v) => !v)}
-                    showBands={chainBands}
-                    onToggleBands={() => setChainBands((v) => !v)}
-                    onPickSource={setChainSource}
-                    onClose={() => setChainMenuAt(null)}
-                />
-            )}
 
             {candleMenu && (
                 <CandleMenu

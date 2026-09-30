@@ -1,24 +1,22 @@
 // 기본 차트 「사슬」 판 — 세 가지만: **사슬 ON/OFF · 밴드 ON/OFF · 적용할 돌파 줄 고르기**(2026-09-24).
 // 설명은 전부 hover(title)로 — 판에 글이 많으면 지저분하다. 고치는 곳은 조건판 돌파 팝오버(여긴 노브가 없다).
 // 목록 = 켜진 돌파 줄의 요약 라벨(2026-09-26 — 격자판·연동 은퇴).
-import { AnchoredPopover } from "../../ui/Dialog.js";
+// **속만 있다** — 껍데기(닫힘·배치)는 판형 컨트롤을 연 쪽(팝오버 공용층)의 몫이다.
 import { MENU_PAD, MenuHead, MenuItem } from "../../ui/popover/menu.js";
 import type { ChainOverlay } from "./useChainOverlay.js";
 
-export function ChainLayerMenu({ anchor, overlay, on, onToggle, showBands, onToggleBands, onPickSource, onClose }: {
-    anchor: { x: number; y: number };
+export function ChainLayerMenuContent({ overlay, on, onToggle, showBands, onToggleBands, onPickSource }: {
     overlay: ChainOverlay;
     on: boolean;
     onToggle: () => void;
     showBands: boolean;
     onToggleBands: () => void;
     onPickSource: (stageId: string) => void;
-    onClose: () => void;
 }): JSX.Element {
     const src = overlay.source;
     // 켜고 끄기 둘은 ✓ 칸(메뉴 공용 표식 — 2026-09-28 스위치 은퇴), 돌파 줄 고르기는 ●○(하나 고르기).
     return (
-        <AnchoredPopover anchor={anchor} onClose={onClose} width={240} padding={MENU_PAD} placement="beside" offset={6}>
+        <div style={{ padding: MENU_PAD }}>
             <MenuItem mark="check" on={on} onClick={onToggle}
                 title={`② 사슬 띠(배경) · 후보 봉 세로 줄 — 사슬 필터 통과는 살짝, ◇ 로 남은 봉은 조금 더 진하게${overlay.why ? `\n지금 안 그리는 이유: ${overlay.why}` : ""}`}
                 trailing={on && overlay.why !== null ? <span style={{ fontSize: 11, color: "var(--warning)" }}>ⓘ</span> : null}>
@@ -40,6 +38,6 @@ export function ChainLayerMenu({ anchor, overlay, on, onToggle, showBands, onTog
                     </MenuItem>
                 );
             })}
-        </AnchoredPopover>
+        </div>
     );
 }

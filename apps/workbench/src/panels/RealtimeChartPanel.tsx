@@ -13,16 +13,17 @@ import { DailyChart } from "../chart/DailyChart.js";
 import {
     amountMarkerControl,
     Center,
-    ChartHeader,
     ChartPanes,
     guideControl,
     marketControl,
     pinControl,
+    resetSearchControl,
     scaleControl,
     searchLineControl,
+    useChartHeader,
     viewControl,
 } from "./ChartPanelChrome.js";
-import type { ControlSpec } from "../components/HeaderControls.js";
+import type { ControlSpec } from "../components/header/spec.js";
 import type { RenderLine } from "../lib/chartFrame.js";
 import { ALARM } from "../styles/palette.js";
 
@@ -95,8 +96,9 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
     const dailyLines = useMemo(() => [...dLines, ...alarmLines, ...draftRenderLines], [dLines, alarmLines, draftRenderLines]);
     const minuteLines = useMemo(() => [...resolvedLines, ...alarmLines, ...draftRenderLines], [resolvedLines, alarmLines, draftRenderLines]);
 
-    // 헤더 컨트롤 선언 — 공통 문구는 ChartPanelChrome 의 공장이 들고, 이 플레인에만 있는 알람선만 여기서.
-    const controls = useMemo<ControlSpec[]>(() => [
+    // 헤더 선언 — 공통 문구·신원은 ChartPanelChrome 의 공장이 들고, 이 플레인에만 있는 알람선만 여기서.
+    const controls: ControlSpec[] = [
+        resetSearchControl(drifted, () => setSearchDate(null)),
         viewControl(view, setView),
         pinControl(pinMinute, () => setPinMinute((v) => !v)),
         scaleControl(lockScale, () => setLockScale((v) => !v)),
@@ -104,34 +106,29 @@ export function RealtimeChartPanel({ panelId }: { panelId: string }): JSX.Elemen
         searchLineControl(showLine, () => setShowLine((v) => !v)),
         guideControl(showGuide, () => setShowGuide((v) => !v)),
         {
-            kind: "toggle", id: "alarmLines", name: "알람선", group: "마커", activeColor: ALARM,
+            kind: "toggle", id: "alarmLines", name: "알람선", activeColor: ALARM,
             help: "이 종목 알람의 가격 조건을 수평선으로", on: showAlarmLines, set: () => setShowAlarmLines((v) => !v),
         },
         marketControl(mode, setMode),
-    ], [view, setView, pinMinute, setPinMinute, lockScale, setLockScale, showMarkers, setShowMarkers,
-        showLine, setShowLine, showGuide, setShowGuide, showAlarmLines, setShowAlarmLines, mode, setMode]);
+    ];
+    const liveNow = !drifted && (dailyQ.isFetching || minuteQ.isFetching);
+    useChartHeader({
+        panelId, plane: "live", code, name, anchorDate, viewDate, drifted,
+        baseFallback: minuteView?.baseFallback, controls,
+        extraInfo: [
+            {
+                id: "live", name: "LIVE", help: "지금 브로커에서 형성봉을 받는 중",
+                text: () => (liveNow ? "● LIVE" : null),
+                renderLine: () => (liveNow
+                    ? <span style={{ color: "var(--plane-live)", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>● LIVE</span>
+                    : null),
+            },
+        ],
+    });
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)" }}>
-            <ChartHeader
-                plane="live"
-                code={code}
-                name={name}
-                anchorDate={anchorDate}
-                viewDate={viewDate}
-                drifted={drifted}
-                onResetSearch={() => setSearchDate(null)}
-                baseFallback={minuteView?.baseFallback}
-                controls={controls}
-                storageKey="wb.headerPins.chart.live"
-                badges={
-                    !drifted && (dailyQ.isFetching || minuteQ.isFetching) ? (
-                        <span style={{ color: "var(--plane-live)", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", flexShrink: 0 }}>● LIVE</span>
-                    ) : null
-                }
-            />
-
-            <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
+        <div style={{ height: "100%", background: "var(--bg-primary)" }}>
+            <div style={{ height: "100%", minHeight: 0, position: "relative" }}>
                 {!code && <Center text="종목을 선택하세요" />}
                 {code && (dailyQ.isLoading || minuteQ.isLoading) && !dailyView && <Center text={`${code} 로딩중…`} />}
                 {(dailyQ.isError || minuteQ.isError) && <Center text="오류 — 재시도 중…" />}
