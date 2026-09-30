@@ -88,9 +88,10 @@ export interface ActionSpec extends ControlBase {
     label?: string;
     /**
      * 실행 — 문구를 돌려주면 **단축키 호출** 때 그 문구가 피드백 칩이 된다(눈이 컨트롤에 없을 때의 확인).
+     * `null` = 조용히(실제로는 안 일어났고 그 이유를 다른 채널 — 일시 알림 — 이 말한다). void = 라벨로 갈음.
      * 클릭 호출에는 칩이 없다 — 컨트롤 자신의 변화가 보이는 자리다.
      */
-    run: () => string | void;
+    run: () => string | null | void;
     disabled?: boolean;
 }
 

@@ -35,6 +35,9 @@ export function invokeControl(spec: ControlSpec): InvokeOutcome {
         case "action": {
             if (spec.disabled === true) return { kind: "none" };
             const said = spec.run();
+            // null = 조용히 — 실제로는 안 일어났고 그 이유는 다른 채널(일시 알림)이 말한다. 여기서
+            // 라벨을 칩으로 띄우면 "다음 거래일로"와 "마지막 거래일입니다"가 나란히 서는 모순이 난다.
+            if (said === null) return { kind: "none" };
             return { kind: "done", notice: typeof said === "string" ? said : (spec.label ?? spec.name) };
         }
         case "popover":

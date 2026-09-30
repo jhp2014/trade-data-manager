@@ -17,8 +17,12 @@ export interface DayCrossingState {
 }
 
 export interface DayCrossing extends DayCrossingState {
-    /** 경계에 닿았다 — 이 방향으로 날짜를 넘긴다(고정이면 안 넘고 안내만). */
-    cross: (dir: 1 | -1) => void;
+    /**
+     * 경계에 닿았다 — 이 방향으로 날짜를 넘긴다(고정이면 안 넘고 안내만).
+     * 반환 = **손짓을 시작했나** — 고정·끝 거래일이면 false(안내는 note 가 말한다). 피드백을 띄우는
+     * 호출자(단축키 액션)가 판정을 중복하지 않고 이 한 규칙을 따라가라고 돌려준다.
+     */
+    cross: (dir: 1 | -1) => boolean;
 }
 
 /**
@@ -55,22 +59,23 @@ export function useDayCrossing({ active, dates, ready, failed, count, heavy, pin
      */
     const job = useRef<{ dir: 1 | -1; to: string; remaining: number; skipped: number; sawTruncated: boolean } | null>(null);
 
-    const cross = useCallback((dir: 1 | -1) => {
-        if (!active) return;
+    const cross = useCallback((dir: 1 | -1): boolean => {
+        if (!active) return false;
         if (pinned) {
             setState({ seeking: false, skipped: 0, note: "날짜 고정 — 경계에서 멈춥니다(칩의 📌 를 끄면 넘어갑니다)" });
-            return;
+            return false;
         }
         const max = heavy ? MAX_SKIP_DAYS_HEAVY : MAX_SKIP_DAYS;
         const to = nextDates(dates, date, dir, 1)[0];
         if (to === undefined) {
             setState({ seeking: false, skipped: 0, note: dir > 0 ? "마지막 거래일입니다" : "첫 거래일입니다" });
-            return;
+            return false;
         }
         // ⚠ 마지막 손짓만 유효 — 연타하면 job 이 덮인다(기존 in-flight 가드와 같은 수법).
         job.current = { dir, to, remaining: max, skipped: 0, sawTruncated: truncated };
         setState({ seeking: true, skipped: 0, note: null });
         setDate(to, origin);
+        return true;
     }, [active, pinned, heavy, dates, date, truncated, setDate, origin]);
 
     // 도착 판정 — 새 날짜의 목록이 **확정된 뒤에만** 본다(로딩 중의 0건은 "빈 날"이 아니다).

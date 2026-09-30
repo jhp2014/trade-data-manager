@@ -53,9 +53,15 @@ function ShortcutPopover({ panelId, anchorRef }: {
 }): JSX.Element | null {
     const pending = useHeaderRegistry((s) => (s.pendingPopover?.panelId === panelId ? s.pendingPopover : null));
     const decl = useHeaderDecl(panelId);
-    if (pending === null) return null;
-    const spec = decl?.controls.find((c) => c.id === pending.controlId && c.available !== false);
-    if (spec === undefined) return null;
+    const spec = pending === null ? undefined : decl?.controls.find((c) => c.id === pending.controlId && c.available !== false);
+    // 요청한 컨트롤이 선언에 없으면(available:false 포함) 요청을 그 자리에서 버린다 — 판이 안 선 채
+    // 남겨 두면 선언이 돌아오는 순간 유령처럼 열린다(ShortcutSurface 의 청소는 판이 섰을 때만 돈다).
+    useEffect(() => {
+        if (pending === null || spec !== undefined) return;
+        const s = useHeaderRegistry.getState();
+        if (s.pendingPopover?.seq === pending.seq) s.clearPopover();
+    }, [pending, spec]);
+    if (pending === null || spec === undefined) return null;
     // seq 를 key 로 — 같은 컨트롤 재호출도 새 판(닫힘 무장·배치 재실측이 처음부터).
     return <ShortcutSurface key={pending.seq} seq={pending.seq} spec={spec} anchorRef={anchorRef} />;
 }

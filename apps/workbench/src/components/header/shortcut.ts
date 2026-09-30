@@ -8,22 +8,22 @@ import { invokeControl } from "./invoke.js";
 import type { SlotDigit } from "./spec.js";
 
 export function pressSlot(panelId: string | undefined, digit: SlotDigit): void {
-    if (panelId === undefined) return;
     const reg = useHeaderRegistry.getState();
-    const typeKey = typeKeyOf(panelId);
 
+    // 배정 대기가 있으면 이 숫자는 **무조건 배정으로 소비**하고 끝낸다 — 활성 패널과 무관하게 대기가 든
+    // 장부(typeKey)에 적는다. 대기를 버리고 아래로 흐르면 그 숫자에 배정된 딴 판의 컨트롤이 실행된다
+    // (배지를 누른 판이 비활성 그룹일 수 있다 — 리뷰가 잡은 자리).
     const pending = reg.pendingAssign;
     if (pending !== null) {
         reg.setPendingAssign(null);
-        // 다른 패널로 시선이 옮겨간 채 남은 대기는 소비하지 않고 버린다 — 엉뚱한 종류의 장부에 적히지 않게.
-        if (pending.typeKey === typeKey) {
-            useHeaderLedger.getState().assignKey(typeKey, digit, pending.controlId);
-            const name = reg.byPanel[panelId]?.decl.controls.find((c) => c.id === pending.controlId)?.name ?? pending.controlId;
-            useHeaderNotice.getState().flash(panelId, `${digit} = ${name}`);
-            return;
-        }
+        useHeaderLedger.getState().assignKey(pending.typeKey, digit, pending.controlId);
+        const name = reg.byPanel[pending.panelId]?.decl.controls.find((c) => c.id === pending.controlId)?.name ?? pending.controlId;
+        useHeaderNotice.getState().flash(pending.panelId, `${digit} = ${name}`);
+        return;
     }
 
+    if (panelId === undefined) return;
+    const typeKey = typeKeyOf(panelId);
     const controlId = useHeaderLedger.getState().keys[typeKey]?.[String(digit)];
     if (controlId === undefined) return;
     const spec = reg.byPanel[panelId]?.decl.controls.find((c) => c.id === controlId);

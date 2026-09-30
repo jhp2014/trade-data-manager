@@ -20,8 +20,18 @@ export function TabInfoChips({ panelId, visible }: { panelId: string; visible: b
 }
 
 function TabChip({ spec }: { spec: InfoSpec }): JSX.Element | null {
-    const body = spec.renderTab !== undefined ? spec.renderTab() : spec.text();
+    // renderTab > text > renderLine — 마지막 폴백이 없으면 renderLine 전용 조각(배지류·text 늘 null)을
+    // 탭으로 보냈을 때 첫 줄에서도 탭에서도 **조용히 사라진다**(리뷰가 잡은 자리). 배지가 칩 안에 서면
+    // 어색할 수는 있어도, 보이는 어색함이 안 보이는 소멸보다 낫다.
+    const text = spec.renderTab === undefined ? spec.text() : null;
+    const body = spec.renderTab !== undefined ? spec.renderTab()
+        : text ?? (spec.renderLine !== undefined ? spec.renderLine() : null);
     if (body === null) return null;
+    // renderLine 폴백은 칩 껍데기 없이 — 요소가 속으로 null 을 그릴 수 있어(SubjectBadge 평상시),
+    // 흰 바탕·padding 을 씌우면 빈 알약만 남는다. 껍데기가 없으면 빈 속 = 아무것도 안 보인다.
+    if (spec.renderTab === undefined && text === null) {
+        return <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>{body}</span>;
+    }
     return (
         <span className={spec.tabular === true ? "tabular" : undefined} title={spec.help ?? spec.name}
             style={{

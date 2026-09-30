@@ -12,18 +12,20 @@ export type BoardMode = "amount" | "rate" | "group";
 export type BoardSort = Exclude<BoardMode, "group">; // flat 리스트 정렬 기준(= 테마 아닌 BoardMode)
 
 /**
- * 보드 공용 헤더 — **선언만 하고 아무것도 안 그린다**(null 렌더). 패널 JSX 맨 위에 그대로 두면
- * 셸이 첫 줄(점·종목수·필터 정보)과 모음 판(정렬·표시·새로고침·시장·필터 편집)을 그린다.
+ * 보드 공용 헤더 선언 — 패널 최상단에서 부른다(**로딩·오류 조기 반환보다 위** — 등록이 깜빡이면
+ * 첫 줄이 생멸해 본문 높이가 출렁이고, 그동안 모음 판·숫자 단축키·배제 필터에 손이 안 닿는다.
+ * w/s publish 와 같은 규칙). 셸이 첫 줄(점·종목수·필터 정보)과 모음 판을 그린다.
  *
  * label 은 값이 있을 때만 — 복기 스크럽 시각·비정상 상태처럼 점 색이 못 말해주는 것만(상수 라벨 금지).
  * 필터는 **정보와 컨트롤로 갈라 중복 선언**한다: "걸려 있다"는 사실(필터 N)은 첫 줄 정보가 늘 말하고
  * ("왜 종목이 안 보이지" 사고 방지 — 옛 헤더가 버튼을 접힘 밖에 두던 이유의 승계), 편집은 판형 컨트롤.
  */
-export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, onRefresh, refreshing, market, onMarketToggle, filter, filterEditor, navOwner }: {
+export function useBoardHeader({ panelId, dotColor, label, count, mode, setMode, onRefresh, refreshing, market, onMarketToggle, filter, filterEditor, navOwner }: {
     panelId: string;
     dotColor: string;
     label?: string;
-    count: number;
+    /** 보드에 선 종목 수 — **본문이 안 설 때(로딩·오류)는 null**: 첫 줄이 "0종목"이나 낡은 수를 단정하지 않게 자리만 비운다. */
+    count: number | null;
     mode: BoardMode;
     setMode: (m: BoardMode) => void;
     onRefresh?: () => void;
@@ -33,7 +35,7 @@ export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, on
     filter?: BoardFilterExpr;
     filterEditor?: (close: () => void) => ReactNode;
     navOwner?: RowNavOwner;
-}): null {
+}): void {
     const showReasons = useUi((s) => s.boardShowReasons);
     const toggleReasons = useUi((s) => s.toggleBoardReasons);
     const filterOn = filter ? isBoardFilterActive(filter) : false;
@@ -52,7 +54,7 @@ export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, on
                     </span>
                 ),
             },
-            { id: "count", name: "종목 수", tabular: true, help: "지금 보드에 선 종목 수", text: () => `${count}종목` },
+            { id: "count", name: "종목 수", tabular: true, help: "지금 보드에 선 종목 수", text: () => (count === null ? null : `${count}종목`) },
             {
                 id: "filter", name: "배제 필터", tone: "accent", available: !!filter,
                 help: "걸린 배제 필터 그룹 수 — 편집은 컨트롤 판의 「배제 필터」",
@@ -88,5 +90,4 @@ export function BoardHeader({ panelId, dotColor, label, count, mode, setMode, on
             },
         ],
     });
-    return null;
 }

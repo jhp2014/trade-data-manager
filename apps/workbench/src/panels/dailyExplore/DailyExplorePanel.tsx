@@ -182,9 +182,11 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         ],
         controls: [
             {
-                kind: "action", id: "dateNav", name: "다음 거래일", nav: true,
+                kind: "action", id: "dateNav", name: "다음 거래일", nav: true, disabled: crossing.seeking,
                 help: "◀▶ = 이전/다음 거래일(빈 날 스킵) — 목록 끝의 w/s 로도 넘어간다. 단축키 호출 = 다음",
-                run: () => { crossing.cross(1); return "다음 거래일로"; },
+                // 피드백은 cross 의 판정 하나를 따른다 — 안 넘었으면(고정·끝 거래일) 조용히(null),
+                // 이유는 crossing.note 의 일시 알림이 말한다. 여기서 판정을 중복하면 모순 칩이 나란히 선다.
+                run: () => (crossing.cross(1) ? "다음 거래일로" : null),
                 renderInline: () => (
                     <span className="tabular" style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                         <button onClick={() => crossing.cross(-1)} disabled={crossing.seeking} title="이전 거래일 (목록 처음에서 w 로도 넘어간다)" style={navBtn}>◀</button>

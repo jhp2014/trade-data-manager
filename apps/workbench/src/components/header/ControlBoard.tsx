@@ -24,7 +24,7 @@ export function ControlBoard({ panelId }: { panelId: string }): JSX.Element {
                 <div style={{ padding: "6px 12px", color: "var(--text-tertiary)" }}>이 판에는 컨트롤이 없습니다</div>
             )}
             {controls.map((c) => (
-                <BoardRow key={c.id} spec={c} typeKey={typeKey}
+                <BoardRow key={c.id} spec={c} panelId={panelId} typeKey={typeKey}
                     digit={digitOf(keysEntry, c.id)}
                     armed={pending?.typeKey === typeKey && pending.controlId === c.id} />
             ))}
@@ -37,15 +37,16 @@ export function ControlBoard({ panelId }: { panelId: string }): JSX.Element {
     );
 }
 
-function BoardRow({ spec, typeKey, digit, armed }: {
+function BoardRow({ spec, panelId, typeKey, digit, armed }: {
     spec: ControlSpec;
+    panelId: string;
     typeKey: string;
     digit: number | null;
     armed: boolean;
 }): JSX.Element {
     return (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px" }}>
-            <DigitBadge typeKey={typeKey} controlId={spec.id} digit={digit} armed={armed} />
+            <DigitBadge panelId={panelId} typeKey={typeKey} controlId={spec.id} digit={digit} armed={armed} />
             <span style={{ flex: 1, minWidth: 0, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {spec.name}
             </span>
@@ -60,7 +61,8 @@ function BoardRow({ spec, typeKey, digit, armed }: {
  * 숫자 배지 — 클릭 = 배정 대기(다음 숫자 키가 이 컨트롤에 적힌다). 배정은 keymap 의 숫자 커맨드가
  * 소비한다(shortcut.pressSlot) — 여기서 keydown 을 직접 들으면 같은 키를 두 곳이 듣게 된다.
  */
-function DigitBadge({ typeKey, controlId, digit, armed }: {
+function DigitBadge({ panelId, typeKey, controlId, digit, armed }: {
+    panelId: string;
     typeKey: string;
     controlId: string;
     digit: number | null;
@@ -68,7 +70,7 @@ function DigitBadge({ typeKey, controlId, digit, armed }: {
 }): JSX.Element {
     const toggleArm = (): void => {
         const r = useHeaderRegistry.getState();
-        r.setPendingAssign(armed ? null : { typeKey, controlId });
+        r.setPendingAssign(armed ? null : { panelId, typeKey, controlId });
     };
     return (
         <button onClick={toggleArm}

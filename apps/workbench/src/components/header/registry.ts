@@ -18,13 +18,16 @@ interface HeaderRegistryStore {
      * (anchor 규칙: 입구가 없으면 모음 버튼). seq 로 같은 컨트롤 재요청도 새 요청으로 갈린다.
      */
     pendingPopover: { panelId: string; controlId: string; seq: number } | null;
-    /** 단축키 배정 대기 — 모음 판의 숫자 배지 클릭이 세우고, 다음 숫자 키(shortcut.pressSlot)가 소비한다. */
-    pendingAssign: { typeKey: string; controlId: string } | null;
+    /**
+     * 단축키 배정 대기 — 모음 판의 숫자 배지 클릭이 세우고, 다음 숫자 키(shortcut.pressSlot)가 소비한다.
+     * panelId 는 피드백 칩의 착지(배지를 누른 그 판) — 소비는 활성 패널과 무관하게 **이 대기의 장부**에 적힌다.
+     */
+    pendingAssign: { panelId: string; typeKey: string; controlId: string } | null;
     publish: (panelId: string, decl: HeaderDecl, token: object) => void;
     withdraw: (panelId: string, token: object) => void;
     requestPopover: (panelId: string, controlId: string) => void;
     clearPopover: () => void;
-    setPendingAssign: (p: { typeKey: string; controlId: string } | null) => void;
+    setPendingAssign: (p: { panelId: string; typeKey: string; controlId: string } | null) => void;
 }
 
 export const useHeaderRegistry = create<HeaderRegistryStore>((set) => ({

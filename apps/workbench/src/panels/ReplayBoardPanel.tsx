@@ -7,7 +7,7 @@ import { buildReplayBoardViewModel } from "../lib/boardViewModel.js";
 import { useAnnotatedCodes } from "../lib/useAnnotatedCodes.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
-import { BoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
+import { useBoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
 import { ReplayFilterEditor } from "../components/board/BoardFilterEditor.js";
 import { FlatStockList } from "../components/board/FlatStockList.js";
 import { ROW_NAV_ORIGIN, usePublishRowNav } from "../lib/rowNav.js";
@@ -47,6 +47,11 @@ export function ReplayBoardPanel({ panelId }: { panelId: string }): JSX.Element 
     // ⚠ 잣대는 "board 가 있나"가 아니라 **본문을 그리나**다 — 재조회 실패는 캐시 data 를 남긴 채 isError 만
     //    세우므로(board non-null) 그걸로 재면 오류 화면인데 옛 본문 클로저로 걷는다.
     const bodyShown = !!board && !boardQ.isLoading && !boardQ.isError;
+
+    // 헤더 선언 — **조기 반환보다 위**(등록이 깜빡이면 첫 줄이 생멸한다 — useBoardHeader 머리 주석).
+    // count 도 bodyShown 을 따른다 — 로딩 화면 위에 "0종목"·오류 화면 위에 낡은 수를 단정하지 않게.
+    // label=스크럽 시각 — 시간 설정됐을 때만(미설정 시 상수 라벨 대신 생략, 컨트롤에 폭 양보).
+    useBoardHeader({ navOwner: "replay-board", panelId, dotColor: "var(--plane-eod)", label: time ? time.slice(0, 5) : undefined, count: bodyShown ? board.stocks.length : null, mode, setMode, market, onMarketToggle: () => setBoardMarket("replay", market === "un" ? "krx" : "un"), filter: replayFilter, filterEditor: (close) => <ReplayFilterEditor onClose={close} /> });
     if (!bodyShown) navRef.current = () => {};
     if (boardQ.isLoading) return <BoardCenter text={`${date} 로딩중… (복기 데이터)`} />;
     if (boardQ.isError) return <BoardCenter text={`보드 오류: ${(boardQ.error as Error).message}`} />;
@@ -54,8 +59,6 @@ export function ReplayBoardPanel({ panelId }: { panelId: string }): JSX.Element 
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            {/* label=스크럽 시각 — 시간 설정됐을 때만(미설정 시 상수 라벨 대신 생략, 컨트롤에 폭 양보). */}
-            <BoardHeader navOwner="replay-board" panelId={panelId} dotColor="var(--plane-eod)" label={time ? time.slice(0, 5) : undefined} count={board.stocks.length} mode={mode} setMode={setMode} market={market} onMarketToggle={() => setBoardMarket("replay", market === "un" ? "krx" : "un")} filter={replayFilter} filterEditor={(close) => <ReplayFilterEditor onClose={close} />} />
             {mode === "group" ? (
                 <BoardLayout key={date} grouped={board.grouped} parents={board.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={board.excludedByFilter} nav={nav} absentLabel="랭킹 밖" />
             ) : (

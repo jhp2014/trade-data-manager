@@ -7,7 +7,7 @@ import { buildThemeBoardViewModel } from "../lib/boardViewModel.js";
 import { useAnnotatedCodes } from "../lib/useAnnotatedCodes.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
-import { BoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
+import { useBoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
 import { BoardFilterEditor } from "../components/board/BoardFilterEditor.js";
 import { FlatStockList } from "../components/board/FlatStockList.js";
 import { ROW_NAV_ORIGIN, usePublishRowNav } from "../lib/rowNav.js";
@@ -39,6 +39,10 @@ export function ThemeBoardPanel({ panelId }: { panelId: string }): JSX.Element {
     // ⚠ 잣대는 "board 가 있나"가 아니라 **본문을 그리나**다 — 재조회 실패는 캐시 data 를 남긴 채 isError 만
     //    세우므로(board non-null) 그걸로 재면 오류 화면인데 옛 본문 클로저로 걷는다.
     const bodyShown = !!board && !summaryQ.isLoading && !summaryQ.isError;
+
+    // 헤더 선언 — **조기 반환보다 위**(등록이 깜빡이면 첫 줄이 생멸한다 — useBoardHeader 머리 주석).
+    // count 도 bodyShown 을 따른다 — 로딩 화면 위에 "0종목"·오류 화면 위에 낡은 수를 단정하지 않게.
+    useBoardHeader({ navOwner: "theme-board", panelId, dotColor: "var(--plane-eod)", count: bodyShown ? board.stocks.length : null, mode, setMode, market, onMarketToggle: () => setBoardMarket("theme", market === "un" ? "krx" : "un"), filter: boardFilter, filterEditor: (close) => <BoardFilterEditor onClose={close} /> });
     if (!bodyShown) navRef.current = () => {};
     if (summaryQ.isLoading) return <BoardCenter text={`${date} 로딩중…`} />;
     if (summaryQ.isError) return <BoardCenter text={`요약 오류: ${(summaryQ.error as Error).message}`} />;
@@ -46,7 +50,6 @@ export function ThemeBoardPanel({ panelId }: { panelId: string }): JSX.Element {
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <BoardHeader navOwner="theme-board" panelId={panelId} dotColor="var(--plane-eod)" count={board.stocks.length} mode={mode} setMode={setMode} market={market} onMarketToggle={() => setBoardMarket("theme", market === "un" ? "krx" : "un")} filter={boardFilter} filterEditor={(close) => <BoardFilterEditor onClose={close} />} />
             {mode === "group" ? (
                 <BoardLayout key={date} grouped={board.grouped} parents={board.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={board.excludedByFilter} nav={nav} absentLabel="보드 밖" showIndividuals={st.showIndividuals} showUnclassified={st.showUnclassified} />
             ) : (

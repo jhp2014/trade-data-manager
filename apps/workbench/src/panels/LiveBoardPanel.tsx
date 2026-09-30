@@ -5,7 +5,7 @@ import { useWorkbench } from "../store/workbench.js";
 import { usePanelUi } from "../store/usePanelUi.js";
 import { BoardCenter } from "../components/board/BoardCard.js";
 import { BoardLayout } from "../components/board/BoardLayout.js";
-import { BoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
+import { useBoardHeader, type BoardMode } from "../components/board/BoardModeControls.js";
 import { LiveFilterEditor } from "../components/board/BoardFilterEditor.js";
 import { FlatStockList } from "../components/board/FlatStockList.js";
 import { buildLiveBoardViewModel } from "../lib/boardViewModel.js";
@@ -32,30 +32,36 @@ export function LiveBoardPanel({ panelId }: { panelId: string }): JSX.Element {
         setRefreshing(true);
         try {
             await refreshLiveThemes();
+        } catch {
+            // 연결 불가 — 표시는 보드 상태(점·라벨)가 이미 말한다. 헤더가 조기 반환 위로 올라가
+            // 연결 전에도 새로고침이 눌리므로, 던지게 두면 unhandled rejection 이 된다.
         } finally {
             setRefreshing(false);
         }
     };
 
+    // 헤더 선언 — **조기 반환보다 위**(등록이 깜빡이면 첫 줄이 생멸한다 — useBoardHeader 머리 주석).
+    const live = snapshot?.status === "live";
+    useBoardHeader({
+        panelId,
+        dotColor: live ? "var(--rise)" : "var(--text-tertiary)",
+        label: !snapshot || live ? undefined : snapshot.status, // 정상(실시간)은 빨간 점이 말해줌 — 비정상 상태만 텍스트로
+        count: snapshot && vm ? snapshot.hot : null, // 연결 전엔 자리 비움 — "0종목" 단정 금지
+
+        mode,
+        setMode,
+        onRefresh: () => void refresh(),
+        refreshing,
+        market,
+        onMarketToggle: () => setBoardMarket("live", market === "un" ? "krx" : "un"),
+        filter: liveFilter,
+        filterEditor: (close) => <LiveFilterEditor onClose={close} />,
+    });
+
     if (!snapshot || !vm) return <BoardCenter text={error ? "연결 오류 — 재연결 중…" : "연결 중…"} />;
 
-    const live = snapshot.status === "live";
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--bg-secondary)" }}>
-            <BoardHeader
-                panelId={panelId}
-                dotColor={live ? "var(--rise)" : "var(--text-tertiary)"}
-                label={live ? undefined : snapshot.status} // 정상(실시간)은 빨간 점이 말해줌 — 비정상 상태만 텍스트로
-                count={snapshot.hot}
-                mode={mode}
-                setMode={setMode}
-                onRefresh={() => void refresh()}
-                refreshing={refreshing}
-                market={market}
-                onMarketToggle={() => setBoardMarket("live", market === "un" ? "krx" : "un")}
-                filter={liveFilter}
-                filterEditor={(close) => <LiveFilterEditor onClose={close} />}
-            />
             {mode === "group" ? (
                 <BoardLayout grouped={vm.grouped} parents={vm.parents} focusCode={code} onPick={(c) => setCode(c, originId)} selfOrigin={originId} focusOrigin={focusOrigin} excludedByFilter={vm.excludedByFilter} absentLabel="스캔 밖" />
             ) : (
