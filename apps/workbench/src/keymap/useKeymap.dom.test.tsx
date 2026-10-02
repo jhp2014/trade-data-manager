@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { claimsActivation, isEditable } from "./useKeymap.js";
+import { claimsActivation, isEditable } from "./keys.js";
 
 // claimsActivation — 버튼은 클릭 뒤에도 포커스가 남아, 헤더 버튼을 누른 다음 Space 가 전역
 // 커맨드(타점 저장/삭제 = 쓰기)로 새어 나가던 사고. 활성화 키 둘만 컨트롤에 양보한다.

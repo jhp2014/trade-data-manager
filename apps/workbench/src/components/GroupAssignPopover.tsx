@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGroupAssign } from "../store/groupAssign.js";
+import { chordOf, claimsActivation, isEditable } from "../keymap/keys.js";
 import { useGroups } from "../lib/GroupsContext.js";
 import { rowKey } from "../lib/pointKey.js";
 import { groupColor } from "../styles/palette.js";
@@ -18,6 +19,9 @@ import type { Group } from "../api/groups.js";
 //  · 인라인 생성 = 생성+즉시 배정. 섹션 꼬리 ＋행이 검색어를 이름으로 쓴다(섹션이 곧 scope).
 //  · ⋯ 관리(개명·부모 지정·삭제 2단계)는 **인라인 블록**으로 편다 — 중첩 포털을 안 쓰는 것이
 //    판 하나로 끝나 중첩 판정(ui/popover 스택)에 기댈 일이 없다.
+//  · 키보드(2026-10-02): 열면 항상 **목록**(입구 무관 — 검색창 자동 포커스 없음). 목록에서 w/s=커서(두 섹션을
+//    한 줄로, 상속 행·＋행 건너뜀, 끝에서 멈춤) · Space=토글 · e=닫기 · Tab=검색창. 검색창에선 전부 타이핑, Tab=목록.
+//    열려 있는 동안 이 키들은 전역 단축키(w/s 행 순회·e 라벨·Tab 창 순환)로 새지 않는다 — window 캡처에서 먼저 먹는다.
 export function GroupAssignPopover(): JSX.Element | null {
     const target = useGroupAssign((s) => s.target);
     const anchor = useGroupAssign((s) => s.anchor);
@@ -64,6 +68,75 @@ function Body(): JSX.Element {
     // "갭상승" 때문에 못 만들어지는 가짜 차단이 생긴다. norm 은 검색(matches)에만 쓴다.
     const exactExists = gv.groups.some((g) => g.name === q.trim());
 
+    // ── 키보드 커서 — 두 섹션의 **토글 가능한 보이는 행**을 화면 순서대로 한 줄로 잇는다(상속 행·＋행 제외).
+    // 커서 키 = "섹션|그룹" — 빈 그룹은 두 섹션에 다 뜨므로 이름만으론 자리가 안 갈린다.
+    const navRows: { key: string; toggle: () => void }[] = [];
+    if (pointRef)
+        for (const g of pointGroups)
+            if (matches(g) && !gv.pointInheritedViaOf(pointRef, g.name))
+                navRows.push({ key: `point|${g.name}`, toggle: () => gv.togglePoint(pointRef, g.name) });
+    for (const g of dayGroups)
+        if (matches(g) && !gv.inheritedViaOf(chartRef, g.name))
+            navRows.push({ key: `day|${g.name}`, toggle: () => gv.toggleChart(chartRef, g.name) });
+    const [cursorPick, setCursorPick] = useState<string | null>(null);
+    // 고른 행이 검색으로 사라지면 보이는 첫 행으로 물러선다(상태를 고치지 않고 읽을 때 판정 — 검색어를 지우면 원래 자리로).
+    const cursor = navRows.some((r) => r.key === cursorPick) ? cursorPick : (navRows[0]?.key ?? null);
+    const [searching, setSearching] = useState(false);
+    const listRef = useRef<HTMLDivElement>(null);
+
+    // 열면 목록이 포커스를 쥔다 — 검색창 자동 포커스 대신. 차트 등 판 밖에 남은 포커스가 Space 를 먹지 않게.
+    useEffect(() => { listRef.current?.focus({ preventScroll: true }); }, []);
+
+    useEffect(() => {
+        if (!cursor || searching) return;
+        listRef.current?.querySelector(`[data-ga-key="${CSS.escape(cursor)}"]`)?.scrollIntoView({ block: "nearest" });
+    }, [cursor, searching]);
+
+    // 매 렌더 최신 값으로 — 리스너는 한 번만 단다.
+    const keyRef = useRef({ navRows, cursor, close });
+    keyRef.current = { navRows, cursor, close };
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent): void => {
+            const chord = chordOf(e);
+            const t = e.target;
+            const eat = (): void => { e.preventDefault(); e.stopPropagation(); };
+            if (chord === "tab" || chord === "shift+tab") {
+                // 판 밖 입력창(다른 패널)에 포커스가 있으면 남의 Tab — 건드리지 않는다.
+                if (t instanceof Node && isEditable(t) && t !== searchRef.current && !listRef.current?.contains(t)) return;
+                eat();
+                if (t === searchRef.current) listRef.current?.focus({ preventScroll: true });
+                else searchRef.current?.focus();
+                return;
+            }
+            // 조합 중(한글 입력) 키는 IME 몫 — Tab 만은 위에서 먼저 받는다(조합 중 Tab 이 브라우저 기본 포커스 이동으로
+            // ⋯ 버튼에 떨어지지 않게; 포커스를 옮기면 조합은 확정된다).
+            if (e.isComposing) return;
+            // 입력창(검색·개명) 안은 타이핑 — 전역 디스패처와 같은 규칙.
+            if (isEditable(t)) return;
+            const { navRows: rows, cursor: cur, close: shut } = keyRef.current;
+            // 누르고 있기(자동 반복)는 먹기만 한다 — e 는 닫힘↔전역 열기 깜빡임, Space 는 토글 왕복(쓰기 연타)이 된다.
+            if (chord === "e") { eat(); if (!e.repeat) shut(); return; }
+            if (chord === "w" || chord === "s") {
+                eat();
+                // 커서를 움직이면 포커스도 목록으로 — ⋯ 버튼에 남은 포커스가 다음 Space 를 제 클릭으로 가져가지 않게.
+                if (t !== listRef.current) listRef.current?.focus({ preventScroll: true });
+                if (rows.length === 0) return;
+                const i = Math.max(0, rows.findIndex((r) => r.key === cur));
+                const ni = Math.max(0, Math.min(rows.length - 1, i + (chord === "s" ? 1 : -1)));
+                setCursorPick(rows[ni]!.key);
+                return;
+            }
+            if (chord === "space") {
+                if (claimsActivation(t, chord)) return; // 포커스 남은 ⋯·관리 버튼은 제 클릭
+                eat();
+                if (!e.repeat) rows.find((r) => r.key === cur)?.toggle();
+            }
+        };
+        // 캡처 — 전역 디스패처(window 버블)보다 먼저 받아 w/s·e·Tab·Space 가 뒤의 커맨드로 새지 않게.
+        window.addEventListener("keydown", onKey, true);
+        return () => window.removeEventListener("keydown", onKey, true);
+    }, []);
+
     /** 사전 편집 공통 실행기 — 실패를 그 자리에 남기고(침묵 금지), 성공하면 관리 블록을 접는다. */
     const run = async (op: () => Promise<void>, keepManage = false): Promise<void> => {
         if (busy) return;
@@ -88,11 +161,12 @@ function Body(): JSX.Element {
         });
     };
 
-    const sectionProps = { gv, q, matches, manage, setManage, busy, run, dayGrain, pointGrain };
+    // 검색 중엔 커서를 감춘다 — 키가 목록이 아니라 검색창으로 간다는 표시.
+    const sectionProps = { gv, q, matches, manage, setManage, busy, run, dayGrain, pointGrain, cursor: searching ? null : cursor, onPick: setCursorPick };
 
     return (
         <AnchoredPopover anchor={anchor} onClose={close} width={264} padding={0} placement="beside" maxHeight="64vh">
-            <div style={{ display: "flex", flexDirection: "column", fontSize: 12 }}>
+            <div ref={listRef} tabIndex={-1} style={{ display: "flex", flexDirection: "column", fontSize: 12, outline: "none" }}>
                 {/* 헤더 — 무엇에 대한 배정인지. */}
                 <div style={{ display: "flex", alignItems: "baseline", gap: 6, padding: "8px 10px 6px" }}>
                     <b style={{ color: "var(--text-primary)", fontSize: 13 }}>{target.name || target.stockCode}</b>
@@ -104,9 +178,10 @@ function Body(): JSX.Element {
                     <TextInput
                         inputRef={searchRef}
                         value={q}
-                        autoFocus
-                        placeholder="검색 · 새 그룹 이름"
+                        placeholder="검색 · 새 그룹 이름  (Tab)"
                         onChange={(e) => setQ(e.target.value)}
+                        onFocus={() => setSearching(true)}
+                        onBlur={() => setSearching(false)}
                         style={{ width: "100%", padding: "4px 8px", fontSize: 12 }}
                     />
                 </div>
@@ -114,6 +189,7 @@ function Body(): JSX.Element {
                 {isPointEntry && pointRef && (
                     <Section
                         {...sectionProps}
+                        sec="point"
                         title={`이 타점 · ${pointRef.time.slice(0, 5)}`}
                         groups={pointGroups}
                         checked={gv.pointGroupNamesOf(pointRef)}
@@ -126,6 +202,7 @@ function Body(): JSX.Element {
                 )}
                 <Section
                     {...sectionProps}
+                    sec="day"
                     title={isPointEntry ? "이 날 · 그날 전체 적용" : "이 날"}
                     groups={dayGroups}
                     checked={gv.chartGroupNamesOf(chartRef)}
@@ -150,9 +227,10 @@ function Body(): JSX.Element {
 }
 
 function Section({
-    title, groups, checked, inheritedVia, countOf, onToggle, createLabel, onCreate,
-    gv, q, matches, manage, setManage, busy, run, dayGrain, pointGrain,
+    sec, title, groups, checked, inheritedVia, countOf, onToggle, createLabel, onCreate,
+    gv, q, matches, manage, setManage, busy, run, dayGrain, pointGrain, cursor, onPick,
 }: {
+    sec: "point" | "day";
     title: string;
     groups: Group[];
     checked: string[];
@@ -170,6 +248,9 @@ function Section({
     run: (op: () => Promise<void>, keepManage?: boolean) => Promise<void>;
     dayGrain: ReadonlySet<string>;
     pointGrain: ReadonlySet<string>;
+    /** 키보드 커서가 선 행의 키("섹션|그룹") — 검색 중이면 null(감춤). */
+    cursor: string | null;
+    onPick: (key: string) => void;
 }): JSX.Element {
     const visible = groups.filter(matches);
     const checkedSet = new Set(checked);
@@ -186,17 +267,21 @@ function Section({
                 const via = inheritedVia(g.name);
                 const on = checkedSet.has(g.name);
                 const opened = manage?.group === g.name ? manage : null;
+                const key = `${sec}|${g.name}`;
                 return (
                     <div key={g.name}>
                         <div
                             className="ga-row"
-                            onClick={via ? undefined : () => onToggle(g.name)}
+                            data-ga-key={key}
+                            onClick={via ? undefined : () => { onPick(key); onToggle(g.name); }}
                             title={gv.pathLabel(g.name, g.name)}
                             style={{
                                 display: "flex", alignItems: "center", gap: 6, padding: "3px 10px",
                                 cursor: via ? "default" : "pointer",
                                 opacity: via ? 0.45 : 1,
                                 background: on ? "var(--bg-active)" : undefined,
+                                boxShadow: cursor === key ? "inset 0 0 0 1px var(--accent-primary)" : undefined,
+                                scrollMarginTop: 24, // sticky 섹션 헤더 밑으로 숨지 않게(scrollIntoView)
                             }}
                         >
                             <span style={{ width: 13, flexShrink: 0, color: "var(--accent-primary)", fontWeight: 700, textAlign: "center" }}>{on ? "✓" : ""}</span>

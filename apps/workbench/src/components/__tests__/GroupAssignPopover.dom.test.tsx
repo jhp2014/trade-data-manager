@@ -3,7 +3,7 @@
 // 네트워크 뮤테이션(토글·생성·개명·삭제)은 여기서 실행하지 않는다 — jsdom 엔 서버가 없어 실패 경로만
 // 타게 되고, 그건 렌더 계약 검증이 아니다. 낙관 토글 자체는 groupIndex(applyGroupToggle) 유닛이 지킨다.
 import { describe, it, expect, afterEach } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { GroupAssignPopover } from "../GroupAssignPopover.js";
 import { useGroupAssign } from "../../store/groupAssign.js";
 import { Providers, seededClient, type Seed } from "../../test/renderPanel.js";
@@ -82,6 +82,64 @@ describe("day 입구(한 섹션)", () => {
         show({ stockCode: "005930", date: "2026-07-01" });
         expect(screen.queryByText(/^이 타점/)).toBeNull();
         expect(screen.getByText(/^이 날/)).toBeTruthy();
+    });
+});
+
+describe("키보드 — 목록 커서·Tab·e", () => {
+    /** 커서가 선 행의 키 — 커서 표시(테두리 boxShadow)가 붙은 행. */
+    const cursorKey = (): string | null =>
+        [...document.querySelectorAll<HTMLElement>("[data-ga-key]")].find((el) => el.style.boxShadow !== "")?.getAttribute("data-ga-key") ?? null;
+    const press = (key: string): void => { fireEvent.keyDown(document.activeElement ?? document.body, { key }); };
+    const search = (): HTMLInputElement => screen.getByPlaceholderText(/검색/) as HTMLInputElement;
+
+    it("열면 목록이 포커스 — 검색창이 아니다, 커서는 첫 행", () => {
+        show({ stockCode: "005930", date: "2026-07-01", time: "10:03:00" });
+        expect(document.activeElement).not.toBe(search());
+        expect(cursorKey()).toBe("point|눌림");
+    });
+
+    it("w/s 는 두 섹션을 한 줄로 걷고, 상속 행(테마)은 건너뛰며, 끝에서 멈춘다", () => {
+        show({ stockCode: "005930", date: "2026-07-01", time: "10:03:00" });
+        press("w");
+        expect(cursorKey()).toBe("point|눌림"); // 위 끝에서 멈춤
+        const seen: (string | null)[] = [];
+        for (let i = 0; i < 5; i++) { press("s"); seen.push(cursorKey()); }
+        // 이 날 섹션: 미정1 · 소재 · (테마 = 소재 경유 상속 → 건너뜀)
+        expect(seen).toEqual(["point|미정1", "day|미정1", "day|소재", "day|소재", "day|소재"]);
+    });
+
+    it("Tab 은 검색창↔목록 — 검색창에선 w/s 가 타이핑이라 커서가 안 움직이고 숨는다", () => {
+        show({ stockCode: "005930", date: "2026-07-01", time: "10:03:00" });
+        press("Tab");
+        expect(document.activeElement).toBe(search());
+        expect(cursorKey()).toBeNull(); // 검색 중엔 커서 감춤
+        press("s");
+        press("Tab");
+        expect(document.activeElement).not.toBe(search());
+        expect(cursorKey()).toBe("point|눌림");
+    });
+
+    it("검색으로 커서 행이 사라지면 보이는 첫 행으로 물러선다", () => {
+        show({ stockCode: "005930", date: "2026-07-01", time: "10:03:00" });
+        press("s"); // point|미정1
+        fireEvent.change(search(), { target: { value: "소재" } }); // 포커스는 목록에 둔 채 값만 바꾼다(커서 표시 유지)
+        expect(cursorKey()).toBe("day|소재");
+    });
+
+    it("e 는 팝오버를 닫고, 열린 동안 w/s/e 는 전역 디스패처(window 버블)로 새지 않는다", () => {
+        const leaked: string[] = [];
+        const spy = (e: KeyboardEvent): void => { leaked.push(e.key); };
+        window.addEventListener("keydown", spy);
+        try {
+            show({ stockCode: "005930", date: "2026-07-01", time: "10:03:00" });
+            press("s");
+            press("w");
+            press("e");
+            expect(useGroupAssign.getState().target).toBeNull();
+            expect(leaked).toEqual([]);
+        } finally {
+            window.removeEventListener("keydown", spy);
+        }
     });
 });
 
