@@ -6,7 +6,11 @@
 // carry-forward·UN 기준 한 벌)을 써야 한다. 다른 배열을 세면 선과 점이 한 칸씩 어긋난다.
 //
 // 저장은 panelUi "rateTicks"(axes 와 별도 키 — 부재 = 기본 0·5·10·20, `[]` = 끔).
+//
+// 레이아웃 본체는 thresholdTicks(방향 무관 한 벌 — 억 눈금과 공유)로 이사했다. 여기는 % 어휘
+// (pct·py·above/below 이름, 부호 색, 기본값·범위)의 어댑터만 남는다.
 import type { AxisScale } from "./axisModel.js";
+import { layoutThresholdTicks, thresholdCounts } from "./thresholdTicks.js";
 
 export const DEFAULT_RATE_TICKS: readonly number[] = [0, 5, 10, 20];
 export const RATE_TICK_MAX = 8;
@@ -50,13 +54,9 @@ export function commitRateTicks(next: readonly number[]): number[] {
     return parseRateTicks(next.map((v) => Math.min(RATE_TICK_HI, Math.max(RATE_TICK_LO, v))));
 }
 
-/** 선 하나의 셈 — count = 그 값 이상인 종목 수(결손 제외). */
+/** 선 하나의 셈 — count = 그 값 이상인 종목 수(결손 제외). % 는 소수 연산이라 1e-9 여유를 둔다. */
 export function rateTickCounts(rates: readonly (number | null)[], pcts: readonly number[]): { pct: number; count: number }[] {
-    return pcts.map((pct) => {
-        let count = 0;
-        for (const r of rates) if (r !== null && Number.isFinite(r) && r >= pct - 1e-9) count++;
-        return { pct, count };
-    });
+    return thresholdCounts(rates, pcts, 1e-9).map(({ v, count }) => ({ pct: v, count }));
 }
 
 export type TickTone = "rise" | "fall" | "flat";
@@ -87,40 +87,21 @@ export function layoutRateTicks(
     edge: { top: number; bottom: number },
     mergePx = RATE_TICK_MERGE_PX,
 ): RateTickLayout {
-    const lines: { pct: number; py: number }[] = [];
-    const above: number[] = [];
-    const below: number[] = [];
-    for (const { pct, count } of counts) {
-        if (count <= 0) continue;
-        const v = count + 0.5;
-        if (y.inDomain(v)) lines.push({ pct, py: y.px(v) });
-        else if (v < domTop) above.push(pct);
-        else below.push(pct);
-    }
-    // 위 → 아래(= 큰 값 → 작은 값) 순서로 합친다. 같은 count 의 두 값은 같은 py 라 자연히 한 묶음.
-    const lo = above.length > 0 ? edge.top + mergePx : -Infinity;
-    const hi = below.length > 0 ? edge.bottom - mergePx : Infinity;
-    const sorted = lines.map((l) => ({ pct: l.pct, py: Math.min(hi, Math.max(lo, l.py)) })).sort((a, b) => a.py - b.py || b.pct - a.pct);
-    const labels: { py: number; parts: number[] }[] = [];
-    let cur: { pys: number[]; parts: number[] } | null = null;
-    for (const l of sorted) {
-        if (cur !== null && l.py - cur.pys[cur.pys.length - 1] < mergePx) {
-            cur.pys.push(l.py);
-            cur.parts.push(l.pct);
-            continue;
-        }
-        if (cur !== null) labels.push(close(cur));
-        cur = { pys: [l.py], parts: [l.pct] };
-    }
-    if (cur !== null) labels.push(close(cur));
-    return { lines, labels, above: above.sort((a, b) => a - b), below: below.sort((a, b) => a - b) };
+    // 세로 축은 도메인 lo(1위) 쪽이 위(top) — thresholdTicks 의 lo/hi 가장자리로 그대로 매핑된다.
+    const l = layoutThresholdTicks(
+        counts.map((c) => ({ v: c.pct, count: c.count })),
+        y,
+        domTop,
+        { loPx: edge.top, hiPx: edge.bottom },
+        mergePx,
+    );
+    return {
+        lines: l.lines.map(({ v, p }) => ({ pct: v, py: p })),
+        labels: l.labels.map(({ p, parts }) => ({ py: p, parts })),
+        above: l.beyondLo,
+        below: l.beyondHi,
+    };
 }
-
-/** 묶음 닫기 — 글자 자리는 선들의 가운데, 조각은 작은 값부터(「10·20%」 — 읽는 순서). */
-const close = (g: { pys: number[]; parts: number[] }): { py: number; parts: number[] } => ({
-    py: g.pys.reduce((a, b) => a + b, 0) / g.pys.length,
-    parts: [...g.parts].sort((a, b) => a - b),
-});
 
 /**
  * 묶음 글자의 조각 — 작은 값부터. `maxParts` 를 넘으면 양끝만 「a…b」(왼쪽 여백 44px 를 넘기지 않게 —

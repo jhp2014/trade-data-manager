@@ -189,3 +189,55 @@ describe("축 ▾ — % 선 칩(panelUi rateTicks, 부재 = 기본)", () => {
         expect(chipRow().textContent).not.toContain("×");
     });
 });
+
+describe("축 ▾ — 억 선 칩(panelUi amountTicks, 창별 저장·기본 빈 목록)", () => {
+    const open = (container: HTMLElement): void => {
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.title ?? "").startsWith("이 창의 축 설정"))!;
+        act(() => { fireEvent.click(trigger); });
+    };
+    const chipRow = (): HTMLElement => [...document.body.querySelectorAll("span")].find((s) => (s.textContent ?? "").startsWith("억 선"))!;
+    const addChip = (value: string, key = "Enter"): void => {
+        act(() => { fireEvent.click([...chipRow().querySelectorAll("button")].find((b) => b.textContent === "＋")!); });
+        const input = chipRow().querySelector("input")!;
+        act(() => {
+            fireEvent.change(input, { target: { value } });
+            fireEvent.keyDown(input, { key });
+        });
+    };
+    const stored = (): unknown => useWorkbench.getState().panelUi[PANEL]?.["amountTicks"];
+
+    it("당일 창에 300억 추가 → {day:[300]} · 창을 바꾸면 그 창의 목록(빈) · 1.2조 추가 = 병합", () => {
+        const { container } = renderPanel();
+        open(container);
+        addChip("300억");
+        expect(stored()).toEqual({ day: [300] });
+        expect(chipRow().textContent).toContain("당일 창");
+        // 창 전환 — 당일 목록은 남고 30분 창은 빈 줄에서 시작한다.
+        act(() => useWorkbench.getState().setPanelUi(PANEL, "axes", { xMode: "rank", yMode: "rank", windowMin: 30 }));
+        expect(chipRow().textContent).not.toContain("300억");
+        expect(chipRow().textContent).toContain("30분 창");
+        addChip("1.2조");
+        expect(stored()).toEqual({ day: [300], "30": [12000] });
+    });
+
+    it("못 읽는 글자·Esc 는 취소 · 키 없는 판에서 빈 ＋ 커밋은 아무것도 쓰지 않는다", () => {
+        const { container } = renderPanel();
+        open(container);
+        addChip("abc");
+        expect(stored()).toBeUndefined();
+        addChip("500", "Escape");
+        expect(stored()).toBeUndefined();
+        addChip("");
+        expect(stored()).toBeUndefined();
+    });
+
+    it("× 로 마지막 칩을 빼면 그 창 키째 사라진다(빈 목록 = 키 삭제) · 대금 값 모드에선 안 씀", () => {
+        act(() => useWorkbench.getState().setPanelUi(PANEL, "amountTicks", { day: [300], "30": [100] }));
+        const { container } = renderPanel();
+        open(container);
+        act(() => { fireEvent.click(chipRow().querySelector("button[aria-label='300억 선 빼기']")!); });
+        expect(stored()).toEqual({ "30": [100] });
+        act(() => useWorkbench.getState().setPanelUi(PANEL, "axes", { xMode: "value", yMode: "rank", windowMin: null }));
+        expect(chipRow().textContent).toContain("값 축에선 안 씀");
+    });
+});

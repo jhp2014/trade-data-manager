@@ -112,15 +112,19 @@ export interface PlaneSlice {
     y: (number | null)[];
 }
 
+/** 창 대금 **값** 배열(원) — 값 산점의 x 와 억 눈금의 셈이 **같은 배열**을 보게 하는 단일 출처
+ *  (대금 서수가 정확히 이 배열의 descendingOrdinals 라 count+0.5 경계 정리가 성립한다). */
+export function amountValuesAt(stocks: readonly ReplayStock[], date: string, minute: number, windowMin: number | null): (number | null)[] {
+    return windowMin === null ? valuesAtMinute(stocks, date, minute).cumAmount : windowedAmountsAt(stocks, date, minute, windowMin);
+}
+
 export function planeSliceAt(stocks: readonly ReplayStock[], date: string, minute: number, axes: ThemeRankAxes): PlaneSlice {
     const x =
         axes.xMode === "rank"
             ? axes.windowMin === null
                 ? sectionAtMinute(stocks, date, minute).amount
                 : windowedRanksAt(stocks, date, minute, axes.windowMin)
-            : axes.windowMin === null
-                ? valuesAtMinute(stocks, date, minute).cumAmount
-                : windowedAmountsAt(stocks, date, minute, axes.windowMin);
+            : amountValuesAt(stocks, date, minute, axes.windowMin);
     const y = axes.yMode === "rank" ? sectionAtMinute(stocks, date, minute).rate : valuesAtMinute(stocks, date, minute).rate;
     return { x, y };
 }
@@ -154,7 +158,7 @@ export interface PlotBox {
 
 const fmtRank = (v: number): string => `${Math.round(v)}위`;
 /** 대금(원) 표기 — 억 단위로 접는 기존 단위 규칙(formatValue)을 그대로 쓴다(1조부터 "4.3조"). */
-const fmtWon = (v: number): string => formatValue(v / 1e8, { suffix: "억", decimals: v < 1e9 ? 1 : 0, signed: false });
+export const fmtWon = (v: number): string => formatValue(v / 1e8, { suffix: "억", decimals: v < 1e9 ? 1 : 0, signed: false });
 const fmtRate = (v: number): string => formatValue(v, { suffix: "%", decimals: 1, signed: true });
 
 /** 서수 축(가로) — **1위 = 오른쪽**(2026-09-17 반전). dom 은 뷰 도메인(기본 = 200 창). */

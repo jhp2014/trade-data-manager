@@ -17,6 +17,7 @@ import { ThemeLensStrip } from "./ThemeLensStrip.js";
 import { ThemePlaneView } from "./ThemePlaneView.js";
 import { parseThemeRankAxes, windowLabel } from "./axisModel.js";
 import { parseRateTicks } from "./rateTicks.js";
+import { amountTickWindowKey, parseAmountTicks, withWindowTicks } from "./amountTicks.js";
 import { selectObservedExpr, useWorkbench } from "../../store/workbench.js";
 import { themeZoneLabel } from "../filter/themeLabel.js";
 import { MENU_PAD, MenuHead, MenuItem, MenuSep } from "../../ui/popover/menu.js";
@@ -33,7 +34,14 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
     // % 눈금 값 — 별도 키(부재 = 기본 0·5·10·20, [] = 끔). axes 에 안 넣는 이유: 기하 memo 가 칩 편집마다 재계산된다.
     const [rateTicksRaw, setRateTicks] = usePanelUi<unknown>(panelId, "rateTicks", undefined);
     const rateTicks = useMemo(() => parseRateTicks(rateTicksRaw), [rateTicksRaw]);
-    const plane = useThemePlane(panelId, axes, rateTicks);
+    // 억 눈금 값 — **창별** 저장물(Record<창키, 억 목록>, 기본 = 빈 목록). 쓰기는 함수형 병합 — 통째로
+    // 쓰면 다른 창의 목록이 날아간다(usePanelUi 가 store 최신값을 읽어 준다).
+    const [amountTicksRaw, setAmountTicksRaw] = usePanelUi<unknown>(panelId, "amountTicks", undefined);
+    const amountTickKey = amountTickWindowKey(axes.windowMin);
+    const amountTicks = useMemo(() => parseAmountTicks(amountTicksRaw)[amountTickKey] ?? EMPTY_TICKS, [amountTicksRaw, amountTickKey]);
+    const setAmountTicks = (next: number[]): void =>
+        setAmountTicksRaw((prev: unknown) => withWindowTicks(parseAmountTicks(prev), amountTickKey, next));
+    const plane = useThemePlane(panelId, axes, rateTicks, amountTicks);
     const { subject, section } = plane;
 
     // 자 키는 모드별(창 무시 — 임의 분이라 창을 키에 넣으면 무한히 번진다. 조건판과 키 규칙이 다른 건 의도).
@@ -65,7 +73,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
             // (리뷰 지적). 상한만인 존은 겹침을 안 세운다 · 양끝이면 틴트가 상한 위로 번지는 건 알려진 근사.
             ? (zone.rate.mode === "rank" ? zone.rate.max : zone.rate.minPct ?? null)
             : null;
-        return x === null && y === null ? null : { x, y };
+        return x === null && y === null ? null : { x, y, from: zone.from };
     }, [zone, axes]);
 
     // ── 헤더 선언 — 축·존은 **정보(요약)와 컨트롤(판)으로 갈라** 중복 선언한다(규약: 섞인 표면 분리).
@@ -112,7 +120,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
             {
                 kind: "popover", id: "axes", name: "축 설정", label: "축", width: 340, nav: true,
                 help: "이 창의 축 설정 — 인스턴스마다 따로 저장된다(⧉ 복제 시 사본이 같이 간다)",
-                renderPopover: () => <AxisControls axes={axes} onChange={setAxesRaw} rateTicks={rateTicks} onRateTicks={setRateTicks} />,
+                renderPopover: () => <AxisControls axes={axes} onChange={setAxesRaw} rateTicks={rateTicks} onRateTicks={setRateTicks} amountTicks={amountTicks} onAmountTicks={setAmountTicks} />,
             },
             {
                 kind: "popover", id: "zone", name: "존 겹침", label: zone !== null ? zone.from : "존", width: 360, nav: true, on: zone !== null, activeColor: "var(--accent-primary)",
@@ -169,6 +177,9 @@ function ZoneMenu({ zone, onPick }: { zone: ScopeZone | null; onPick: (z: ScopeZ
         </div>
     );
 }
+
+/** 창에 목록이 없을 때의 고정 참조 — 매 렌더 새 [] 는 플레인 memo 를 공으로 돌린다. */
+const EMPTY_TICKS: number[] = [];
 
 const wrap: React.CSSProperties = { display: "flex", flexDirection: "column", height: "100%", background: "var(--bg-primary)", color: "var(--text-primary)", overflow: "hidden" };
 const chipsRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", borderBottom: "1px solid var(--border-subtle)", overflowX: "auto", flexShrink: 0 };

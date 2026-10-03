@@ -100,6 +100,8 @@ export const POINT_DEF = "#16796f"; // 정의층(모수 선언 — PointDefHead�
 
 export const LEG_HIGH = "#be7a00"; // 결과의 연장 고점(차트 드롭 캡·띠, 결과 패널 T 레일) — M 가격선과 지금 같은 앰버지만 뜻이 다르다(이름 가르기). 세로 캡+점이라 가로선인 M 과 형태로도 갈린다
 
+export const AMOUNT_TICK = "#b5487f"; // 대금 순위 축의 억 눈금 선·글자 — AMOUNT_RAMP 중간 톤과 같은 값이지만 뜻이 다르다(이름 가르기). 등락 관례색(rise/fall)·존 FILTER 빨강·자 회색 어느 것과도 안 섞이는 게 존재 이유
+
 export const CHART_LABEL = "#a0a0a0"; // 차트 툴팁의 라벨 회색(툴팁 배경 위 — 본문 --text-tertiary 와 다름)
 export const CHART_VALUE = "#d4d4d8"; // 차트 툴팁의 값 회색(라벨보다 밝게)
 

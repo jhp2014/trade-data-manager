@@ -4,26 +4,29 @@
 // 십자선 = **자유 자**(회색, panelUi "guides" — **상시**, 2026-09-17 "선은 항상 있다"), 기본 자리는
 // 뷰 가운데(저장 전엔 파생 — 저장물 없이도 선이 선다). 술어 십자선(옛 연동 조건판의 cut)은 2026-09-26
 // 판 통합과 함께 은퇴 — 걸린 조건은 읽기 전용 overlay 한 층으로만 선다(수정은 조건판 팝오버).
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { CanvasLayers } from "../canvas/CanvasPainter.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
-import { FILTER } from "../../styles/palette.js";
+import { AMOUNT_TICK, FILTER } from "../../styles/palette.js";
 import { panAmountDom, panRateDom, zoomAmountDom, zoomRateDom, type ValueDom } from "./axisModel.js";
 import { tooltipBoxOf } from "./tooltipBox.js";
 import { tickLabelParts, type RateTickLayout, type TickTone } from "./rateTicks.js";
+import { amountTickLabelText } from "./amountTicks.js";
+import type { ThresholdTickLayout } from "./thresholdTicks.js";
+import { ZONE_TAG_H, zoneMarksOf } from "./zoneMarks.js";
 import { TimelineBar } from "./TimelineBar.js";
 import { TrailControl } from "./TrailControl.js";
-import { CLICK_SLOP, LBL_H, LBL_PAD, LBL_W, ZOOM_MIN_SPAN, fmtHms, rateTickEdges, type ThemePlane } from "./useThemePlane.js";
+import { CLICK_SLOP, LBL_H, LBL_PAD, LBL_W, ZOOM_MIN_SPAN, amountTickEdges, fmtHms, rateTickEdges, type ThemePlane } from "./useThemePlane.js";
 
 export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
     plane: ThemePlane;
     /**
      * 「존 ▾」로 복사해 온 존의 겹침(2026-09-30 — 참조가 아니라 사본) — 자유 자와 **동시에** 선다(자를 안 끈다:
-     * 여긴 "보는 것과 걸린 것의 눈맞춤"뿐, 판정 없음). 값은 데이터 공간(서수·%·분).
+     * 여긴 "보는 것과 걸린 것의 눈맞춤"뿐, 판정 없음). 값은 데이터 공간(서수·%·분), from = 출처(이름표).
      */
-    overlay?: { x: number | null; y: number | null } | null;
+    overlay?: { x: number | null; y: number | null; from: string } | null;
     /** 자의 저장 키(x·y) — 축 모드별(창 무시 — ThemeScopePanel 의 키 규칙). */
     guideKeys: { x: string; y: string };
 }): JSX.Element | null {
@@ -31,6 +34,13 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
     const setTime = useWorkbench((s) => s.setTime);
     const p = plane;
     const { box, size, scales, xScale, yScale } = p;
+
+    // 존 표식 기하 — 선·빗금(under)과 배지·이름표(over)가 같은 수를 본다. 빗금 패턴 id 는 판마다
+    // 유일해야 한다(SVG id 는 문서 전역 — ⧉ 복제 판이 남의 defs 를 집으면 한쪽만 산다).
+    const hatchId = `zone-hatch-${useId().replace(/:/g, "")}`;
+    const marks = overlay !== null && (overlay.x !== null || overlay.y !== null)
+        ? zoneMarksOf(overlay, xScale, yScale, box)
+        : null;
 
     // ── 자유 자 — 상시(저장 전 기본 = 뷰 가운데 파생값). 드래그 미리보기는 로컬, 커밋은 손 뗄 때 한 번.
     // 커밋은 이벤트 핸들러에서 ref 미러로 — setState 업데이터 안에서 store 를 쓰면 렌더 중 업데이트
@@ -221,30 +231,29 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
             {p.subject && p.section && (
                 <div ref={p.wrapRef} style={{ position: "relative", flex: 1, minHeight: 0 }}>
                     <svg width={size.w} height={size.h} style={underSvg}>
-                        {overlay !== null && (overlay.x !== null || overlay.y !== null) && (() => {
-                            const ox = overlay.x !== null && xScale.inDomain(overlay.x) ? scales.x(overlay.x) : null;
-                            const oy = overlay.y !== null && yScale.inDomain(overlay.y) ? scales.y(overlay.y) : null;
-                            return (
-                                <g pointerEvents="none">
-                                    {ox !== null && oy !== null && (
-                                        // 존 틴트 — 1위 = 오른쪽·위(x 반전 규칙 그대로).
-                                        <rect x={ox} y={box.top} width={Math.max(0, box.left + box.width - ox)} height={Math.max(0, oy - box.top)}
-                                            fill={FILTER} opacity={0.06} />
-                                    )}
-                                    {ox !== null && <line x1={ox} y1={box.top} x2={ox} y2={box.top + box.height} stroke={FILTER} strokeWidth={1} strokeDasharray="3 3" opacity={0.7} />}
-                                    {oy !== null && <line x1={box.left} y1={oy} x2={box.left + box.width} y2={oy} stroke={FILTER} strokeWidth={1} strokeDasharray="3 3" opacity={0.7} />}
-                                </g>
-                            );
-                        })()}
                         {gx !== null && gy !== null && (() => {
                             // 자 기준의 "강한 쪽"(오른쪽-위) 틴트 — 존과 뜻이 다르니 색도 가른다(자 = 회색 계열,
                             // 술어 무관·보기용). 강한 모서리 = 순위 축은 1위, 값 축은 도메인 상한(오른쪽/위).
+                            // 존 **아래**에 그린다 — 반대면 회색 55% 가 존을 덮는다(2026-10-03 순서 교정).
                             const zxA = clamp(scales.x(p.axes.xMode === "rank" ? 1 : p.vx.hi), box.left, box.left + box.width);
                             const zxB = clamp(scales.x(gx), box.left, box.left + box.width);
                             const zyA = clamp(scales.y(p.axes.yMode === "rank" ? 1 : p.vy.hi), box.top, box.top + box.height);
                             const zyB = clamp(scales.y(gy), box.top, box.top + box.height);
                             return <rect x={Math.min(zxA, zxB)} y={Math.min(zyA, zyB)} width={Math.abs(zxB - zxA)} height={Math.abs(zyB - zyA)} fill="var(--bg-tertiary)" opacity={0.55} />;
                         })()}
+                        {marks !== null && (
+                            // 존 — 면은 빗금(겹침에서도 질감으로 살아남는다 — 납작 틴트 폐지), 선은 점선 유지.
+                            <g pointerEvents="none">
+                                <defs>
+                                    <pattern id={hatchId} width={6} height={6} patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                                        <line x1={0} y1={0} x2={0} y2={6} stroke={FILTER} strokeWidth={1.1} opacity={0.28} />
+                                    </pattern>
+                                </defs>
+                                {marks.rect !== null && <rect x={marks.rect.x} y={marks.rect.y} width={marks.rect.w} height={marks.rect.h} fill={`url(#${hatchId})`} />}
+                                {marks.vpx !== null && <line x1={marks.vpx} y1={box.top} x2={marks.vpx} y2={box.top + box.height} stroke={FILTER} strokeWidth={1} strokeDasharray="3 3" opacity={0.7} />}
+                                {marks.hpy !== null && <line x1={box.left} y1={marks.hpy} x2={box.left + box.width} y2={marks.hpy} stroke={FILTER} strokeWidth={1} strokeDasharray="3 3" opacity={0.7} />}
+                            </g>
+                        )}
                         {xScale.ticks.map((t) => (
                             <g key={`x${t.v}`}>
                                 <line x1={xScale.px(t.v)} y1={box.top} x2={xScale.px(t.v)} y2={box.top + box.height} stroke="var(--border-subtle)" />
@@ -261,6 +270,7 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
                             </g>
                         ))}
                         {p.rateTicks !== null && <RateTickMarks ticks={p.rateTicks} box={box} />}
+                        {p.amountTicks !== null && <AmountTickMarks ticks={p.amountTicks} box={box} />}
                         <line x1={box.left} y1={box.top} x2={box.left} y2={box.top + box.height} stroke="var(--border-strong)" />
                         <line x1={box.left} y1={box.top + box.height} x2={box.left + box.width} y2={box.top + box.height} stroke="var(--border-strong)" />
                         {/* y 제목은 왼쪽-위 가로(2026-09-17 — 세로 회전 폐지, 왼 여백은 등락 배지의 자리다). */}
@@ -309,6 +319,32 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
                         onPointerLeave={() => setHover(null)}
                         onWheel={onWheel}
                         onDoubleClick={onDoubleClick}>
+                        {marks !== null && (
+                            // 존 배지·이름표 — 캔버스 점 **위**(under 에 두면 점이 덮는다), 판 안쪽 가장자리(여백은
+                            // 축 어휘 소유). 읽기 전용 — 존은 사본이라 판에서 안 고친다(수정은 조건판 팝오버).
+                            <g pointerEvents="none" style={{ fontSize: 10, fontVariantNumeric: "tabular-nums" }}>
+                                {marks.vBadge !== null && (
+                                    <g>
+                                        <rect x={marks.vBadge.x} y={marks.vBadge.y} width={LBL_W} height={LBL_H} rx={3} fill={FILTER} />
+                                        <text x={marks.vBadge.x + LBL_W / 2} y={marks.vBadge.y + 11} textAnchor="middle" fill="#fff">{marks.vBadge.text}</text>
+                                    </g>
+                                )}
+                                {marks.hBadge !== null && (
+                                    <g>
+                                        <rect x={marks.hBadge.x} y={marks.hBadge.y} width={LBL_W} height={LBL_H} rx={3} fill={FILTER} />
+                                        <text x={marks.hBadge.x + LBL_W / 2} y={marks.hBadge.y + 11} textAnchor="middle" fill="#fff">{marks.hBadge.text}</text>
+                                    </g>
+                                )}
+                                {marks.nameTag !== null && overlay !== null && (
+                                    <g>
+                                        <title>{overlay.from.trim() === "" ? "존(출처 없음)" : `존 — ${overlay.from}`}</title>
+                                        <rect x={marks.nameTag.x} y={marks.nameTag.y} width={marks.nameTag.w} height={ZONE_TAG_H} rx={3}
+                                            fill="var(--bg-primary)" stroke={FILTER} strokeWidth={0.75} />
+                                        <text x={marks.nameTag.x + 6} y={marks.nameTag.y + 12} fill={FILTER}>{marks.nameTag.text}</text>
+                                    </g>
+                                )}
+                            </g>
+                        )}
                         {(gxVisible || gyVisible) && (
                             <>
                                 {/* 자유 자 — 판정 컷과 다른 어휘(가는 점선·회색 배지): 술어와 무관한 자일 뿐이다. */}
@@ -394,6 +430,35 @@ function RateTickMarks({ ticks, box }: { ticks: RateTickLayout; box: { left: num
             {ticks.labels.map((g) => <g key={g.parts.join(",")}>{label(g.parts, g.py + 3)}</g>)}
             {ticks.above.length > 0 && label(ticks.above, edge.top + 3, " ↑", 1)}
             {ticks.below.length > 0 && label(ticks.below, edge.bottom + 3, " ↓", 1)}
+        </g>
+    );
+}
+
+/**
+ * 대금 순위 축의 억 눈금 — % 눈금의 가로 쌍둥이. 선은 점 아래 층 세로 점선(자홍 — 등락 관례색·존
+ * 빨강·자 회색과 가른다), 글자는 **위 여백**(왼쪽은 y 제목이 선점 — amountTickEdges 가 그만큼 예약).
+ * 뷰 밖 접힘: 1위 쪽(오른쪽) = 「…→」, 반대(왼쪽) = 「←…」.
+ */
+function AmountTickMarks({ ticks, box }: { ticks: ThresholdTickLayout; box: { left: number; top: number; width: number; height: number } }): JSX.Element {
+    const edge = amountTickEdges(box);
+    const y = box.top - 4;
+    const text = { fontSize: 10, fill: AMOUNT_TICK } as const;
+    return (
+        <g pointerEvents="none">
+            {ticks.lines.map((l) => (
+                <line key={l.v} x1={l.p} y1={box.top} x2={l.p} y2={box.top + box.height}
+                    stroke={AMOUNT_TICK} strokeWidth={1} strokeDasharray="1 3" opacity={0.75} />
+            ))}
+            {ticks.labels.map((g) => (
+                <text key={g.parts.join(",")} x={g.p} y={y} textAnchor="middle" style={text}>{amountTickLabelText(g.parts)}</text>
+            ))}
+            {ticks.beyondLo.length > 0 && (
+                // 앵커 = 레이아웃의 lo 가장자리와 같은 px — 밀어 앉히기 기준점과 그리는 자리가 어긋나지 않게.
+                <text x={edge.loPx} y={y} textAnchor="end" style={text}>{`${amountTickLabelText(ticks.beyondLo, 1)} →`}</text>
+            )}
+            {ticks.beyondHi.length > 0 && (
+                <text x={edge.hiPx} y={y} textAnchor="start" style={text}>{`← ${amountTickLabelText(ticks.beyondHi, 1)}`}</text>
+            )}
         </g>
     );
 }

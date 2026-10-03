@@ -13,9 +13,11 @@ import { useChartPoints } from "../../lib/useChartPoints.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import {
     AMOUNT_VIEW, RANK_VIEW_SPAN, RATE_VIEW,
-    planeSliceAt, rankScaleX, rankScaleY, valueScaleX, valueScaleY,
+    amountValuesAt, planeSliceAt, rankScaleX, rankScaleY, valueScaleX, valueScaleY,
     type AxisScale, type ThemeRankAxes, type ValueDom,
 } from "./axisModel.js";
+import { AMOUNT_TICK_MERGE_PX } from "./amountTicks.js";
+import { layoutThresholdTicks, thresholdCounts, type ThresholdTickLayout } from "./thresholdTicks.js";
 import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { valuesAtMinute } from "./sectionSeries.js";
 import { layoutRateTicks, rateTickCounts, type RateTickLayout } from "./rateTicks.js";
@@ -23,6 +25,16 @@ import { layoutRateTicks, rateTickCounts, type RateTickLayout } from "./rateTick
 /** 가장자리 「↑/↓」 글자의 가운데 px — 뷰모델(밀어 앉히기)과 렌더(자리)가 같은 수를 본다. */
 export const rateTickEdges = (box: { top: number; height: number }): { top: number; bottom: number } =>
     ({ top: box.top + 6, bottom: box.top + box.height - 6 });
+
+/** 억 눈금 글자가 사는 위 여백의 왼쪽 예약(px) — y 제목("등락률 순위 (1위 ↑)", 끝 ~98px)이 같은
+ *  띠를 쓴다. 가운데 정렬 글자의 반폭까지 덮게 제목 끝 + 30(2026-10-03 리뷰 — 겹침은 상시 민다). */
+export const Y_TITLE_RESERVE = 128;
+/** 억 눈금 가장자리 px — lo(1위 쪽) = 오른쪽, hi = 왼쪽(제목 폭만큼 안으로, **상시** 클램프).
+ *  뷰모델과 렌더 공용. loPx − 1 하한: 퇴화 폭에서 lo/hi 가 같아지면 방향(s) 판정이 뒤집힌다. */
+export const amountTickEdges = (box: { left: number; width: number }): { loPx: number; hiPx: number; hiAlways: true } => {
+    const loPx = box.left + box.width - 6;
+    return { loPx, hiPx: Math.min(Math.max(box.left + 6, Y_TITLE_RESERVE), loPx - 1), hiAlways: true };
+};
 import { scatterLayer } from "./scatterLayer.js";
 import { themeColorMap } from "./themeColor.js";
 import { trailLayer, type Trail, type TrailPoint } from "./trailLayer.js";
@@ -98,6 +110,8 @@ export interface ThemePlane {
     foldedRate: number;
     /** 등락 순위 축의 % 눈금 — y 순위 모드 · 설정 목록이 비지 않았을 때만(없으면 null = 왼쪽 여백은 순위 글자). */
     rateTicks: RateTickLayout | null;
+    /** 대금 순위 축의 억 눈금 — x 순위 모드 · 지금 창의 목록이 비지 않았을 때만. beyondLo = 오른쪽(1위 쪽) 접힘. */
+    amountTicks: ThresholdTickLayout | null;
     size: { w: number; h: number };
     box: { left: number; top: number; width: number; height: number };
     /** 스케일이 쓰는 안쪽 상자(INNER_PAD) — 팬·휠의 px→도메인 비율도 이걸 써야 1:1 로 따라온다. */
@@ -113,7 +127,7 @@ export interface ThemePlane {
     goBack: () => void;
 }
 
-export function useThemePlane(panelId: string, axes: ThemeRankAxes, rateTickPcts: readonly number[] = []): ThemePlane {
+export function useThemePlane(panelId: string, axes: ThemeRankAxes, rateTickPcts: readonly number[] = [], amountTickVals: readonly number[] = []): ThemePlane {
     const subject = useSubject();
     const setCode = useWorkbench((s) => s.setCode);
     const setFocus = useWorkbench((s) => s.setFocus);
@@ -303,6 +317,23 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes, rateTickPcts
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [axes.yMode, rateTickKey, stocks, subject?.date, minute, yScale, dom.y0, box.top, box.height]);
 
+    // ── 억 눈금 — 대금 서수와 **같은 배열**(amountValuesAt — 당일 cumAmount / N분 창)을 센다. 셈 직전에만
+    // 정수 원으로(억×1e8 반올림 — 부동소수 경계 방지). "켜짐" 판정은 % 눈금과 같은 결(설정 목록 기준).
+    const amountTickKey = amountTickVals.join(",");
+    const amountTicks = useMemo((): ThresholdTickLayout | null => {
+        if (axes.xMode !== "rank" || amountTickVals.length === 0) return null;
+        const empty: ThresholdTickLayout = { lines: [], labels: [], beyondLo: [], beyondHi: [] };
+        if (!stocks || !subject || minute === null) return empty;
+        const values = amountValuesAt(stocks, subject.date, minute, axes.windowMin);
+        const counts = thresholdCounts(values, amountTickVals.map((v) => Math.round(v * 1e8)));
+        // 글자는 억 값으로 — 셈의 v(원)를 입력 목록(억)으로 되돌린다(순서 보존).
+        return layoutThresholdTicks(
+            counts.map((c, i) => ({ v: amountTickVals[i], count: c.count })),
+            xScale, dom.x0, amountTickEdges(box), AMOUNT_TICK_MERGE_PX,
+        );
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [axes.xMode, axes.windowMin, amountTickKey, stocks, subject?.date, minute, xScale, dom.x0, box.left, box.width]);
+
     // ── 꼬리 — 상대 오프셋(전역 영속 설정). 꼭짓점도 현재 축 설정의 좌표다.
     const trailOffsets = useWorkbench((s) => s.themeTrailOffsets);
     const trailMinutes = useMemo(() => {
@@ -398,7 +429,7 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes, rateTickPcts
         minute, minuteRange, section, stocks,
         participants, hitPoints, subjectThemes, peerThemes, themeColors, themesStatus, lens, setLens,
         maxRank, dom, domSpan, defaultSpan, clampDom0, vx, vy, rawVdom, zoom, viewMoved, resetView, writeZoom, writeVdom,
-        xScale, yScale, scales, foldedRate, rateTicks, size, box, inner, wrapRef,
+        xScale, yScale, scales, foldedRate, rateTicks, amountTicks, size, box, inner, wrapRef,
         trails, layers, trailMinutes, pointMinutes, nearestAt, navigate, anchor, goBack,
     };
 }
