@@ -15,7 +15,7 @@ import { tooltipBoxOf } from "./tooltipBox.js";
 import { tickLabelParts, type RateTickLayout, type TickTone } from "./rateTicks.js";
 import { amountTickLabelText } from "./amountTicks.js";
 import type { ThresholdTickLayout } from "./thresholdTicks.js";
-import { ZONE_TAG_H, zoneMarksOf } from "./zoneMarks.js";
+import { zoneMarksOf } from "./zoneMarks.js";
 import { TimelineBar } from "./TimelineBar.js";
 import { TrailControl } from "./TrailControl.js";
 import { CLICK_SLOP, LBL_H, LBL_PAD, LBL_W, ZOOM_MIN_SPAN, amountTickEdges, fmtHms, rateTickEdges, type ThemePlane } from "./useThemePlane.js";
@@ -24,9 +24,9 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
     plane: ThemePlane;
     /**
      * 「존 ▾」로 복사해 온 존의 겹침(2026-09-30 — 참조가 아니라 사본) — 자유 자와 **동시에** 선다(자를 안 끈다:
-     * 여긴 "보는 것과 걸린 것의 눈맞춤"뿐, 판정 없음). 값은 데이터 공간(서수·%·분), from = 출처(이름표).
+     * 여긴 "보는 것과 걸린 것의 눈맞춤"뿐, 판정 없음). 값은 데이터 공간(서수·%·분). 출처는 헤더 정보가 말한다.
      */
-    overlay?: { x: number | null; y: number | null; from: string } | null;
+    overlay?: { x: number | null; y: number | null } | null;
     /** 자의 저장 키(x·y) — 축 모드별(창 무시 — ThemeScopePanel 의 키 규칙). */
     guideKeys: { x: string; y: string };
 }): JSX.Element | null {
@@ -58,6 +58,9 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
     const downRef = useRef<{ x: number; y: number } | null>(null);
     const panRef = useRef<{ x: number; y: number; dom: { x0: number; x1: number; y0: number; y1: number }; vx: ValueDom; vy: ValueDom } | null>(null);
     const [hover, setHover] = useState<{ x: number; y: number; code: string; rate: number; amount: number } | null>(null);
+    // 존 배지 위 호버 — 기본은 자 배지가 위지만, 존 배지에 올리면 존이 위로 온다(2026-10-03 저녁).
+    // 판정은 좌표(inLabel)다 — 요소 호버로 하면 위에 덮인 자 배지가 이벤트를 먹어 겹친 자리가 안 잡힌다.
+    const [zoneHover, setZoneHover] = useState<"x" | "y" | null>(null);
 
     // 뷰 밖의 자는 선·배지를 접는다(클램프 배지를 잘못 잡으면 커밋이 값을 파괴). 드래그 중인 축은 예외.
     const gxVisible = dragRef.current === "gx" || (gx !== null && xScale.inDomain(gx));
@@ -74,6 +77,23 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
     const guideLabels = { x: gpxX !== null ? vLabel(gpxX) : null, y: gpxY !== null ? hLabel(gpxY) : null };
     const inLabel = (x: number, y: number, l: { x: number; y: number }): boolean =>
         x >= l.x - LBL_PAD && x <= l.x + LBL_W + LBL_PAD && y >= l.y - LBL_PAD && y <= l.y + LBL_H + LBL_PAD;
+
+    // 존 값 배지 — 자 배지와 **같은 여백 자리**(vLabel/hLabel 공용 — 같은 코드 = 같은 기하, 2026-10-03
+    // 저녁: 판 안 배지는 점을 가려 불편). 읽기 전용(드래그 없음), 겹침은 아래 틴트가 말한다.
+    const zoneVB = marks !== null && marks.vpx !== null && overlay !== null && overlay.x !== null
+        ? { ...vLabel(marks.vpx), text: xScale.fmt(overlay.x) }
+        : null;
+    const zoneHB = marks !== null && marks.hpy !== null && overlay !== null && overlay.y !== null
+        ? { ...hLabel(marks.hpy), text: yScale.fmt(overlay.y) }
+        : null;
+    /** 같은 띠의 두 배지가 겹치는 영역 — 없으면 null(겹침 틴트의 재료). */
+    const badgeOverlap = (a: { x: number; y: number }, b: { x: number; y: number }): { x: number; y: number; w: number; h: number } | null => {
+        const x = Math.max(a.x, b.x);
+        const w = Math.min(a.x, b.x) + LBL_W - x;
+        const y = Math.max(a.y, b.y);
+        const h = Math.min(a.y, b.y) + LBL_H - y;
+        return w > 0 && h > 0 ? { x, y, w, h } : null;
+    };
 
     const onPointerDown = (e: React.PointerEvent<SVGSVGElement>): void => {
         if (e.button !== 0) { downRef.current = null; return; }
@@ -213,10 +233,11 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
         if (dragRef.current) commitDrag(e);
     };
     const onHoverMove = (e: React.PointerEvent<SVGSVGElement>): void => {
-        if (dragRef.current || panRef.current) { setHover(null); return; }
+        if (dragRef.current || panRef.current) { setHover(null); setZoneHover(null); return; }
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
+        setZoneHover(zoneVB !== null && inLabel(x, y, zoneVB) ? "x" : zoneHB !== null && inLabel(x, y, zoneHB) ? "y" : null);
         const hit = p.nearestAt(x, y);
         setHover(hit ? { x, y, ...hit } : null);
     };
@@ -316,35 +337,13 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
                         onPointerMove={(e) => { onPointerMove(e); onHoverMove(e); }}
                         onPointerUp={onPointerUp}
                         onPointerCancel={onPointerCancel}
-                        onPointerLeave={() => setHover(null)}
+                        onPointerLeave={() => { setHover(null); setZoneHover(null); }}
                         onWheel={onWheel}
                         onDoubleClick={onDoubleClick}>
-                        {marks !== null && (
-                            // 존 배지·이름표 — 캔버스 점 **위**(under 에 두면 점이 덮는다), 판 안쪽 가장자리(여백은
-                            // 축 어휘 소유). 읽기 전용 — 존은 사본이라 판에서 안 고친다(수정은 조건판 팝오버).
-                            <g pointerEvents="none" style={{ fontSize: 10, fontVariantNumeric: "tabular-nums" }}>
-                                {marks.vBadge !== null && (
-                                    <g>
-                                        <rect x={marks.vBadge.x} y={marks.vBadge.y} width={LBL_W} height={LBL_H} rx={3} fill={FILTER} />
-                                        <text x={marks.vBadge.x + LBL_W / 2} y={marks.vBadge.y + 11} textAnchor="middle" fill="#fff">{marks.vBadge.text}</text>
-                                    </g>
-                                )}
-                                {marks.hBadge !== null && (
-                                    <g>
-                                        <rect x={marks.hBadge.x} y={marks.hBadge.y} width={LBL_W} height={LBL_H} rx={3} fill={FILTER} />
-                                        <text x={marks.hBadge.x + LBL_W / 2} y={marks.hBadge.y + 11} textAnchor="middle" fill="#fff">{marks.hBadge.text}</text>
-                                    </g>
-                                )}
-                                {marks.nameTag !== null && overlay !== null && (
-                                    <g>
-                                        <title>{overlay.from.trim() === "" ? "존(출처 없음)" : `존 — ${overlay.from}`}</title>
-                                        <rect x={marks.nameTag.x} y={marks.nameTag.y} width={marks.nameTag.w} height={ZONE_TAG_H} rx={3}
-                                            fill="var(--bg-primary)" stroke={FILTER} strokeWidth={0.75} />
-                                        <text x={marks.nameTag.x + 6} y={marks.nameTag.y + 12} fill={FILTER}>{marks.nameTag.text}</text>
-                                    </g>
-                                )}
-                            </g>
-                        )}
+                        {/* 존 값 배지(아래층) — 기본은 자 배지가 위다. 호버 중인 축의 존 배지는 아래층을 비우고
+                            자 배지 **뒤**(아래 블록)에서 다시 그려 위로 올라온다. */}
+                        {zoneHover !== "x" && zoneVB !== null && <ZoneBadge b={zoneVB} />}
+                        {zoneHover !== "y" && zoneHB !== null && <ZoneBadge b={zoneHB} />}
                         {(gxVisible || gyVisible) && (
                             <>
                                 {/* 자유 자 — 판정 컷과 다른 어휘(가는 점선·회색 배지): 술어와 무관한 자일 뿐이다. */}
@@ -368,6 +367,25 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
                                 </g>
                             </>
                         )}
+                        {/* 호버 중인 존 배지 — 자 배지 위로. */}
+                        {zoneHover === "x" && zoneVB !== null && <ZoneBadge b={zoneVB} />}
+                        {zoneHover === "y" && zoneHB !== null && <ZoneBadge b={zoneHB} />}
+                        {/* 겹침 틴트 — 맨 위에 교차 영역만 살짝 물들여 "겹쳐 있다"를 말한다. 위가 자(기본)면
+                            존의 빨강이, 위가 존(호버)이면 자의 회색이 비치는 색. */}
+                        {zoneVB !== null && gxVisible && guideLabels.x !== null && (() => {
+                            const o = badgeOverlap(zoneVB, guideLabels.x);
+                            return o !== null
+                                ? <rect x={o.x} y={o.y} width={o.w} height={o.h} rx={2} pointerEvents="none"
+                                    fill={zoneHover === "x" ? "var(--text-tertiary)" : FILTER} opacity={0.35} />
+                                : null;
+                        })()}
+                        {zoneHB !== null && gyVisible && guideLabels.y !== null && (() => {
+                            const o = badgeOverlap(zoneHB, guideLabels.y);
+                            return o !== null
+                                ? <rect x={o.x} y={o.y} width={o.w} height={o.h} rx={2} pointerEvents="none"
+                                    fill={zoneHover === "y" ? "var(--text-tertiary)" : FILTER} opacity={0.35} />
+                                : null;
+                        })()}
                         {hover && (() => {
                             const ts = p.peerThemes.get(hover.code);
                             const text = `${nameOf(hover.code)} · ${yScale.chip} ${yScale.fmt(hover.rate)} · ${xScale.chip} ${xScale.fmt(hover.amount)}${ts ? ` · ${ts.join("·")} · 클릭 = 이동` : ""}`;
@@ -396,6 +414,16 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
                 </div>
             )}
         </>
+    );
+}
+
+/** 존 값 배지 — 자 배지와 같은 꼴·같은 자리, 색만 FILTER(사본·읽기 전용 — 호버 판정은 좌표라 이벤트 없음). */
+function ZoneBadge({ b }: { b: { x: number; y: number; text: string } }): JSX.Element {
+    return (
+        <g pointerEvents="none" style={{ fontSize: 10, fill: "#fff", fontVariantNumeric: "tabular-nums" }}>
+            <rect x={b.x} y={b.y} width={LBL_W} height={LBL_H} rx={3} fill={FILTER} />
+            <text x={b.x + LBL_W / 2} y={b.y + 11} textAnchor="middle">{b.text}</text>
+        </g>
     );
 }
 

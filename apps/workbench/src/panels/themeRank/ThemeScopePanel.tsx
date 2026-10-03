@@ -73,7 +73,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
             // (리뷰 지적). 상한만인 존은 겹침을 안 세운다 · 양끝이면 틴트가 상한 위로 번지는 건 알려진 근사.
             ? (zone.rate.mode === "rank" ? zone.rate.max : zone.rate.minPct ?? null)
             : null;
-        return x === null && y === null ? null : { x, y, from: zone.from };
+        return x === null && y === null ? null : { x, y };
     }, [zone, axes]);
 
     // ── 헤더 선언 — 축·존은 **정보(요약)와 컨트롤(판)으로 갈라** 중복 선언한다(규약: 섞인 표면 분리).
