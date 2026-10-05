@@ -18,6 +18,22 @@
 // (실제로 겪은 버그: 점은 제자리인데 선만 가로질러 가고, 글로우와 굵기 선이 갈라져 보였다).
 // 그래서 런은 **점 목록**을 든다: 합칠 때 끝점을 옮기는 게 아니라 점을 덧붙인다.
 
+/**
+ * 분당 거래대금 = 누적 차분 — 테이프·존 추세가 같은 정의를 쓴다(복기 minuteAmountOf 와 같은 뜻).
+ * 직전 분이 결손이면 차분이 "여러 분의 합"이라 그 분의 값이 아니다 → 모름(null). 빠진 분도 null.
+ */
+export function minuteAmountOf(minutes: readonly number[], cumAmount: readonly number[]): (minute: number) => number | null {
+    const idx = new Map<number, number>();
+    for (let i = 0; i < minutes.length; i++) idx.set(minutes[i], i);
+    return (m) => {
+        const i = idx.get(m);
+        if (i === undefined) return null;
+        if (i > 0 && minutes[i - 1] !== m - 1) return null;
+        const v = cumAmount[i] - (i > 0 ? cumAmount[i - 1] : 0);
+        return Number.isFinite(v) && v >= 0 ? v : null;
+    };
+}
+
 export interface AmountRun {
     /** 이 런이 덮는 경로(선 좌표, 2점 이상) — 꺾임을 그대로 담는다. */
     points: { x: number; y: number }[];

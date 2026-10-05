@@ -5,12 +5,11 @@
 // 판정(컷·존·✓/✗)은 여기 없다 — View 전용 판이라서다(수정은 조건판 테마 팝오버,
 // decisions.md 「테마 순위는 판 하나다 — 이름은 시장 단면」).
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { minuteOfDayOf } from "@trade-data-manager/market/domain";
 import { useWorkbench } from "../../store/workbench.js";
 import { useSubject } from "../../lib/subject.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
-import { useChartPoints } from "../../lib/useChartPoints.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
+import { useDisplayMinute } from "./displayMinute.js";
 import {
     AMOUNT_VIEW, RANK_VIEW_SPAN, RATE_VIEW,
     amountValuesAt, planeSliceAt, rankScaleX, rankScaleY, valueScaleX, valueScaleY,
@@ -18,7 +17,7 @@ import {
 } from "./axisModel.js";
 import { AMOUNT_TICK_MERGE_PX } from "./amountTicks.js";
 import { layoutThresholdTicks, thresholdCounts, type ThresholdTickLayout } from "./thresholdTicks.js";
-import { defaultMinuteOf, scrubSectionOf, type ScrubSection } from "./scrubSection.js";
+import { scrubSectionOf, type ScrubSection } from "./scrubSection.js";
 import { valuesAtMinute } from "./sectionSeries.js";
 import { layoutRateTicks, rateTickCounts, type RateTickLayout } from "./rateTicks.js";
 
@@ -140,30 +139,8 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes, rateTickPcts
     const snapQ = useDaySnapshot(subject?.date ?? null);
     const stocks = snapQ.data?.stocks;
 
-    // 슬라이더 도메인 — 스냅샷의 실제 분 범위.
-    const minuteRange = useMemo(() => {
-        if (!stocks || stocks.length === 0) return null;
-        let lo = Infinity;
-        let hi = -Infinity;
-        for (const s of stocks) {
-            if (s.times.length === 0) continue;
-            const a = minuteOfDayOf(s.times[0]);
-            const b = minuteOfDayOf(s.times[s.times.length - 1]);
-            if (a < lo) lo = a;
-            if (b > hi) hi = b;
-        }
-        return Number.isFinite(lo) ? { lo, hi } : null;
-    }, [stocks]);
-
-    // ── 표시 분 = 전역 시각 직결(2026-09-09) — 없으면 기본 사다리(첫 타점 → 마지막 봉).
-    const chartPoints = useChartPoints(subject?.code ?? "", subject?.date ?? "");
-    const minute = useMemo(() => {
-        if (!subject) return null;
-        const m = defaultMinuteOf(focusTime, chartPoints, minuteRange?.hi ?? null);
-        // 표시 클램프만 — 전역 focus.time 은 되쓰지 않는다(패널이 전역을 정정하면 루프 모양).
-        if (m === null || !minuteRange) return m;
-        return Math.min(Math.max(m, minuteRange.lo), minuteRange.hi);
-    }, [subject, focusTime, chartPoints, minuteRange]);
+    // ── 표시 분 = 전역 시각 직결(2026-09-09) — 규칙의 집은 displayMinute(존 추세와 같은 자).
+    const { minuteRange, minute, chartPoints } = useDisplayMinute(stocks, subject, focusTime);
 
     // ── 단면 — 분 단위 memo(파라미터 무관 — 드래그가 단면을 재굽지 않게).
     const section: ScrubSection | null = useMemo(() => {

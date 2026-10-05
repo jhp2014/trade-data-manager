@@ -5,7 +5,7 @@
 //  · 포커스가 맨 위 — 주인공이 무리에 묻히지 않게.
 // 멤버 선의 문법은 복기 테마 오버레이와 같다: 무채색, **굵기가 거래대금**(runWidth 램프),
 // 포커스만 플레인 색. 빈 분은 선이 끊긴 채로 둔다(tapeData.segmentsOf — 결손은 정보).
-import { amountRuns, LEVEL_MISSING } from "../canvas/amountRuns.js";
+import { amountRuns, minuteAmountOf, LEVEL_MISSING } from "../canvas/amountRuns.js";
 import { amountLevelOf, runWidth } from "../canvas/amountScale.js";
 import { flatten, compact, type DrawGroup, type DrawLayer, type DrawOp } from "../canvas/drawList.js";
 import { segmentsOf, type TapePoint } from "./tapeData.js";
@@ -22,19 +22,9 @@ export interface Scales {
     y: (rate: number) => number;
 }
 
-/** 분당 거래대금 — 누적 차분(복기 minuteAmountOf 와 같은 정의, 소스만 테이프). 빠진 분은 null(모름). */
-export function tapeAmountAt(stock: LiveTapeStock): (minute: number) => number | null {
-    const idx = new Map<number, number>();
-    for (let i = 0; i < stock.minutes.length; i++) idx.set(stock.minutes[i], i);
-    return (m) => {
-        const i = idx.get(m);
-        if (i == null) return null;
-        // 직전 분이 결손이면 차분이 "여러 분의 합"이 된다 — 그 값은 그 분의 것이 아니라 모름으로 둔다.
-        if (i > 0 && stock.minutes[i - 1] !== m - 1) return null;
-        const v = stock.cumAmount[i] - (i > 0 ? stock.cumAmount[i - 1] : 0);
-        return Number.isFinite(v) && v >= 0 ? v : null;
-    };
-}
+/** 분당 거래대금 — 공용 minuteAmountOf(canvas)의 테이프 어댑터(소스만 테이프). */
+export const tapeAmountAt = (stock: LiveTapeStock): ((minute: number) => number | null) =>
+    minuteAmountOf(stock.minutes, stock.cumAmount);
 
 /** 기계 결손 회색띠 — [from, to] 분 구간들을 상자 높이로. */
 export function bandsLayer(gaps: ReadonlyArray<{ from: number; to: number }>, s: Scales, box: { top: number; height: number }): DrawLayer {
