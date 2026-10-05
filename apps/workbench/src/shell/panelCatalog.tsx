@@ -23,6 +23,7 @@ import { TelegramNewsPanel } from "../panels/TelegramNewsPanel.js";
 import { WatchlistPanel } from "../panels/WatchlistPanel.js";
 import { LiveTapePanel } from "../panels/liveTape/LiveTapePanel.js";
 import { ThemeScopePanel } from "../panels/themeRank/ThemeScopePanel.js";
+import { ZoneTrendPanel } from "../panels/zoneTrend/ZoneTrendPanel.js";
 import { AlertLogPanel } from "../panels/AlertLogPanel.js";
 import { UniverseRulesPanel } from "../panels/UniverseRulesPanel.js";
 import { parseSlotId, slotIdOf } from "./panelSlots.js";
@@ -111,6 +112,9 @@ export const PANEL_TYPES: PanelType[] = [
     // — 판 하나(옛 조건판/관찰판 이원화 개정): View 전용, 깔때기 테마 조건은 읽기
     // 전용 겹침. 옛 [조건]판(component "themeRank")은 은퇴 — sanitizeLayout 이 저장 배치에서 걷어낸다.
     { idBase: "theme-scope", component: "themeScope", title: "시장 단면", plane: "eod", duplicable: true, render: (id) => <ThemeScopePanel panelId={id} baseTitle={slotTitleOf(id)} /> },
+    // 존 추세 — 단면의 "어떻게 왔나": 존 하나의 멤버들을 하루 등락률 지그재그 선으로(View 전용,
+    // 존은 「존 ▾」 복사·멤버십은 현재 분 기준 — decisions.md 「존 추세 판」). sessionUi 미사용·panelUi 만이라 복제 안전.
+    { idBase: "zone-trend", component: "zoneTrend", title: "존 추세", plane: "eod", duplicable: true, render: (id) => <ZoneTrendPanel panelId={id} baseTitle={slotTitleOf(id)} /> },
     // (옛 그룹 목록 패널("groupList")은 2026-09-10 은퇴 — 그룹 편집은 배정 팝오버가 유일 표면.
     //  옛 맵 패널("map")과 같은 길: 저장 프리셋의 그 칸은 sanitizeLayout 이 걷어낸다.)
     { idBase: "hts-news", component: "htsNews", title: "HTS뉴스", plane: "eod", render: () => <NewsPanel plane="replay" /> },

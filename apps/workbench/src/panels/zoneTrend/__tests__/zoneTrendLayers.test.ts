@@ -1,0 +1,96 @@
+// 존 추세 표시목록 — 층 순서·시선 맨 위(ACTIVE)·hover 승격/가라앉음·접힘 배지·선 집기.
+import { describe, expect, it } from "vitest";
+import { ACTIVE } from "../../../styles/palette.js";
+import {
+    foldedCounts, memberLinesLayer, memberOpsOf, nearestLine, subjectLineLayer, zoneTrendLayers,
+    ZONE_TREND_RATE, type TrendBox,
+} from "../zoneTrendLayers.js";
+import type { ZoneTrendLine, ZoneTrendModel } from "../zoneTrendModel.js";
+
+const line = (code: string, pts: { x: number; y: number }[]): ZoneTrendLine =>
+    ({ code, name: code, pts, amountAt: () => 1_000_000_000 });
+
+const scales = { x: (m: number) => m, y: (r: number) => 100 - r };
+const box: TrendBox = { left: 0, top: 0, width: 600, height: 100 };
+
+const model: ZoneTrendModel = {
+    members: [line("A", [{ x: 10, y: 1 }, { x: 60, y: 5 }]), line("B", [{ x: 10, y: 2 }, { x: 60, y: 3 }])],
+    subject: line("S", [{ x: 10, y: 0 }, { x: 60, y: 8 }]),
+    memberCount: 2,
+};
+
+describe("zoneTrendLayers — 층 순서(먼저가 아래)", () => {
+    it("격자 → 멤버 → 승격 → 시선 → 현재 분", () => {
+        const layers = zoneTrendLayers({
+            model, memberOps: memberOpsOf(model.members, scales), hovered: null, minute: 60,
+            view: { fromMinute: 0, toMinute: 600 }, box, scales,
+        });
+        expect(layers.map((l) => l.name)).toEqual(["trend-grid", "trend-members", "trend-lift", "trend-subject", "trend-now"]);
+    });
+
+    it("시선 선은 ACTIVE 색이고, 남을 짚는 중엔 반투명", () => {
+        const idle = subjectLineLayer(model.subject, null, scales);
+        const op = idle.groups[0].ops[0];
+        expect(op.op === "polyline" && op.stroke).toBe(ACTIVE);
+        expect(idle.groups[0].opacity).toBe(1);
+        expect(subjectLineLayer(model.subject, "A", scales).groups[0].opacity).toBe(0.5);
+        expect(subjectLineLayer(model.subject, "S", scales).groups[0].opacity).toBe(1); // 시선 자신을 짚으면 그대로
+        expect(subjectLineLayer(null, null, scales).groups).toEqual([]);
+    });
+});
+
+describe("hover — 짚은 선은 승격 층이 다시 그리고 나머지는 가라앉는다", () => {
+    const ops = memberOpsOf(model.members, scales);
+
+    it("평시 = 균일 0.55, 짚는 중 = 짚은 선 제외 + 0.25", () => {
+        const idle = memberLinesLayer(ops, null);
+        expect(idle.groups).toHaveLength(2);
+        expect(idle.groups.every((g) => g.opacity === 0.55)).toBe(true);
+        const hovering = memberLinesLayer(ops, "A");
+        expect(hovering.groups).toHaveLength(1); // A 는 승격 층 몫
+        expect(hovering.groups[0].opacity).toBe(0.25);
+    });
+
+    it("승격 층 — 짚은 멤버가 있을 때만 한 묶음", () => {
+        const layers = zoneTrendLayers({
+            model, memberOps: ops, hovered: "A", minute: 60, view: { fromMinute: 0, toMinute: 600 }, box, scales,
+        });
+        const lift = layers.find((l) => l.name === "trend-lift")!;
+        expect(lift.groups).toHaveLength(1);
+        expect(zoneTrendLayers({ model, memberOps: ops, hovered: null, minute: 60, view: { fromMinute: 0, toMinute: 600 }, box, scales })
+            .find((l) => l.name === "trend-lift")!.groups).toHaveLength(0);
+    });
+});
+
+describe("foldedCounts — 머리(마지막 꼭짓점)가 y 창 밖인 선 수(시선 포함)", () => {
+    it("기본 모델은 0/0, 위·아래로 나간 머리를 심으면 그만큼", () => {
+        expect(foldedCounts(model, ZONE_TREND_RATE)).toEqual({ above: 0, below: 0 });
+        const out: ZoneTrendModel = {
+            members: [line("A", [{ x: 10, y: 1 }, { x: 60, y: 22 }]), line("B", [{ x: 10, y: 1 }, { x: 60, y: -4 }])],
+            subject: line("S", [{ x: 10, y: 0 }, { x: 60, y: 29 }]),
+            memberCount: 2,
+        };
+        expect(foldedCounts(out, ZONE_TREND_RATE)).toEqual({ above: 2, below: 1 });
+    });
+});
+
+describe("nearestLine — 선분 거리 집기", () => {
+    const lines = [line("A", [{ x: 10, y: 10 }, { x: 60, y: 10 }]), line("B", [{ x: 10, y: 2 }, { x: 60, y: 2 }])];
+    // y=10 → py 90 · y=2 → py 98.
+
+    it("반경 안에서 가까운 선, 밖이면 null", () => {
+        expect(nearestLine(30, 91, lines, scales, box)).toBe("A");
+        expect(nearestLine(30, 97, lines, scales, box)).toBe("B");
+        expect(nearestLine(30, 60, lines, scales, box)).toBeNull(); // 둘 다 반경 밖
+    });
+
+    it("상자 밖 포인터는 안 집는다(유령 집기 방지)", () => {
+        expect(nearestLine(-5, 90, lines, scales, box)).toBeNull();
+        expect(nearestLine(30, 101, lines, scales, box)).toBeNull();
+    });
+
+    it("선분 끝 밖 x 는 끝점 거리로 잰다(세그먼트 클램프)", () => {
+        expect(nearestLine(65, 90, lines, scales, box)).toBe("A"); // (60,90) 끝점에서 5px
+        expect(nearestLine(80, 90, lines, scales, box)).toBeNull(); // 20px — 반경 밖
+    });
+});
