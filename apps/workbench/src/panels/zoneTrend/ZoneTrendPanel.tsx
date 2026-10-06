@@ -1,6 +1,8 @@
-// 「존 추세」 판 — 단면의 "어떻게 왔나": 존 하나의 멤버들을 하루 등락률 시계열 지그재그 선으로.
-// View 전용(판정·편집 없음). 존은 「존 ▾」 복사(시장 단면과 같은 목록 — ZoneMenu 공용), 멤버십은
-// 현재 분 기준(그 분에 존을 만족하는 종목의 과거 궤적). 규칙 전문 = decisions.md 「존 추세 판」.
+// 「테마 선 차트」 판(옛 존 추세 — 내부 id zone-trend 불변) — 단면의 "어떻게 왔나": 시선 종목의
+// 테마 멤버 ∩ 존을 하루 등락률 지그재그 선으로. View 전용(판정·편집 없음). 존은 「존 ▾」 복사
+// (시장 단면과 같은 목록 — ZoneMenu 공용), 멤버십은 현재 분 기준(그 분에 존을 만족하는 테마 동료의
+// 과거 궤적). y = 자동 맞춤(시선 하루 기준) + 수동(휠·팬·더블클릭 복귀 — (종목,날짜) 낟알이라
+// 다른 종목에선 자동, 제자리로 돌아오면 부활), x = 시작~현재 분 +10분. 규칙 = decisions.md 「테마 선 차트 판」.
 import { useEffect, useId, useMemo, useState } from "react";
 import { usePanelHeader } from "../../components/header/registry.js";
 import { useDock } from "../../store/dock.js";
@@ -15,7 +17,8 @@ import { parseScopeZone } from "../themeRank/zoneSources.js";
 import { useDisplayMinute } from "../themeRank/displayMinute.js";
 import { fmtHms, fmtMin } from "../themeRank/useThemePlane.js";
 import { ZoneTrendView } from "./ZoneTrendView.js";
-import { trendSampleAt, zoneTrendModelOf } from "./zoneTrendModel.js";
+import { autoYViewOf, DEFAULT_Y_VIEW, trendSampleAt, zoneTrendModelOf } from "./zoneTrendModel.js";
+import type { YView } from "./zoneTrendLayers.js";
 
 /** 축약 임계 선택지(가산 %p) — 세그먼트. 본론은 2(격자와 같은 수) · 1 은 자세히, 3·5 는 성긴 질감. */
 const PCT_CHOICES = [1, 2, 3, 5] as const;
@@ -46,9 +49,32 @@ export function ZoneTrendPanel({ panelId, baseTitle }: { panelId: string; baseTi
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [stocks, subject?.date, subject?.code, minute, zone, pct]);
 
-    // ── 손짓 상태 — 판이 쥔다(controlled view — 썸네일 확장 시 칸끼리 세로 동기의 전제).
+    // ── 손짓 상태 — 판이 쥔다(controlled view — 썸네일 확장 시 칸끼리 동기의 전제).
     const [hovered, setHovered] = useState<string | null>(null);
     const [crosshair, setCrosshair] = useState<number | null>(null);
+
+    // ── y 창 — 자동 맞춤 [min(−3,최저−3), 최고+3] 기본, 수동값은 세션 + (종목,날짜) 낟알: 다른
+    // 종목에선 자동("변경할 때마다 그에 맞는 스케일" — 2026-10-06 사용자 확정), 제자리 복귀면 부활.
+    const setSessionUi = useWorkbench((s) => s.setSessionUi);
+    const rawY = useWorkbench((s) => s.sessionUi[panelId]?.["ydom"]) as (YView & { code: string; date: string }) | undefined;
+    const autoY = useMemo(
+        () => (stocks && subject ? autoYViewOf(stocks, subject.code) : DEFAULT_Y_VIEW),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [stocks, subject?.code],
+    );
+    // 참조 안정 — 수동값이 켜진 동안 렌더마다 새 객체면 View 의 scales memo 가 깨져 포인터 이동마다
+    // 멤버 ops 가 재계산된다(box memo 와 같은 이유).
+    const yView = useMemo(
+        () => (rawY !== undefined && subject !== null && rawY.code === subject.code && rawY.date === subject.date
+            ? { lo: rawY.lo, hi: rawY.hi }
+            : autoY),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [rawY, autoY, subject?.code, subject?.date],
+    );
+    const setYView = (v: YView | null): void => {
+        if (!subject) return;
+        setSessionUi(panelId, "ydom", v === null ? undefined : { ...v, code: subject.code, date: subject.date });
+    };
 
     /** 선 클릭 = 그 종목으로 시선 이동(정규화 판 라벨 클릭 관례). 하루 선택이면 표시 분을 실체화한다. */
     const navigate = (code: string): void => {
@@ -83,13 +109,13 @@ export function ZoneTrendPanel({ panelId, baseTitle }: { panelId: string; baseTi
             {
                 id: "zone", name: "존 출처", tone: "accent",
                 help: zone
-                    ? `모수 = 「${zone.from}」의 존 정의 사본(원본을 고쳐도 안 따라간다) — 현재 분에 존을 만족하는 종목들의 과거 궤적`
-                    : "존이 없다 — 컨트롤 판의 「존」에서 걸린 테마 조건의 존 값을 복사하면 그 멤버들의 선이 선다",
+                    ? `모수 = 시선 테마 멤버 ∩ 「${zone.from}」의 존 사본(원본을 고쳐도 안 따라간다) — 현재 분 기준 과거 궤적`
+                    : "존이 없다 — 컨트롤 판의 「존」에서 걸린 테마 조건의 존 값을 복사하면 테마 동료 선이 선다",
                 text: () => (zone ? `존: ${zone.from}` : null),
             },
             {
                 id: "members", name: "멤버 수", tabular: true,
-                help: "현재 분에 존을 만족하는 종목 수(시선 겸직 포함)",
+                help: "현재 분에 존을 만족하는 시선 테마 동료 수(시선 겸직 포함)",
                 text: () => (model !== null && zone !== null ? `멤버 ${model.memberCount}` : null),
             },
         ],
@@ -112,7 +138,7 @@ export function ZoneTrendPanel({ panelId, baseTitle }: { panelId: string; baseTi
 
     return (
         <div style={wrap}>
-            {!subject && <div style={empty}>차트·시트에서 종목을 짚으면 그 하루의 존 추세가 선다</div>}
+            {!subject && <div style={empty}>차트·시트에서 종목을 짚으면 그 하루의 테마 선 차트가 선다</div>}
             {subject && snapQ.isError && <div style={{ ...empty, color: "var(--rise)" }}>복기 파생 로드 실패 — {(snapQ.error as Error).message}</div>}
             {subject && snapQ.isLoading && <div style={empty}>그날 복기 파생을 당기는 중…</div>}
             {subject && !snapQ.isError && !snapQ.isLoading && (model === null || minuteRange === null || minute === null) && (
@@ -121,9 +147,10 @@ export function ZoneTrendPanel({ panelId, baseTitle }: { panelId: string; baseTi
             {subject && model !== null && minuteRange !== null && minute !== null && (
                 <>
                     {zone === null && (
-                        <div style={notice}>존이 없다 — 컨트롤 「존」에서 복사하면 멤버 선이 선다(지금은 시선 선만)</div>
+                        <div style={notice}>존이 없다 — 컨트롤 「존」에서 복사하면 테마 동료 선이 선다(지금은 시선 선만)</div>
                     )}
                     <ZoneTrendView model={model} minuteRange={minuteRange} minute={minute}
+                        yView={yView} onYView={setYView}
                         hovered={hovered} onHover={setHovered}
                         crosshair={crosshair} onCrosshair={setCrosshair}
                         onPick={navigate} chipTextOf={chipTextOf} />

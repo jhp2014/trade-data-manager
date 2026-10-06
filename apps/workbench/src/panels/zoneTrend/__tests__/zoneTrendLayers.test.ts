@@ -2,8 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { ACTIVE } from "../../../styles/palette.js";
 import {
-    foldedCounts, memberLinesLayer, memberOpsOf, nearestLine, subjectLineLayer, zoneTrendLayers,
-    ZONE_TREND_RATE, type TrendBox,
+    foldedCounts, memberLinesLayer, memberOpsOf, nearestLine, panYView, subjectLineLayer, trendGridLayer,
+    zoneTrendLayers, zoomYView, Y_PAN, Y_ZOOM_MIN_SPAN, type TrendBox, type YView,
 } from "../zoneTrendLayers.js";
 import type { ZoneTrendLine, ZoneTrendModel } from "../zoneTrendModel.js";
 
@@ -12,6 +12,7 @@ const line = (code: string, pts: { x: number; y: number }[]): ZoneTrendLine =>
 
 const scales = { x: (m: number) => m, y: (r: number) => 100 - r };
 const box: TrendBox = { left: 0, top: 0, width: 600, height: 100 };
+const Y: YView = { lo: 0, hi: 15 };
 
 const model: ZoneTrendModel = {
     members: [line("A", [{ x: 10, y: 1 }, { x: 60, y: 5 }]), line("B", [{ x: 10, y: 2 }, { x: 60, y: 3 }])],
@@ -23,7 +24,7 @@ describe("zoneTrendLayers — 층 순서(먼저가 아래)", () => {
     it("격자 → 멤버 → 승격 → 시선 → 현재 분", () => {
         const layers = zoneTrendLayers({
             model, memberOps: memberOpsOf(model.members, scales), hovered: null, minute: 60,
-            view: { fromMinute: 0, toMinute: 600 }, box, scales,
+            view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales,
         });
         expect(layers.map((l) => l.name)).toEqual(["trend-grid", "trend-members", "trend-lift", "trend-subject", "trend-now"]);
     });
@@ -53,24 +54,56 @@ describe("hover — 짚은 선은 승격 층이 다시 그리고 나머지는 �
 
     it("승격 층 — 짚은 멤버가 있을 때만 한 묶음", () => {
         const layers = zoneTrendLayers({
-            model, memberOps: ops, hovered: "A", minute: 60, view: { fromMinute: 0, toMinute: 600 }, box, scales,
+            model, memberOps: ops, hovered: "A", minute: 60, view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales,
         });
         const lift = layers.find((l) => l.name === "trend-lift")!;
         expect(lift.groups).toHaveLength(1);
-        expect(zoneTrendLayers({ model, memberOps: ops, hovered: null, minute: 60, view: { fromMinute: 0, toMinute: 600 }, box, scales })
+        expect(zoneTrendLayers({ model, memberOps: ops, hovered: null, minute: 60, view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales })
             .find((l) => l.name === "trend-lift")!.groups).toHaveLength(0);
     });
 });
 
 describe("foldedCounts — 머리(마지막 꼭짓점)가 y 창 밖인 선 수(시선 포함)", () => {
     it("기본 모델은 0/0, 위·아래로 나간 머리를 심으면 그만큼", () => {
-        expect(foldedCounts(model, ZONE_TREND_RATE)).toEqual({ above: 0, below: 0 });
+        expect(foldedCounts(model, Y)).toEqual({ above: 0, below: 0 });
         const out: ZoneTrendModel = {
             members: [line("A", [{ x: 10, y: 1 }, { x: 60, y: 22 }]), line("B", [{ x: 10, y: 1 }, { x: 60, y: -4 }])],
             subject: line("S", [{ x: 10, y: 0 }, { x: 60, y: 29 }]),
             memberCount: 2,
         };
-        expect(foldedCounts(out, ZONE_TREND_RATE)).toEqual({ above: 2, below: 1 });
+        expect(foldedCounts(out, Y)).toEqual({ above: 2, below: 1 });
+    });
+});
+
+describe("trendGridLayer — 동적 y 눈금(1/2/5 스텝)", () => {
+    const sy = (hi: number, lo: number) => (r: number): number => ((hi - r) / (hi - lo)) * 100;
+    const labelsOf = (y: YView): string[] => {
+        const layer = trendGridLayer({ x: (m) => m, y: sy(y.hi, y.lo) }, { fromMinute: 0, toMinute: 0 }, y, box);
+        return layer.groups[0].ops.filter((o) => o.op === "text").map((o) => (o.op === "text" ? o.text : ""));
+    };
+
+    it("자동 맞춤 꼴(−3~15.4) = 5 스텝, 좁은 창(−3~4) = 2 스텝", () => {
+        expect(labelsOf({ lo: -3, hi: 15.4 })).toEqual(["0%", "5%", "10%", "15%"]);
+        expect(labelsOf({ lo: -3, hi: 4 })).toEqual(["-2%", "0%", "2%", "4%"]);
+    });
+});
+
+describe("y 수동 조정 — 줌·팬 한계", () => {
+    it("줌은 커서 값 고정·폭 하한에서 멈춘다(변화 없으면 같은 참조)", () => {
+        const v: YView = { lo: 0, hi: 10 };
+        const zoomed = zoomYView(v, 0.5, 0.5); // 가운데 고정 절반
+        expect(zoomed).toEqual({ lo: 2.5, hi: 7.5 });
+        let tight: YView = { lo: 4, hi: 4 + Y_ZOOM_MIN_SPAN };
+        expect(zoomYView(tight, 0.5, 0.5)).toBe(tight); // 하한 — 같은 참조
+        tight = { lo: Y_PAN.lo, hi: Y_PAN.hi };
+        expect(zoomYView(tight, 2, 0.5)).toBe(tight); // 상한(전 구간) — 같은 참조
+    });
+
+    it("팬은 폭을 유지한 채 Y_PAN 안에서 클램프", () => {
+        const v: YView = { lo: 0, hi: 10 };
+        expect(panYView(v, 5)).toEqual({ lo: 5, hi: 15 });
+        expect(panYView(v, -999)).toEqual({ lo: Y_PAN.lo, hi: Y_PAN.lo + 10 });
+        expect(panYView(v, 999)).toEqual({ lo: Y_PAN.hi - 10, hi: Y_PAN.hi });
     });
 });
 

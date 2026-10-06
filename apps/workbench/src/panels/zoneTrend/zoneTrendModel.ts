@@ -1,6 +1,6 @@
-// 존 추세 판의 뷰모델(순수) — 렌더 무관. 주인공 칸과 (미래의) 썸네일 칸이 같은 함수를 부른다.
+// 테마 선 차트 판의 뷰모델(순수) — 렌더 무관. 주인공 칸과 (미래의) 썸네일 칸이 같은 함수를 부른다.
 //
-// 멤버십 판정 = core `inThemeZone` 한 벌(decisions.md 「존 추세 판」 — `themeAnswerOf` 는 테마 ∃·컷을
+// 멤버십 판정 = core `inThemeZone` 한 벌(decisions.md 「테마 선 차트 판」 — `themeAnswerOf` 는 테마 ∃·컷을
 // 보는 **판정**이라 View 에 안 들인다). 재료 = sectionSeries.themeSectionAt(창 적용이 끝난 서수 —
 // 서수 출처 단일화 불변: 판정식을 여기 다시 쓰면 그 순간 출처가 둘이 된다).
 //
@@ -24,11 +24,11 @@ export interface ZoneTrendLine {
 }
 
 export interface ZoneTrendModel {
-    /** 존 멤버들의 선 — 시선 종목은 여기서 빼고 subject 하나로만 선다(하늘색 한 줄 규칙). */
+    /** 멤버(시선 테마 동료 ∩ 존)들의 선 — 시선 종목은 여기서 빼고 subject 하나로만 선다(하늘색 한 줄 규칙). */
     members: ZoneTrendLine[];
     /** 시선 종목의 선 — 멤버가 아니어도 싣는다. 스냅샷에 없으면 null. */
     subject: ZoneTrendLine | null;
-    /** 현재 분의 존 멤버 수(시선 겸직 포함) — 헤더 정보. 존 없음 = 0. */
+    /** 현재 분의 멤버 수(시선 겸직 포함) — 헤더 정보. 존 없음·시선 테마 없음 = 0. */
     memberCount: number;
 }
 
@@ -80,19 +80,23 @@ export function zoneTrendModelOf(args: {
     subjectCode: string | null;
 }): ZoneTrendModel {
     const { stocks, date, minute, zone, thresholdPt, subjectCode } = args;
-    const sec = zone !== null ? themeSectionAt(stocks, date, minute, zone.window) : null;
+    // 모수 = 시선 테마 멤버 ∩ 존(2026-10-06 사용자 확정) — 테마 재료는 스냅샷 themes(self-contained),
+    // 다중 테마는 합집합. 시선이 스냅샷에 없거나 테마가 없으면 멤버 0(시선 선만).
+    const subjectStock = subjectCode !== null ? stocks.find((s) => s.code === subjectCode) : undefined;
+    const subjectThemes = new Set(subjectStock?.themes ?? []);
+    const sec = zone !== null && subjectThemes.size > 0 ? themeSectionAt(stocks, date, minute, zone.window) : null;
     const members: ZoneTrendLine[] = [];
     let subject: ZoneTrendLine | null = null;
     let memberCount = 0;
     for (const st of stocks) {
         const isSubj = st.code === subjectCode;
-        let inZone = false;
-        if (sec !== null && zone !== null) {
+        let isMember = false;
+        if (sec !== null && zone !== null && (isSubj || st.themes.some((t) => subjectThemes.has(t)))) {
             const r = sec.ranksOf(st.code);
-            inZone = r !== null && inThemeZone(r, zone);
+            isMember = r !== null && inThemeZone(r, zone);
         }
-        if (inZone) memberCount++;
-        if (!inZone && !isSubj) continue;
+        if (isMember) memberCount++;
+        if (!isMember && !isSubj) continue;
         const line = lineOf(stocks, st, minute, thresholdPt);
         if (line === null) continue;
         // 시선이 멤버를 겸하면 하늘색 한 줄만 — members 중복 금지(decisions).
@@ -100,6 +104,26 @@ export function zoneTrendModelOf(args: {
         else members.push(line);
     }
     return { members, subject, memberCount };
+}
+
+/** y 자동 맞춤 — 기본 [−3%, 시선 종목의 **하루 전체** 최고 등락 +3%](스크럽 중 축이 안 출렁이게 하루
+ *  기준). 하한도 선을 품는다: 하루 최저가 −3 아래면 [최저 −3] 까지 내려간다 — 하락 종목에서 상한만
+ *  움직이면 창이 뒤집히거나(최고 < −6) 시선 선이 통째로 창 밖이 된다(리뷰 지적).
+ *  시선이 스냅샷에 없으면 기본 창. 수동 조정·복귀 규칙은 판이 진다. */
+export const DEFAULT_Y_VIEW = { lo: -3, hi: 18 };
+
+export function autoYViewOf(stocks: readonly ReplayStock[], subjectCode: string | null): { lo: number; hi: number } {
+    const st = subjectCode !== null ? stocks.find((s) => s.code === subjectCode) : undefined;
+    if (!st || st.rate.length === 0) return DEFAULT_Y_VIEW;
+    let max = -Infinity;
+    let min = Infinity;
+    for (const r of st.rate) {
+        if (r > max) max = r;
+        if (r < min) min = r;
+    }
+    if (!Number.isFinite(max)) return DEFAULT_Y_VIEW;
+    // lo ≤ min−3 ≤ max−3 < max+3 — 창은 항상 바로 선다(별도 가드 불요).
+    return { lo: Math.min(-3, min - 3), hi: max + 3 };
 }
 
 /** 크로스헤어 칩의 실값 — 그 분(이하 마지막 샘플 carry-forward)의 등락 % + 그 분의 분당 대금. */

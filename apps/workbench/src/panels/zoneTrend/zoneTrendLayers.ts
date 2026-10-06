@@ -17,9 +17,36 @@ export interface Scales {
     y: (rate: number) => number;
 }
 
-/** y 고정 창(등락 %) — 공통 척도(칸·날짜 건너 같은 픽셀 = 같은 기울기). 단면 RATE_VIEW(0~31)와
- *  뜻이 다르다(여긴 추세 창·위로 나간 선은 클립 + 접힘 배지) — 공유하지 않는다. */
-export const ZONE_TREND_RATE = { lo: 0, hi: 15 };
+/** y 창(등락 %) — 고정이 아니다(2026-10-06 개정): 기본 = 자동 맞춤(autoYViewOf), 수동 = 휠·팬. */
+export interface YView { lo: number; hi: number }
+
+/** y 수동 조정 한계 — 가격제한폭(±30)보다 관대하게. 실제 클램프는 **Y_PAN ∪ 지금 창**(boundsOf) —
+ *  자동 맞춤 창이 한계 밖에서 시작해도(신규상장 급등 등 ±30 밖 등락) 첫 팬/줌에서 창이 안 튄다
+ *  (재확인 리뷰 지적). 멀리 날아가는 건 더블클릭 복귀·접힘 배지가 감당한다. */
+export const Y_PAN: YView = { lo: -60, hi: 160 };
+/** 폭 하한 2%p — 이보다 좁히면 눈금·자리의 뜻이 무너진다. */
+export const Y_ZOOM_MIN_SPAN = 2;
+
+/** 조정 한계 = Y_PAN 과 지금 창의 합집합 — 지금 창은 늘 한계 안이라 손짓이 연속이다. */
+const boundsOf = (v: YView): YView => ({ lo: Math.min(Y_PAN.lo, v.lo), hi: Math.max(Y_PAN.hi, v.hi) });
+
+/** 휠 줌 — 커서 값 고정 f배(단면 zoomRateDom 과 같은 꼴, 한계만 이 판 것). u = 도메인 내 비율(lo=0). */
+export function zoomYView(v: YView, f: number, u: number): YView {
+    const b = boundsOf(v);
+    const span = v.hi - v.lo;
+    const next = Math.min(Math.max(span * f, Y_ZOOM_MIN_SPAN), b.hi - b.lo);
+    if (next === span) return v;
+    const lo = Math.max(b.lo, Math.min(v.lo + u * span - u * next, b.hi - next));
+    return { lo, hi: lo + next };
+}
+
+/** 팬 — 폭 유지한 채 한계 안에서 미끄러진다. */
+export function panYView(v: YView, dv: number): YView {
+    const b = boundsOf(v);
+    const span = v.hi - v.lo;
+    const lo = Math.max(b.lo, Math.min(v.lo + dv, b.hi - span));
+    return lo === v.lo ? v : { lo, hi: lo + span };
+}
 
 const MEMBER_STROKE = "var(--text-tertiary)";
 const LIFT_STROKE = "var(--text-primary)";
@@ -28,20 +55,27 @@ export interface TrendBox { left: number; top: number; width: number; height: nu
 
 /**
  * 격자·축 글자 — 테이프 gridLayer 를 재사용하지 않고 자체 배치: 거긴 위 눈금 글자가 선 **위**(y−3)에
- * 서서 최상단(+15%) 글자가 clip 밖으로 나가고, 왼쪽 아래에서 y·x 글자가 겹친다(리뷰 지적).
- * 여긴 y 창이 고정(0~15%)이라 눈금도 고정 0·5·10·15 — 최상단 글자만 선 아래로 내린다.
+ * 서서 최상단 글자가 clip 밖으로 나가고, 왼쪽 아래에서 y·x 글자가 겹친다(리뷰 지적).
+ * y 창이 동적(자동 맞춤·수동)이라 눈금은 1/2/5 스텝 — 상단 가장자리에 붙은 글자만 선 아래로 내린다.
  */
-export function trendGridLayer(s: Scales, view: { fromMinute: number; toMinute: number }, box: TrendBox): DrawLayer {
+export function trendGridLayer(s: Scales, view: { fromMinute: number; toMinute: number }, y: YView, box: TrendBox): DrawLayer {
     const ops: DrawOp[] = [];
-    const { lo, hi } = ZONE_TREND_RATE;
-    for (let r = lo; r <= hi; r += 5) {
-        const y = s.y(r);
-        ops.push({ op: "line", x1: box.left, y1: y, x2: box.left + box.width, y2: y, stroke: "var(--border-subtle)", width: 1 });
-        // 최상단(hi) 글자는 선 아래(+10) — 위(−3)면 clip 에 잘린다. 0% 기준선은 진하게(등락의 축).
-        ops.push({ op: "text", x: box.left + 4, y: y + (r === hi ? 10 : -3), text: `${r}%`, anchor: "start", fill: "var(--text-tertiary)", size: 10 });
+    // y 눈금 — 4~6개가 되는 1/2/5 스텝(테이프와 같은 셈).
+    const span = Math.max(y.hi - y.lo, 0.1);
+    const rough = span / 5;
+    const mag = 10 ** Math.floor(Math.log10(rough));
+    const step = [1, 2, 5, 10].map((k) => k * mag).find((v) => v >= rough) ?? 10 * mag;
+    for (let r = Math.ceil(y.lo / step) * step; r <= y.hi + 1e-9; r += step) {
+        const py = s.y(r);
+        ops.push({ op: "line", x1: box.left, y1: py, x2: box.left + box.width, y2: py, stroke: "var(--border-subtle)", width: 1 });
+        const label = `${Math.round(r * 10) / 10}%`;
+        // 상단 가장자리 글자는 선 아래(+10) — 위(−3)면 clip 에 잘린다.
+        ops.push({ op: "text", x: box.left + 4, y: py + (py < box.top + 12 ? 10 : -3), text: label, anchor: "start", fill: "var(--text-tertiary)", size: 10 });
     }
-    ops.push({ op: "line", x1: box.left, y1: s.y(lo), x2: box.left + box.width, y2: s.y(lo), stroke: "var(--border-strong)", width: 1 });
-    // x 눈금 — 정시만(추세 창은 하루 전체라 30분은 과밀). 왼쪽 가장자리 글자는 y 글자(…%)와 겹쳐 생략.
+    // 0% 기준선은 진하게(등락의 축) — 창 안일 때만.
+    if (y.lo <= 0 && y.hi >= 0)
+        ops.push({ op: "line", x1: box.left, y1: s.y(0), x2: box.left + box.width, y2: s.y(0), stroke: "var(--border-strong)", width: 1 });
+    // x 눈금 — 정시만(추세 창은 하루라 30분은 과밀). 왼쪽 가장자리 글자는 y 글자(…%)와 겹쳐 생략.
     for (let m = Math.ceil(view.fromMinute / 60) * 60; m <= view.toMinute; m += 60) {
         const x = s.x(m);
         ops.push({ op: "line", x1: x, y1: box.top, x2: x, y2: box.top + box.height, stroke: "var(--border-subtle)", width: 1 });
@@ -112,7 +146,7 @@ export function nowLayer(minute: number, s: Scales, box: TrendBox): DrawLayer {
  * 접힘 수 — **현재 머리(마지막 꼭짓점)**가 y 창 밖인 선(시선 포함). 위 = 상한가 쪽(흔하다 — 존 멤버),
  * 아래 = 음수 등락(시선이 멤버가 아닐 때 흔하다) — 하늘색 선이 말없이 사라지면 반증이 없다(리뷰 지적).
  */
-export function foldedCounts(model: ZoneTrendModel, view: { lo: number; hi: number }): { above: number; below: number } {
+export function foldedCounts(model: ZoneTrendModel, view: YView): { above: number; below: number } {
     let above = 0;
     let below = 0;
     const headY = (l: ZoneTrendLine): number | null => (l.pts.length > 0 ? l.pts[l.pts.length - 1].y : null);
@@ -133,12 +167,13 @@ export function zoneTrendLayers(args: {
     hovered: string | null;
     minute: number;
     view: { fromMinute: number; toMinute: number };
+    yView: YView;
     box: TrendBox;
     scales: Scales;
 }): DrawLayer[] {
-    const { model, memberOps, hovered, minute, view, box, scales } = args;
+    const { model, memberOps, hovered, minute, view, yView, box, scales } = args;
     return [
-        trendGridLayer(scales, view, box),
+        trendGridLayer(scales, view, yView, box),
         memberLinesLayer(memberOps, hovered),
         liftLayer(model.members, hovered, scales),
         subjectLineLayer(model.subject, hovered, scales),

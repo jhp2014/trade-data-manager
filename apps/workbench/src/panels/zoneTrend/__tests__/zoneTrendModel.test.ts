@@ -1,17 +1,17 @@
-// 존 추세 뷰모델 — 멤버십이 core inThemeZone 직접 호출과 **동치**인지(판정이 어댑터로 스며들면 깨진다),
-// 창 T 존과 당일 존이 갈리는지, 선이 현재 분을 넘지 않는지, 시선 겸직 중복이 없는지.
+// 테마 선 차트 뷰모델 — 모수 = 시선 테마 멤버 ∩ 존(core inThemeZone 동치 — 판정이 어댑터로 스며들면
+// 깨진다), 창 T 존과 당일 존의 갈림, 선의 prefix 인과, 시선 겸직 중복 금지, y 자동 맞춤.
 import { describe, expect, it } from "vitest";
 import { inThemeZone } from "@trade-data-manager/market/domain";
 import { kstToUnix } from "../../../lib/derive.js";
 import { themeSectionAt } from "../../themeRank/sectionSeries.js";
-import { trendSampleAt, zoneTrendModelOf } from "../zoneTrendModel.js";
+import { autoYViewOf, DEFAULT_Y_VIEW, trendSampleAt, zoneTrendModelOf } from "../zoneTrendModel.js";
 import type { ReplayStock } from "../../../api/dayReplay.js";
 import type { ScopeZone } from "../../themeRank/zoneSources.js";
 
 const DATE = "2026-08-14";
 
-const stock = (code: string, bars: [string, number, number][]): ReplayStock => ({
-    code, name: code, market: "KRX", marketCap: null, themes: [],
+const stock = (code: string, bars: [string, number, number][], themes: string[] = ["T"]): ReplayStock => ({
+    code, name: code, market: "KRX", marketCap: null, themes,
     times: bars.map(([t]) => kstToUnix(DATE, t)),
     rate: bars.map(([, r]) => r),
     high: bars.map(([, r]) => r),
@@ -27,53 +27,65 @@ const stock = (code: string, bars: [string, number, number][]): ReplayStock => (
 
 const zoneOf = (p: Pick<ScopeZone, "window" | "zoneAmountN" | "rate">): Pick<ScopeZone, "window" | "zoneAmountN" | "rate"> => p;
 
-describe("zoneTrendModelOf — 멤버십 = core inThemeZone 동치", () => {
+describe("zoneTrendModelOf — 멤버십 = 시선 테마 멤버 ∩ 존(core inThemeZone 동치)", () => {
     const stocks = [
         stock("A", [["09:00:00", 1, 100], ["09:10:00", 5, 300]]),
         stock("B", [["09:05:00", 9, 50], ["09:10:00", 2, 900]]),
         stock("C", [["09:00:00", -1, 10], ["09:10:00", -2, 20]]),
+        stock("X", [["09:00:00", 8, 800], ["09:10:00", 8, 950]], ["다른테마"]),
     ];
-    const zone = zoneOf({ window: null, zoneAmountN: 2, rate: { mode: "rank", max: 2 } });
+    const zone = zoneOf({ window: null, zoneAmountN: 9, rate: { mode: "rank", max: 9 } });
     const minute = 9 * 60 + 10;
 
-    it("members 가 themeSectionAt + inThemeZone 직접 호출과 같다", () => {
-        const model = zoneTrendModelOf({ stocks, date: DATE, minute, zone, thresholdPt: 2, subjectCode: null });
+    it("members = (시선 제외) 테마 겹침 ∧ inThemeZone 직접 호출과 같다 — 테마 안 겹치면 존 안이어도 제외", () => {
+        const model = zoneTrendModelOf({ stocks, date: DATE, minute, zone, thresholdPt: 2, subjectCode: "A" });
         const sec = themeSectionAt(stocks, DATE, minute, zone.window);
+        const subjThemes = new Set(stocks.find((s) => s.code === "A")!.themes);
         const expected = stocks
+            .filter((s) => s.code !== "A" && s.themes.some((t) => subjThemes.has(t)))
             .filter((s) => {
                 const r = sec.ranksOf(s.code);
                 return r !== null && inThemeZone(r, zone);
             })
             .map((s) => s.code);
         expect(model.members.map((m) => m.code)).toEqual(expected);
-        expect(model.memberCount).toBe(expected.length);
+        expect(expected).not.toContain("X"); // 존 안이어도 테마가 안 겹치면 모수 밖(픽스처가 실제로 가르는지 고정)
+        // 시선 A 도 존 안이라 memberCount 에는 든다(겸직 포함).
+        expect(model.memberCount).toBe(expected.length + 1);
     });
 
-    it("값 축 존(minPct)도 같은 동치", () => {
-        const vZone = zoneOf({ window: null, zoneAmountN: 3, rate: { mode: "value", minPct: 0 } });
-        const model = zoneTrendModelOf({ stocks, date: DATE, minute, zone: vZone, thresholdPt: 2, subjectCode: null });
-        const sec = themeSectionAt(stocks, DATE, minute, vZone.window);
-        const expected = stocks.filter((s) => { const r = sec.ranksOf(s.code); return r !== null && inThemeZone(r, vZone); }).map((s) => s.code);
-        expect(model.members.map((m) => m.code)).toEqual(expected);
-        expect(expected).toEqual(["A", "B"]); // C 는 음수 등락 — 존 밖(픽스처가 실제로 가르는지 고정)
+    it("시선 없음·시선 테마 없음 = 멤버 0(시선 선만)", () => {
+        expect(zoneTrendModelOf({ stocks, date: DATE, minute, zone, thresholdPt: 2, subjectCode: null }).members).toEqual([]);
+        const bare = [...stocks, stock("N", [["09:00:00", 3, 400]], [])];
+        const model = zoneTrendModelOf({ stocks: bare, date: DATE, minute, zone, thresholdPt: 2, subjectCode: "N" });
+        expect(model.members).toEqual([]);
+        expect(model.memberCount).toBe(0);
+        expect(model.subject?.code).toBe("N");
+    });
+
+    it("값 축 존(minPct)도 같은 동치 — 음수 등락 테마 동료는 존 밖", () => {
+        const vZone = zoneOf({ window: null, zoneAmountN: 9, rate: { mode: "value", minPct: 0 } });
+        const model = zoneTrendModelOf({ stocks, date: DATE, minute, zone: vZone, thresholdPt: 2, subjectCode: "A" });
+        expect(model.members.map((m) => m.code)).toEqual(["B"]); // C 는 음수 등락, X 는 테마 밖
     });
 });
 
 describe("zoneTrendModelOf — 창 T 존 vs 당일 존", () => {
-    // A = 아침에 대금 몰림(당일 누적 1위), B = 직전 5분에 몰림(창 1위).
+    // A = 아침에 대금 몰림(당일 누적 1위), B = 직전 5분에 몰림(창 1위). 시선 S 는 존 밖(대금 미미).
     const stocks = [
         stock("A", [["09:00:00", 5, 1000], ["09:30:00", 5, 1010]]),
         stock("B", [["09:00:00", 3, 10], ["09:30:00", 3, 500]]),
+        stock("S", [["09:00:00", 1, 1], ["09:30:00", 1, 2]]),
     ];
     const minute = 9 * 60 + 30;
 
     it("당일 존은 A, 5분 창 존은 B 를 집는다", () => {
         const day = zoneTrendModelOf({
-            stocks, date: DATE, minute, thresholdPt: 2, subjectCode: null,
+            stocks, date: DATE, minute, thresholdPt: 2, subjectCode: "S",
             zone: zoneOf({ window: null, zoneAmountN: 1, rate: { mode: "rank", max: 9 } }),
         });
         const win = zoneTrendModelOf({
-            stocks, date: DATE, minute, thresholdPt: 2, subjectCode: null,
+            stocks, date: DATE, minute, thresholdPt: 2, subjectCode: "S",
             zone: zoneOf({ window: 5, zoneAmountN: 1, rate: { mode: "rank", max: 9 } }),
         });
         expect(day.members.map((m) => m.code)).toEqual(["A"]);
@@ -88,11 +100,12 @@ describe("zoneTrendModelOf — 선·시선 규칙", () => {
     ];
     const zone = zoneOf({ window: null, zoneAmountN: 9, rate: { mode: "rank", max: 9 } });
 
-    it("선 꼭짓점은 현재 분을 넘지 않는다(prefix 인과)", () => {
+    it("멤버 선 꼭짓점은 현재 분을 넘지 않는다(prefix 인과)", () => {
         const minute = 9 * 60 + 5;
-        const model = zoneTrendModelOf({ stocks, date: DATE, minute, zone, thresholdPt: 2, subjectCode: null });
-        for (const line of model.members) for (const pt of line.pts) expect(pt.x).toBeLessThanOrEqual(minute);
-        const a = model.members.find((m) => m.code === "A")!;
+        const model = zoneTrendModelOf({ stocks, date: DATE, minute, zone, thresholdPt: 2, subjectCode: "B" });
+        expect(model.members.map((m) => m.code)).toEqual(["A"]);
+        const a = model.members[0];
+        for (const pt of a.pts) expect(pt.x).toBeLessThanOrEqual(minute);
         expect(a.pts[a.pts.length - 1]).toEqual({ x: minute, y: 5 }); // 09:30 샘플(미래)은 안 실린다
     });
 
@@ -103,13 +116,50 @@ describe("zoneTrendModelOf — 선·시선 규칙", () => {
         expect(model.memberCount).toBe(2);
     });
 
-    it("스냅샷에 없는 시선 = subject null · 존 null = 시선 선만", () => {
+    it("스냅샷에 없는 시선 = subject null·멤버 0 · 존 null = 시선 선만", () => {
         const absent = zoneTrendModelOf({ stocks, date: DATE, minute: 600, zone, thresholdPt: 2, subjectCode: "Z" });
         expect(absent.subject).toBeNull();
+        expect(absent.members).toEqual([]);
         const noZone = zoneTrendModelOf({ stocks, date: DATE, minute: 600, zone: null, thresholdPt: 2, subjectCode: "A" });
         expect(noZone.members).toEqual([]);
         expect(noZone.memberCount).toBe(0);
         expect(noZone.subject?.code).toBe("A");
+    });
+});
+
+describe("autoYViewOf — y 자동 맞춤 [−3, 시선 하루 최고 +3]", () => {
+    const stocks = [stock("A", [["09:00:00", 1, 100], ["10:00:00", 12.4, 300], ["15:00:00", 7, 400]])];
+
+    it("하루 **전체** 최고 기준(현재 분 무관 — 스크럽 중 축이 안 출렁이게)", () => {
+        expect(autoYViewOf(stocks, "A")).toEqual({ lo: -3, hi: 15.4 });
+    });
+
+    it("시선 없음·스냅샷 밖이면 기본 창", () => {
+        expect(autoYViewOf(stocks, null)).toEqual(DEFAULT_Y_VIEW);
+        expect(autoYViewOf(stocks, "Z")).toEqual(DEFAULT_Y_VIEW);
+    });
+
+    it("하락 종목 — 하한이 선을 품는다(창 뒤집힘·시선 선 통째 창 밖 방지)", () => {
+        const down = [stock("D", [["09:00:00", -2, 100], ["10:00:00", -8, 300], ["15:00:00", -5, 400]])];
+        const v = autoYViewOf(down, "D");
+        expect(v).toEqual({ lo: -11, hi: 1 }); // lo = 최저(−8) −3 · hi = 최고(−2) +3, lo < hi 보장
+        expect(v.lo).toBeLessThan(v.hi);
+    });
+});
+
+describe("zoneTrendModelOf — 다중 테마 합집합", () => {
+    it("시선이 두 테마 소속이면 어느 쪽 동료든 모수다", () => {
+        const stocks = [
+            stock("S", [["09:00:00", 5, 500]], ["T1", "T2"]),
+            stock("P", [["09:00:00", 4, 400]], ["T1"]),
+            stock("Q", [["09:00:00", 3, 300]], ["T2"]),
+            stock("R", [["09:00:00", 2, 200]], ["T3"]),
+        ];
+        const model = zoneTrendModelOf({
+            stocks, date: DATE, minute: 9 * 60, thresholdPt: 2, subjectCode: "S",
+            zone: zoneOf({ window: null, zoneAmountN: 9, rate: { mode: "rank", max: 9 } }),
+        });
+        expect(model.members.map((m) => m.code).sort()).toEqual(["P", "Q"]);
     });
 });
 

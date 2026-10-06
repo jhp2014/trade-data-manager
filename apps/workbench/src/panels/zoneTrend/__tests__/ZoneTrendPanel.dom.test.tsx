@@ -16,8 +16,8 @@ import type { ReplayStock } from "../../../api/dayReplay.js";
 const DATE = "2026-08-14";
 const PANEL = "zone-trend-1";
 
-const stock = (code: string, bars: [string, number, number][]): ReplayStock => ({
-    code, name: code, market: "KRX", marketCap: null, themes: [],
+const stock = (code: string, bars: [string, number, number][], themes: string[] = ["T"]): ReplayStock => ({
+    code, name: code, market: "KRX", marketCap: null, themes,
     times: bars.map(([t]) => kstToUnix(DATE, t)),
     rate: bars.map(([, r]) => r),
     high: bars.map(([, r]) => r),
@@ -75,7 +75,7 @@ describe("본문 — 시선·존에 따른 상태", () => {
         expect(layers.find((l) => l.name === "trend-members")!.groups).toHaveLength(0); // 존 없음 = 멤버 0
         expect(layers.find((l) => l.name === "trend-subject")!.groups).toHaveLength(1); // 시선 선
 
-        // 존을 판 값으로 심으면(복사의 결과물) 멤버 선이 선다 — B 한 줄(시선 A 는 subject 층).
+        // 존을 판 값으로 심으면(복사의 결과물) 테마 동료 선이 선다 — B 한 줄(시선 A 는 subject 층, 테마 "T" 공유).
         act(() => useWorkbench.getState().setPanelUi(PANEL, "zone", { window: null, zoneAmountN: 9, rate: { mode: "rank", max: 9 }, from: "시드", key: "k" }));
         layers = drawListOf(container);
         expect(layers.find((l) => l.name === "trend-members")!.groups).toHaveLength(1);
@@ -103,10 +103,45 @@ describe("존 ▾ — 시장 단면과 같은 복사 목록(ZoneMenu 공용)", (
     });
 });
 
-describe("ZoneTrendView — hover 칩은 현재 분 너머를 말하지 않는다(크로스헤어 클램프)", () => {
-    it("선 머리 오른쪽을 짚어도 chipTextOf 의 분은 minute 에 잘린다", () => {
+describe("ZoneTrendView — hover 칩은 현재 분 너머를 말하지 않는다(렌더 시점 클램프)", () => {
+    it("크로스헤어가 미래 분(스크럽 역행 등)이어도 chipTextOf 의 분은 minute 에 잘린다", () => {
         const calls: [string, number][] = [];
-        // 긴 x 창(540~930)에 머리가 550 인 시선 선 — 머리 오른쪽 8px 가 3분쯤 미래다.
+        const model = {
+            members: [],
+            subject: { code: "S", name: "S", pts: [{ x: 540, y: 5 }, { x: 550, y: 5 }], amountAt: () => null },
+            memberCount: 0,
+        };
+        function Harness(): JSX.Element {
+            const [hovered, setHovered] = useState<string | null>(null);
+            // 크로스헤어를 미래(560)에 **고정** — 포인터를 둔 채 minute 이 뒤로 간 상태의 재현
+            // (이동 시점 클램프만 있으면 다음 pointermove 전까지 칩이 미래를 말한다).
+            return (
+                <div style={{ width: 1000, height: 600 }}>
+                    <ZoneTrendView model={model} minuteRange={{ lo: 540, hi: 600 }} minute={550}
+                        yView={{ lo: 0, hi: 15 }} onYView={() => undefined}
+                        hovered={hovered} onHover={setHovered} crosshair={560} onCrosshair={() => undefined}
+                        onPick={() => undefined}
+                        chipTextOf={(code, m) => { calls.push([code, m]); return "chip"; }} />
+                </div>
+            );
+        }
+        const { container } = render(<Harness />);
+        const svg = container.querySelector("svg")!;
+        // box: left/top 6, width 988, height 588 (setup 의 1000×600 고정). x 창 = [540, 550+10].
+        // y(5%)=6+(10/15)*588=398 · x(550)=6+(10/20)*988=500 — 선 머리 위를 짚어 hover 를 세운다.
+        act(() => { fireEvent.pointerMove(svg, { clientX: 500, clientY: 398 }); });
+        expect(calls.length).toBeGreaterThan(0);
+        for (const [code, m] of calls) {
+            expect(code).toBe("S");
+            expect(m).toBeLessThanOrEqual(550);
+        }
+    });
+});
+
+describe("ZoneTrendView — 세로 끌기 = y 팬(클릭 이동이 터지지 않는다)", () => {
+    it("슬롭을 넘겨 끌고 손을 떼면 onYView 는 불리고 onPick 은 안 불린다", () => {
+        const picks: string[] = [];
+        const yViews: { lo: number; hi: number }[] = [];
         const model = {
             members: [],
             subject: { code: "S", name: "S", pts: [{ x: 540, y: 5 }, { x: 550, y: 5 }], amountAt: () => null },
@@ -117,23 +152,49 @@ describe("ZoneTrendView — hover 칩은 현재 분 너머를 말하지 않는�
             const [crosshair, setCrosshair] = useState<number | null>(null);
             return (
                 <div style={{ width: 1000, height: 600 }}>
-                    <ZoneTrendView model={model} minuteRange={{ lo: 540, hi: 930 }} minute={550}
+                    <ZoneTrendView model={model} minuteRange={{ lo: 540, hi: 600 }} minute={550}
+                        yView={{ lo: 0, hi: 15 }} onYView={(v) => { if (v) yViews.push(v); }}
                         hovered={hovered} onHover={setHovered} crosshair={crosshair} onCrosshair={setCrosshair}
-                        onPick={() => undefined}
-                        chipTextOf={(code, m) => { calls.push([code, m]); return "chip"; }} />
+                        onPick={(c) => picks.push(c)}
+                        chipTextOf={() => "chip"} />
                 </div>
             );
         }
         const { container } = render(<Harness />);
         const svg = container.querySelector("svg")!;
-        // box: left/top 6, width 988, height 588 (setup 의 1000×600 고정). y(5%)=6+(10/15)*588=398,
-        // x(550)=6+(10/390)*988≈31 — (38, 398) 은 머리에서 7px 오른쪽(hover 반경 안·분으로는 미래).
-        act(() => { fireEvent.pointerMove(svg, { clientX: 38, clientY: 398 }); });
-        expect(calls.length).toBeGreaterThan(0);
-        for (const [code, m] of calls) {
-            expect(code).toBe("S");
-            expect(m).toBeLessThanOrEqual(550);
-        }
+        // 선 머리(500, 398) 위에서 눌러 세로로 40px 끌고 놓는다 — 팬이지 클릭이 아니다.
+        act(() => { fireEvent.pointerDown(svg, { clientX: 500, clientY: 398, button: 0 }); });
+        act(() => { fireEvent.pointerMove(svg, { clientX: 500, clientY: 438 }); });
+        act(() => { fireEvent.pointerUp(svg, { clientX: 500, clientY: 438 }); });
+        expect(yViews.length).toBeGreaterThan(0);
+        expect(picks).toEqual([]);
+        // 같은 자리 누르고 그대로 떼면 클릭(시선 이동 후보)이다.
+        act(() => { fireEvent.pointerDown(svg, { clientX: 500, clientY: 398, button: 0 }); });
+        act(() => { fireEvent.pointerUp(svg, { clientX: 500, clientY: 398 }); });
+        expect(picks).toEqual(["S"]);
+    });
+});
+
+describe("y 자동 맞춤 — 수동값(ydom)은 (종목,날짜) 낟알", () => {
+    const gridLabels = (container: HTMLElement): string[] =>
+        drawListOf(container).find((l) => l.name === "trend-grid")!.groups[0].ops
+            .filter((o) => o.op === "text" && o.text.endsWith("%"))
+            .map((o) => (o.op === "text" ? o.text : ""));
+
+    it("수동 y 창은 그 종목에서만 쓰이고, 종목이 바뀌면 자동 맞춤으로 돌아간다", () => {
+        act(() => useWorkbench.getState().setFocus({ date: DATE, code: "A", time: null }));
+        const { container } = renderPanel();
+        // A 의 수동 창 [0, 50] — 10 스텝 눈금에 40% 가 선다.
+        act(() => useWorkbench.getState().setSessionUi(PANEL, "ydom", { code: "A", date: DATE, lo: 0, hi: 50 }));
+        expect(gridLabels(container)).toContain("40%");
+        // 종목 B 로 — ydom 태그가 A 라 자동 맞춤(B 최고 3 → [−3, 6])으로 복귀.
+        act(() => useWorkbench.getState().setFocus({ date: DATE, code: "B", time: null }));
+        const labels = gridLabels(container);
+        expect(labels).not.toContain("40%");
+        expect(labels).toContain("0%");
+        // A 로 돌아오면 수동값 **부활**(리셋 아님 — 단면 서수 zoom 날짜 낟알과 같은 의미론).
+        act(() => useWorkbench.getState().setFocus({ date: DATE, code: "A", time: null }));
+        expect(gridLabels(container)).toContain("40%");
     });
 });
 
