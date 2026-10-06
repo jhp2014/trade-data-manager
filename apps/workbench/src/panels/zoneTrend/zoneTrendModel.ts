@@ -21,6 +21,12 @@ export interface ZoneTrendLine {
     pts: { x: number; y: number }[];
     /** 분당 대금(원) — 굵기(amountRuns)의 재료. 결손 분·직전 분 결손(차분 불가) = null(모름). */
     amountAt: (minute: number) => number | null;
+    /**
+     * dense 분 경로(지그재그가 축약한 원 경로, 현재 분까지) — hover 흐림 오버레이의 재료(2026-10-06 저녁).
+     * 결손 분에서 조각을 끊는다(없는 경로를 지어내지 않기 — 테이프 segmentsOf 관례). **게으른 함수**인
+     * 이유: 짚을 때만 필요한데 모델이 매번 만들면 스크럽 틱마다 멤버 수 × ≤720 점이 생긴다.
+     */
+    dense: () => { x: number; y: number }[][];
 }
 
 export interface ZoneTrendModel {
@@ -67,6 +73,19 @@ function lineOf(stocks: readonly ReplayStock[], st: ReplayStock, minute: number,
         name: st.name,
         pts: idxs.map((k) => ({ x: day.minutes[k], y: st.rate[k] })),
         amountAt: day.amountAt,
+        dense: () => {
+            const segs: { x: number; y: number }[][] = [];
+            let seg: { x: number; y: number }[] = [];
+            for (let i = 0; i <= end; i++) {
+                if (i > 0 && day.minutes[i] !== day.minutes[i - 1] + 1 && seg.length > 0) {
+                    segs.push(seg);
+                    seg = [];
+                }
+                seg.push({ x: day.minutes[i], y: st.rate[i] });
+            }
+            if (seg.length > 0) segs.push(seg);
+            return segs;
+        },
     };
 }
 

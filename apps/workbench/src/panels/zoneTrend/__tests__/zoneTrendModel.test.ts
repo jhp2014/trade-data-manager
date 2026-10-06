@@ -109,6 +109,15 @@ describe("zoneTrendModelOf — 선·시선 규칙", () => {
         expect(a.pts[a.pts.length - 1]).toEqual({ x: minute, y: 5 }); // 09:30 샘플(미래)은 안 실린다
     });
 
+    it("dense() — 원 분 경로도 현재 분까지, 결손 분에서 조각이 끊긴다", () => {
+        const model = zoneTrendModelOf({ stocks, date: DATE, minute: 9 * 60 + 5, zone, thresholdPt: 2, subjectCode: "B" });
+        // A 샘플 = 09:00·09:05(·09:30 미래) — 09:01~04 결손이라 두 조각, 09:30 은 안 실린다.
+        expect(model.members[0].dense()).toEqual([
+            [{ x: 540, y: 1 }],
+            [{ x: 545, y: 5 }],
+        ]);
+    });
+
     it("시선이 멤버를 겸하면 subject 한 줄만(멤버 목록에서 빠진다) · memberCount 에는 든다", () => {
         const model = zoneTrendModelOf({ stocks, date: DATE, minute: 9 * 60 + 5, zone, thresholdPt: 2, subjectCode: "A" });
         expect(model.subject?.code).toBe("A");

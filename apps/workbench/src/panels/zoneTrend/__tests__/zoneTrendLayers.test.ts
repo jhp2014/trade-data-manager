@@ -2,13 +2,13 @@
 import { describe, expect, it } from "vitest";
 import { ACTIVE } from "../../../styles/palette.js";
 import {
-    foldedCounts, memberLinesLayer, memberOpsOf, nearestLine, panYView, subjectLineLayer, trendGridLayer,
-    zoneTrendLayers, zoomYView, Y_PAN, Y_ZOOM_MIN_SPAN, type TrendBox, type YView,
+    denseLayer, foldedCounts, memberLinesLayer, memberOpsOf, nearestLine, panYView, subjectLineLayer,
+    trendGridLayer, zoneTrendLayers, zoomYView, Y_PAN, Y_ZOOM_MIN_SPAN, type TrendBox, type YView,
 } from "../zoneTrendLayers.js";
 import type { ZoneTrendLine, ZoneTrendModel } from "../zoneTrendModel.js";
 
 const line = (code: string, pts: { x: number; y: number }[]): ZoneTrendLine =>
-    ({ code, name: code, pts, amountAt: () => 1_000_000_000 });
+    ({ code, name: code, pts, amountAt: () => 1_000_000_000, dense: () => [pts] });
 
 const scales = { x: (m: number) => m, y: (r: number) => 100 - r };
 const box: TrendBox = { left: 0, top: 0, width: 600, height: 100 };
@@ -26,7 +26,7 @@ describe("zoneTrendLayers — 층 순서(먼저가 아래)", () => {
             model, memberOps: memberOpsOf(model.members, scales), hovered: null, minute: 60,
             view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales,
         });
-        expect(layers.map((l) => l.name)).toEqual(["trend-grid", "trend-members", "trend-lift", "trend-subject", "trend-now"]);
+        expect(layers.map((l) => l.name)).toEqual(["trend-grid", "trend-members", "trend-dense", "trend-lift", "trend-subject", "trend-now"]);
     });
 
     it("시선 선은 ACTIVE 색이고, 남을 짚는 중엔 반투명", () => {
@@ -60,6 +60,21 @@ describe("hover — 짚은 선은 승격 층이 다시 그리고 나머지는 �
         expect(lift.groups).toHaveLength(1);
         expect(zoneTrendLayers({ model, memberOps: ops, hovered: null, minute: 60, view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales })
             .find((l) => l.name === "trend-lift")!.groups).toHaveLength(0);
+    });
+});
+
+describe("denseLayer — 짚은 선의 원 분 경로 흐림(지그재그 아래)", () => {
+    it("짚을 때만 서고, 멤버 = 승격색·시선 = ACTIVE·안 짚으면 빈 층", () => {
+        const member = denseLayer(model, "A", scales);
+        expect(member.groups).toHaveLength(1);
+        expect(member.groups[0].opacity).toBe(0.35);
+        const op = member.groups[0].ops[0];
+        expect(op.op === "polyline" && op.stroke).toBe("var(--text-primary)");
+        const subj = denseLayer(model, "S", scales);
+        const sop = subj.groups[0].ops[0];
+        expect(sop.op === "polyline" && sop.stroke).toBe(ACTIVE);
+        expect(denseLayer(model, null, scales).groups).toEqual([]);
+        expect(denseLayer(model, "없는코드", scales).groups).toEqual([]);
     });
 });
 

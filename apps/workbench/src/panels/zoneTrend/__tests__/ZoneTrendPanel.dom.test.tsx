@@ -71,7 +71,7 @@ describe("본문 — 시선·존에 따른 상태", () => {
         act(() => useWorkbench.getState().setFocus({ date: DATE, code: "A", time: null }));
         expect(container.textContent).toContain("존이 없다");
         let layers = drawListOf(container);
-        expect(layers.map((l) => l.name)).toEqual(["trend-grid", "trend-members", "trend-lift", "trend-subject", "trend-now"]);
+        expect(layers.map((l) => l.name)).toEqual(["trend-grid", "trend-members", "trend-dense", "trend-lift", "trend-subject", "trend-now"]);
         expect(layers.find((l) => l.name === "trend-members")!.groups).toHaveLength(0); // 존 없음 = 멤버 0
         expect(layers.find((l) => l.name === "trend-subject")!.groups).toHaveLength(1); // 시선 선
 
@@ -108,7 +108,7 @@ describe("ZoneTrendView — hover 칩은 현재 분 너머를 말하지 않는�
         const calls: [string, number][] = [];
         const model = {
             members: [],
-            subject: { code: "S", name: "S", pts: [{ x: 540, y: 5 }, { x: 550, y: 5 }], amountAt: () => null },
+            subject: { code: "S", name: "S", pts: [{ x: 540, y: 5 }, { x: 550, y: 5 }], amountAt: () => null, dense: () => [] },
             memberCount: 0,
         };
         function Harness(): JSX.Element {
@@ -144,7 +144,7 @@ describe("ZoneTrendView — 세로 끌기 = y 팬(클릭 이동이 터지지 않
         const yViews: { lo: number; hi: number }[] = [];
         const model = {
             members: [],
-            subject: { code: "S", name: "S", pts: [{ x: 540, y: 5 }, { x: 550, y: 5 }], amountAt: () => null },
+            subject: { code: "S", name: "S", pts: [{ x: 540, y: 5 }, { x: 550, y: 5 }], amountAt: () => null, dense: () => [] },
             memberCount: 0,
         };
         function Harness(): JSX.Element {

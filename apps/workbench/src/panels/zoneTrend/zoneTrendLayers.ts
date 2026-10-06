@@ -122,6 +122,30 @@ export function memberLinesLayer(memberOps: readonly { code: string; ops: DrawOp
     return { name: "trend-members", groups: compact(groups) };
 }
 
+/**
+ * dense 흐림 층 — 짚은 선(멤버·시선)의 원 분 경로를 지그재그 **아래** 얇고 옅게(2026-10-06 저녁 사용자
+ * 요청: "hover 하면 분차트가 흐리게 오버레이"). 축약이 뭘 접었는지(흔들림·꼬리)를 짚는 동안만 드러낸다.
+ * 색은 그 선의 가족색(멤버 = 승격 검정·시선 = ACTIVE), 결손 분은 조각이 끊긴다(dense() 가 가른다).
+ */
+export function denseLayer(model: ZoneTrendModel, hovered: string | null, s: Scales): DrawLayer {
+    const line = hovered === null
+        ? undefined
+        : model.subject?.code === hovered ? model.subject : model.members.find((m) => m.code === hovered);
+    const groups: DrawGroup[] = line
+        ? [{
+            opacity: 0.35,
+            ops: line.dense().filter((seg) => seg.length > 1).map((seg) => ({
+                op: "polyline" as const,
+                pts: flatten(seg, s.x, s.y),
+                stroke: line === model.subject ? ACTIVE : LIFT_STROKE,
+                width: 1,
+                join: "round" as const,
+            })),
+        }]
+        : [];
+    return { name: "trend-dense", groups: compact(groups) };
+}
+
 /** 승격 층 — 짚은 멤버 한 줄만 진하게·조금 굵게 재그리기(시선 선은 승격 불요 — 이미 제 색이 주인공). */
 export function liftLayer(members: readonly ZoneTrendLine[], hovered: string | null, s: Scales): DrawLayer {
     const line = hovered !== null ? members.find((m) => m.code === hovered) : undefined;
@@ -179,6 +203,7 @@ export function zoneTrendLayers(args: {
     return [
         trendGridLayer(scales, view, yView, box),
         memberLinesLayer(memberOps, hovered),
+        denseLayer(model, hovered, scales),
         liftLayer(model.members, hovered, scales),
         subjectLineLayer(model.subject, hovered, scales),
         nowLayer(minute, scales, box),
