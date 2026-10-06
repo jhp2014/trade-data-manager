@@ -12,7 +12,8 @@ import type { ZoneTrendModel } from "./zoneTrendModel.js";
 
 /** 이만큼 넘게 끌렸으면 클릭이 아니다(px) — 단면 CLICK_SLOP 과 같은 값. */
 const CLICK_SLOP = 4;
-const PAD = { left: 6, top: 6, right: 6, bottom: 6 };
+// 좌우를 넉넉히 — 선·글자가 판 가장자리에 붙지 않게(2026-10-06 저녁 사용자 피드백).
+const PAD = { left: 16, top: 8, right: 16, bottom: 8 };
 /** x 오른끝 여백(분) — 현재 분 뒤로 이만큼만 더 보인다("딱 보는 부분", 2026-10-06). 노브는 필요해지면. */
 export const X_TAIL_MIN = 10;
 

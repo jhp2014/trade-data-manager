@@ -86,6 +86,19 @@ describe("trendGridLayer — 동적 y 눈금(1/2/5 스텝)", () => {
         expect(labelsOf({ lo: -3, hi: 15.4 })).toEqual(["0%", "5%", "10%", "15%"]);
         expect(labelsOf({ lo: -3, hi: 4 })).toEqual(["-2%", "0%", "2%", "4%"]);
     });
+
+    it("x 시간 눈금 — 창 폭에 맞춘 동적 스텝(이른 시각의 좁은 창에도 선다)", () => {
+        // 창을 box 폭(600px)에 맞춰 사상 — 실제 scale 과 같은 꼴(가장자리 글자 생략 가드가 px 로 재니까).
+        const timesOf = (from: number, to: number): string[] => {
+            const sx = (m: number): number => ((m - from) / (to - from)) * box.width;
+            return trendGridLayer({ x: sx, y: () => 50 }, { fromMinute: from, toMinute: to }, { lo: 0, hi: 15 }, box)
+                .groups[0].ops.filter((o) => o.op === "text" && o.text.includes(":")).map((o) => (o.op === "text" ? o.text : ""));
+        };
+        // 09:00~09:40(이른 시각, 40분 창) — 정시 고정이면 0개였을 자리에 5분 스텝(양끝 글자는 생략).
+        expect(timesOf(540, 580)).toEqual(["09:05", "09:10", "09:15", "09:20", "09:25", "09:30", "09:35"]);
+        // 하루 전체(390분) — 60분 스텝(과밀 방지).
+        expect(timesOf(540, 930)).toEqual(["10:00", "11:00", "12:00", "13:00", "14:00", "15:00"]);
+    });
 });
 
 describe("y 수동 조정 — 줌·팬 한계", () => {

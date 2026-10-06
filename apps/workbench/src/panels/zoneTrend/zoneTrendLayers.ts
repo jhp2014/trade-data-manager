@@ -75,12 +75,16 @@ export function trendGridLayer(s: Scales, view: { fromMinute: number; toMinute: 
     // 0% 기준선은 진하게(등락의 축) — 창 안일 때만.
     if (y.lo <= 0 && y.hi >= 0)
         ops.push({ op: "line", x1: box.left, y1: s.y(0), x2: box.left + box.width, y2: s.y(0), stroke: "var(--border-strong)", width: 1 });
-    // x 눈금 — 정시만(추세 창은 하루라 30분은 과밀). 왼쪽 가장자리 글자는 y 글자(…%)와 겹쳐 생략.
-    for (let m = Math.ceil(view.fromMinute / 60) * 60; m <= view.toMinute; m += 60) {
+    // x 눈금 — 창 폭에 맞춘 동적 스텝(5~8개). 정시 고정이면 이른 시각(창이 수십 분)엔 눈금이 0개가
+    // 된다(2026-10-06 저녁 사용자 지적 — x 창이 "시작~현재 분 +10"이라 폭이 시각을 따라 자란다).
+    const xSpan = Math.max(view.toMinute - view.fromMinute, 1);
+    const xStep = [5, 10, 15, 30, 60, 120].find((v) => xSpan / v <= 8) ?? 240;
+    for (let m = Math.ceil(view.fromMinute / xStep) * xStep; m <= view.toMinute; m += xStep) {
         const x = s.x(m);
         ops.push({ op: "line", x1: x, y1: box.top, x2: x, y2: box.top + box.height, stroke: "var(--border-subtle)", width: 1 });
-        if (x >= box.left + 34)
-            ops.push({ op: "text", x, y: box.top + box.height - 4, text: `${String(Math.floor(m / 60)).padStart(2, "0")}:00`, anchor: "middle", fill: "var(--text-tertiary)", size: 10 });
+        // 가장자리 글자 생략 — 왼쪽은 y 글자(…%)와, 오른쪽은 clip 경계와 겹친다(가운데 정렬 반폭).
+        if (x >= box.left + 28 && x <= box.left + box.width - 18)
+            ops.push({ op: "text", x, y: box.top + box.height - 4, text: `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`, anchor: "middle", fill: "var(--text-tertiary)", size: 10 });
     }
     return { name: "trend-grid", groups: compact([{ ops }]) };
 }

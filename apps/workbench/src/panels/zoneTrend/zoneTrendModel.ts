@@ -106,20 +106,26 @@ export function zoneTrendModelOf(args: {
     return { members, subject, memberCount };
 }
 
-/** y 자동 맞춤 — 기본 [−3%, 시선 종목의 **하루 전체** 최고 등락 +3%](스크럽 중 축이 안 출렁이게 하루
- *  기준). 하한도 선을 품는다: 하루 최저가 −3 아래면 [최저 −3] 까지 내려간다 — 하락 종목에서 상한만
- *  움직이면 창이 뒤집히거나(최고 < −6) 시선 선이 통째로 창 밖이 된다(리뷰 지적).
+/** y 자동 맞춤 — [min(−3, 최저−3), 최고+3], 모수 = **시선 테마 멤버 전체의 하루 전체**(2026-10-06
+ *  저녁 사용자 확정 — 옛 시선 단독 기준 개정: 동료 선이 상한 밖으로 잘렸다). 존 무관·하루 기준인
+ *  이유: 테마 집합은 하루 불변이라 스크럽 중 축이 안 출렁이고, 그려지는 멤버(테마∩존)는 전부 이
+ *  부분집합이라 다 품긴다 — 멤버십(분마다 변함) 기준 fit 은 여전히 기각.
+ *  하한도 선을 품는다(하락 종목에서 상한만 움직이면 창이 뒤집힌다 — 리뷰 지적).
  *  시선이 스냅샷에 없으면 기본 창. 수동 조정·복귀 규칙은 판이 진다. */
 export const DEFAULT_Y_VIEW = { lo: -3, hi: 18 };
 
 export function autoYViewOf(stocks: readonly ReplayStock[], subjectCode: string | null): { lo: number; hi: number } {
-    const st = subjectCode !== null ? stocks.find((s) => s.code === subjectCode) : undefined;
-    if (!st || st.rate.length === 0) return DEFAULT_Y_VIEW;
+    const subj = subjectCode !== null ? stocks.find((s) => s.code === subjectCode) : undefined;
+    if (!subj) return DEFAULT_Y_VIEW;
+    const themes = new Set(subj.themes);
     let max = -Infinity;
     let min = Infinity;
-    for (const r of st.rate) {
-        if (r > max) max = r;
-        if (r < min) min = r;
+    for (const st of stocks) {
+        if (st !== subj && !st.themes.some((t) => themes.has(t))) continue;
+        for (const r of st.rate) {
+            if (r > max) max = r;
+            if (r < min) min = r;
+        }
     }
     if (!Number.isFinite(max)) return DEFAULT_Y_VIEW;
     // lo ≤ min−3 ≤ max−3 < max+3 — 창은 항상 바로 선다(별도 가드 불요).
