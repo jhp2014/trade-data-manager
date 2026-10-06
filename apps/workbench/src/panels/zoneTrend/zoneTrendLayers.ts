@@ -5,11 +5,13 @@
 // 승격을 **별도 층의 재그리기**로 둔 이유(성능 seam): 멤버 ops 는 hover 와 무관하게 (model, scales)
 // 에만 매여 memo 되고, hover 는 묶음 껍데기(opacity)와 승격 층 한 줄만 다시 만든다 — 마우스가
 // 지나갈 때마다 amountRuns 전량이 다시 돌지 않는다.
+import { AMOUNT_BUCKETS_EOK } from "@trade-data-manager/market/domain";
 import { amountRuns, LEVEL_MISSING } from "../canvas/amountRuns.js";
 import { amountLevelOf, runWidth } from "../canvas/amountScale.js";
 import { compact, flatten, type DrawGroup, type DrawLayer, type DrawOp } from "../canvas/drawList.js";
-import { ACTIVE } from "../../styles/palette.js";
-import type { ZoneTrendLine, ZoneTrendModel } from "./zoneTrendModel.js";
+import { AMOUNT_BUCKET_COLORS } from "../../chart/chartUtils.js";
+import { ACTIVE, BREAKOUT_BASE, BREAKOUT_HIGH } from "../../styles/palette.js";
+import type { HoverDetail, ZoneTrendLine, ZoneTrendModel } from "./zoneTrendModel.js";
 
 /** 분·등락 → px. 테이프 Scales 와 같은 모양이지만 좌표계 주인이 달라 따로 선언한다(층 전부가 이걸 본다). */
 export interface Scales {
@@ -123,27 +125,50 @@ export function memberLinesLayer(memberOps: readonly { code: string; ops: DrawOp
 }
 
 /**
- * dense 흐림 층 — 짚은 선(멤버·시선)의 원 분 경로를 지그재그 **아래** 얇고 옅게(2026-10-06 저녁 사용자
- * 요청: "hover 하면 분차트가 흐리게 오버레이"). 축약이 뭘 접었는지(흔들림·꼬리)를 짚는 동안만 드러낸다.
- * 색은 그 선의 가족색(멤버 = 승격 검정·시선 = ACTIVE), 결손 분은 조각이 끊긴다(dense() 가 가른다).
+ * hover 상세 층 — 짚은 선의 분차트를 흐리게 오버레이(2026-10-06 저녁: dense 선 → **캔들** 교체 +
+ * 대금 구간 마커 + 밴드·사슬). 묶음을 넷으로 가른 이유 = 투명도가 다르다(사슬 띠 ≪ 밴드 면 ≪ 캔들).
+ * 재료(HoverDetail)는 전부 이 판의 y 와 같은 % 공간 — 모델이 보장한다.
  */
-export function denseLayer(model: ZoneTrendModel, hovered: string | null, s: Scales): DrawLayer {
-    const line = hovered === null
-        ? undefined
-        : model.subject?.code === hovered ? model.subject : model.members.find((m) => m.code === hovered);
-    const groups: DrawGroup[] = line
-        ? [{
-            opacity: 0.35,
-            ops: line.dense().filter((seg) => seg.length > 1).map((seg) => ({
-                op: "polyline" as const,
-                pts: flatten(seg, s.x, s.y),
-                stroke: line === model.subject ? ACTIVE : LIFT_STROKE,
-                width: 1,
-                join: "round" as const,
-            })),
-        }]
-        : [];
-    return { name: "trend-dense", groups: compact(groups) };
+export function hoverLayer(detail: HoverDetail | null, s: Scales, box: TrendBox): DrawLayer {
+    if (detail === null) return { name: "trend-hover", groups: [] };
+    const minuteW = Math.max(s.x(1) - s.x(0), 0.5); // 선형 x — 1분의 px 폭
+    const bodyW = Math.min(Math.max(minuteW * 0.7, 1), 9);
+
+    const chainOps: DrawOp[] = detail.chains.map((c) => ({
+        op: "rect", x: s.x(c.from) - minuteW / 2, y: box.top,
+        w: Math.max(s.x(c.to) - s.x(c.from) + minuteW, minuteW), h: box.height, fill: BREAKOUT_HIGH,
+    }));
+    const bandOps: DrawOp[] = [];
+    for (const b of detail.bands)
+        for (const p of b.pts)
+            bandOps.push({
+                op: "rect", x: s.x(p.x) - minuteW / 2, y: s.y(p.hi),
+                w: minuteW, h: Math.max(s.y(p.lo) - s.y(p.hi), 0.5),
+                fill: b.kind === "high" ? BREAKOUT_HIGH : BREAKOUT_BASE,
+            });
+    const candleOps: DrawOp[] = [];
+    for (const c of detail.candles) {
+        const x = s.x(c.x);
+        const color = c.c >= c.o ? "var(--rise)" : "var(--fall)";
+        candleOps.push({ op: "line", x1: x, y1: s.y(c.h), x2: x, y2: s.y(c.l), stroke: color, width: 1 });
+        const yTop = s.y(Math.max(c.o, c.c));
+        candleOps.push({ op: "rect", x: x - bodyW / 2, y: yTop, w: bodyW, h: Math.max(s.y(Math.min(c.o, c.c)) - yTop, 1), fill: color });
+    }
+    // 대금 마커 — 기본 차트 분봉과 같은 어휘(봉 위 구간 하한 숫자·버킷 색). halo 로 캔들 위에서도 읽힌다.
+    const amountOps: DrawOp[] = detail.amounts.map((a) => ({
+        op: "text", x: s.x(a.x), y: s.y(a.h) - 3, text: String(AMOUNT_BUCKETS_EOK[a.bucket]),
+        anchor: "middle", fill: AMOUNT_BUCKET_COLORS[a.bucket] ?? AMOUNT_BUCKET_COLORS[AMOUNT_BUCKET_COLORS.length - 1],
+        size: 9, weight: 600, halo: { color: "var(--bg-primary)", width: 3 },
+    }));
+    return {
+        name: "trend-hover",
+        groups: compact([
+            { opacity: 0.07, ops: chainOps },
+            { opacity: 0.16, ops: bandOps },
+            { opacity: 0.8, ops: candleOps },
+            { opacity: 0.95, ops: amountOps },
+        ]),
+    };
 }
 
 /** 승격 층 — 짚은 멤버 한 줄만 진하게·조금 굵게 재그리기(시선 선은 승격 불요 — 이미 제 색이 주인공). */
@@ -193,18 +218,21 @@ export function zoneTrendLayers(args: {
     model: ZoneTrendModel;
     memberOps: readonly { code: string; ops: DrawOp[] }[];
     hovered: string | null;
+    /** 짚은 선의 분차트 상세 — 승격 지그재그 **위**에 얹힌다(승격 선은 캔들 아래 남아 짚기 앵커가 된다
+     *  — 짚기 판정은 지그재그 선분 거리라, 선이 사라지면 캔들 위에서 hover 가 깜빡인다. 리뷰 지적). */
+    hoverDetail: HoverDetail | null;
     minute: number;
     view: { fromMinute: number; toMinute: number };
     yView: YView;
     box: TrendBox;
     scales: Scales;
 }): DrawLayer[] {
-    const { model, memberOps, hovered, minute, view, yView, box, scales } = args;
+    const { model, memberOps, hovered, hoverDetail, minute, view, yView, box, scales } = args;
     return [
         trendGridLayer(scales, view, yView, box),
         memberLinesLayer(memberOps, hovered),
-        denseLayer(model, hovered, scales),
         liftLayer(model.members, hovered, scales),
+        hoverLayer(hoverDetail, scales, box),
         subjectLineLayer(model.subject, hovered, scales),
         nowLayer(minute, scales, box),
     ];

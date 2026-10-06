@@ -8,7 +8,7 @@ import {
     LINE_HIT_R, foldedCounts, memberOpsOf, nearestLine, panYView, zoneTrendLayers, zoomYView,
     type Scales, type TrendBox, type YView,
 } from "./zoneTrendLayers.js";
-import type { ZoneTrendModel } from "./zoneTrendModel.js";
+import type { HoverDetail, ZoneTrendModel } from "./zoneTrendModel.js";
 
 /** 이만큼 넘게 끌렸으면 클릭이 아니다(px) — 단면 CLICK_SLOP 과 같은 값. */
 const CLICK_SLOP = 4;
@@ -29,6 +29,8 @@ export interface ZoneTrendViewProps {
     onYView: (v: YView | null) => void;
     hovered: string | null;
     onHover: (code: string | null) => void;
+    /** 짚은 선의 분차트 상세(캔들·대금 마커·밴드·사슬) — 계산은 모델 소유자(판) 몫. null = 없음. */
+    hoverDetail: HoverDetail | null;
     /** 크로스헤어 분 — controlled(칸 동기의 전제). null = 없음. */
     crosshair: number | null;
     onCrosshair: (minute: number | null) => void;
@@ -78,11 +80,11 @@ export function ZoneTrendView(p: ZoneTrendViewProps): JSX.Element {
     const memberOps = useMemo(() => memberOpsOf(p.model.members, scales), [p.model, scales]);
     const layers = useMemo(
         () => zoneTrendLayers({
-            model: p.model, memberOps, hovered: p.hovered, minute: p.minute,
+            model: p.model, memberOps, hovered: p.hovered, hoverDetail: p.hoverDetail, minute: p.minute,
             view: { fromMinute: lo, toMinute: xHi }, yView: y, box, scales,
         }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [p.model, memberOps, p.hovered, p.minute, lo, xHi, y, box, scales],
+        [p.model, memberOps, p.hovered, p.hoverDetail, p.minute, lo, xHi, y, box, scales],
     );
     const folded = foldedCounts(p.model, y);
     const fmtPct = (v: number): string => `${Math.round(v * 10) / 10}%`;

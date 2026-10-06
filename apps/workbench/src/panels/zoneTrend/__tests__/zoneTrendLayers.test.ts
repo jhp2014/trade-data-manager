@@ -2,13 +2,13 @@
 import { describe, expect, it } from "vitest";
 import { ACTIVE } from "../../../styles/palette.js";
 import {
-    denseLayer, foldedCounts, memberLinesLayer, memberOpsOf, nearestLine, panYView, subjectLineLayer,
+    foldedCounts, hoverLayer, memberLinesLayer, memberOpsOf, nearestLine, panYView, subjectLineLayer,
     trendGridLayer, zoneTrendLayers, zoomYView, Y_PAN, Y_ZOOM_MIN_SPAN, type TrendBox, type YView,
 } from "../zoneTrendLayers.js";
-import type { ZoneTrendLine, ZoneTrendModel } from "../zoneTrendModel.js";
+import type { HoverDetail, ZoneTrendLine, ZoneTrendModel } from "../zoneTrendModel.js";
 
 const line = (code: string, pts: { x: number; y: number }[]): ZoneTrendLine =>
-    ({ code, name: code, pts, amountAt: () => 1_000_000_000, dense: () => [pts] });
+    ({ code, name: code, pts, amountAt: () => 1_000_000_000 });
 
 const scales = { x: (m: number) => m, y: (r: number) => 100 - r };
 const box: TrendBox = { left: 0, top: 0, width: 600, height: 100 };
@@ -21,12 +21,12 @@ const model: ZoneTrendModel = {
 };
 
 describe("zoneTrendLayers — 층 순서(먼저가 아래)", () => {
-    it("격자 → 멤버 → 승격 → 시선 → 현재 분", () => {
+    it("격자 → 멤버 → hover 상세 → 승격 → 시선 → 현재 분", () => {
         const layers = zoneTrendLayers({
-            model, memberOps: memberOpsOf(model.members, scales), hovered: null, minute: 60,
+            model, memberOps: memberOpsOf(model.members, scales), hovered: null, hoverDetail: null, minute: 60,
             view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales,
         });
-        expect(layers.map((l) => l.name)).toEqual(["trend-grid", "trend-members", "trend-dense", "trend-lift", "trend-subject", "trend-now"]);
+        expect(layers.map((l) => l.name)).toEqual(["trend-grid", "trend-members", "trend-lift", "trend-hover", "trend-subject", "trend-now"]);
     });
 
     it("시선 선은 ACTIVE 색이고, 남을 짚는 중엔 반투명", () => {
@@ -52,29 +52,54 @@ describe("hover — 짚은 선은 승격 층이 다시 그리고 나머지는 �
         expect(hovering.groups[0].opacity).toBe(0.25);
     });
 
-    it("승격 층 — 짚은 멤버가 있을 때만 한 묶음", () => {
+    it("승격 층 — 짚은 멤버가 있을 때만 한 묶음, hover 상세(캔들)가 있어도 **남는다**(캔들 아래 짚기 앵커)", () => {
         const layers = zoneTrendLayers({
-            model, memberOps: ops, hovered: "A", minute: 60, view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales,
+            model, memberOps: ops, hovered: "A", hoverDetail: null, minute: 60, view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales,
         });
         const lift = layers.find((l) => l.name === "trend-lift")!;
         expect(lift.groups).toHaveLength(1);
-        expect(zoneTrendLayers({ model, memberOps: ops, hovered: null, minute: 60, view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales })
+        expect(zoneTrendLayers({ model, memberOps: ops, hovered: null, hoverDetail: null, minute: 60, view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales })
             .find((l) => l.name === "trend-lift")!.groups).toHaveLength(0);
+        const detail: HoverDetail = { candles: [{ x: 10, o: 1, h: 2, l: 0.5, c: 1.5 }], amounts: [], bands: [], chains: [] };
+        expect(zoneTrendLayers({ model, memberOps: ops, hovered: "A", hoverDetail: detail, minute: 60, view: { fromMinute: 0, toMinute: 600 }, yView: Y, box, scales })
+            .find((l) => l.name === "trend-lift")!.groups).toHaveLength(1);
     });
 });
 
-describe("denseLayer — 짚은 선의 원 분 경로 흐림(지그재그 아래)", () => {
-    it("짚을 때만 서고, 멤버 = 승격색·시선 = ACTIVE·안 짚으면 빈 층", () => {
-        const member = denseLayer(model, "A", scales);
-        expect(member.groups).toHaveLength(1);
-        expect(member.groups[0].opacity).toBe(0.35);
-        const op = member.groups[0].ops[0];
-        expect(op.op === "polyline" && op.stroke).toBe("var(--text-primary)");
-        const subj = denseLayer(model, "S", scales);
-        const sop = subj.groups[0].ops[0];
-        expect(sop.op === "polyline" && sop.stroke).toBe(ACTIVE);
-        expect(denseLayer(model, null, scales).groups).toEqual([]);
-        expect(denseLayer(model, "없는코드", scales).groups).toEqual([]);
+describe("hoverLayer — 캔들·대금 마커·밴드·사슬 묶음(투명도 단계)", () => {
+    const detail: HoverDetail = {
+        candles: [{ x: 10, o: 1, h: 3, l: 0.5, c: 2 }, { x: 11, o: 2, h: 2.5, l: 1, c: 1.2 }],
+        amounts: [{ x: 10, h: 3, bucket: 1 }],
+        bands: [
+            { kind: "high", pts: [{ x: 10, lo: 2, hi: 3 }, { x: 11, lo: 2.2, hi: 3 }] },
+            { kind: "base", pts: [{ x: 10, lo: 0.8, hi: 1 }] },
+        ],
+        chains: [{ from: 10, to: 11 }],
+    };
+
+    it("묶음 = 사슬 띠 → 밴드 → 캔들 → 대금 글자(옅은 것부터), 캔들은 봉마다 심지+몸통", () => {
+        const layer = hoverLayer(detail, scales, box);
+        expect(layer.name).toBe("trend-hover");
+        expect(layer.groups).toHaveLength(4);
+        const [chains, bands, candles, amounts] = layer.groups;
+        expect(chains.ops.every((o) => o.op === "rect")).toBe(true);
+        expect(bands.ops).toHaveLength(3); // high 2칸 + base 1칸
+        expect(candles.ops).toHaveLength(4); // 봉 2 × (심지 line + 몸통 rect)
+        expect(candles.ops.filter((o) => o.op === "rect")).toHaveLength(2);
+        const amt = amounts.ops[0];
+        expect(amt.op === "text" && amt.text).toBe("30"); // bucket 1 = 30억 구간 하한
+        expect((chains.opacity ?? 1) < (bands.opacity ?? 1) && (bands.opacity ?? 1) < (candles.opacity ?? 1)).toBe(true);
+    });
+
+    it("상승/하락 캔들 색 — 종가 ≥ 시가 = rise", () => {
+        const layer = hoverLayer(detail, scales, box);
+        const bodies = layer.groups[2].ops.filter((o) => o.op === "rect");
+        expect(bodies[0].op === "rect" && bodies[0].fill).toBe("var(--rise)");
+        expect(bodies[1].op === "rect" && bodies[1].fill).toBe("var(--fall)");
+    });
+
+    it("null = 빈 층", () => {
+        expect(hoverLayer(null, scales, box).groups).toEqual([]);
     });
 });
 

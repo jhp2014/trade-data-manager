@@ -12,12 +12,15 @@ import { useSubject } from "../../lib/subject.js";
 import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
 import { formatValue } from "../../lib/format.js";
+import { usePointGrids } from "../../lib/PointGridsContext.js";
+import { useFunnel } from "../filter/FunnelContext.js";
+import { chainSourceRowsOf } from "../breakout/useChainOverlay.js";
 import { ZoneMenu } from "../themeRank/ZoneMenu.js";
 import { parseScopeZone } from "../themeRank/zoneSources.js";
 import { useDisplayMinute } from "../themeRank/displayMinute.js";
 import { fmtHms, fmtMin } from "../themeRank/useThemePlane.js";
 import { ZoneTrendView } from "./ZoneTrendView.js";
-import { autoYViewOf, DEFAULT_Y_VIEW, trendSampleAt, zoneTrendModelOf } from "./zoneTrendModel.js";
+import { autoYViewOf, DEFAULT_Y_VIEW, hoverDetailOf, trendSampleAt, zoneTrendModelOf } from "./zoneTrendModel.js";
 import type { YView } from "./zoneTrendLayers.js";
 
 /** 축약 임계 선택지(가산 %p) — 세그먼트. 본론은 2(격자와 같은 수) · 1 은 자세히, 3·5 는 성긴 질감. */
@@ -52,6 +55,26 @@ export function ZoneTrendPanel({ panelId, baseTitle }: { panelId: string; baseTi
     // ── 손짓 상태 — 판이 쥔다(controlled view — 썸네일 확장 시 칸끼리 동기의 전제).
     const [hovered, setHovered] = useState<string | null>(null);
     const [crosshair, setCrosshair] = useState<number | null>(null);
+
+    // ── hover 상세(캔들·대금 마커·밴드·사슬) — 사슬·밴드의 정의는 보는 집합의 「돌파」 줄
+    // (기본 차트 사슬 층과 같은 출처 chainSourceRowsOf, 줄이 여럿이면 첫 줄 — 패널별 선택은 필요해지면).
+    // 기준선은 격자 번들(/point-grids) — 앵커 차트가 아니면 null(기준선 밴드만 없다).
+    const { slowExpr, slowSets } = useFunnel();
+    const chainPred = useMemo(() => chainSourceRowsOf(slowExpr, slowSets)[0]?.pred ?? null, [slowExpr, slowSets]);
+    const pointGrids = usePointGrids();
+    const hoverDetail = useMemo(() => {
+        if (hovered === null || !stocks || !subject || minute === null || model === null) return null;
+        // 유령 가드 — 포인터를 둔 채 스크럽으로 그 종목이 모수에서 빠지면, 화면에 선이 없는 종목의
+        // 캔들이 남는다(리뷰 지적). 지금 그려진 선(시선·멤버)만 상세를 가진다.
+        if (hovered !== subject.code && !model.members.some((m) => m.code === hovered)) return null;
+        // 기준선 재료(격자 번들) 로딩 중엔 사슬·밴드를 **보류**하고 캔들만 — 기준선 없이 계산하면
+        // 기본 차트 사슬 층("같은 출처·같은 계산")과 그 사이 동안 사슬이 다르다(리뷰 지적).
+        const gridsReady = pointGrids.byDate !== null;
+        const knobs = chainPred !== null && gridsReady ? { zigzagPct: chainPred.zigzagPct, bandPct: chainPred.bandPct } : null;
+        const baseline = gridsReady ? pointGrids.gridOf(hovered, subject.date)?.base ?? null : null;
+        return hoverDetailOf(stocks, hovered, minute, knobs, baseline);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [hovered, stocks, subject?.date, subject?.code, minute, model, chainPred, pointGrids.byDate]);
 
     // ── y 창 — 자동 맞춤 [min(−3,최저−3), 최고+3] 기본, 수동값은 세션 + (종목,날짜) 낟알: 다른
     // 종목에선 자동("변경할 때마다 그에 맞는 스케일" — 2026-10-06 사용자 확정), 제자리 복귀면 부활.
@@ -151,7 +174,7 @@ export function ZoneTrendPanel({ panelId, baseTitle }: { panelId: string; baseTi
                     )}
                     <ZoneTrendView model={model} minuteRange={minuteRange} minute={minute}
                         yView={yView} onYView={setYView}
-                        hovered={hovered} onHover={setHovered}
+                        hovered={hovered} onHover={setHovered} hoverDetail={hoverDetail}
                         crosshair={crosshair} onCrosshair={setCrosshair}
                         onPick={navigate} chipTextOf={chipTextOf} />
                 </>

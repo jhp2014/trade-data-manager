@@ -4,13 +4,13 @@ import { describe, expect, it } from "vitest";
 import { inThemeZone } from "@trade-data-manager/market/domain";
 import { kstToUnix } from "../../../lib/derive.js";
 import { themeSectionAt } from "../../themeRank/sectionSeries.js";
-import { autoYViewOf, DEFAULT_Y_VIEW, trendSampleAt, zoneTrendModelOf } from "../zoneTrendModel.js";
+import { autoYViewOf, DEFAULT_Y_VIEW, hoverDetailOf, trendSampleAt, zoneTrendModelOf } from "../zoneTrendModel.js";
 import type { ReplayStock } from "../../../api/dayReplay.js";
 import type { ScopeZone } from "../../themeRank/zoneSources.js";
 
 const DATE = "2026-08-14";
 
-const stock = (code: string, bars: [string, number, number][], themes: string[] = ["T"]): ReplayStock => ({
+const stock = (code: string, bars: [string, number, number][], themes: string[] = ["T"], baseUn: number | null = null): ReplayStock => ({
     code, name: code, market: "KRX", marketCap: null, themes,
     times: bars.map(([t]) => kstToUnix(DATE, t)),
     rate: bars.map(([, r]) => r),
@@ -22,7 +22,7 @@ const stock = (code: string, bars: [string, number, number][], themes: string[] 
     minuteHigh: bars.map(([, r]) => r),
     minuteLow: bars.map(([, r]) => r),
     trailingHighs: { krx: [], un: [] },
-    basePrice: { krx: null, un: null },
+    basePrice: { krx: null, un: baseUn },
 });
 
 const zoneOf = (p: Pick<ScopeZone, "window" | "zoneAmountN" | "rate">): Pick<ScopeZone, "window" | "zoneAmountN" | "rate"> => p;
@@ -109,13 +109,33 @@ describe("zoneTrendModelOf — 선·시선 규칙", () => {
         expect(a.pts[a.pts.length - 1]).toEqual({ x: minute, y: 5 }); // 09:30 샘플(미래)은 안 실린다
     });
 
-    it("dense() — 원 분 경로도 현재 분까지, 결손 분에서 조각이 끊긴다", () => {
-        const model = zoneTrendModelOf({ stocks, date: DATE, minute: 9 * 60 + 5, zone, thresholdPt: 2, subjectCode: "B" });
-        // A 샘플 = 09:00·09:05(·09:30 미래) — 09:01~04 결손이라 두 조각, 09:30 은 안 실린다.
-        expect(model.members[0].dense()).toEqual([
-            [{ x: 540, y: 1 }],
-            [{ x: 545, y: 5 }],
-        ]);
+    it("hoverDetailOf — 캔들·대금 마커도 현재 분까지(인과), 돌파 줄 없으면 밴드·사슬 없음", () => {
+        // A: 09:00(20억 — 구간 0)·09:05(누적 60억, 직전 분 결손 → 분당 대금 모름)·09:30(미래).
+        const sts = [stock("A", [["09:00:00", 1, 2_000_000_000], ["09:05:00", 5, 6_000_000_000], ["09:30:00", 8, 9_000_000_000]])];
+        const d = hoverDetailOf(sts, "A", 9 * 60 + 5, null, null)!;
+        expect(d.candles.map((c) => c.x)).toEqual([540, 545]); // 09:30 은 안 실린다
+        expect(d.candles[0]).toEqual({ x: 540, o: 1, h: 1, l: 1, c: 1 }); // 픽스처는 OHLC 전부 rate
+        expect(d.amounts).toEqual([{ x: 540, h: 1, bucket: 0 }]); // 09:05 는 차분 불가(모름) — 마커 없음
+        expect(d.bands).toEqual([]);
+        expect(d.chains).toEqual([]);
+        expect(hoverDetailOf(sts, "Z", 600, null, null)).toBeNull();
+    });
+
+    it("hoverDetailOf — 돌파 줄이 있으면 러닝·기준선 밴드와 사슬이 서고, **현재 분에서 절단**된다", () => {
+        // 10:00 고가 돌파 + 10:30(미래 봉 — 절단 검증) · basePrice.un=100·기준선 120(=+20%, 소멸 안 함).
+        const sts = [stock("A", [
+            ["09:00:00", 1, 3_000_000_000], ["09:01:00", 1.2, 6_000_000_000],
+            ["10:00:00", 6, 12_000_000_000], ["10:30:00", 9, 20_000_000_000],
+        ], ["T"], 100)];
+        const d = hoverDetailOf(sts, "A", 10 * 60, { zigzagPct: 2, bandPct: 0.5 }, 120)!;
+        expect(d.candles.map((c) => c.x)).toEqual([540, 541, 600]); // 10:30 은 미래 — 절단
+        expect(d.chains.length).toBeGreaterThan(0);
+        expect(d.bands.some((b) => b.kind === "high")).toBe(true);
+        expect(d.bands.some((b) => b.kind === "base")).toBe(true); // 기준선 밴드(하단~기준선)
+        for (const b of d.bands) for (const p of b.pts) expect(p.x).toBeLessThanOrEqual(600);
+        for (const c of d.chains) expect(c.to).toBeLessThanOrEqual(600);
+        // 분 결손(09:01→10:00)에서 밴드 조각이 끊긴다 — high 밴드가 두 조각 이상.
+        expect(d.bands.filter((b) => b.kind === "high").length).toBeGreaterThanOrEqual(2);
     });
 
     it("시선이 멤버를 겸하면 subject 한 줄만(멤버 목록에서 빠진다) · memberCount 에는 든다", () => {

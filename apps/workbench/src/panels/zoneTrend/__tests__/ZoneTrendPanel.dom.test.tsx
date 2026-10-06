@@ -71,7 +71,7 @@ describe("본문 — 시선·존에 따른 상태", () => {
         act(() => useWorkbench.getState().setFocus({ date: DATE, code: "A", time: null }));
         expect(container.textContent).toContain("존이 없다");
         let layers = drawListOf(container);
-        expect(layers.map((l) => l.name)).toEqual(["trend-grid", "trend-members", "trend-dense", "trend-lift", "trend-subject", "trend-now"]);
+        expect(layers.map((l) => l.name)).toEqual(["trend-grid", "trend-members", "trend-lift", "trend-hover", "trend-subject", "trend-now"]);
         expect(layers.find((l) => l.name === "trend-members")!.groups).toHaveLength(0); // 존 없음 = 멤버 0
         expect(layers.find((l) => l.name === "trend-subject")!.groups).toHaveLength(1); // 시선 선
 
@@ -108,7 +108,7 @@ describe("ZoneTrendView — hover 칩은 현재 분 너머를 말하지 않는�
         const calls: [string, number][] = [];
         const model = {
             members: [],
-            subject: { code: "S", name: "S", pts: [{ x: 540, y: 5 }, { x: 550, y: 5 }], amountAt: () => null, dense: () => [] },
+            subject: { code: "S", name: "S", pts: [{ x: 540, y: 5 }, { x: 550, y: 5 }], amountAt: () => null },
             memberCount: 0,
         };
         function Harness(): JSX.Element {
@@ -119,7 +119,7 @@ describe("ZoneTrendView — hover 칩은 현재 분 너머를 말하지 않는�
                 <div style={{ width: 1000, height: 600 }}>
                     <ZoneTrendView model={model} minuteRange={{ lo: 540, hi: 600 }} minute={550}
                         yView={{ lo: 0, hi: 15 }} onYView={() => undefined}
-                        hovered={hovered} onHover={setHovered} crosshair={560} onCrosshair={() => undefined}
+                        hovered={hovered} onHover={setHovered} hoverDetail={null} crosshair={560} onCrosshair={() => undefined}
                         onPick={() => undefined}
                         chipTextOf={(code, m) => { calls.push([code, m]); return "chip"; }} />
                 </div>
@@ -144,7 +144,7 @@ describe("ZoneTrendView — 세로 끌기 = y 팬(클릭 이동이 터지지 않
         const yViews: { lo: number; hi: number }[] = [];
         const model = {
             members: [],
-            subject: { code: "S", name: "S", pts: [{ x: 540, y: 5 }, { x: 550, y: 5 }], amountAt: () => null, dense: () => [] },
+            subject: { code: "S", name: "S", pts: [{ x: 540, y: 5 }, { x: 550, y: 5 }], amountAt: () => null },
             memberCount: 0,
         };
         function Harness(): JSX.Element {
@@ -154,7 +154,7 @@ describe("ZoneTrendView — 세로 끌기 = y 팬(클릭 이동이 터지지 않
                 <div style={{ width: 1000, height: 600 }}>
                     <ZoneTrendView model={model} minuteRange={{ lo: 540, hi: 600 }} minute={550}
                         yView={{ lo: 0, hi: 15 }} onYView={(v) => { if (v) yViews.push(v); }}
-                        hovered={hovered} onHover={setHovered} crosshair={crosshair} onCrosshair={setCrosshair}
+                        hovered={hovered} onHover={setHovered} hoverDetail={null} crosshair={crosshair} onCrosshair={setCrosshair}
                         onPick={(c) => picks.push(c)}
                         chipTextOf={() => "chip"} />
                 </div>

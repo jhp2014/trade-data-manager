@@ -7,7 +7,9 @@
 // 선 = 현재 분까지의 prefix 인과 축약(zigzagIdx) — 미래 분은 안 그린다("어떻게 왔나").
 // 날짜 낟알 재료(분 배열·분당 대금)는 stocks **배열 참조** WeakMap 캐시 — 스크럽 틱(분 변경)마다
 // 하루치를 다시 굽지 않게(sectionSeries 와 같은 수명 전략: /day-replay 캐시가 참조를 지배한다).
-import { inThemeZone, lastIndexAtOrBefore, minuteOfDayOf } from "@trade-data-manager/market/domain";
+import {
+    amountBucketIndex, breakoutOfStock, inThemeZone, lastIndexAtOrBefore, minuteOfDayOf,
+} from "@trade-data-manager/market/domain";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { minuteAmountOf } from "../canvas/amountRuns.js";
 import { themeSectionAt } from "../themeRank/sectionSeries.js";
@@ -21,12 +23,6 @@ export interface ZoneTrendLine {
     pts: { x: number; y: number }[];
     /** 분당 대금(원) — 굵기(amountRuns)의 재료. 결손 분·직전 분 결손(차분 불가) = null(모름). */
     amountAt: (minute: number) => number | null;
-    /**
-     * dense 분 경로(지그재그가 축약한 원 경로, 현재 분까지) — hover 흐림 오버레이의 재료(2026-10-06 저녁).
-     * 결손 분에서 조각을 끊는다(없는 경로를 지어내지 않기 — 테이프 segmentsOf 관례). **게으른 함수**인
-     * 이유: 짚을 때만 필요한데 모델이 매번 만들면 스크럽 틱마다 멤버 수 × ≤720 점이 생긴다.
-     */
-    dense: () => { x: number; y: number }[][];
 }
 
 export interface ZoneTrendModel {
@@ -73,19 +69,6 @@ function lineOf(stocks: readonly ReplayStock[], st: ReplayStock, minute: number,
         name: st.name,
         pts: idxs.map((k) => ({ x: day.minutes[k], y: st.rate[k] })),
         amountAt: day.amountAt,
-        dense: () => {
-            const segs: { x: number; y: number }[][] = [];
-            let seg: { x: number; y: number }[] = [];
-            for (let i = 0; i <= end; i++) {
-                if (i > 0 && day.minutes[i] !== day.minutes[i - 1] + 1 && seg.length > 0) {
-                    segs.push(seg);
-                    seg = [];
-                }
-                seg.push({ x: day.minutes[i], y: st.rate[i] });
-            }
-            if (seg.length > 0) segs.push(seg);
-            return segs;
-        },
     };
 }
 
@@ -149,6 +132,80 @@ export function autoYViewOf(stocks: readonly ReplayStock[], subjectCode: string 
     if (!Number.isFinite(max)) return DEFAULT_Y_VIEW;
     // lo ≤ min−3 ≤ max−3 < max+3 — 창은 항상 바로 선다(별도 가드 불요).
     return { lo: Math.min(-3, min - 3), hi: max + 3 };
+}
+
+// ── hover 상세(캔들·대금 마커·밴드·사슬) — 짚은 선 하나의 분차트 오버레이 재료(2026-10-06 저녁,
+// dense 선 → 캔들 교체). 전부 **UN 분모 % 공간**이라 이 판의 y 와 같은 좌표계다: 캔들 = 스냅샷
+// minuteOpen/High/Low·rate 그대로, 밴드 = breakoutOfStock trace 그대로(환산 0 — 기본 차트는 분모가
+// 갈려 환산했다). 사슬·밴드는 보는 집합의 「돌파」 줄(기본 차트 사슬 층과 같은 출처·같은 계산)이
+// 정의한다 — 줄이 없으면 캔들·대금 마커만. 전부 현재 분까지(인과 — 미래 봉·밴드 안 싣는다).
+
+export interface HoverDetail {
+    /** 분봉(% 공간) — x = 분, o/h/l/c. 결손 분은 애초에 샘플이 없다. */
+    candles: { x: number; o: number; h: number; l: number; c: number }[];
+    /** 대금 구간 마커 — 분당 대금이 구간(20억~)에 든 봉. 표기는 기본 차트와 같은 「구간 하한 숫자」. */
+    amounts: { x: number; h: number; bucket: number }[];
+    /** 밴드 면 조각(러닝 = high·기준선 = base) — null·결손 분에서 끊는다. */
+    bands: { kind: "high" | "base"; pts: { x: number; lo: number; hi: number }[] }[];
+    /** 사슬 구간(배경 띠) — from~to 분(현재 분에서 절단). */
+    chains: { from: number; to: number }[];
+}
+
+export function hoverDetailOf(
+    stocks: readonly ReplayStock[],
+    code: string,
+    minute: number,
+    chainKnobs: { zigzagPct: number; bandPct: number } | null,
+    baseline: number | null,
+): HoverDetail | null {
+    const st = stocks.find((s) => s.code === code);
+    if (!st) return null;
+    const day = stockDayOf(stocks, st);
+    const end = lastIndexAtOrBefore(day.minutes, minute);
+    if (end < 0) return null;
+
+    const candles: HoverDetail["candles"] = [];
+    const amounts: HoverDetail["amounts"] = [];
+    for (let i = 0; i <= end; i++) {
+        const x = day.minutes[i];
+        candles.push({ x, o: st.minuteOpen[i], h: st.minuteHigh[i], l: st.minuteLow[i], c: st.rate[i] });
+        const tv = day.amountAt(x);
+        const b = tv === null ? -1 : amountBucketIndex(tv);
+        if (b >= 0) amounts.push({ x, h: st.minuteHigh[i], bucket: b });
+    }
+
+    const bands: HoverDetail["bands"] = [];
+    const chains: HoverDetail["chains"] = [];
+    if (chainKnobs !== null) {
+        const res = breakoutOfStock(st, baseline, chainKnobs, { trace: true });
+        const tr = res.trace!;
+        // 밴드 조각 — null(밴드 없음·소멸)과 분 결손에서 끊는다(없는 구간을 지어내지 않기).
+        const pushBand = (kind: "high" | "base", loOf: (i: number) => number | null, hiOf: (i: number) => number | null): void => {
+            let seg: { x: number; lo: number; hi: number }[] = [];
+            const flush = (): void => {
+                if (seg.length > 0) bands.push({ kind, pts: seg });
+                seg = [];
+            };
+            for (let i = 0; i <= end; i++) {
+                const lo = loOf(i);
+                const hi = hiOf(i);
+                if (lo === null || hi === null) { flush(); continue; }
+                if (seg.length > 0 && day.minutes[i] !== day.minutes[i - 1] + 1) flush();
+                seg.push({ x: day.minutes[i], lo, hi });
+            }
+            flush();
+        };
+        pushBand("high", (i) => tr.bottom[i] ?? null, (i) => tr.top[i] ?? null);
+        if (res.baselinePct !== null) pushBand("base", (i) => tr.baseBottom[i] ?? null, () => res.baselinePct);
+        // 사슬 구간 — 끝 = 그 사슬의 마지막 거래 봉(현재 분 절단: end 이후 봉은 없는 셈).
+        const lastBar = new Map<number, number>();
+        for (const b of res.bars) if (b.i <= end) lastBar.set(b.chain, b.i);
+        res.chains.forEach((c, k) => {
+            if (c.start > end) return;
+            chains.push({ from: day.minutes[c.start], to: day.minutes[lastBar.get(k) ?? c.start] });
+        });
+    }
+    return { candles, amounts, bands, chains };
 }
 
 /** 크로스헤어 칩의 실값 — 그 분(이하 마지막 샘플 carry-forward)의 등락 % + 그 분의 분당 대금. */
