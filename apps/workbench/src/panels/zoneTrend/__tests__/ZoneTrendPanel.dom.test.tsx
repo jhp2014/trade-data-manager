@@ -118,6 +118,7 @@ describe("ZoneTrendView — hover 칩은 현재 분 너머를 말하지 않는�
             return (
                 <div style={{ width: 1000, height: 600 }}>
                     <ZoneTrendView model={model} minuteRange={{ lo: 540, hi: 600 }} minute={550}
+                        xView={{ lo: 540, hi: 560 }} onXView={() => undefined}
                         yView={{ lo: 0, hi: 15 }} onYView={() => undefined}
                         hovered={hovered} onHover={setHovered} hoverDetail={null} crosshair={560} onCrosshair={() => undefined}
                         onPick={() => undefined}
@@ -138,9 +139,10 @@ describe("ZoneTrendView — hover 칩은 현재 분 너머를 말하지 않는�
     });
 });
 
-describe("ZoneTrendView — 세로 끌기 = y 팬(클릭 이동이 터지지 않는다)", () => {
-    it("슬롭을 넘겨 끌고 손을 떼면 onYView 는 불리고 onPick 은 안 불린다", () => {
+describe("ZoneTrendView — 차트 손짓(드래그 팬·휠 줌, 클릭 이동과 공존)", () => {
+    const makeHarness = (): { picks: string[]; xViews: { lo: number; hi: number }[]; yViews: { lo: number; hi: number }[]; Harness: () => JSX.Element } => {
         const picks: string[] = [];
+        const xViews: { lo: number; hi: number }[] = [];
         const yViews: { lo: number; hi: number }[] = [];
         const model = {
             members: [],
@@ -153,6 +155,7 @@ describe("ZoneTrendView — 세로 끌기 = y 팬(클릭 이동이 터지지 않
             return (
                 <div style={{ width: 1000, height: 600 }}>
                     <ZoneTrendView model={model} minuteRange={{ lo: 540, hi: 600 }} minute={550}
+                        xView={{ lo: 540, hi: 560 }} onXView={(v) => { if (v) xViews.push(v); }}
                         yView={{ lo: 0, hi: 15 }} onYView={(v) => { if (v) yViews.push(v); }}
                         hovered={hovered} onHover={setHovered} hoverDetail={null} crosshair={crosshair} onCrosshair={setCrosshair}
                         onPick={(c) => picks.push(c)}
@@ -160,6 +163,11 @@ describe("ZoneTrendView — 세로 끌기 = y 팬(클릭 이동이 터지지 않
                 </div>
             );
         }
+        return { picks, xViews, yViews, Harness };
+    };
+
+    it("세로 끌기 = y 팬(x 는 그대로)·가로 끌기 = x 팬 — 끌고 떼면 onPick 은 안 불린다", () => {
+        const { picks, xViews, yViews, Harness } = makeHarness();
         const { container } = render(<Harness />);
         const svg = container.querySelector("svg")!;
         // 선 머리(500, 398) 위에서 눌러 세로로 40px 끌고 놓는다 — 팬이지 클릭이 아니다.
@@ -167,11 +175,30 @@ describe("ZoneTrendView — 세로 끌기 = y 팬(클릭 이동이 터지지 않
         act(() => { fireEvent.pointerMove(svg, { clientX: 500, clientY: 438 }); });
         act(() => { fireEvent.pointerUp(svg, { clientX: 500, clientY: 438 }); });
         expect(yViews.length).toBeGreaterThan(0);
+        expect(xViews).toEqual([]); // dx 0 — x 창은 같은 참조라 커밋 없음
+        expect(picks).toEqual([]);
+        // 가로로 끌면 x 팬(내용이 손을 따라온다 — 오른쪽 드래그 = 과거 쪽).
+        act(() => { fireEvent.pointerDown(svg, { clientX: 500, clientY: 398, button: 0 }); });
+        act(() => { fireEvent.pointerMove(svg, { clientX: 460, clientY: 398 }); });
+        act(() => { fireEvent.pointerUp(svg, { clientX: 460, clientY: 398 }); });
+        expect(xViews.length).toBeGreaterThan(0);
+        expect(xViews[xViews.length - 1].lo).toBeGreaterThan(540); // 왼쪽으로 끌면 미래 쪽
         expect(picks).toEqual([]);
         // 같은 자리 누르고 그대로 떼면 클릭(시선 이동 후보)이다.
         act(() => { fireEvent.pointerDown(svg, { clientX: 500, clientY: 398, button: 0 }); });
         act(() => { fireEvent.pointerUp(svg, { clientX: 500, clientY: 398 }); });
         expect(picks).toEqual(["S"]);
+    });
+
+    it("휠 = 시간 줌 · Ctrl+휠 = 세로 줌(골격 선례)", () => {
+        const { xViews, yViews, Harness } = makeHarness();
+        const { container } = render(<Harness />);
+        const svg = container.querySelector("svg")!;
+        act(() => { fireEvent.wheel(svg, { clientX: 500, clientY: 300, deltaY: -100 }); });
+        expect(xViews.length).toBeGreaterThan(0);
+        expect(yViews).toEqual([]);
+        act(() => { fireEvent.wheel(svg, { clientX: 500, clientY: 300, deltaY: -100, ctrlKey: true }); });
+        expect(yViews.length).toBeGreaterThan(0);
     });
 });
 

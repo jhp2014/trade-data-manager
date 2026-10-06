@@ -32,6 +32,31 @@ export const Y_ZOOM_MIN_SPAN = 2;
 /** 조정 한계 = Y_PAN 과 지금 창의 합집합 — 지금 창은 늘 한계 안이라 손짓이 연속이다. */
 const boundsOf = (v: YView): YView => ({ lo: Math.min(Y_PAN.lo, v.lo), hi: Math.max(Y_PAN.hi, v.hi) });
 
+// ── x(시간) 창 — lightweight-charts 관례의 이식(2026-10-06 밤): 휠 = 시간 줌(커서 중심)·드래그 = 팬.
+// 기본은 자동 [시작, 현재 분 + X_TAIL_MIN](스크럽 따라 자람), 손대면 고정·더블클릭 복귀.
+export interface XView { lo: number; hi: number }
+
+/** x 오른끝 여백(분) — 자동 창의 꼬리이자 팬/줌 한계의 오른끝 여유. */
+export const X_TAIL_MIN = 10;
+/** x 줌 폭 하한(분) — 이보다 좁히면 분 단위 캔들·눈금의 뜻이 무너진다. */
+export const X_ZOOM_MIN_SPAN = 10;
+
+/** x 휠 줌 — 커서 분 고정 f배. bounds = [세션 시작, 세션 끝 + 꼬리](호출자 몫). 변화 없으면 같은 참조. */
+export function zoomXView(v: XView, f: number, u: number, bounds: XView): XView {
+    const span = v.hi - v.lo;
+    const next = Math.min(Math.max(span * f, X_ZOOM_MIN_SPAN), bounds.hi - bounds.lo);
+    if (next === span) return v;
+    const lo = Math.max(bounds.lo, Math.min(v.lo + u * span - u * next, bounds.hi - next));
+    return { lo, hi: lo + next };
+}
+
+/** x 팬 — 폭 유지한 채 bounds 안에서 미끄러진다. 변화 없으면 같은 참조. */
+export function panXView(v: XView, dv: number, bounds: XView): XView {
+    const span = v.hi - v.lo;
+    const lo = Math.max(bounds.lo, Math.min(v.lo + dv, bounds.hi - span));
+    return lo === v.lo ? v : { lo, hi: lo + span };
+}
+
 /** 휠 줌 — 커서 값 고정 f배(단면 zoomRateDom 과 같은 꼴, 한계만 이 판 것). u = 도메인 내 비율(lo=0). */
 export function zoomYView(v: YView, f: number, u: number): YView {
     const b = boundsOf(v);

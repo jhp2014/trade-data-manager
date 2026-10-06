@@ -21,7 +21,7 @@ import { useDisplayMinute } from "../themeRank/displayMinute.js";
 import { fmtHms, fmtMin } from "../themeRank/useThemePlane.js";
 import { ZoneTrendView } from "./ZoneTrendView.js";
 import { autoYViewOf, DEFAULT_Y_VIEW, hoverDetailOf, trendSampleAt, zoneTrendModelOf } from "./zoneTrendModel.js";
-import type { YView } from "./zoneTrendLayers.js";
+import { X_TAIL_MIN, type XView, type YView } from "./zoneTrendLayers.js";
 
 /** 축약 임계 선택지(가산 %p) — 세그먼트. 본론은 2(격자와 같은 수) · 1 은 자세히, 3·5 는 성긴 질감. */
 const PCT_CHOICES = [1, 2, 3, 5] as const;
@@ -99,6 +99,27 @@ export function ZoneTrendPanel({ panelId, baseTitle }: { panelId: string; baseTi
         setSessionUi(panelId, "ydom", v === null ? undefined : { ...v, code: subject.code, date: subject.date });
     };
 
+    // ── x(시간) 창 — 자동 [세션 시작, 현재 분 + 꼬리](스크럽 따라 자람), 수동은 ydom 과 같은
+    // (종목,날짜) 낟알(차트처럼 끌어 본 구간은 그 종목에 머무는 동안 유지, 떠나면 자동 복귀).
+    const rawX = useWorkbench((s) => s.sessionUi[panelId]?.["xdom"]) as (XView & { code: string; date: string }) | undefined;
+    const autoX = useMemo<XView>(
+        () => (minuteRange !== null && minute !== null
+            ? { lo: minuteRange.lo, hi: minute + X_TAIL_MIN }
+            : { lo: 540, hi: 540 + X_TAIL_MIN }),
+        [minuteRange, minute],
+    );
+    const xView = useMemo(
+        () => (rawX !== undefined && subject !== null && rawX.code === subject.code && rawX.date === subject.date
+            ? { lo: rawX.lo, hi: rawX.hi }
+            : autoX),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [rawX, autoX, subject?.code, subject?.date],
+    );
+    const setXView = (v: XView | null): void => {
+        if (!subject) return;
+        setSessionUi(panelId, "xdom", v === null ? undefined : { ...v, code: subject.code, date: subject.date });
+    };
+
     /** 선 클릭 = 그 종목으로 시선 이동(정규화 판 라벨 클릭 관례). 하루 선택이면 표시 분을 실체화한다. */
     const navigate = (code: string): void => {
         if (!subject || code === subject.code) return;
@@ -173,6 +194,7 @@ export function ZoneTrendPanel({ panelId, baseTitle }: { panelId: string; baseTi
                         <div style={notice}>존이 없다 — 컨트롤 「존」에서 복사하면 테마 동료 선이 선다(지금은 시선 선만)</div>
                     )}
                     <ZoneTrendView model={model} minuteRange={minuteRange} minute={minute}
+                        xView={xView} onXView={setXView}
                         yView={yView} onYView={setYView}
                         hovered={hovered} onHover={setHovered} hoverDetail={hoverDetail}
                         crosshair={crosshair} onCrosshair={setCrosshair}

@@ -2,8 +2,9 @@
 import { describe, expect, it } from "vitest";
 import { ACTIVE } from "../../../styles/palette.js";
 import {
-    foldedCounts, hoverLayer, memberLinesLayer, memberOpsOf, nearestLine, panYView, subjectLineLayer,
-    trendGridLayer, zoneTrendLayers, zoomYView, Y_PAN, Y_ZOOM_MIN_SPAN, type TrendBox, type YView,
+    foldedCounts, hoverLayer, memberLinesLayer, memberOpsOf, nearestLine, panXView, panYView,
+    subjectLineLayer, trendGridLayer, zoneTrendLayers, zoomXView, zoomYView, Y_PAN, Y_ZOOM_MIN_SPAN,
+    type TrendBox, type YView,
 } from "../zoneTrendLayers.js";
 import type { HoverDetail, ZoneTrendLine, ZoneTrendModel } from "../zoneTrendModel.js";
 
@@ -138,6 +139,27 @@ describe("trendGridLayer — 동적 y 눈금(1/2/5 스텝)", () => {
         expect(timesOf(540, 580)).toEqual(["09:05", "09:10", "09:15", "09:20", "09:25", "09:30", "09:35"]);
         // 하루 전체(390분) — 60분 스텝(과밀 방지).
         expect(timesOf(540, 930)).toEqual(["10:00", "11:00", "12:00", "13:00", "14:00", "15:00"]);
+    });
+});
+
+describe("x(시간) 수동 조정 — 줌·팬 한계(차트 손짓)", () => {
+    const B = { lo: 540, hi: 940 }; // 세션 + 꼬리
+
+    it("줌은 커서 분 고정·폭 하한 10분·bounds 전폭 상한(변화 없으면 같은 참조)", () => {
+        const v = { lo: 540, hi: 640 };
+        expect(zoomXView(v, 0.5, 0.5, B)).toEqual({ lo: 565, hi: 615 });
+        const tight = { lo: 600, hi: 610 };
+        expect(zoomXView(tight, 0.5, 0.5, B)).toBe(tight);
+        const full = { ...B };
+        expect(zoomXView(full, 2, 0.5, B)).toBe(full);
+    });
+
+    it("팬은 폭 유지·bounds 클램프", () => {
+        const v = { lo: 600, hi: 700 };
+        expect(panXView(v, 50, B)).toEqual({ lo: 650, hi: 750 });
+        expect(panXView(v, -999, B)).toEqual({ lo: 540, hi: 640 });
+        expect(panXView(v, 999, B)).toEqual({ lo: 840, hi: 940 });
+        expect(panXView(v, 0, B)).toBe(v);
     });
 });
 
