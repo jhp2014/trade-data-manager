@@ -11,14 +11,14 @@ import { useDaySnapshot } from "../../lib/useDaySnapshot.js";
 import { useThemeIndex } from "../../lib/useThemeIndex.js";
 import { useDisplayMinute } from "./displayMinute.js";
 import {
-    AMOUNT_VIEW, RANK_VIEW_SPAN, RATE_VIEW,
-    amountValuesAt, planeSliceAt, rankScaleX, rankScaleY, valueScaleX, valueScaleY,
+    AMOUNT_VIEW,
+    amountValuesAt, gateVdom, planeSliceAt, rankScaleX, rankScaleY, rateAutoView, valueScaleX, valueScaleY,
     type AxisScale, type ThemeRankAxes, type ValueDom,
 } from "./axisModel.js";
 import { AMOUNT_TICK_MERGE_PX } from "./amountTicks.js";
 import { layoutThresholdTicks, thresholdCounts, type ThresholdTickLayout } from "./thresholdTicks.js";
 import { scrubSectionOf, type ScrubSection } from "./scrubSection.js";
-import { valuesAtMinute } from "./sectionSeries.js";
+import { runningMaxRateAt, runningMaxRateTrackAt, valuesAtMinute } from "./sectionSeries.js";
 import { layoutRateTicks, rateTickCounts, type RateTickLayout } from "./rateTicks.js";
 
 /** 가장자리 「↑/↓」 글자의 가운데 px — 뷰모델(밀어 앉히기)과 렌더(자리)가 같은 수를 본다. */
@@ -92,12 +92,15 @@ export interface ThemePlane {
     setLens: (t: string | null) => void;
     maxRank: number;
     dom: { x0: number; x1: number; y0: number; y1: number };
-    domSpan: number;
-    defaultSpan: number;
+    domSpanX: number;
+    domSpanY: number;
+    defaultSpanX: number;
+    defaultSpanY: number;
     clampDom0: (v: number, span: number) => number;
     vx: ValueDom;
     vy: ValueDom;
-    rawVdom: { x?: ValueDom; y?: ValueDom } | undefined;
+    /** 시선 게이트를 거친 값 축 수동 창 — 소비자는 이걸 base 로 merge 한다(원본을 펼치면 남의 시선 값이 부활한다). */
+    vdom: { x?: ValueDom; y?: ValueDom } | null;
     zoom: ZoomDom | null;
     viewMoved: boolean;
     resetView: () => void;
@@ -197,24 +200,48 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes, rateTickPcts
     // 축 상한 = 유니버스 크기 — 하루 안에서 상수(carry-forward 로 n 이 자라도 축이 안 출렁이게).
     const maxRank = Math.max(section?.codes.length ?? 0, 1);
 
-    // ── 서수 뷰 도메인 — 기본 [1..200] 고정 창(2026-09-17). 팬·휠 줌 상시(값 축 줌은 vdom 쪽).
+    // ── 서수 뷰 도메인 — 기본 [1..xSpan|ySpan] 패널별 설정 창(2026-10-06, 옛 상수 200). 팬·휠 줌 상시.
     // 도메인 읽기는 **서수 축이 하나라도 있으면** 산다 — 혼합 축(예: x 순위 · y 값)에서 x 팬이 쓰는
     // zoom 을 "둘 다 순위" 게이트로 버리면 팬이 조용히 죽고, 저장물만 남아 모드 복귀 때 뷰가 튄다.
     const anyRank = axes.xMode === "rank" || axes.yMode === "rank";
     const rawZoom = useWorkbench((s) => s.sessionUi[panelId]?.["zoom"]) as ZoomDom | undefined;
     const zoom = anyRank && rawZoom !== undefined && subject !== null && rawZoom.date === subject.date ? rawZoom : null;
-    const defaultSpan = Math.max(Math.min(RANK_VIEW_SPAN, maxRank) - 1, 1);
-    const dom = useMemo(() => zoom ?? { x0: 1, x1: 1 + defaultSpan, y0: 1, y1: 1 + defaultSpan }, [zoom, defaultSpan]);
-    const domSpan = Math.max(dom.x1 - dom.x0, 1);
+    const defaultSpanX = Math.max(Math.min(axes.xSpan, maxRank) - 1, 1);
+    const defaultSpanY = Math.max(Math.min(axes.ySpan, maxRank) - 1, 1);
+    const dom = useMemo(() => zoom ?? { x0: 1, x1: 1 + defaultSpanX, y0: 1, y1: 1 + defaultSpanY }, [zoom, defaultSpanX, defaultSpanY]);
+    const domSpanX = Math.max(dom.x1 - dom.x0, 1);
+    const domSpanY = Math.max(dom.y1 - dom.y0, 1);
     const clampDom0 = useCallback(
         (v: number, span: number): number => Math.max(1, Math.min(v, Math.max(maxRank - span, 1))),
         [maxRank],
     );
-    // ── 값 축 뷰 도메인(팬) — 세션 수명, 날짜 무관. 기본 창은 axisModel 상수.
-    const rawVdom = useWorkbench((s) => s.sessionUi[panelId]?.["vdom"]) as { x?: ValueDom; y?: ValueDom } | undefined;
-    const vx = rawVdom?.x ?? AMOUNT_VIEW;
-    const vy = rawVdom?.y ?? RATE_VIEW;
-    const viewMoved = zoom !== null || rawVdom !== undefined;
+    // ── 값 축 뷰 도메인(수동 팬/줌) — 시선(종목,날짜) 게이트(2026-10-06, 옛 "세션 수명·날짜 무관").
+    // 종목을 넘기면 기본 창(= 등락은 자동맞춤)으로 복귀하고, 같은 시선으로 돌아오면 수동값이 부활한다.
+    const rawVdom = useWorkbench((s) => s.sessionUi[panelId]?.["vdom"]);
+    const vdom = useMemo(
+        () => gateVdom(rawVdom, subject?.code, subject?.date),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [rawVdom, subject?.code, subject?.date],
+    );
+    // ── 등락 값 축 자동맞춤 재료 — 모수 = 그려지는 집합(시선+동료)과 같은 출처. 시선-파생 memo 라
+    // **원시값** 의존(기존 불변식 — subject 객체를 걸면 스크럽 틱마다 트랙이 재계산된다).
+    const fitCodes = useMemo(() => {
+        if (axes.yMode !== "value" || !subject) return null;
+        const codes = new Set<string>(peerThemes.keys());
+        codes.add(subject.code);
+        return { key: [...codes].sort().join(","), codes };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [axes.yMode, peerThemes, subject?.code]);
+    const rateTrack = useMemo(
+        () => (fitCodes !== null && stocks && subject ? runningMaxRateTrackAt(stocks, subject.date, fitCodes.key, fitCodes.codes) : null),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [fitCodes, stocks, subject?.date],
+    );
+    const autoMax = rateTrack !== null && minute !== null ? runningMaxRateAt(rateTrack, minute) : null;
+    const vx = vdom?.x ?? AMOUNT_VIEW;
+    // 참조 안정 — 렌더마다 새 객체면 yScale·layers 가 스크럽 틱과 무관하게 매번 깨진다.
+    const vy = useMemo(() => vdom?.y ?? rateAutoView(autoMax), [vdom, autoMax]);
+    const viewMoved = zoom !== null || vdom !== null;
     const resetView = useCallback((): void => {
         setSessionUi(panelId, "zoom", undefined);
         setSessionUi(panelId, "vdom", undefined);
@@ -226,7 +253,13 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes, rateTickPcts
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [panelId, subject?.date, setSessionUi],
     );
-    const writeVdom = useCallback((d: { x?: ValueDom; y?: ValueDom }): void => setSessionUi(panelId, "vdom", d), [panelId, setSessionUi]);
+    const writeVdom = useCallback(
+        (d: { x?: ValueDom; y?: ValueDom }): void => {
+            if (subject) setSessionUi(panelId, "vdom", { code: subject.code, date: subject.date, ...d });
+        },
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [panelId, subject?.code, subject?.date, setSessionUi],
+    );
 
     // ── 평면 단면 — 축 설정이 정한 좌표(서수/값·창). 계산 주체는 core 한 벌(sectionSeries 캐시 경유).
     const slice = useMemo(
@@ -255,7 +288,7 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes, rateTickPcts
         [participants, peerThemes, subject],
     );
 
-    // ── 축 스케일 — 서수는 뷰 도메인, 값은 고정 도메인(+팬 vdom). 렌더·판정·드래그의 단일 출처.
+    // ── 축 스케일 — 서수는 뷰 도메인, 값은 기본 창(등락 = 자동맞춤) + 수동 vdom. 렌더·판정·드래그의 단일 출처.
     const xScale = useMemo(
         () => (axes.xMode === "rank" ? rankScaleX(dom, inner, maxRank, axes.windowMin) : valueScaleX(vx, inner, axes.windowMin)),
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -405,7 +438,7 @@ export function useThemePlane(panelId: string, axes: ThemeRankAxes, rateTickPcts
         snapStatus, snapError: snapQ.isError ? (snapQ.error as Error).message : null,
         minute, minuteRange, section, stocks,
         participants, hitPoints, subjectThemes, peerThemes, themeColors, themesStatus, lens, setLens,
-        maxRank, dom, domSpan, defaultSpan, clampDom0, vx, vy, rawVdom, zoom, viewMoved, resetView, writeZoom, writeVdom,
+        maxRank, dom, domSpanX, domSpanY, defaultSpanX, defaultSpanY, clampDom0, vx, vy, vdom, zoom, viewMoved, resetView, writeZoom, writeVdom,
         xScale, yScale, scales, foldedRate, rateTicks, amountTicks, size, box, inner, wrapRef,
         trails, layers, trailMinutes, pointMinutes, nearestAt, navigate, anchor, goBack,
     };

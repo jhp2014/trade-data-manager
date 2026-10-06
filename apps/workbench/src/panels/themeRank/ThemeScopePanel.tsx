@@ -9,6 +9,7 @@ import { useEffect, useMemo } from "react";
 import { usePanelHeader } from "../../components/header/registry.js";
 import { SubjectBadge } from "../../components/SubjectBadge.js";
 import { useDock } from "../../store/dock.js";
+import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
 import { subjectStatus } from "../../lib/subject.js";
 import { useStockNamesDict } from "../../lib/StockNamesContext.js";
@@ -16,7 +17,7 @@ import { AxisControls } from "./AxisControls.js";
 import { ThemeLensStrip } from "./ThemeLensStrip.js";
 import { ThemePlaneView } from "./ThemePlaneView.js";
 import { ZoneMenu } from "./ZoneMenu.js";
-import { parseThemeRankAxes, windowLabel } from "./axisModel.js";
+import { parseThemeRankAxes, windowLabel, type ThemeRankAxes } from "./axisModel.js";
 import { parseRateTicks } from "./rateTicks.js";
 import { amountTickWindowKey, parseAmountTicks, withWindowTicks } from "./amountTicks.js";
 import { parseScopeZone, type ScopeZone } from "./zoneSources.js";
@@ -28,6 +29,12 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
     // 축 설정 — 인스턴스 영속(⧉ 복제 시 사본이 같이 간다). 관찰판만의 손잡이다.
     const [axesRaw, setAxesRaw] = usePanelUi<unknown>(panelId, "axes", null);
     const axes = useMemo(() => parseThemeRankAxes(axesRaw), [axesRaw]);
+    const setSessionUi = useWorkbench((s) => s.setSessionUi);
+    // 순위 창(xSpan/ySpan)이 바뀌면 서수 줌은 옛 창 기준이라 지운다 — 새 기본 창이 바로 선다.
+    const setAxes = (next: ThemeRankAxes): void => {
+        if (next.xSpan !== axes.xSpan || next.ySpan !== axes.ySpan) setSessionUi(panelId, "zoom", undefined);
+        setAxesRaw(next);
+    };
     // % 눈금 값 — 별도 키(부재 = 기본 0·5·10·20, [] = 끔). axes 에 안 넣는 이유: 기하 memo 가 칩 편집마다 재계산된다.
     const [rateTicksRaw, setRateTicks] = usePanelUi<unknown>(panelId, "rateTicks", undefined);
     const rateTicks = useMemo(() => parseRateTicks(rateTicksRaw), [rateTicksRaw]);
@@ -60,7 +67,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
     const zone = useMemo(() => parseScopeZone(zoneRaw), [zoneRaw]);
     const pickZone = (z: ScopeZone | null): void => {
         setZone(z);
-        if (z) setAxesRaw({ ...axes, windowMin: z.window, xMode: "rank", yMode: z.rate.mode });
+        if (z) setAxes({ ...axes, windowMin: z.window, xMode: "rank", yMode: z.rate.mode });
     };
     const overlay = useMemo(() => {
         if (!zone) return null;
@@ -117,7 +124,7 @@ export function ThemeScopePanel({ panelId, baseTitle }: { panelId: string; baseT
             {
                 kind: "popover", id: "axes", name: "축 설정", label: "축", width: 340, nav: true,
                 help: "이 창의 축 설정 — 인스턴스마다 따로 저장된다(⧉ 복제 시 사본이 같이 간다)",
-                renderPopover: () => <AxisControls axes={axes} onChange={setAxesRaw} rateTicks={rateTicks} onRateTicks={setRateTicks} amountTicks={amountTicks} onAmountTicks={setAmountTicks} />,
+                renderPopover: () => <AxisControls axes={axes} onChange={setAxes} rateTicks={rateTicks} onRateTicks={setRateTicks} amountTicks={amountTicks} onAmountTicks={setAmountTicks} />,
             },
             {
                 kind: "popover", id: "zone", name: "존 겹침", label: zone !== null ? zone.from : "존", width: 360, nav: true, on: zone !== null, activeColor: "var(--accent-primary)",

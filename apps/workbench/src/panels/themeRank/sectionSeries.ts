@@ -9,6 +9,7 @@
 // 소비자(존 트랙)가 오면 그때 채워진다 — 처음 한 번만 오늘까지의 비용 그대로, 이후는 전부 재사용.
 import {
     descendingOrdinals,
+    minuteOfDayOf,
     rankSectionOf,
     sectionValuesOf,
     windowedAmounts,
@@ -33,6 +34,8 @@ interface Entry {
     themeByKey: Map<string, ThemeSectionRanks>;
     /** 최근 쓴 창(분 아님) — 창별 캐시 상한의 LRU. */
     winLru: number[];
+    /** 코드 집합 키(정렬 join) → running max 등락률 트랙 — 등락 값 축 자동맞춤의 재료. */
+    rateMaxByKey: Map<string, Float64Array>;
 }
 
 /** 살려 두는 창 수 상한 — 팝오버에서 T 를 바꿔 볼 때마다 창별 배열(분×종목 두 벌)이 스냅샷 수명만큼
@@ -58,7 +61,7 @@ function entryOf(stocks: readonly ReplayStock[], date: string): Entry {
     let entry = cache.get(stocks);
     // 같은 배열에 다른 날짜가 올 일은 없지만(스냅샷은 날짜당 한 벌), 왔다면 낡은 단면을 섞느니 버린다.
     if (!entry || entry.date !== date) {
-        entry = { date, byMinute: new Map(), valsByMinute: new Map(), winValsByKey: new Map(), winRanksByKey: new Map(), codeIdx: null, themeByKey: new Map(), winLru: [] };
+        entry = { date, byMinute: new Map(), valsByMinute: new Map(), winValsByKey: new Map(), winRanksByKey: new Map(), codeIdx: null, themeByKey: new Map(), winLru: [], rateMaxByKey: new Map() };
         cache.set(stocks, entry);
     }
     return entry;
@@ -110,6 +113,53 @@ export function windowedRanksAt(stocks: readonly ReplayStock[], date: string, mi
         entry.winRanksByKey.set(key, ranks);
     }
     return ranks;
+}
+
+const MINUTES_PER_DAY = 1440;
+/** 트랙당 코드 집합 캐시 상한 — 시선을 테마 안에서 옮기면 집합이 같아 재사용되고, 테마가 바뀌면 새로 선다. */
+const MAX_RATE_TRACKS = 8;
+
+/**
+ * (스냅샷, 날짜, 코드 집합) → **분당 running max 등락률 트랙** — 등락 값 축 자동맞춤의 재료.
+ * 값은 점의 y 와 같은 `rate` 배열(sectionValuesOf 와 같은 원천 — 모수가 갈리면 위로 잘리는 점이 생긴다),
+ * 시점 규칙도 같다(봉 분 ≤ 분 — minuteOfDayOf 가 유일 변환자). running max 라 "현재 분까지의 최고"가
+ * O(1) 조회고, 미래 분은 안 본다(복기 미래 누설 금지 — 되감으면 창이 도로 좁아지는 게 의도).
+ * codesKey = 정렬 join(호출자가 집합과 함께 memo) — 같은 (스냅샷, 키)는 같은 참조를 돌려준다.
+ */
+export function runningMaxRateTrackAt(stocks: readonly ReplayStock[], date: string, codesKey: string, codes: ReadonlySet<string>): Float64Array {
+    const entry = entryOf(stocks, date);
+    let track = entry.rateMaxByKey.get(codesKey);
+    if (track) {
+        // 적중도 순서를 갱신한다(Map 삽입 순서 = LRU) — 안 만지면 뜨거운 키가 꼬리로 밀려 증발한다(winLru 와 같은 결).
+        entry.rateMaxByKey.delete(codesKey);
+        entry.rateMaxByKey.set(codesKey, track);
+    }
+    if (!track) {
+        track = new Float64Array(MINUTES_PER_DAY).fill(Number.NEGATIVE_INFINITY);
+        for (const s of stocks) {
+            if (!codes.has(s.code)) continue;
+            for (let i = 0; i < s.times.length; i++) {
+                const m = minuteOfDayOf(s.times[i]);
+                const r = s.rate[i];
+                if (m >= 0 && m < MINUTES_PER_DAY && typeof r === "number" && Number.isFinite(r) && r > track[m]) track[m] = r;
+            }
+        }
+        let run = Number.NEGATIVE_INFINITY;
+        for (let m = 0; m < MINUTES_PER_DAY; m++) {
+            if (track[m] > run) run = track[m];
+            track[m] = run;
+        }
+        if (entry.rateMaxByKey.size >= MAX_RATE_TRACKS) entry.rateMaxByKey.delete(entry.rateMaxByKey.keys().next().value as string);
+        entry.rateMaxByKey.set(codesKey, track);
+    }
+    return track;
+}
+
+/** 트랙의 그 분까지 최고 — 첫 봉 전(아직 아무 값 없음)은 null(지어내지 않는다). */
+export function runningMaxRateAt(track: Float64Array, minute: number): number | null {
+    const m = Math.min(Math.max(Math.floor(minute), 0), MINUTES_PER_DAY - 1);
+    const v = track[m];
+    return Number.isFinite(v) ? v : null;
 }
 
 /**

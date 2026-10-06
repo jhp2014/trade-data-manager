@@ -1,15 +1,14 @@
-// 테마 순위 평면의 축 어댑터(순수) — 서수/값 스케일·고정 도메인·팬 한계·눈금·라벨을 한 곳에.
+// 테마 순위 평면의 축 어댑터(순수) — 서수/값 스케일·도메인·팬 한계·눈금·라벨을 한 곳에.
 //
-// 2026-09-17 화면 규칙(decisions.md 테마 강도 절):
+// 화면 규칙(2026-09-17 → 2026-10-06 축 창 개정, decisions.md 「시장 단면 축 창」):
 //  · 순위 축은 **1위 = 오른쪽/위**다(x 반전 — 값 모드의 "큰 값 = 오른쪽"과 일관, y 는 원래 일관).
 //    존 틴트는 오른쪽-위 사각이 된다.
-//  · 순위 기본 도메인 = [1..RANK_VIEW_SPAN(200)] 고정(유니버스가 작으면 그만큼) — 존 사각 크기가
-//    유니버스 크기 따라 달라 보이지 않게, 날짜 건너 같은 픽셀 = 같은 순위 차. 밖은 드래그 팬.
-//  · 값 축 도메인 고정(데이터 추종 폐지 — 스크럽마다 축이 출렁이지 않게): 대금 1억~1조(로그) ·
-//    등락 0~+31%(선형). 기본 창 밖은 팬(등락 하한 −30 · 대금 로그 [1e6, 1e13]). 기본 창 아래로
-//    떨어진 점은 가장자리 접힘 배지(개수)가 말한다 — foldedBelowCount.
-//
-// 두 판(조건판·관찰판)이 이 자 하나를 같이 본다 — 도메인 상수의 집은 여기다(패널이 아니라).
+//  · 순위 기본 도메인 = [1..axes.xSpan|ySpan] **패널별 설정**(각 기본 150, 유니버스가 작으면 그만큼)
+//    — 패널 안에서는 날짜 건너 같은 픽셀 = 같은 순위 차(설정이 날짜가 아니라 패널에 붙는다). 밖은 팬.
+//  · 등락 값 축 기본 창 = **자동맞춤**(rateAutoView — 시선+동료의 현재 분까지 최고 +3%p, 하한 5·상한
+//    31). 하루 안에서 스크럽이 전진할 때만 가끔 넓어진다(되감으면 좁아짐 — 미래 누설 회피의 선택).
+//    대금 값 축 기본 창은 1억~1조(로그) 고정. 기본 창 밖은 팬(한계 = RATE_PAN·AMOUNT_PAN — 기본 창과
+//    팬/줌 한계는 **별개 상수**다). 창 아래로 떨어진 점은 가장자리 접힘 배지(개수)가 말한다.
 import { formatValue } from "../../lib/format.js";
 import type { ReplayStock } from "../../api/dayReplay.js";
 import { sectionAtMinute, valuesAtMinute, windowedAmountsAt, windowedRanksAt } from "./sectionSeries.js";
@@ -23,22 +22,34 @@ export interface ThemeRankAxes {
     yMode: AxisMode;
     /** 대금 창(분). null = 당일 전체. 순위/값 모드 공통으로 대금 축에 적용된다(관찰판은 임의 분). */
     windowMin: number | null;
+    /** 대금 순위 축의 기본 창(위) — 패널별 설정(2026-10-06, 옛 상수 200 번복). 축별로 따로다. */
+    xSpan: number;
+    /** 등락 순위 축의 기본 창(위). */
+    ySpan: number;
 }
 
-export const DEFAULT_AXES: ThemeRankAxes = { xMode: "rank", yMode: "rank", windowMin: null };
+export const DEFAULT_AXES: ThemeRankAxes = { xMode: "rank", yMode: "rank", windowMin: null, xSpan: 150, ySpan: 150 };
 
 /** 창 프리셋(분) — 관찰판 "축 ▾"의 빠른 선택지. 입력칸이 본론이고 이건 지름길일 뿐이다. */
 export const WINDOW_CHOICES: readonly (number | null)[] = [null, 120, 60, 30, 10];
+
+/** 순위 창 하한·프리셋 — 상한은 안 둔다(표시가 maxRank 로 클램프). */
+export const RANK_SPAN_MIN = 10;
+export const RANK_SPAN_CHOICES: readonly number[] = [50, 100, 150, 200];
 
 /** 관대한 병합 — 필드 증설이 옛 저장물을 죽이지 않게(themeStrength 파서와 같은 결). */
 export function parseThemeRankAxes(raw: unknown): ThemeRankAxes {
     const o = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
     const mode = (v: unknown): AxisMode => (v === "value" ? "value" : "rank");
+    const span = (v: unknown, dflt: number): number =>
+        typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.max(RANK_SPAN_MIN, Math.round(v)) : dflt;
     const w = o.windowMin;
     return {
         xMode: mode(o.xMode),
         yMode: mode(o.yMode),
         windowMin: typeof w === "number" && Number.isFinite(w) && w > 0 ? Math.round(w) : null,
+        xSpan: span(o.xSpan, DEFAULT_AXES.xSpan),
+        ySpan: span(o.ySpan, DEFAULT_AXES.ySpan),
     };
 }
 
@@ -50,14 +61,40 @@ export interface ValueDom {
     hi: number;
 }
 
-/** 순위 기본 창(위) — 상수, 노브 없음(2026-09-17 사용자 확정). */
-export const RANK_VIEW_SPAN = 200;
-/** 등락률 값 축: 기본 창 [0, +31]% · 팬 하한 −30(가격제한폭). 0 아래는 접힘 배지가 개수로 말한다. */
-export const RATE_VIEW: ValueDom = { lo: 0, hi: 31 };
-export const RATE_PAN_LO = -30;
+/** 등락률 값 축의 팬/줌 **한계**(가격제한폭 ±30, 위 여유 1) — 기본 창(rateAutoView)과 별개 상수다. */
+export const RATE_PAN: ValueDom = { lo: -30, hi: 31 };
+/** 자동맞춤의 위 여유(%p) — 테마 최고 위로 이만큼 숨을 쉰다. */
+export const RATE_FIT_HEADROOM = 3;
 /** 대금 값 축(로그): 기본 창 1억~1조 · 팬 한계 [1e6, 1e13]. */
 export const AMOUNT_VIEW: ValueDom = { lo: 1e8, hi: 1e12 };
 export const AMOUNT_PAN: ValueDom = { lo: 1e6, hi: 1e13 };
+
+/** 등락 값 축의 기본 창 = 자동맞춤 — [0, 모수 최고 +3%p], 하한 5(줌 하한 공용)·상한 31.
+ *  maxRate = 시선+동료의 **현재 분까지** 최고 등락률(runningMaxRateAt), null = 재료 없음 → [0, 5]. */
+export function rateAutoView(maxRate: number | null): ValueDom {
+    const hi = maxRate === null
+        ? RATE_ZOOM_MIN_SPAN
+        : Math.min(Math.max(maxRate + RATE_FIT_HEADROOM, RATE_ZOOM_MIN_SPAN), RATE_PAN.hi);
+    return { lo: 0, hi };
+}
+
+/** 값 축 수동 팬/줌 저장물의 시선 게이트 — (종목, 날짜)가 다르면 버린다(= 자동맞춤/기본 창 복귀).
+ *  태그 없는 옛 모양·깨진 모양도 버린다(sessionUi 는 비영속이라 마이그레이션 불요). */
+export function gateVdom(raw: unknown, code: string | undefined, date: string | undefined): { x?: ValueDom; y?: ValueDom } | null {
+    if (raw === null || typeof raw !== "object" || code === undefined || date === undefined) return null;
+    const o = raw as Record<string, unknown>;
+    if (o.code !== code || o.date !== date) return null;
+    const dom = (v: unknown): ValueDom | undefined => {
+        if (v === null || typeof v !== "object") return undefined;
+        const d = v as Record<string, unknown>;
+        return typeof d.lo === "number" && typeof d.hi === "number" && Number.isFinite(d.lo) && Number.isFinite(d.hi) && d.lo < d.hi
+            ? { lo: d.lo, hi: d.hi }
+            : undefined;
+    };
+    const x = dom(o.x);
+    const y = dom(o.y);
+    return x === undefined && y === undefined ? null : { ...(x !== undefined ? { x } : {}), ...(y !== undefined ? { y } : {}) };
+}
 
 /** 기본 창 아래로 떨어진(그려지지 않는) 값의 수 — ≤lo 접힘 배지의 재료. */
 export const foldedBelowCount = (values: readonly number[], lo: number): number => {
@@ -66,10 +103,10 @@ export const foldedBelowCount = (values: readonly number[], lo: number): number 
     return n;
 };
 
-/** 등락 값 축 팬 — 창 폭(31)을 유지한 채 [RATE_PAN_LO, RATE_VIEW.hi] 안에서 미끄러진다. */
+/** 등락 값 축 팬 — 창 폭을 유지한 채 RATE_PAN([−30, 31]) 안에서 미끄러진다. */
 export function panRateDom(dom: ValueDom, dv: number): ValueDom {
     const span = dom.hi - dom.lo;
-    const lo = Math.max(RATE_PAN_LO, Math.min(dom.lo + dv, RATE_VIEW.hi - span));
+    const lo = Math.max(RATE_PAN.lo, Math.min(dom.lo + dv, RATE_PAN.hi - span));
     return { lo, hi: lo + span };
 }
 
@@ -85,12 +122,12 @@ export const RATE_ZOOM_MIN_SPAN = 5;
 export const AMOUNT_ZOOM_MIN_DECADES = 1;
 
 /** 등락 값 축 줌 — 커서 값을 고정한 채 창 폭 f배. u = 커서의 도메인 내 비율(lo=0, hi=1).
- *  한계: 폭 [RATE_ZOOM_MIN_SPAN, 팬 전 구간], 자리 [RATE_PAN_LO, RATE_VIEW.hi]. 변화 없으면 같은 참조. */
+ *  한계: 폭 [RATE_ZOOM_MIN_SPAN, 팬 전 구간], 자리 RATE_PAN. 변화 없으면 같은 참조. */
 export function zoomRateDom(dom: ValueDom, f: number, u: number): ValueDom {
     const span = dom.hi - dom.lo;
-    const next = Math.min(Math.max(span * f, RATE_ZOOM_MIN_SPAN), RATE_VIEW.hi - RATE_PAN_LO);
+    const next = Math.min(Math.max(span * f, RATE_ZOOM_MIN_SPAN), RATE_PAN.hi - RATE_PAN.lo);
     if (next === span) return dom;
-    const lo = Math.max(RATE_PAN_LO, Math.min(dom.lo + u * span - u * next, RATE_VIEW.hi - next));
+    const lo = Math.max(RATE_PAN.lo, Math.min(dom.lo + u * span - u * next, RATE_PAN.hi - next));
     return { lo, hi: lo + next };
 }
 
@@ -213,7 +250,7 @@ export function valueScaleX(dom: ValueDom, box: PlotBox, windowMin: number | nul
     };
 }
 
-/** 값 축(세로 = 등락률, 선형) — 큰 값 = 위. dom = 뷰 도메인(기본 RATE_VIEW, 팬 하한 −30). */
+/** 값 축(세로 = 등락률, 선형) — 큰 값 = 위. dom = 뷰 도메인(기본 = rateAutoView 자동맞춤, 팬 한계 RATE_PAN). */
 export function valueScaleY(dom: ValueDom, box: PlotBox): AxisScale {
     const { lo, hi } = dom;
     return {

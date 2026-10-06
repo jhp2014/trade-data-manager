@@ -117,6 +117,63 @@ describe("축 ▾ — 창 임의 분 입력이 인스턴스 영속으로 커밋�
     });
 });
 
+describe("축 ▾ — 순위 창(xSpan/ySpan 축별 따로·패널 영속, 기본 150)", () => {
+    const open = (container: HTMLElement): void => {
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.title ?? "").startsWith("이 창의 축 설정"))!;
+        act(() => { fireEvent.click(trigger); });
+    };
+    /** 두 줄(위 = 대금 x, 아래 = 등락 y) — 라벨 span 이 아니라 input 을 품은 줄 span 을 집는다. */
+    const spanRows = (): HTMLElement[] =>
+        [...document.body.querySelectorAll("span")].filter((s) => (s.textContent ?? "").startsWith("순위 창") && s.querySelector("input") !== null);
+    const axesStored = (): { xSpan?: number; ySpan?: number } => (useWorkbench.getState().panelUi[PANEL]?.["axes"] ?? {}) as { xSpan?: number; ySpan?: number };
+
+    it("판의 첫 input 은 여전히 창 입력이다(기존 테스트의 위치 가정 회귀)", () => {
+        const { container } = renderPanel();
+        open(container);
+        expect(document.body.querySelector("input")!.getAttribute("placeholder")).toBe("당일");
+    });
+
+    it("x 입력 80(Enter) → xSpan=80 만 · y 프리셋 200 클릭 → ySpan=200, 하한 10 클램프", () => {
+        const { container } = renderPanel();
+        open(container);
+        const [xRow, yRow] = spanRows();
+        const xInput = xRow!.querySelector("input")!;
+        act(() => {
+            fireEvent.change(xInput, { target: { value: "80" } });
+            fireEvent.keyDown(xInput, { key: "Enter" });
+        });
+        expect(axesStored()).toMatchObject({ xSpan: 80, ySpan: 150 });
+        act(() => { fireEvent.click([...yRow!.querySelectorAll("button")].find((b) => b.textContent === "200")!); });
+        expect(axesStored()).toMatchObject({ xSpan: 80, ySpan: 200 });
+        const xInput2 = spanRows()[0]!.querySelector("input")!;
+        act(() => {
+            fireEvent.change(xInput2, { target: { value: "5" } });
+            fireEvent.keyDown(xInput2, { key: "Enter" });
+        });
+        expect(axesStored().xSpan).toBe(10);
+    });
+
+    it("순위 창이 바뀌면 그 판의 서수 줌(sessionUi zoom)이 지워진다", () => {
+        const { container } = renderPanel();
+        act(() => useWorkbench.getState().setSessionUi(PANEL, "zoom", { date: "2026-10-02", x0: 1, x1: 50, y0: 1, y1: 50 }));
+        open(container);
+        act(() => { fireEvent.click([...spanRows()[0]!.querySelectorAll("button")].find((b) => b.textContent === "100")!); });
+        expect(axesStored().xSpan).toBe(100);
+        expect(useWorkbench.getState().sessionUi[PANEL]?.["zoom"]).toBeUndefined();
+    });
+
+    it("존 복사(pickZone) 뒤에도 순위 창은 보존된다", () => {
+        act(() => useWorkbench.getState().setPanelUi(PANEL, "axes", { xMode: "rank", yMode: "rank", windowMin: null, xSpan: 80, ySpan: 60 }));
+        act(() => useWorkbench.getState().addFilterStage([{ kind: "theme", ...DEFAULT_THEME_ZONE, window: 30 }]));
+        const { container } = renderPanel();
+        const trigger = [...container.querySelectorAll("button")].find((b) => (b.title ?? "").startsWith("걸린 테마 조건에서"))!;
+        act(() => { fireEvent.click(trigger); });
+        const item = [...document.body.querySelectorAll("button")].find((b) => (b.textContent ?? "").includes("테마 30분"))!;
+        act(() => { fireEvent.click(item); });
+        expect(axesStored()).toMatchObject({ xSpan: 80, ySpan: 60 });
+    });
+});
+
 describe("축 ▾ — % 선 칩(panelUi rateTicks, 부재 = 기본)", () => {
     const open = (container: HTMLElement): void => {
         const trigger = [...container.querySelectorAll("button")].find((b) => (b.title ?? "").startsWith("이 창의 축 설정"))!;

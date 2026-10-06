@@ -56,7 +56,11 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
     // ── 포인터 상태.
     const dragRef = useRef<"gx" | "gy" | null>(null);
     const downRef = useRef<{ x: number; y: number } | null>(null);
-    const panRef = useRef<{ x: number; y: number; dom: { x0: number; x1: number; y0: number; y1: number }; vx: ValueDom; vy: ValueDom } | null>(null);
+    // xManual/yManual = 끌기 시작 시점에 그 축이 이미 수동 창이었나 — 자동맞춤(y)·기본 창(x)에서 시작한
+    // 끌기는 그 축이 실제로 움직였을 때만 vdom 으로 고정한다(가로만 끄는 손이 y 자동맞춤을 얼리지 않게).
+    // xOn/yOn = 이번 끌기에서 그 축이 데드존(CLICK_SLOP)을 넘었나 — 래칫(한 번 넘으면 끝까지 그 축을
+    // 쓴다). "오프셋 ≠ 0" 판정은 손떨림 1px 에도 얼고, 0 복귀 이벤트에서 직전 쓰기가 남는다(리뷰 지적).
+    const panRef = useRef<{ x: number; y: number; dom: { x0: number; x1: number; y0: number; y1: number }; vx: ValueDom; vy: ValueDom; xManual: boolean; yManual: boolean; xOn: boolean; yOn: boolean } | null>(null);
     const [hover, setHover] = useState<{ x: number; y: number; code: string; rate: number; amount: number } | null>(null);
     // 존 배지 위 호버 — 기본은 자 배지가 위지만, 존 배지에 올리면 존이 위로 온다(2026-10-03 저녁).
     // 판정은 좌표(inLabel)다 — 요소 호버로 하면 위에 덮인 자 배지가 이벤트를 먹어 겹친 자리가 안 잡힌다.
@@ -108,7 +112,7 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
             return;
         }
         // 빈 곳 누름 = 팬 후보(상시). 클릭(무이동)이면 up 의 슬롭 판정이 점 클릭으로 살린다.
-        panRef.current = { x, y, dom: { x0: p.dom.x0, x1: p.dom.x1, y0: p.dom.y0, y1: p.dom.y1 }, vx: p.vx, vy: p.vy };
+        panRef.current = { x, y, dom: { x0: p.dom.x0, x1: p.dom.x1, y0: p.dom.y0, y1: p.dom.y1 }, vx: p.vx, vy: p.vy, xManual: p.vdom?.x !== undefined, yManual: p.vdom?.y !== undefined, xOn: false, yOn: false };
         e.currentTarget.setPointerCapture(e.pointerId);
     };
 
@@ -130,25 +134,31 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
         if (pan && p.subject) {
             const dx = e.clientX - rect.left - pan.x;
             const dy = e.clientY - rect.top - pan.y;
-            // 서수 축 — x 는 반전축이라 부호가 값 축과 반대(px 가 커질수록 서수가 작아진다).
+            // 서수 축 — x 는 반전축이라 부호가 값 축과 반대(px 가 커질수록 서수가 작아진다). 창 폭은 축별(2026-10-06).
             if (p.axes.xMode === "rank" || p.axes.yMode === "rank") {
-                const span = pan.dom.x1 - pan.dom.x0;
-                const x0 = p.axes.xMode === "rank" ? p.clampDom0(pan.dom.x0 + (dx / Math.max(p.inner.width, 1)) * span, span) : pan.dom.x0;
-                const y0 = p.axes.yMode === "rank" ? p.clampDom0(pan.dom.y0 - (dy / Math.max(p.inner.height, 1)) * span, span) : pan.dom.y0;
-                p.writeZoom({ x0, x1: x0 + span, y0, y1: y0 + span });
+                const spanX = pan.dom.x1 - pan.dom.x0;
+                const spanY = pan.dom.y1 - pan.dom.y0;
+                const x0 = p.axes.xMode === "rank" ? p.clampDom0(pan.dom.x0 + (dx / Math.max(p.inner.width, 1)) * spanX, spanX) : pan.dom.x0;
+                const y0 = p.axes.yMode === "rank" ? p.clampDom0(pan.dom.y0 - (dy / Math.max(p.inner.height, 1)) * spanY, spanY) : pan.dom.y0;
+                p.writeZoom({ x0, x1: x0 + spanX, y0, y1: y0 + spanY });
             }
             // 값 축 — 등락은 선형(%), 대금은 로그(데케이드) 공간. 한계는 axisModel 상수.
+            // base 는 게이트를 거친 p.vdom(원본을 펼치면 남의 시선 태그 값이 새 태그로 부활한다). 쓰는 축은
+            // 원래 수동이던 축 + 이번 끌기에서 데드존을 넘은 축(래칫)뿐 — 가로만 끄는 손의 세로 떨림이
+            // y 자동맞춤을 그 순간 값으로 얼리지 않게.
             if (p.axes.xMode === "value" || p.axes.yMode === "value") {
-                const next: { x?: ValueDom; y?: ValueDom } = { ...(p.rawVdom ?? {}) };
-                if (p.axes.xMode === "value") {
+                if (Math.abs(dx) > CLICK_SLOP) pan.xOn = true;
+                if (Math.abs(dy) > CLICK_SLOP) pan.yOn = true;
+                const next: { x?: ValueDom; y?: ValueDom } = { ...(p.vdom ?? {}) };
+                if (p.axes.xMode === "value" && (pan.xManual || pan.xOn)) {
                     const L = Math.log10(pan.vx.hi) - Math.log10(pan.vx.lo);
                     next.x = panAmountDom(pan.vx, -(dx / Math.max(p.inner.width, 1)) * L);
                 }
-                if (p.axes.yMode === "value") {
+                if (p.axes.yMode === "value" && (pan.yManual || pan.yOn)) {
                     const S = pan.vy.hi - pan.vy.lo;
                     next.y = panRateDom(pan.vy, (dy / Math.max(p.inner.height, 1)) * S);
                 }
-                p.writeVdom(next);
+                if (next.x !== undefined || next.y !== undefined) p.writeVdom(next);
             }
         }
     };
@@ -165,17 +175,19 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
         const ux = (px - p.inner.left) / Math.max(p.inner.width, 1);
         const uy = (py - p.inner.top) / Math.max(p.inner.height, 1);
         if ((p.axes.xMode === "rank" || p.axes.yMode === "rank") && p.maxRank > ZOOM_MIN_SPAN + 1) {
-            const next = Math.min(Math.max(p.domSpan * f, ZOOM_MIN_SPAN), Math.max(p.maxRank - 1, 1));
-            if (next !== p.domSpan) {
+            // 두 축 같은 배율 f — 종횡비(xSpan:ySpan) 보존(2026-10-06 축별 창 이후 정사각 아님).
+            const nextX = Math.min(Math.max(p.domSpanX * f, ZOOM_MIN_SPAN), Math.max(p.maxRank - 1, 1));
+            const nextY = Math.min(Math.max(p.domSpanY * f, ZOOM_MIN_SPAN), Math.max(p.maxRank - 1, 1));
+            if (nextX !== p.domSpanX || nextY !== p.domSpanY) {
                 // x 는 반전축 — 커서 아래 서수를 고정하려면 x1(왼쪽 끝) 기준으로 셈한다.
-                const cursorOrdX = p.dom.x1 - ux * p.domSpan;
-                const x0 = p.clampDom0(cursorOrdX + ux * next - next, next);
-                const y0 = p.clampDom0(p.dom.y0 + uy * p.domSpan - uy * next, next);
-                p.writeZoom({ x0, x1: x0 + next, y0, y1: y0 + next });
+                const cursorOrdX = p.dom.x1 - ux * p.domSpanX;
+                const x0 = p.clampDom0(cursorOrdX + ux * nextX - nextX, nextX);
+                const y0 = p.clampDom0(p.dom.y0 + uy * p.domSpanY - uy * nextY, nextY);
+                p.writeZoom({ x0, x1: x0 + nextX, y0, y1: y0 + nextY });
             }
         }
         if (p.axes.xMode === "value" || p.axes.yMode === "value") {
-            const nextV: { x?: ValueDom; y?: ValueDom } = { ...(p.rawVdom ?? {}) };
+            const nextV: { x?: ValueDom; y?: ValueDom } = { ...(p.vdom ?? {}) };
             let moved = false;
             if (p.axes.xMode === "value") {
                 const d = zoomAmountDom(p.vx, f, ux);
@@ -189,7 +201,7 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
         }
     };
 
-    /** 빈 곳 더블클릭 = 원위치(기본 200 창 + 값 축 기본 도메인). 점 위는 제외. */
+    /** 빈 곳 더블클릭 = 원위치(설정 순위 창 + 값 축 기본 창 — 등락은 자동맞춤). 점 위는 제외. */
     const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>): void => {
         if (!p.viewMoved) return;
         const rect = e.currentTarget.getBoundingClientRect();
@@ -308,7 +320,7 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
                     </svg>
 
                     <div style={{ position: "absolute", inset: 0 }}>
-                        {/* 클립 상시 — 기본 창이 200 고정이라 도메인 밖 점·꼬리가 언제든 있다. */}
+                        {/* 클립 상시 — 기본 창(설정 순위 창·자동맞춤) 밖 점·꼬리가 언제든 있다. */}
                         <CanvasLayers layers={p.layers} width={size.w} height={size.h} clip={box} />
                     </div>
 
@@ -319,7 +331,7 @@ export function ThemePlaneView({ plane, guideKeys, overlay = null }: {
                         <div className="plane-ctl" style={{ position: "absolute", left: box.left + 6, top: box.top + 4, zIndex: 2 }}>
                             {p.viewMoved && (
                                 <button onClick={p.resetView} title="뷰 이동/확대 중 — 클릭하면 원위치(그림 빈 곳 더블클릭과 같다)">
-                                    ⟲ {p.zoom !== null ? `${(p.defaultSpan / p.domSpan).toFixed(1)}×` : "원위치"}
+                                    ⟲ {p.zoom !== null ? `${((p.axes.xMode === "rank" ? p.defaultSpanX / p.domSpanX : p.defaultSpanY / p.domSpanY)).toFixed(1)}×` : "원위치"}
                                 </button>
                             )}
                             {p.viewMoved && p.anchor !== null && <div className="plane-ctl-div" />}

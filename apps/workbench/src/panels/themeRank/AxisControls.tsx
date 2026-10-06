@@ -1,7 +1,7 @@
 // 관찰판 "축 ▾" 팝오버 내용 — 창(임의 분 입력 + 프리셋 지름길)·대금/등락 모드 택. 인스턴스 영속
 // (panelUi "axes", ⧉ 복제 시 사본이 같이 간다). 조건판에는 이 손잡이가 없다(창 = 연동 행의 소유).
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { WINDOW_CHOICES, windowLabel, type AxisMode, type ThemeRankAxes } from "./axisModel.js";
+import { RANK_SPAN_CHOICES, RANK_SPAN_MIN, WINDOW_CHOICES, windowLabel, type AxisMode, type ThemeRankAxes } from "./axisModel.js";
 import { RATE_TICK_HI, RATE_TICK_LO, RATE_TICK_MAX, commitRateTicks, fmtTick, parseTickInput } from "./rateTicks.js";
 import { AMOUNT_TICK_MAX, commitAmountTicks, fmtAmountTick, parseAmountInput } from "./amountTicks.js";
 import { AMOUNT_TICK } from "../../styles/palette.js";
@@ -59,6 +59,8 @@ export function AxisControls({ axes, onChange, rateTicks, onRateTicks, amountTic
                 ))}
             </span>
             {modeRow("대금", "xMode")}
+            <SpanRow value={axes.xSpan} inert={axes.xMode !== "rank"}
+                onCommit={(v) => onChange({ ...axes, xSpan: v })} />
             <TickChips
                 name="억 선"
                 title={`대금 순위 축의 억 경계선 — 그 값 이상 종목 수 자리에 정확히 선다(1억~10조, 최대 ${AMOUNT_TICK_MAX}개). 창마다 따로 저장된다 — 지금은 ${windowLabel(axes.windowMin)} 창의 목록`}
@@ -69,6 +71,8 @@ export function AxisControls({ axes, onChange, rateTicks, onRateTicks, amountTic
                 trailing={<span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>{windowLabel(axes.windowMin)} 창 · 창별 저장</span>}
             />
             {modeRow("등락", "yMode")}
+            <SpanRow value={axes.ySpan} inert={axes.yMode !== "rank"}
+                onCommit={(v) => onChange({ ...axes, ySpan: v })} />
             <TickChips
                 name="% 선"
                 title={`등락 순위 축의 % 경계선 — 그 값 이상 종목 수 자리에 정확히 선다(${RATE_TICK_LO}~${RATE_TICK_HI}%, 최대 ${RATE_TICK_MAX}개, 전부 빼면 끔)`}
@@ -82,6 +86,46 @@ export function AxisControls({ axes, onChange, rateTicks, onRateTicks, amountTic
                 여기는 보기 축일 뿐 — 조건은 조건판 테마 팝오버에서(창 T 자유, 클라 즉석 계산).
             </span>
         </div>
+    );
+}
+
+/**
+ * 순위 창 줄 — 그 축의 기본 창(1위~N위, 축별 따로·패널별 영속, 2026-10-06 옛 상수 200 번복).
+ * 초안 패턴은 창 입력과 같다(blur/Enter 커밋, 못 읽는 글자 = 취소). 하한 10, 상한은 안 둔다(표시가
+ * maxRank 클램프). ⚠ 창 입력 **뒤에** 선다 — 판의 첫 input = 창 입력 가정이 DOM 테스트에 있다.
+ */
+function SpanRow({ value, inert, onCommit }: { value: number; inert: boolean; onCommit: (v: number) => void }): JSX.Element {
+    const [draft, setDraft] = useState<string | null>(null);
+    const commit = (): void => {
+        if (draft === null) return;
+        const n = Number(draft.trim());
+        setDraft(null);
+        if (draft.trim() === "" || !Number.isFinite(n) || n <= 0) return; // 못 읽는 글자 = 취소(조용히 지우지 않는다)
+        const v = Math.max(RANK_SPAN_MIN, Math.round(n));
+        if (v !== value) onCommit(v);
+    };
+    return (
+        <span style={{ ...row, opacity: inert ? 0.5 : 1 }}
+            title={`순위 축 기본 창 — 1위부터 N위까지(하한 ${RANK_SPAN_MIN}, 유니버스가 작으면 그만큼). 밖은 팬·휠 줌`}>
+            <span style={{ width: 44, color: "var(--text-tertiary)" }}>순위 창</span>
+            <input
+                value={draft ?? String(value)}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
+                inputMode="numeric"
+                aria-label="순위 창(위)"
+                style={{ width: 44, fontSize: 11, padding: "1px 5px", border: "1px solid var(--border-default)", borderRadius: 4, background: "var(--bg-primary)", color: "var(--text-primary)" }}
+            />
+            <span style={{ color: "var(--text-tertiary)" }}>위</span>
+            {RANK_SPAN_CHOICES.map((c) => (
+                <button key={c} onClick={() => { setDraft(null); if (c !== value) onCommit(c); }}
+                    style={{ ...chip, ...(value === c ? active : {}) }}>
+                    {c}
+                </button>
+            ))}
+            {inert && <span style={{ color: "var(--text-tertiary)", fontSize: 10.5 }}>값 축에선 안 씀</span>}
+        </span>
     );
 }
 
