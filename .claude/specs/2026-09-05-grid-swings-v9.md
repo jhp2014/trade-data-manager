@@ -124,7 +124,7 @@ recon 이 둘을 **따로** 센다(예상 각각 한 자릿수). 이 두 클래�
 ## 6. 구현 순서와 주의
 
 1. **캐시 사본 먼저**: `apps/api/.cache/point-grid` → `point-grid-v8` 복사. 그 다음에야 버전 상수를 편집한다(반대면 tsx watch 가 편집 순간 재대사해 사본이 이미 v9 다 — decisions.md 실측 함정).
-2. 편집·재굽기 중 **api dev 서버를 내린다**(`PointGrids.prior` 상주 메모 우선 → 옛 메모가 새 파일을 덮는 경합). 개발 워크트리(`C:\Dev\tdm-work`, 3011)에서만. 사용자 폴더(3001)는 손대지 않는다 — 사용자 인스턴스는 사용자가 api 를 재기동할 때 스스로 재대사한다(순위 단면도 그때 확장 기대집합으로 채운다. 첫 `/rank-sections` 가 오래 걸릴 수 있음을 사용자에게 알린다).
+2. 편집·재굽기 중 **api dev 서버를 내린다**(`PointGrids.prior` 상주 메모 우선 → 옛 메모가 새 파일을 덮는 경합). 개발 워크트리(`C:\Users\whdgn\Dev\tdm-work`, 3011)에서만. 사용자 폴더(3001)는 손대지 않는다 — 사용자 인스턴스는 사용자가 api 를 재기동할 때 스스로 재대사한다(순위 단면도 그때 확장 기대집합으로 채운다. 첫 `/rank-sections` 가 오래 걸릴 수 있음을 사용자에게 알린다).
 3. 순서: grid.ts(§2.2 검출 + cross 스캔 + §10.2 러닝 밴드·`maxBefore`) → `levelViewOf`(core, 새 파일 `levelView.ts` 또는 points.ts 상단) → detectGrid.test·levelView.test → 소비처 4곳(§5, `pointsOf` 는 1단계 `high > maxBefore` 후보) + 각 테스트 → codec.ts(`WireNewHigh` 8칸)·주석·버전 가드·상수 → fixture 확정 시각·`maxBefore` → `pnpm type-check`·`pnpm test` → api 기동해 전량 재굽기 → recon(§7) → `sectionMinutes` 확장 + 테스트 → 재기동해 단면 대사 → 실측 기록 → 문서(§8) → **2단계**(§10.3~10.4: `approachPct` 노브·판정·걷기·`PointDefHead`, recon point-diff 0/0.5).
 4. 워크벤치 **하드 리로드** 필수(react-query IMMUTABLE). 버전 가드 덕에 옛 번들은 throw 로 보인다(정상).
 
