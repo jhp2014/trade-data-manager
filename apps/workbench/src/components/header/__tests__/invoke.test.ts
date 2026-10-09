@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { invokeControl, nextChoice } from "../invoke.js";
-import type { ActionSpec, ChoiceSpec, PopoverSpec, ToggleSpec } from "../spec.js";
+import type { ActionSpec, ChoiceSpec, PopoverSpec, StepperSpec, ToggleSpec } from "../spec.js";
 
 describe("invokeControl", () => {
     it("토글 — 뒤집고 '켬/끔' 한마디", () => {
@@ -54,5 +54,19 @@ describe("invokeControl", () => {
             values: [{ v: "a", label: "A" }, { v: "b", label: "B" }],
         };
         expect(nextChoice(spec).v).toBe("a");
+    });
+});
+
+describe("invokeControl — stepper", () => {
+    const base: StepperSpec = { kind: "stepper", id: "s", name: "거래일 이동", label: "26.06.30 화", prev: vi.fn(), next: vi.fn() };
+    it("판이 있으면 단축키 = 판 열기(한 칸 넘기기는 안 한다)", () => {
+        const spec: StepperSpec = { ...base, renderPopover: () => null };
+        expect(invokeControl(spec)).toEqual({ kind: "popover" });
+        expect(spec.prev).not.toHaveBeenCalled();
+        expect(spec.next).not.toHaveBeenCalled();
+    });
+    it("판이 없거나 못 누르면 아무 일도 없다", () => {
+        expect(invokeControl(base)).toEqual({ kind: "none" });
+        expect(invokeControl({ ...base, renderPopover: () => null, disabled: true })).toEqual({ kind: "none" });
     });
 });

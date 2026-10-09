@@ -112,7 +112,32 @@ export interface PopoverSpec extends ControlBase {
     disabled?: boolean;
 }
 
-export type ControlSpec = ToggleSpec | ChoiceSpec | ActionSpec | PopoverSpec;
+/**
+ * 값 하나를 **‹ › 로 한 칸씩** 넘기고, 가운데(값)를 누르면 고르는 판이 열리는 것(거래일·월 — 2026-10-09).
+ * 한 칸의 규칙(빈 날 스킵·고정·라벨 있는 달만)은 패널이 `prev`/`next` 안에서 진다 — 셸은 모양만 안다.
+ * 판 안에 ◀▶ 를 또 두지 않는다 — 입구(첫 줄·모음 판 줄)가 늘 화살표와 함께 선다.
+ */
+export interface StepperSpec extends ControlBase {
+    kind: "stepper";
+    /** 가운데 값 글자("26.06.30 화" · "2026.06"). */
+    label: string;
+    prev: () => void;
+    next: () => void;
+    /** 생략 = true. false 면 그 화살표가 흐려진다(자리는 남는다). */
+    canPrev?: boolean;
+    canNext?: boolean;
+    /** 화살표 hover 설명 — 생략하면 「이전」·「다음」. */
+    prevHelp?: string;
+    nextHelp?: string;
+    /** 판 폭(px). 생략 = 내용 폭. */
+    width?: number;
+    /** 가운데를 누르면 열리는 판 — 없으면 가운데는 글자일 뿐이다. ⚠ hook 금지(PopoverSpec 과 같은 규약). */
+    renderPopover?: (close: () => void) => ReactNode;
+    /** 통째로 못 누른다(넘기는 중 등). */
+    disabled?: boolean;
+}
+
+export type ControlSpec = ToggleSpec | ChoiceSpec | ActionSpec | PopoverSpec | StepperSpec;
 
 /** 패널 하나의 헤더 선언 — usePanelHeader 로 매 커밋 게시된다. */
 export interface HeaderDecl {

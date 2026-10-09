@@ -9,7 +9,7 @@ import type { DayReplay, MinuteDerived } from "@trade-data-manager/wire";
 import { kstToUnix } from "@trade-data-manager/market/domain";
 import { Providers, seededClient } from "../../../test/renderPanel.js";
 import { exprOfStages, type SetExpr } from "../expr.js";
-import { useCellSet } from "../useCellSet.js";
+import { knownDayCount, resetDayCountsForTest, useCellSet } from "../useCellSet.js";
 
 const DATE = "2026-09-16";
 const t0 = kstToUnix(DATE, "09:00:00");
@@ -58,5 +58,38 @@ describe("useCellSet 평가 예산", () => {
         const again: Log = [];
         r.rerender(<Providers client={client}><Probe key="2" log={again} exprs={exprs} /></Providers>); // 새로 마운트
         expect(again[0]).toEqual({ a: true, b: true, c: true });
+    });
+});
+
+describe("useCellSet 「아는 날」 장부", () => {
+    function Rec({ expr, record, onKey }: { expr: SetExpr; record: boolean; onKey: (k: string | null) => void }): null {
+        const v = useCellSet(expr, [], DATE, undefined, false, record);
+        onKey(v.countKey);
+        return null;
+    }
+    const mountRec = (expr: SetExpr, record: boolean, onKey: (k: string | null) => void): void => {
+        render(<Providers client={seededClient({ daySnapshot: { date: DATE, data: snap() } })}><Rec expr={expr} record={record} onKey={onKey} /></Providers>);
+    };
+
+    it("적는 소비자만 적는다 — 0건도 '모름'이 아니라 0", async () => {
+        resetDayCountsForTest();
+        let hitKey: string | null = null;
+        mountRec(rateFrom("h", 2), true, (k) => { hitKey = k; });
+        await waitFor(() => expect(knownDayCount(hitKey, DATE)).toBeGreaterThan(0));
+        let zeroKey: string | null = null;
+        mountRec(rateFrom("z", 99), true, (k) => { zeroKey = k; });
+        await waitFor(() => expect(knownDayCount(zeroKey, DATE)).toBe(0));
+        expect(knownDayCount(hitKey, "2026-09-17")).toBeUndefined();
+    });
+
+    it("적지 않는 소비자(차트·조건 그룹)는 장부를 안 건드린다", async () => {
+        resetDayCountsForTest();
+        let key: string | null = null;
+        const log: Log = [];
+        mountRec(rateFrom("n", 2), false, (k) => { key = k; });
+        mount(log, [rateFrom("x", 1), rateFrom("y", 2), rateFrom("w", 3)], snap());
+        await waitFor(() => expect(log.at(-1)).toEqual({ a: true, b: true, c: true }));
+        expect(key).not.toBeNull();
+        expect(knownDayCount(key, DATE)).toBeUndefined();
     });
 });

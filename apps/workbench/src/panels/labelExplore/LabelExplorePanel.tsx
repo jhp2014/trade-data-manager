@@ -3,9 +3,14 @@
 // 행 = 라벨 좌표, 날짜 머리줄 → 종목 머리줄 → 시간(최근순) · 열 = 고른 라벨 ≤10(◆ 타점 / ▣ 하루, 자동 기본 없음).
 // 칸: 직접 ● · 하위 경유 ○(계층 상속) — ▣ 하루 라벨도 그날 타점 줄에 똑같이 찍는다. 종목 이름줄 = 이름 + 테마뿐
 // (타점 없이 하루 라벨만 있는 차트는 시간 자리에 「타점 없음」 줄 하나 — 그 줄에 똑같이 찍는다). 열별 집계 숫자는 없다.
-// 날짜 넘기기가 없다 — 라벨은 희소해 한 목록에 다 선다. 기간 = 전 기간(전역 월 시선에 안 묶는다).
+// 기간 = **판 로컬 월 창**(2026-10-09 — 라벨이 쌓여 전 기간 한 목록으로는 한 달을 빠르게 못 훑는다): 머리 stepper
+// ‹ 2026.06 › 는 라벨 있는 달만 오가고, 기본 = 라벨 있는 가장 최근 달, 판의 「전체」 = 옛 전 기간 목록.
+// 전역 월 시선에는 안 묶는다(묶으면 시선이 다른 달일 때 방금 붙인 라벨이 안 보인다).
 // 재료 = 그룹 멤버십 직독(셀 엔진 평가 없음).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { dataDatesQuery } from "../../api/queries.js";
+import { DateCalendar, pickChip } from "../../ui/DateCalendar.js";
 import { usePanelHeader } from "../../components/header/registry.js";
 import { useRowNavControl } from "../../components/rowNavControl.js";
 import { useGroups } from "../../lib/GroupsContext.js";
@@ -22,7 +27,8 @@ import { useWalkCursor } from "../dailyExplore/useWalkCursor.js";
 import { GroupLegend, HeadLine, TREE_INDENT, Td, Th, ThemeChips, dotCell, headLineCell, ScrollBox, revealRow, stickL, thBase, treeTimeCell } from "../dailyExplore/exploreTable.js";
 import { LabelColMenuContent } from "./LabelColMenu.js";
 import {
-    labelChartsOf, labelColKey, navOrderOf, noPointCellOf, parseLabelCols, pointCellOf, shownRowsOf, stepFrom,
+    labelChartsOf, labelColKey, labeledDatesOf, monthsOf, navOrderOf, neighborMonth, noPointCellOf, parseLabelCols, pointCellOf,
+    resolveMonth, rowsInMonth, shownRowsOf, stepInMonth,
     type LabelCell, type LabelCol, type LabelRange, type LabelRow,
 } from "./labelRows.js";
 
@@ -30,6 +36,9 @@ const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"] as const;
 const ORIGIN = "label-explore";
 /** 열 저장물 기본값 — 모듈 상수(usePanelUi 는 저장값이 없으면 기본값을 그대로 돌려준다: 렌더마다 새 [] 면 아래 memo 가 전부 헛돈다). */
 const NO_COLS: readonly unknown[] = [];
+const NO_DATES: readonly string[] = [];
+/** 기간 — 월 창(기본) / 전체(옛 전 기간 목록). */
+type LabelPeriod = "month" | "all";
 
 interface Col extends LabelCol {
     key: string;
@@ -70,7 +79,26 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const toggleNarrow = (key: string): void => setNarrowKey((v) => (v === key ? null : key));
 
     const charts = useMemo(() => labelChartsOf(g.memberships, g.pointMemberships, g.groupByName), [g.memberships, g.pointMemberships, g.groupByName]);
-    const rows = useMemo(() => (g.ready ? shownRowsOf(charts, cols, range, narrowCol) : []), [g.ready, charts, cols, range, narrowCol]);
+    const allRows = useMemo(() => (g.ready ? shownRowsOf(charts, cols, range, narrowCol) : []), [g.ready, charts, cols, range, narrowCol]);
+
+    // ── 월 창 — 기간 모드는 저장(월/전체), 고른 달은 세션(null = 라벨 있는 가장 최근 달 — 방금 붙인 라벨이 바로 보인다).
+    //    달은 범위·좁히기를 거친 행에서 센다: 빈 달로는 안 간다(고른 달이 비면 resolveMonth 가 가까운 달로).
+    const [period, setPeriod] = usePanelUi<LabelPeriod>(panelId, "period", "month");
+    const [monthPin, setMonthPin] = usePanelUi<boolean>(panelId, "monthPin", false);
+    const [wantMonth, setWantMonth] = useState<string | null>(null);
+    const months = useMemo(() => monthsOf(allRows), [allRows]);
+    const month = period === "all" ? null : resolveMonth(months, wantMonth);
+    const rows = useMemo(() => (month === null ? allRows : rowsInMonth(allRows, month)), [allRows, month]);
+    const labeledDates = useMemo(() => labeledDatesOf(allRows), [allRows]);
+    // 달 끝 알림(월 고정·끝 달) — 다음 손짓(w/s·달 옮기기)에 지운다(일별 판 crossing note 와 같은 결).
+    const [crossNote, setCrossNote] = useState<string | null>(null);
+    const goMonth = (ym: string): void => { setPeriod("month"); setWantMonth(ym); setCrossNote(null); };
+    // 달력 휴장 판정 재료 — 거래일 ∪ 라벨 날짜(거래일 목록이 늦게 와도 라벨 날은 누를 수 있게).
+    const datesQ = useQuery(dataDatesQuery());
+    const calendarDates = useMemo(
+        () => [...new Set([...(datesQ.data ?? NO_DATES), ...labeledDates])].sort(),
+        [datesQ.data, labeledDates],
+    );
     const totalPoints = useMemo(() => charts.reduce((n, c) => n + c.points.length, 0), [charts]);
     const shownPoints = useMemo(() => rows.reduce((n, r) => n + (r.kind === "point" ? 1 : 0), 0), [rows]);
     const shownDays = useMemo(() => rows.reduce((n, r) => n + (r.kind === "date" ? 1 : 0), 0), [rows]);
@@ -82,15 +110,34 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const focusCursor = useMemo(() => (focusCode ? { code: focusCode, date: focusDate, time: focusTime } : null), [focusCode, focusDate, focusTime]);
     const walk = useWalkCursor({
         // 책갈피 행이 사라져도(라벨 떼기·열 빼기) 정렬상 자리에서 잇는다 — 앞 행이 여럿 같이 빠져도 이웃이 맞다.
-        order, scope: "all", focus: focusCursor, fallback: stepFrom, rejoin: stepFrom,
+        // scope 는 하나로 둔다 — 달별 scope 면 달 끝 넘기기(onBoundary 안 jump)가 옛 scope 로 책갈피를 찍어 착지 직후
+        // 지워진다. 대신 커서가 보는 달 밖이면 그 달의 첫 항목으로 들어간다(stepInMonth).
+        order, scope: "all", focus: focusCursor, fallback: stepInMonth(month), rejoin: stepInMonth(month),
         go: (to) => {
             const wb = useWorkbench.getState();
             if (to.time !== undefined) wb.goToPoint({ date: to.date, code: to.code, time: to.time }, ORIGIN);
             else wb.goToDay({ date: to.date, code: to.code }, ORIGIN);
         },
+        // 달 끝 = 이웃 달로(s = 이전 달 첫 행 · w = 다음 달 마지막 행). 「전체」면 멈춤, 「월 고정」이면 알림만.
+        onBoundary: (dir) => {
+            if (month === null) return;
+            if (monthPin) { setCrossNote("월 고정 — 달 끝에서 멈춥니다(「월 고정」을 끄면 넘어갑니다)"); return; }
+            const to = neighborMonth(months, month, dir > 0 ? -1 : 1);
+            if (to === null) { setCrossNote(dir > 0 ? "라벨이 있는 가장 이른 달입니다" : "라벨이 있는 가장 최근 달입니다"); return; }
+            const o = navOrderOf(rowsInMonth(allRows, to));
+            goMonth(to);
+            const land = dir > 0 ? o[0] : o[o.length - 1];
+            if (land) jump(land);
+        },
     });
     const { jump, cursor: cur, pos } = walk;
-    navRef.current = walk.step;
+    navRef.current = (dir) => { setCrossNote(null); walk.step(dir); };
+    /** 달력의 날 클릭 — 그 달로 바꾸고 그 날 첫 행에 선다. */
+    const jumpToDate = (d: string): void => {
+        goMonth(d.slice(0, 7));
+        const land = navOrderOf(rowsInMonth(allRows, d.slice(0, 7))).find((k) => k.date === d);
+        if (land) jump(land);
+    };
 
     /** 그룹 배정 — 종목 이름줄·「타점 없음」 줄 우클릭 = 하루(차트), 타점 줄 우클릭 = 좌표. **행의 날짜**를 넘긴다(행마다 다르다). */
     const openAssign = (ev: React.MouseEvent, code: string, date: string, time?: string): void => {
@@ -109,12 +156,45 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
                 text: () => `◆ ${shownPoints} / ${totalPoints} · ${shownDays}일${pos !== null ? ` · ${pos}/${order.length}` : ""}`,
             },
             {
+                id: "crossing", name: "달 넘김", transient: true,
+                help: "w/s 가 달 끝에서 멈춘 이유(월 고정·끝 달)",
+                text: () => crossNote,
+            },
+            {
                 id: "narrow", name: "좁히기", defaultPlace: "hidden",
                 help: "열 머리·범례 클릭으로 좁힌 열 — 세션 시선(저장물이 아니다)",
                 text: () => (narrowCol !== null ? `좁히기: ${narrowCol.name}` : null),
             },
         ],
         controls: [
+            {
+                // 월 — 셸의 stepper(decisions 「stepper」). ‹› = 라벨 있는 달만, 판 = 「전체」 + 연/월 칩 + 월~금 달력
+                // (점 = 라벨 타점 있는 날, 클릭 = 그 날 첫 행으로). 칩·날 클릭은 그 자리에서 목록을 바꾼다.
+                kind: "stepper", id: "month", name: "월", nav: true, width: 220,
+                // 「전체」는 그 모드일 때만 — 월 모드인데 달이 없으면(로딩·라벨 0) 모름이다.
+                label: period === "all" ? "전체" : month === null ? "—" : month.replace("-", "."),
+                prev: () => { const to = month === null ? null : neighborMonth(months, month, -1); if (to !== null) goMonth(to); },
+                next: () => { const to = month === null ? null : neighborMonth(months, month, 1); if (to !== null) goMonth(to); },
+                canPrev: month !== null && neighborMonth(months, month, -1) !== null,
+                canNext: month !== null && neighborMonth(months, month, 1) !== null,
+                prevHelp: "이전 달 — 라벨 있는 달만",
+                nextHelp: "다음 달 — 라벨 있는 달만",
+                help: "보는 달 고르기 — 「전체」 = 전 기간 한 목록 · 달력 점 = 라벨 타점 있는 날(클릭 = 그 날로) · 취소선 = 휴장",
+                renderPopover: (close) => (
+                    <DateCalendar tradingDates={calendarDates} current={cur?.date ?? null}
+                        viewMonth={month ?? months[0]} months={[...months].reverse()}
+                        markOf={(d) => (labeledDates.has(d) ? "has" : "zero")} canPick={(d) => labeledDates.has(d)}
+                        markHelp={{ has: "라벨 타점 있음", zero: "보이는 라벨 없음" }}
+                        onMonth={goMonth}
+                        onPick={(d) => { jumpToDate(d); close(); }}
+                        lead={<button onClick={() => { setPeriod("all"); setCrossNote(null); close(); }} title="전 기간 한 목록" style={pickChip(period === "all")}>전체</button>} />
+                ),
+            },
+            {
+                kind: "toggle", id: "monthPin", name: "월 고정", on: monthPin, available: period === "month",
+                help: "달 끝에서 w/s 가 이웃 달로 안 넘어간다 — 이 달만 보겠다는 선언",
+                set: () => setMonthPin((v) => !v),
+            },
             rowNavCtl,
             {
                 kind: "choice", id: "range", name: "행 범위", value: range, set: (v) => setRange(v as LabelRange),
@@ -135,6 +215,13 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     // ── 커서 행 따라가기 — 둘러보는 동안엔 커서(책갈피)가 안 움직이므로 목록도 제자리다.
     const focusRowRef = useRef<HTMLTableRowElement | null>(null);
     useEffect(() => { revealRow(focusRowRef.current); }, [cur?.code, cur?.date, cur?.time]);
+    // 달이 바뀌면 목록이 통째로 갈린다 — 맨 위에서 시작하고, 커서가 그 달에 있으면 그 줄로(옛 달의 스크롤 자리는 뜻이 없다).
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        const box = rootRef.current?.querySelector<HTMLElement>("[data-scroll-box]");
+        if (box) box.scrollTop = 0;
+        revealRow(focusRowRef.current);
+    }, [month]);
 
     const note = !g.ready ? (g.isLoading ? "불러오는 중…" : "라벨 데이터를 못 불러왔습니다")
         : charts.length === 0 ? "붙인 라벨이 없습니다 — 차트·목록 우클릭으로 붙입니다"
@@ -208,7 +295,7 @@ export function LabelExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     };
 
     return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
+        <div ref={rootRef} style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, background: "var(--bg-primary)", fontSize: 12, color: "var(--text-primary)" }}>
             <GroupLegend open={legendOpen} onToggleOpen={() => setLegendOpen((v) => !v)} narrowKey={narrowKey} onNarrow={toggleNarrow}
                 empty="열로 세울 라벨이 없습니다 — 우상단 컨트롤 판의 「라벨 열」에서 고르세요"
                 cols={cols.map((c) => ({

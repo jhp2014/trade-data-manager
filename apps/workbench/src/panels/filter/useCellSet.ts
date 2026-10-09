@@ -91,6 +91,11 @@ export interface CellSetView {
      * 재료가 없는 상태가 있어서, 그 틈으로 "제한 있음 + 0건"이 샌다. 여기는 그 틈이 없다.
      */
     ready: boolean;
+    /**
+     * 「아는 날」 장부의 키(조건·노브 — 날짜·재료 세대는 안 싣는다). 평가할 조건이 없으면 null.
+     * 날짜 고르기 판이 `knownDayCount(countKey, 날짜)` 로 엿본다 — 판을 연다고 평가하지 않는다.
+     */
+    countKey: string | null;
 }
 
 
@@ -257,6 +262,33 @@ const MEMO = new WeakMap<object, Map<string, CellEvalResult>>();
  */
 const MEMO_CAP = 16;
 
+// ── 「아는 날」 장부 — (조건 키 → 날짜 → 걸린 수). 날짜 고르기 판의 칸 표식(점 / 흐림)이 읽는다(2026-10-09).
+//    **평가가 지나간 자리만 적는다** — 본 날 · 날짜 넘기기가 빈 날로 건너뛴 날. 판이 한 달을 세려고 평가하면
+//    한 날 0.25~0.47초 + 재료 로드가 날 수만큼 든다(decisions 「stepper」 — 기본은 아는 것만).
+//    재료 세대는 키에 안 싣는다: 같은 조건으로 그 날을 다시 평가하면 덮일 뿐이고(라벨을 붙여 수가 바뀐 날),
+//    오늘(60초 재조회)도 마지막 평가가 이긴다. 조건 키 수만 상한(LRU) — 조건을 만질 때마다 새 키가 선다.
+const DAY_COUNTS = new Map<string, Map<string, number>>();
+const DAY_COUNTS_CAP = 16;
+
+function recordDayCount(key: string, date: string, matched: number): void {
+    let per = DAY_COUNTS.get(key);
+    if (per) DAY_COUNTS.delete(key);
+    else per = new Map();
+    DAY_COUNTS.set(key, per);
+    per.set(date, matched);
+    while (DAY_COUNTS.size > DAY_COUNTS_CAP) DAY_COUNTS.delete(DAY_COUNTS.keys().next().value as string);
+}
+
+/** 테스트 전용 — 모듈 장부를 비운다. */
+export function resetDayCountsForTest(): void {
+    DAY_COUNTS.clear();
+}
+
+/** 그 조건으로 그 날을 평가해 본 적이 있으면 걸린 수(상한 전), 없으면 undefined(모름). 엿보기 — 평가를 안 문다. */
+export function knownDayCount(key: string | null, date: string): number | undefined {
+    return key === null ? undefined : DAY_COUNTS.get(key)?.get(date);
+}
+
 /**
  * 참조 → 세대 번호. **키에 못 싣는 객체 참조**(격자 파생·테마 투영)를 문자열 키에 태우는 자다.
  * 안 태우면 그 재료만 갈렸을 때 캐시가 조용히 낡은 결과를 돌려준다 — 테마 멤버십을 고쳐도
@@ -331,6 +363,11 @@ export function useCellSet(
      * (다시 가는 날짜는 깜빡이지 않는다). 탐색판 조건 그룹처럼 **여러 벌이 한꺼번에 서는** 호출만 켠다.
      */
     budgeted = false,
+    /**
+     * true = 「아는 날」 장부에 적는다 — **날짜 고르기 판이 읽는 소비자만** 켠다(지금 = 일별 [탐색]의 보는 집합).
+     * 모든 소비자가 적으면 조건 그룹 10벌·차트가 장부 상한(LRU)을 나눠 먹어 정작 읽는 키가 쫓겨난다(리뷰).
+     */
+    recordCounts = false,
 ): CellSetView {
     // 미룬 평가를 다시 청하는 박자 — 미뤘을 때만 올라간다(메모 deps 에 실어 재시도를 부른다).
     const [retry, setRetry] = useState(0);
@@ -412,6 +449,14 @@ export function useCellSet(
         limit, hardCap, limitBy, needsBaseline, pointGrids, needsLabel, labelIx, labelsLoading, budgeted, retry]);
     const deferred = memo === DEFERRED;
     const result = deferred ? null : memo;
+    const countKey = useMemo(
+        () => (narrowed.expr === null ? null : JSON.stringify([narrowed.expr, limit ?? null, hardCap ?? null, limitBy ?? null])),
+        [narrowed, limit, hardCap, limitBy],
+    );
+    // 장부 적기 — 렌더 중 모듈 쓰기를 피해 커밋 뒤에. 결과는 늘 `date` 의 것이다(memo 가 재료 날짜를 대조한다).
+    useEffect(() => {
+        if (recordCounts && result !== null && countKey !== null) recordDayCount(countKey, date, result.matched);
+    }, [recordCounts, result, countKey, date]);
     // 미뤘으면 다음 프레임에 다시 — 그때도 예산이 없으면 또 미룬다(한 태스크 한 벌이 줄 서는 모양).
     useEffect(() => {
         if (!deferred) return;
@@ -451,6 +496,7 @@ export function useCellSet(
         themesReady: !needsTheme || themes.ready,
         evaluable: narrowed.expr !== null,
         ready: result !== null,
+        countKey,
     };
 }
 

@@ -32,7 +32,8 @@ describe("DailyExplorePanel", () => {
     it("조건이 없으면 평가하지 않고 그렇다고 말한다 — 날짜 머리는 선다", () => {
         const { container } = renderExplore();
         expect(container.textContent).toContain("평가할 조건이 없습니다");
-        expect(container.textContent).toContain(useWorkbench.getState().focus.date);
+        // 거래일 이동 stepper 의 값 = 연도 포함 압축("26.10.09 금").
+        expect(container.textContent).toContain(useWorkbench.getState().focus.date.slice(2).replaceAll("-", "."));
         expect(container.textContent).toContain("날짜 고정");
     });
 

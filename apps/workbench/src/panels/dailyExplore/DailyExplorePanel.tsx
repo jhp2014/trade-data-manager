@@ -21,24 +21,25 @@ import { useDayReplayPrefetch } from "../../lib/useDaySnapshot.js";
 import { useDock } from "../../store/dock.js";
 import { useWorkbench } from "../../store/workbench.js";
 import { usePanelUi } from "../../store/usePanelUi.js";
-import { TriggerPopover } from "../../ui/popover/TriggerPopover.js";
 import { MENU_PAD, MenuItem, MenuSep } from "../../ui/popover/menu.js";
 import { PIN } from "../../styles/palette.js";
 import { useFunnel } from "../filter/FunnelContext.js";
-import { DAY_SET_OPTS, useCellSet } from "../filter/useCellSet.js";
+import { DAY_SET_OPTS, knownDayCount, useCellSet } from "../filter/useCellSet.js";
+import { DateCalendar, type DayMark } from "../../ui/DateCalendar.js";
 import { deepLeavesOf } from "../filter/expr.js";
 import { isHeavyCellPredicate } from "../filter/stage.js";
 import { useGroupAssign } from "../../store/groupAssign.js";
 import { neighborDates } from "./dayCrossing.js";
 import { useDayCrossing } from "./useDayCrossing.js";
-import { DateJumpMenu } from "./DateJumpMenu.js";
 import { stepWithin, type NavKey } from "./walk.js";
 import { useWalkCursor } from "./useWalkCursor.js";
 import { MAX_GROUPS, cellKeyOf, exploreRowsOf, type ExploreSort } from "./exploreRows.js";
-import { FragmentRow, flatCursorMark, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, HeadLine, headLineCell, navBtn, revealRow, ScrollBox, stickL, thBase, treeTimeCell } from "./exploreTable.js";
+import { FragmentRow, flatCursorMark, GroupLegend, NAME_W, TIME_W, TREE_INDENT, Td, Th, ThemeChips, dotCell, HeadLine, headLineCell, revealRow, ScrollBox, stickL, thBase, treeTimeCell } from "./exploreTable.js";
 import { useConditionGroups, type GroupCol } from "./useConditionGroups.js";
 
 const EMPTY_DATES: string[] = [];
+/** 「아는 날」 장부의 수 → 달력 칸 표식(모름 = 표식 없음). */
+const markOfCount = (n: number | undefined): DayMark => (n === undefined ? "unknown" : n > 0 ? "has" : "zero");
 const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"] as const;
 
 export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; baseTitle?: string }): JSX.Element {
@@ -59,7 +60,8 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const savedSets = useWorkbench((s) => s.savedSets);
 
     // ── 보는 집합의 그날 후보 — 차트 ◇ 와 같은 평가·같은 상한(300).
-    const cellSet = useCellSet(isDaily ? funnel.slowExpr : null, funnel.slowSets, focusDate, DAY_SET_OPTS);
+    // 장부에 적는다(마지막 인자) — 거래일 이동 달력이 이 집합의 「아는 날」을 읽는다.
+    const cellSet = useCellSet(isDaily ? funnel.slowExpr : null, funnel.slowSets, focusDate, DAY_SET_OPTS, false, true);
     // 기본 = 종목순(종목 안 시간순) — 대부분 종목 단위로 걷는다(사용자 확정). 순회(w/s)도 이 순서 그대로다.
     const [sortMode, setSortMode] = usePanelUi<ExploreSort>(panelId, "sortMode", "stock");
     const rows = useMemo(
@@ -162,13 +164,13 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
     const timeW = tree ? TIME_W + TREE_INDENT : TIME_W;
     const noLine: React.CSSProperties | undefined = tree ? { borderBottom: "none" } : undefined;
 
-    // ── 헤더 선언 — 그리는 것은 셸(PanelFrame·탭 칩·모음 판). 날짜는 컨트롤(◀▶ 샌드위치)이자
+    // ── 헤더 선언 — 그리는 것은 셸(PanelFrame·탭 칩·모음 판). 날짜는 컨트롤(stepper ‹ 날짜 ›)이자
     // 정보(기본 숨김 — 탭에 올리고 싶을 때를 위한 중복 선언, 규약 "중복 허용")다.
     usePanelHeader(panelId, {
         info: [
             {
                 id: "date", name: "날짜", tabular: true, defaultPlace: "hidden",
-                help: "보는 날짜 — 첫 줄의 ◀ 날짜 ▶ 가 같은 값을 든다",
+                help: "보는 날짜 — 「거래일 이동」(‹ 날짜 ›)이 같은 값을 든다",
                 text: () => `${focusDate} (${weekday})`,
             },
             {
@@ -184,39 +186,26 @@ export function DailyExplorePanel({ panelId, baseTitle }: { panelId: string; bas
         ],
         controls: [
             {
-                // 거래일 이동 — ◀▶(crossing 규칙: 빈 날 스킵·고정·상한) + 판(거래일 목록·날짜 입력 점프 = 명시 선택).
-                // 첫 줄에서는 날짜 글자 자체가 판의 입구다(▾) — 정보이자 컨트롤인 표면의 분리 규약을
-                // renderInline 안에서 다시 합친 것: 중복 선언(정보 「날짜」)이 있으니 합쳐도 규칙이 안 깨진다.
-                kind: "popover", id: "dateNav", name: "거래일 이동", nav: true, width: 250,
-                // 트리거 요약 = 연도 포함 압축("26.09.28") — 월일만으로는 해가 다른 복기에서 어느 해인지 안 보인다(사용자 확정).
-                label: focusDate.slice(2).replaceAll("-", "."),
-                help: "◀▶ = 이전/다음 거래일(빈 날 스킵·날짜 고정 규칙) · 판 = 연/월/일로 좁혀 점프(명시 선택 — 스킵·고정과 무관)",
+                // 거래일 이동 — 셸의 stepper(‹ 날짜 ›, decisions 「stepper」). ‹› = crossing 규칙(빈 날 스킵·날짜 고정·상한)
+                // — w/s 경계와 같은 손. 판 = 연/월 칩 + 월~금 달력: 일 클릭은 **명시 선택**이라 스킵·고정과 무관하게
+                // 곧장 그 날로 간다("이 날을 보겠다"고 손으로 집었는데 스킵이 가로채면 안 된다).
+                // 칸 점 = 이 집합으로 평가해 본 날의 후보 유무 — **아는 것만**(판을 연다고 평가하지 않는다).
+                kind: "stepper", id: "dateNav", name: "거래일 이동", nav: true, width: 220,
+                // 연도 포함 압축("26.09.28 월") — 월일만으로는 해가 다른 복기에서 어느 해인지 안 보인다(사용자 확정).
+                label: `${focusDate.slice(2).replaceAll("-", ".")} ${weekday}`,
+                prev: () => { crossing.cross(-1); },
+                next: () => { crossing.cross(1); },
+                // 넘기는 중엔 화살표만 잠근다(연타로 손짓이 겹치지 않게) — 달력 클릭은 즉시라 안 잠근다.
+                canPrev: !crossing.seeking,
+                canNext: !crossing.seeking,
+                prevHelp: "이전 거래일 — 빈 날 스킵·날짜 고정 규칙(목록 처음에서 w 로도)",
+                nextHelp: "다음 거래일 — 빈 날 스킵·날짜 고정 규칙(목록 끝에서 s 로도)",
+                help: "연/월/일로 좁혀 거래일 점프(명시 선택 — 스킵·고정과 무관) · 달력 점 = 후보 있음 · 흐린 날 = 0건 · 표식 없음 = 아직 안 본 날 · 취소선 = 휴장 · 빈 칸 = 데이터 없음",
                 renderPopover: (close) => (
-                    <DateJumpMenu dates={datesQ.data ?? EMPTY_DATES} current={focusDate} seeking={crossing.seeking}
-                        onPick={(d) => { useWorkbench.getState().setDate(d, "explore-cross"); close(); }}
-                        onStep={(dir) => crossing.cross(dir)} />
-                ),
-                renderInline: () => (
-                    <span className="tabular" style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                        <button onClick={() => crossing.cross(-1)} disabled={crossing.seeking} title="이전 거래일 (목록 처음에서 w 로도 넘어간다)" style={navBtn}>◀</button>
-                        <TriggerPopover width={250} trigger={(open, toggle) => (
-                            <button onClick={toggle} title="연/월/일로 좁혀 거래일 점프"
-                                style={{
-                                    border: "none", background: "none", padding: 0, cursor: "pointer", font: "inherit",
-                                    fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap",
-                                    color: open ? "var(--accent-primary)" : "var(--text-primary)",
-                                }}>
-                                {focusDate} ({weekday}) <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>▾</span>
-                            </button>
-                        )}>
-                            {(close) => (
-                                <DateJumpMenu dates={datesQ.data ?? EMPTY_DATES} current={focusDate} seeking={crossing.seeking}
-                                    onPick={(d) => { useWorkbench.getState().setDate(d, "explore-cross"); close(); }}
-                                    onStep={(dir) => crossing.cross(dir)} />
-                            )}
-                        </TriggerPopover>
-                        <button onClick={() => crossing.cross(1)} disabled={crossing.seeking} title="다음 거래일 (목록 끝에서 s 로도 넘어간다)" style={navBtn}>▶</button>
-                    </span>
+                    <DateCalendar tradingDates={datesQ.data ?? EMPTY_DATES} current={focusDate}
+                        markOf={(d) => markOfCount(knownDayCount(cellSet.countKey, d))}
+                        markHelp={{ has: "후보 있음(이 집합으로 본 날)", zero: "후보 0건(이 집합으로 본 날)" }}
+                        onPick={(d) => { useWorkbench.getState().setDate(d, "explore-cross"); close(); }} />
                 ),
             },
             rowNavCtl,

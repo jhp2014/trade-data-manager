@@ -9,7 +9,7 @@ import { TriggerPopover } from "../../ui/popover/TriggerPopover.js";
 import { MENU_PAD, MenuItem } from "../../ui/popover/menu.js";
 import { TextToggle } from "../ControlChrome.js";
 import { CYCLE_MAX, nextChoice } from "./invoke.js";
-import type { ActionSpec, ChoiceSpec, ControlSpec, PopoverSpec, ToggleSpec } from "./spec.js";
+import type { ActionSpec, ChoiceSpec, ControlSpec, PopoverSpec, StepperSpec, ToggleSpec } from "./spec.js";
 
 /** 판 트리거 글자의 상한 — 넘치면 … 로 자른다(값 하나가 길다고 줄 전체가 밀리지 않게). */
 const TRIGGER_MAX_W = 96;
@@ -23,6 +23,7 @@ export function ControlValue({ spec }: { spec: ControlSpec }): JSX.Element {
     if (spec.kind === "toggle") return <ToggleControl spec={spec} />;
     if (spec.kind === "action") return <ActionControl spec={spec} />;
     if (spec.kind === "popover") return <PopoverControl spec={spec} />;
+    if (spec.kind === "stepper") return <StepperControl spec={spec} />;
     return spec.values.length <= CYCLE_MAX ? <CycleControl spec={spec} /> : <PickControl spec={spec} />;
 }
 
@@ -35,6 +36,8 @@ export function BoardControlValue({ spec }: { spec: ControlSpec }): JSX.Element 
     if (spec.kind === "toggle") return <SwitchControl spec={spec} />;
     if (spec.kind === "action") return <BoardActionButton spec={spec} />;
     if (spec.kind === "popover") return <BoardPopoverOpener spec={spec} />;
+    // stepper 는 자리가 달라도 같은 얼굴이다 — 이미 버튼 셋이 성격을 다 말한다(판에서 따로 바꿀 표기가 없다).
+    if (spec.kind === "stepper") return <StepperControl spec={spec} />;
     return spec.values.length <= SEGMENT_MAX ? <SegmentControl spec={spec} /> : <PickControl spec={spec} />;
 }
 
@@ -129,13 +132,14 @@ function BoardPopoverOpener({ spec }: { spec: PopoverSpec }): JSX.Element {
  */
 export function popoverContentOf(spec: ControlSpec, close: () => void): ReactNode {
     if (spec.kind === "popover") return spec.renderPopover(close);
+    if (spec.kind === "stepper") return spec.renderPopover?.(close) ?? null;
     if (spec.kind === "choice") return <ChoiceMenu spec={spec} close={close} />;
     return null;
 }
 
 /** 판형 컨트롤의 판 폭(단축키 호스트가 같은 값을 쓴다). */
 export function popoverWidthOf(spec: ControlSpec): number | undefined {
-    if (spec.kind === "popover") return spec.width;
+    if (spec.kind === "popover" || spec.kind === "stepper") return spec.width;
     if (spec.kind === "choice") return 150;
     return undefined;
 }
@@ -241,6 +245,61 @@ function PopoverControl({ spec }: { spec: PopoverSpec }): JSX.Element {
         </TriggerPopover>
     );
 }
+
+/**
+ * 값 넘기기 — 면 셋(‹ · 값 · ›, 테두리 없는 옅은 면 — 2026-10-09 사용자 확정 S2). 첫 줄·모음 판이 같은 얼굴.
+ * 가운데의 달력 표식은 "누르면 판"을 말한다(판이 없으면 표식도 없다). 화살표는 못 누를 때 흐려질 뿐
+ * 자리를 지킨다 — 연타하는 손 밑에서 버튼이 사라지면 다음 클릭이 엉뚱한 데 떨어진다.
+ */
+function StepperControl({ spec }: { spec: StepperSpec }): JSX.Element {
+    const off = spec.disabled === true;
+    const canPrev = !off && spec.canPrev !== false;
+    const canNext = !off && spec.canNext !== false;
+    const value = (open: boolean, toggle?: () => void): JSX.Element => (
+        <button className="stepper-face stepper-value" onClick={toggle} disabled={off || toggle === undefined}
+            title={spec.help ?? spec.name} data-open={open ? "" : undefined}
+            style={{ ...stepFace, gap: 4, padding: "0 6px", fontSize: 11, fontWeight: 600, cursor: toggle !== undefined ? "pointer" : "default" }}>
+            {spec.renderPopover !== undefined && <CalendarGlyph />}
+            <span className="tabular">{spec.label}</span>
+        </button>
+    );
+    return (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 2, flexShrink: 0 }}>
+            <button className="stepper-face" onClick={spec.prev} disabled={!canPrev} aria-label="이전"
+                title={spec.prevHelp ?? "이전"} style={{ ...stepFace, width: 18 }}>
+                <Chevron dir={-1} />
+            </button>
+            {spec.renderPopover !== undefined ? (
+                <TriggerPopover width={spec.width} trigger={(open, toggle) => value(open, toggle)}>
+                    {(close) => spec.renderPopover!(close)}
+                </TriggerPopover>
+            ) : value(false)}
+            <button className="stepper-face" onClick={spec.next} disabled={!canNext} aria-label="다음"
+                title={spec.nextHelp ?? "다음"} style={{ ...stepFace, width: 18 }}>
+                <Chevron dir={1} />
+            </button>
+        </span>
+    );
+}
+
+/** stepper 의 면 하나 — 색·hover·흐림은 CSS(`.stepper-face`, theme.css): 인라인 배경은 :hover 를 이긴다. */
+const stepFace: CSSProperties = {
+    height: 18, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+    border: "none", borderRadius: 4, padding: 0, whiteSpace: "nowrap",
+};
+
+const Chevron = ({ dir }: { dir: 1 | -1 }): JSX.Element => (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d={dir < 0 ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6"} />
+    </svg>
+);
+
+const CalendarGlyph = (): JSX.Element => (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        aria-hidden style={{ color: "var(--text-tertiary)", flexShrink: 0 }}>
+        <rect x="4" y="5" width="16" height="16" rx="2" /><path d="M16 3v4M8 3v4M4 11h16" />
+    </svg>
+);
 
 /**
  * 폭 잠금 — 있을 수 있는 **모든 모습을 같은 칸에 겹쳐 쌓고** 지금 것만 보인다. 칸은 제일 넓은 것에

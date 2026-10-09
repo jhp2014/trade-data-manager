@@ -2,8 +2,8 @@
 import { describe, expect, it } from "vitest";
 import type { Group } from "../../../api/groups.js";
 import {
-    labelChartsOf, navOrderOf, noPointCellOf, parseLabelCols, pointCellOf, renameInLabelCols,
-    shownRowsOf, stepFrom, stockCellOf, type LabelCol, type LabelRow,
+    labelChartsOf, labeledDatesOf, monthsOf, navOrderOf, neighborMonth, noPointCellOf, parseLabelCols, pointCellOf, renameInLabelCols,
+    resolveMonth, rowsInMonth, shownRowsOf, stepFrom, stepInMonth, stockCellOf, type LabelCol, type LabelRow,
 } from "../labelRows.js";
 
 const g = (name: string, parentName: string | null = null): Group => ({ name, parentName }) as Group;
@@ -124,5 +124,61 @@ describe("저장물", () => {
     it("모양이 틀린 칸은 버린다", () => {
         expect(parseLabelCols([P("a"), { name: "b", scope: "x" }, null, "c"])).toEqual([P("a")]);
         expect(parseLabelCols("nope")).toEqual([]);
+    });
+});
+
+describe("월 창 — 판 로컬 월(2026-10-09)", () => {
+    const multi = labelChartsOf([], [
+        pt("A", "2026-10-02", "09:00:00", "돌파"),
+        pt("B", "2026-09-24", "09:04:00", "눌림"),
+        pt("A", "2026-09-01", "10:00:00", "돌파"),
+        pt("C", "2026-07-15", "11:00:00", "돌파"),
+    ], dict);
+    const rows = shownRowsOf(multi, [], "all");
+
+    it("monthsOf = 보이는 행의 달, 최근순 · 범위로 빠진 달은 없다", () => {
+        expect(monthsOf(rows)).toEqual(["2026-10", "2026-09", "2026-07"]);
+        expect(monthsOf(shownRowsOf(multi, [P("눌림")], "cols"))).toEqual(["2026-09"]);
+    });
+
+    it("rowsInMonth = 그 달의 머리줄·타점 줄만", () => {
+        expect(shape(rowsInMonth(rows, "2026-09"))).toEqual(["2026-09-24", "  B", "    09:04", "2026-09-01", "  A", "    10:00"]);
+        expect(labeledDatesOf(rowsInMonth(rows, "2026-07"))).toEqual(new Set(["2026-07-15"]));
+    });
+
+    it("resolveMonth — 없음 = 가장 최근 달, 빠진 달 = 그 이전의 가장 가까운 달(없으면 가장 이른 달)", () => {
+        const ms = ["2026-10", "2026-09", "2026-07"];
+        expect(resolveMonth(ms, null)).toBe("2026-10");
+        expect(resolveMonth(ms, "2026-09")).toBe("2026-09");
+        expect(resolveMonth(ms, "2026-08")).toBe("2026-07");
+        expect(resolveMonth(ms, "2026-05")).toBe("2026-07");
+        expect(resolveMonth([], "2026-09")).toBeNull();
+    });
+
+    it("neighborMonth — −1 = 더 이른 달, +1 = 더 최근 달, 끝이면 null", () => {
+        const ms = ["2026-10", "2026-09", "2026-07"];
+        expect(neighborMonth(ms, "2026-09", -1)).toBe("2026-07");
+        expect(neighborMonth(ms, "2026-09", 1)).toBe("2026-10");
+        expect(neighborMonth(ms, "2026-10", 1)).toBeNull();
+        expect(neighborMonth(ms, "2026-07", -1)).toBeNull();
+        expect(neighborMonth(ms, "2026-08", 1)).toBeNull();
+    });
+});
+
+describe("stepInMonth — 커서가 보는 달 밖이면 그 달의 첫 항목으로(리뷰)", () => {
+    const order = [
+        { code: "B", date: "2026-09-24", time: "09:04:00" },
+        { code: "A", date: "2026-09-01", time: "10:00:00" },
+    ];
+    it("옛 달(7월) 책갈피로 9월을 보며 s = 9월 맨 위, w = 9월 맨 아래 — 이웃 달로 튀지 않는다", () => {
+        const july = { code: "C", date: "2026-07-15", time: "11:00:00" };
+        expect(stepFrom(order, july, 1)).toEqual({ kind: "boundary", dir: 1 }); // 고치기 전의 자리
+        expect(stepInMonth("2026-09")(order, july, 1)).toEqual({ kind: "move", to: order[0] });
+        expect(stepInMonth("2026-09")(order, { ...july, date: "2026-10-02" }, -1)).toEqual({ kind: "move", to: order[1] });
+    });
+    it("달 안의 커서·「전체」는 stepFrom 그대로(끝 = boundary → 판이 달을 넘긴다)", () => {
+        expect(stepInMonth("2026-09")(order, { code: "A", date: "2026-09-01", time: "10:00:00" }, 1)).toEqual({ kind: "boundary", dir: 1 });
+        const july = { code: "C", date: "2026-07-15", time: "11:00:00" };
+        expect(stepInMonth(null)(order, july, 1)).toEqual(stepFrom(order, july, 1));
     });
 });

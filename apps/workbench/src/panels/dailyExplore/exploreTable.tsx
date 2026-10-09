@@ -148,9 +148,6 @@ export const Th = ({ children, style }: { children?: ReactNode; style?: CSSPrope
     <th style={{ ...thBase, ...style }}>{children}</th>;
 export const Td = ({ children, style }: { children?: ReactNode; style?: CSSProperties }): JSX.Element =>
     <td style={{ padding: "2px 8px", borderBottom: "0.5px solid var(--border-subtle)", ...style }}>{children}</td>;
-export const navBtn: CSSProperties = {
-    border: "none", background: "transparent", cursor: "pointer", color: "var(--accent-primary)", fontSize: 11, padding: "0 2px",
-};
 
 /** 범례 한 칸 — 번호 열의 이름표. */
 export interface LegendCol {

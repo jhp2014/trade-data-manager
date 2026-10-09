@@ -1,4 +1,4 @@
-// 라벨 타점 [탐색]의 **순수부** — 행 세우기·칸 상태(●/○/·)·범위·순회 순서.
+// 라벨 타점 [탐색]의 **순수부** — 행 세우기·칸 상태(●/○/·)·범위·월 창·순회 순서.
 // 규칙: .claude/decisions.md 「라벨 타점 [탐색]」. 훅 없는 함수만 둔다(테스트 표면).
 //
 // 재료는 그룹 멤버십 피드 두 벌(하루 차트 · 좌표 라벨) **직독**이다 — 셀 엔진 평가가 없다.
@@ -132,6 +132,52 @@ export function shownRowsOf(charts: readonly ChartEntry[], cols: readonly LabelC
     return out;
 }
 
+// ── 월 창(2026-10-09) — 판 로컬 월. 행 범위·좁히기를 **거친** 행에서 달을 센다(빈 달로 안 간다).
+
+/** 행 하나의 날짜 — 날짜 머리줄은 제 날짜, 나머지는 차트의 날짜. */
+const rowDate = (r: LabelRow): string => (r.kind === "date" ? r.date : r.chart.date);
+
+/** 보이는 행이 선 달(YYYY-MM) — 최근순(행 순서 그대로). */
+export function monthsOf(rows: readonly LabelRow[]): string[] {
+    const out: string[] = [];
+    for (const r of rows) {
+        if (r.kind !== "date") continue;
+        const ym = r.date.slice(0, 7);
+        if (out[out.length - 1] !== ym) out.push(ym);
+    }
+    return out;
+}
+
+/** 그 달의 행만 — 평탄 배열이 날짜 내림이라 연속 구간이지만, 자를 때 정렬을 가정하지 않는다. */
+export function rowsInMonth(rows: readonly LabelRow[], ym: string): LabelRow[] {
+    return rows.filter((r) => rowDate(r).startsWith(ym));
+}
+
+/** 보이는 행이 선 날짜들 — 달력 칸 점(라벨 타점 있음)의 재료. */
+export function labeledDatesOf(rows: readonly LabelRow[]): Set<string> {
+    const out = new Set<string>();
+    for (const r of rows) if (r.kind === "date") out.add(r.date);
+    return out;
+}
+
+/**
+ * 보는 달 — 원하는 달이 목록에 있으면 그것, 없으면(그 달 라벨을 다 뗐거나 좁히기로 빠짐) 그 달 이전의
+ * 가장 가까운 달, 그것도 없으면 가장 이른 달. 달이 하나도 없으면 null. `months` = 최근순.
+ */
+export function resolveMonth(months: readonly string[], want: string | null): string | null {
+    if (months.length === 0) return null;
+    if (want === null) return months[0]!;
+    if (months.includes(want)) return want;
+    return months.find((m) => m < want) ?? months[months.length - 1]!;
+}
+
+/** 이웃 달 — dir −1 = 이전(더 이른) 달 · +1 = 다음(더 최근) 달. 없으면 null. `months` = 최근순. */
+export function neighborMonth(months: readonly string[], ym: string, dir: 1 | -1): string | null {
+    const at = months.indexOf(ym);
+    if (at < 0) return null;
+    return months[at - dir] ?? null;
+}
+
 /** 순회 순서 — 렌더 배열과 같은 한 배열에서 파생(보이는 대로 밟는다). 타점 = 시각 · 「타점 없음」 = 시각 없음. */
 export function navOrderOf(rows: readonly LabelRow[]): NavKey[] {
     const out: NavKey[] = [];
@@ -154,7 +200,8 @@ function cmpNav(a: { code: string; date: string; time: string | null }, b: { cod
 
 /**
  * 한 칸 — 커서가 목록에 있으면 이웃, 없으면(라벨을 떼서 사라짐 · 라벨 아닌 분 · 다른 판에서 옴) **정렬상
- * 끼어들 자리의 이웃**으로 간다(전 기간 목록에서 처음으로 튀면 자리를 잃는다). 끝이면 boundary — 날짜 넘기기는 없다.
+ * 끼어들 자리의 이웃**으로 간다(처음으로 튀면 자리를 잃는다 — 다른 달에서 넘어온 커서도 같다). 끝이면 boundary
+ * (달 넘기기는 판이 onBoundary 로 진다).
  */
 export function stepFrom(order: readonly NavKey[], cursor: WalkCursor | null, dir: 1 | -1): WalkStep {
     if (order.length === 0) return null;
@@ -170,6 +217,15 @@ export function stepFrom(order: readonly NavKey[], cursor: WalkCursor | null, di
     }
     if (next < 0 || next >= order.length) return { kind: "boundary", dir };
     return { kind: "move", to: order[next]! };
+}
+
+/**
+ * 월 창의 한 칸 — 커서(책갈피·focus)가 **보는 달 밖**이면 방향의 첫 항목으로 들어간다(s = 맨 위 · w = 맨 아래).
+ * 정렬상 자리로 이으면 옛 달이 이 달 앞/뒤라서 첫 키에 곧장 boundary → 이웃 달로 튀어 나간다(리뷰 — 9월을
+ * 보며 s 를 눌렀는데 책갈피가 7월이면 7월로 간다). 달 안의 커서는 그대로 stepFrom. month null = 「전체」.
+ */
+export function stepInMonth(month: string | null): (order: readonly NavKey[], cursor: WalkCursor | null, dir: 1 | -1) => WalkStep {
+    return (order, cursor, dir) => stepFrom(order, month !== null && cursor !== null && !cursor.date.startsWith(month) ? null : cursor, dir);
 }
 
 /** 개명 승계 — 열이 그룹 이름을 들고 있으므로 useGroups.renameGroup 이 저장 집합과 함께 부른다. 바뀔 게 없으면 같은 배열. */

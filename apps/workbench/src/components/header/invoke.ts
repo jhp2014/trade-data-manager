@@ -42,5 +42,8 @@ export function invokeControl(spec: ControlSpec): InvokeOutcome {
         }
         case "popover":
             return spec.disabled === true ? { kind: "none" } : { kind: "popover" };
+        case "stepper":
+            // 단축키 = 고르는 판 열기 — 한 칸 넘기기는 w/s 경계·패널 단축키가 이미 진다.
+            return spec.disabled === true || spec.renderPopover === undefined ? { kind: "none" } : { kind: "popover" };
     }
 }
