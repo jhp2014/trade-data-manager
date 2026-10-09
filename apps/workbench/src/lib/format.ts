@@ -10,13 +10,12 @@ export const fmtPct = (v: number, digits = 1): string => `${v >= 0 ? "+" : ""}${
 /** 등락률 % — 부호 붙여 소수 2자리(차트 툴팁처럼 한 값을 정밀하게 읽는 자리). */
 export const fmtRate = (v: number): string => fmtPct(v, 2);
 
-/** 거래대금(원) → 억/조/만 단위 축약. */
+/** 거래대금(원) → 억/조 축약. 1억 미만도 "0.4억"(소수 1자리) — 만 단위보다 억 기준이 직관적(2026-10-08). */
 export function fmtEok(krw: number): string {
     const eok = krw / 1e8;
     if (eok >= 10000) return `${(eok / 10000).toFixed(1)}조`;
     if (eok >= 1) return `${eok.toFixed(0)}억`;
-    if (krw >= 1e4) return `${(krw / 1e4).toFixed(0)}만`;
-    return `${krw.toFixed(0)}`;
+    return `${eok.toFixed(1)}억`;
 }
 
 // 옛 계산 축 인프라(lib/computedAxis — 2026-09-26 종단 은퇴)에서 살아남은 단위 규칙.

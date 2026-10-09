@@ -173,7 +173,7 @@ export function StockRow({
             <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600, fontSize: 11 }}>
                 {fmtRate1(s.changeRate)}
             </span>
-            {/* col3: 거래대금(신호 시 델타로 덮음). hover 시 거래대금 구간별 막대그래프(이슈). */}
+            {/* col3: 누적 거래대금 — 신호 시 값은 그대로 두고 색/굵기만 켠다(델타 상세는 hover 막대그래프). */}
             <span
                 className="tabular"
                 style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 11, fontWeight: s.signal ? 600 : 400, color: s.signal ? "var(--rise)" : "var(--text-tertiary)" }}
@@ -181,7 +181,7 @@ export function StockRow({
                 onMouseMove={s.buckets ? moveHover : undefined}
                 onMouseLeave={s.buckets ? endHover : undefined}
             >
-                {s.signal ? `+${fmtEok(s.signal.tvDelta)}` : fmtEok(s.amount)}
+                {fmtEok(s.amount)}
             </span>
             {hoverPos && s.buckets && <BucketChart buckets={s.buckets} pos={hoverPos} dim={s.dim} />}
             {/* col4: 눕힌 캔들(고정 28px) */}
