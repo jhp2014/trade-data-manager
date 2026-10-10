@@ -20,3 +20,4 @@ export type * from "./liveTape.js";
 export type * from "./alerts.js";
 export type * from "./curationSync.js";
 export type * from "./pointGrid.js";
+export type * from "./reviewNote.js";

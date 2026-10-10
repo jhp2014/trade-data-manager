@@ -19,7 +19,7 @@ beforeEach(() => {
     localStorage.clear();
     useKeymapDynamic.setState({ commands: {} });
     act(() => selectRowNavOwner("daily-explore"));
-    act(() => { setRowNavRole("daily-explore", "join"); setRowNavRole("label-explore", "join"); setRowNavRole("replay-board", "join"); setRowNavRole("theme-board", "join"); });
+    act(() => { setRowNavRole("daily-explore", "join"); setRowNavRole("label-explore", "join"); setRowNavRole("review-explore", "join"); setRowNavRole("replay-board", "join"); setRowNavRole("theme-board", "join"); });
     act(() => selectRowNavOwner("daily-explore"));
 });
 afterEach(() => { useKeymapDynamic.setState({ commands: {} }); });

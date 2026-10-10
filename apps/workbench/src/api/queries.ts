@@ -12,6 +12,7 @@ import { fetchTapeThemes } from "./liveTape.js";
 import { fetchMirrorStatus } from "./curation.js";
 import { fetchAllChartAnchors } from "./chartAnchors.js";
 import { fetchPointGrids } from "./pointGrids.js";
+import { fetchReviewNotes } from "./reviewNotes.js";
 import { fetchGroups, fetchGroupMemberships, fetchPointGroupMemberships } from "./groups.js";
 import { fetchStockMaster } from "./stocks.js";
 import { fetchThemeContext, fetchAllThemeMembers } from "./themes.js";
@@ -129,3 +130,10 @@ export const allThemeMembersQuery = () =>
 // 데이터 있는 거래일 목록(전역·종목무관) — data-aware 날짜피커용. 수집으로 새 날짜가 늘 수 있어 30분 stale 후 재조회 허용.
 export const dataDatesQuery = () =>
     queryOptions({ queryKey: ["data-dates"], queryFn: ({ signal }) => fetchDataDates(signal), staleTime: META_STALE });
+
+/**
+ * 복기 노트(vault) — **staleTime 0 + 창 포커스 재조회**: Obsidian 에서 쓰고 돌아오면 바로 보여야 한다
+ * (다른 쿼리의 긴 staleTime 관례를 따르면 포커스 재조회가 죽는다). 미러 데이터가 아니라 CURATION meta 없음.
+ */
+export const reviewNotesQuery = () =>
+    queryOptions({ queryKey: ["review-notes"], queryFn: ({ signal }) => fetchReviewNotes(signal), staleTime: 0, refetchOnWindowFocus: true });
