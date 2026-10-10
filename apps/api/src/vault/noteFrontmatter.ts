@@ -65,11 +65,14 @@ function pickEnum<T extends string>(key: string, v: string | null, allowed: read
     return null;
 }
 
-/** 파일명 꼬리 = 종목명(`26.07.31 0905 삼성전기.md` → `삼성전기`). */
-const nameFromFile = (relPath: string): string | null => {
+/**
+ * 파일명의 종목명 — 노트 이름 = `YY.MM.DD 종목명 HHMM`(2026-10-10~, `26.07.31 LS ELECTRIC 0905.md` → `LS ELECTRIC`).
+ * 옛 `YY.MM.DD HHMM 종목명` 도 읽는다. 앞머리 `종목` 이 없을 때만 쓰는 폴백. ⚠ vault tools/common.mjs NOTE_NAME 과 짝.
+ */
+export const nameFromFile = (relPath: string): string | null => {
     const base = relPath.split("/").pop()?.replace(/\.md$/i, "") ?? "";
-    const parts = base.split(" ");
-    return parts.length >= 3 ? parts.slice(2).join(" ") : null;
+    const m = /^\d{2}\.\d{2}\.\d{2} (.+) \d{4}$/.exec(base) ?? /^\d{2}\.\d{2}\.\d{2} \d{4} (.+)$/.exec(base);
+    return m?.[1] ?? null;
 };
 
 export function parseNote(text: string, relPath: string): ParsedNote {

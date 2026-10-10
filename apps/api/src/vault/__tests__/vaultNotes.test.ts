@@ -2,12 +2,12 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { normalizeTime, parseNote } from "../noteFrontmatter.js";
+import { nameFromFile, normalizeTime, parseNote } from "../noteFrontmatter.js";
 import { NOTES_SUBDIR, VaultNotes } from "../vaultNotes.js";
 
 /** BOM — 코드값으로 만든다(보이지 않는 문자를 소스에 박지 않게). */
 const BOM = String.fromCharCode(0xfeff);
-const FILE = "26년 07월/26.07.31 0905 삼성전기.md";
+const FILE = "26년 07월/26.07.31 삼성전기 0905.md";
 const note = (fm: string, body = ""): string => `---\n${fm}\n---\n${body}`;
 const BASE = '종목: 삼성전기\n종목코드: "009150"\n날짜: 2026-07-31\n시간: "09:05"';
 
@@ -74,10 +74,13 @@ describe("parseNote", () => {
         expect("skip" in parseNote(note('종목코드: "009150"\n날짜: 2026-07-31\n시간: "24:00"'), FILE)).toBe(true);
     });
 
-    it("종목 칸이 없으면 파일명 꼬리", () => {
-        const r = parseNote(note('종목코드: "009150"\n날짜: 2026-07-31\n시간: "09:05"'), "26.07.31 0905 LS ELECTRIC.md");
+    it("종목 칸이 없으면 파일명의 종목명(새 이름 = 날짜 종목명 시간, 옛 이름도 읽는다)", () => {
+        expect(nameFromFile("26년 07월/26.07.31 LS ELECTRIC 0905.md")).toBe("LS ELECTRIC");
+        expect(nameFromFile("26.07.31 0905 LS ELECTRIC.md")).toBe("LS ELECTRIC");
+        expect(nameFromFile("메모.md")).toBeNull();
+        const r = parseNote(note('종목코드: "009150"\n날짜: 2026-07-31\n시간: "09:05"'), "26.07.31 삼성전기 0905.md");
         if (!("note" in r)) throw new Error(r.skip);
-        expect(r.note.name).toBe("LS ELECTRIC");
+        expect(r.note.name).toBe("삼성전기");
     });
 
     it("normalizeTime", () => {
@@ -95,9 +98,9 @@ describe("VaultNotes", () => {
         const dir = path.join(tmp, NOTES_SUBDIR, "26년 07월");
         await fs.mkdir(dir, { recursive: true });
         await fs.mkdir(path.join(tmp, NOTES_SUBDIR, ".obsidian"), { recursive: true });
-        await fs.writeFile(path.join(dir, "26.07.31 0911 삼성전기.md"), note('종목코드: "009150"\n날짜: 2026-07-31\n시간: "09:11"'));
-        await fs.writeFile(path.join(dir, "26.07.31 0905 삼성전기.md"), `${BOM}${note(BASE)}`.replace(/\n/g, "\r\n"));
-        await fs.writeFile(path.join(dir, "26.07.30 1000 깨짐.md"), "앞머리 없음");
+        await fs.writeFile(path.join(dir, "26.07.31 삼성전기 0911.md"), note('종목코드: "009150"\n날짜: 2026-07-31\n시간: "09:11"'));
+        await fs.writeFile(path.join(dir, "26.07.31 삼성전기 0905.md"), `${BOM}${note(BASE)}`.replace(/\n/g, "\r\n"));
+        await fs.writeFile(path.join(dir, "26.07.30 깨짐 1000.md"), "앞머리 없음");
         await fs.writeFile(path.join(dir, "메모.txt"), "무시");
         await fs.writeFile(path.join(tmp, NOTES_SUBDIR, ".obsidian", "x.md"), note(BASE));
     });
@@ -122,7 +125,7 @@ describe("VaultNotes", () => {
         const r = await new VaultNotes(tmp).list();
         if (r.vault !== "ok") throw new Error(r.vault);
         expect(r.notes.map((n) => `${n.date} ${n.time}`)).toEqual(["2026-07-31 09:05:00", "2026-07-31 09:11:00"]);
-        expect(r.notes[0]!.id).toBe("26년 07월/26.07.31 0905 삼성전기.md");
-        expect(r.issues).toEqual([{ file: "26년 07월/26.07.30 1000 깨짐.md", why: "앞머리 없음", skipped: true }]);
+        expect(r.notes[0]!.id).toBe("26년 07월/26.07.31 삼성전기 0905.md");
+        expect(r.issues).toEqual([{ file: "26년 07월/26.07.30 깨짐 1000.md", why: "앞머리 없음", skipped: true }]);
     });
 });
