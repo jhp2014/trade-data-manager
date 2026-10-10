@@ -84,4 +84,67 @@ describe("sanitizeLayout", () => {
         expect(removed).toEqual(["hypothesis-1"]);
         expect(json.floatingGroups).toHaveLength(0);
     });
+
+    // 외자식 칸 걷기 — 루트 아닌 칸에 자식이 하나만 남으면 그 안의 마지막 판을 옮길 때 dockview 가
+    // 빈 자리를 남긴다(2026-10-10 실측). 트리 모양만 보는 검증이라 노드 최소본 헬퍼로 쓴다.
+    const leaf = (id: string, size?: number) => ({ type: "leaf", data: { views: [`chart-${id}`], activeView: `chart-${id}`, id }, ...(size != null ? { size } : {}) });
+    const branch = (data: unknown[], size?: number) => ({ type: "branch", data, ...(size != null ? { size } : {}) });
+    const layoutOf = (root: unknown, ids: string[]) =>
+        asLayout({
+            grid: { root, height: 100, width: 300, orientation: "HORIZONTAL" },
+            panels: Object.fromEntries(ids.map((id) => [`chart-${id}`, { id: `chart-${id}`, contentComponent: id === "x" ? "hypothesis" : "chart" }])),
+        });
+
+    it("루트의 외자식 칸은 두고, 고칠 게 없으면 원본 그대로", () => {
+        const layout = layoutOf(branch([branch([leaf("1", 100), leaf("2", 200)], 100)], 300), ["1", "2"]);
+        expect(sanitizeLayout(layout).json).toBe(layout);
+    });
+
+    it("제거 0건이어도 외자식 칸은 걷고, 남은 그룹이 그 칸 자리(크기)를 물려받는다", () => {
+        // 이미 망가진 채 저장된 프리셋 — 셋째 칸이 [그룹 3] 하나만 품은 칸
+        const layout = layoutOf(branch([branch([leaf("1", 100), leaf("2", 100), branch([leaf("3", 40)], 100)], 100)], 300), ["1", "2", "3"]);
+        const { json, removed } = sanitizeLayout(layout);
+        const row = asLayout(json).grid.root.data[0];
+        expect(removed).toEqual([]);
+        expect(json).not.toBe(layout); // 고쳤으므로 새 객체(프리셋 되쓰기 신호)
+        expect(row.data.map((n: any) => [n.type, n.data.id ?? null, n.size])).toEqual([["leaf", "1", 100], ["leaf", "2", 100], ["leaf", "3", 100]]);
+    });
+
+    it("판 제거로 외자식 칸이 생기면 걷는다(은퇴 판이 칸을 나눠 쓰던 경우)", () => {
+        const layout = layoutOf(branch([branch([leaf("1", 150), branch([leaf("2", 60), leaf("x", 40)], 150)], 100)], 300), ["1", "2", "x"]);
+        const { json, removed } = sanitizeLayout(layout);
+        const row = asLayout(json).grid.root.data[0];
+        expect(removed).toEqual(["chart-x"]);
+        expect(row.data.map((n: any) => [n.type, n.data.id, n.size])).toEqual([["leaf", "1", 150], ["leaf", "2", 150]]);
+    });
+
+    it("외자식이 칸이면 그 자식들을 부모 줄에 펼치고 크기를 이 칸 몫으로 비례 배분한다", () => {
+        // 셋째 칸(200) = 외자식 칸 → 그 안의 [3, 4](방향 = 부모 줄)가 부모 줄로 올라온다
+        const layout = layoutOf(branch([branch([leaf("1", 100), branch([branch([leaf("3", 30), leaf("4", 10)], 50)], 200)], 100)], 300), ["1", "3", "4"]);
+        const row = asLayout(sanitizeLayout(layout).json).grid.root.data[0];
+        expect(row.data.map((n: any) => [n.data.id, n.size])).toEqual([["1", 100], ["3", 150], ["4", 50]]);
+    });
+
+    it("외자식 칸 사슬은 안쪽부터 걷혀 방향이 맞는 칸에 안착한다 — 입력은 그대로, activeGroup 은 유지", () => {
+        // 둘째 칸 = 칸A(200)[칸B(100)[칸C(20)[3, 4]]] — 외자식 사슬. 방향은 한 단계마다 바뀌므로 [3, 4] 는
+        // 줄과 수직이다: 외자식 B 만 걷혀 [3, 4] 가 A 안으로 올라오고(B 몫 100 을 30:10 으로 → 75·25), A 는 둘을 품어 산다.
+        const layout = layoutOf(branch([branch([leaf("1", 100), branch([branch([branch([leaf("3", 30), leaf("4", 10)], 20)], 100)], 200)], 100)], 300), ["1", "3", "4"]);
+        layout.activeGroup = "3";
+        layout.grid.maximizedNode = { location: [0, 1, 0, 0, 0] };
+        const before = JSON.stringify(layout);
+        const { json } = sanitizeLayout(layout);
+        const out = asLayout(json);
+        const row = out.grid.root.data[0];
+        expect(row.data.map((n: any) => [n.type, n.size])).toEqual([["leaf", 100], ["branch", 200]]);
+        expect(row.data[1].data.map((n: any) => [n.type, n.data.id, n.size])).toEqual([["leaf", "3", 75], ["leaf", "4", 25]]);
+        expect(out.activeGroup).toBe("3"); // 칸만 걷었지 그룹은 안 버렸다
+        expect(out.grid.maximizedNode).toBeUndefined(); // 인덱스 경로가 어긋났으므로 버린다
+        expect(JSON.stringify(layout)).toBe(before); // 원본 불변
+    });
+
+    it("자식 없는 빈 칸은 접는다(빈 자리가 자동저장된 마지막 배치)", () => {
+        const layout = layoutOf(branch([branch([leaf("1", 100), branch([], 100), leaf("2", 100)], 100)], 300), ["1", "2"]);
+        const row = asLayout(sanitizeLayout(layout).json).grid.root.data[0];
+        expect(row.data.map((n: any) => n.data.id)).toEqual(["1", "2"]);
+    });
 });

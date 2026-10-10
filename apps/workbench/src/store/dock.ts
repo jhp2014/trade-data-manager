@@ -30,7 +30,13 @@ const VALID_COMPONENTS = new Set(PANEL_TYPES.map((t) => t.component));
 
 // 레이아웃 JSON 에서 등록 안 된 컴포넌트의 패널을 제거한다(패널 삭제 시 옛 프리셋이 안 깨지게).
 // panels 맵과 grid 트리·플로팅/팝아웃 그룹을 함께 정리해야 fromJSON 정합이 유지된다(한쪽만 지우면 dangling).
-// 빈 그룹/브랜치는 접고, 폐기된 그룹을 가리키는 activeGroup 은 해제. 제거 0건이면 원본을 그대로 반환.
+// 빈 그룹/브랜치는 접고, 폐기된 그룹을 가리키는 activeGroup 은 해제. 고칠 게 없으면 원본을 그대로 반환.
+//
+// ⚠ 루트가 아닌 칸은 **자식 ≥ 2** 가 dockview 의 불변식이다(스스로는 외자식 칸을 절대 안 만든다).
+//   루트만 예외다 — 루트의 외자식(그룹이든 칸이든)은 dockview 가 제거 경로에서 알아서 다루니 둔다.
+//   판을 걷어 외자식 칸이 남으면, 불러온 직후엔 멀쩡하다가 그 안의 마지막 판을 옮기는 순간 dockview 가
+//   빈 칸을 접지 못하고 머리줄 없는 빈 자리로 남긴다(2026-10-10 실측). 그래서 외자식 칸 걷기는 제거
+//   0건이어도 돈다 — 이미 그렇게 망가진 채 저장된 프리셋·마지막 배치를 자가치유하려면.
 export function sanitizeLayout(json: LayoutJSON): { json: LayoutJSON; removed: string[] } {
     const j = structuredClone(json) as Record<string, any>;
     const panels: Record<string, any> = j?.panels ?? {};
@@ -42,8 +48,6 @@ export function sanitizeLayout(json: LayoutJSON): { json: LayoutJSON; removed: s
             delete panels[id];
         }
     }
-    if (removed.length === 0) return { json, removed };
-
     const gone = new Set(removed);
     const droppedGroups = new Set<string>();
     // 그룹 데이터(views/activeView/id)에서 제거된 패널을 걸러낸다. 빈 그룹이면 false(폐기 신호) + id 기록.
@@ -57,20 +61,41 @@ export function sanitizeLayout(json: LayoutJSON): { json: LayoutJSON; removed: s
         }
         return true;
     };
-    const pruneNode = (node: any): any | null => {
-        if (!node) return null;
-        if (node.type === "leaf") return keepGroup(node.data) ? node : null;
-        if (node.type === "branch" && Array.isArray(node.data)) {
-            node.data = node.data.map(pruneNode).filter((x: any) => x != null);
-            return node.data.length > 0 ? node : null;
+    // 노드 하나를 부모 줄에 들어갈 노드 목록으로 바꾼다(0개 = 접힘, 여럿 = 부모 줄에 펼침).
+    let reshaped = false; // 외자식 칸·빈 칸·빈 그룹을 걷었는가 — 제거 0건일 때 원본 반환 여부를 가른다
+    const pruneNode = (node: any, isRoot: boolean): any[] => {
+        if (!node) return [];
+        if (node.type === "leaf") {
+            if (keepGroup(node.data)) return [node];
+            reshaped = true;
+            return [];
         }
-        return node;
+        if (node.type !== "branch" || !Array.isArray(node.data)) return [node];
+        node.data = node.data.flatMap((c: any) => pruneNode(c, false));
+        if (isRoot || node.data.length > 1) return [node];
+        reshaped = true;
+        if (node.data.length === 0) return [];
+        const only = node.data[0];
+        // 외자식이 그룹이면 그 그룹이 이 칸 자리(크기)를 물려받는다.
+        if (only.type !== "branch") return [{ ...only, size: node.size ?? only.size }];
+        // 외자식이 칸이면 그 자식들은 부모와 같은 방향이다 — 부모 줄에 펼치고, 크기는 이 칸 몫을 비례 배분.
+        const sum = only.data.reduce((a: number, c: any) => a + (c.size ?? 0), 0);
+        return only.data.map((c: any) => ({ ...c, size: sum > 0 && node.size != null ? ((c.size ?? 0) * node.size) / sum : c.size }));
     };
-    if (j.grid?.root) j.grid.root = pruneNode(j.grid.root) ?? { type: "branch", data: [], size: j.grid.root.size };
-    const pruneGroupList = (list: any): any => (Array.isArray(list) ? list.filter((g: any) => keepGroup(g?.data)) : list);
+    if (j.grid?.root) j.grid.root = pruneNode(j.grid.root, true)[0] ?? { type: "branch", data: [], size: j.grid.root.size };
+    const pruneGroupList = (list: any): any => {
+        if (!Array.isArray(list)) return list;
+        const kept = list.filter((g: any) => keepGroup(g?.data));
+        if (kept.length !== list.length) reshaped = true;
+        return kept;
+    };
     j.floatingGroups = pruneGroupList(j.floatingGroups);
     j.popoutGroups = pruneGroupList(j.popoutGroups);
+    if (removed.length === 0 && !reshaped) return { json, removed };
     if (typeof j.activeGroup === "string" && droppedGroups.has(j.activeGroup)) delete j.activeGroup;
+    // 최대화 위치는 자식 인덱스 경로라 트리를 고치면 어긋난다(fromJSON 이 "Invalid location" 으로 통째 실패).
+    // 최대화 UI 가 없어 거의 안 쓰이니 위치를 고쳐 쓰기보다 버린다 — 최대화만 풀린 채로 열린다.
+    if (j.grid) delete j.grid.maximizedNode;
 
     return { json: j as LayoutJSON, removed };
 }
@@ -86,12 +111,12 @@ function loadPresets(): PresetSlots {
     } catch {
         /* localStorage 없음/파싱 실패 → 빈 프리셋 */
     }
-    // 삭제된 패널(옛 가설 등)이 박힌 프리셋 자가치유 — 로드 시 걸러내고, 바뀐 게 있으면 storage 에 되쓴다.
+    // 삭제된 패널(옛 가설 등)·외자식 칸이 박힌 프리셋 자가치유 — 로드 시 고치고, 바뀐 게 있으면 storage 에 되쓴다.
     let changed = false;
     for (let i = 0; i < PRESET_COUNT; i++) {
         if (!out[i]) continue;
-        const { json, removed } = sanitizeLayout(out[i]!);
-        if (removed.length > 0) {
+        const { json } = sanitizeLayout(out[i]!);
+        if (json !== out[i]) {
             out[i] = json;
             changed = true;
         }
