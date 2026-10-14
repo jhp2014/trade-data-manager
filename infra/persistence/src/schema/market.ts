@@ -10,7 +10,8 @@
 //   수량·금액류는 bigint 로 저장한다(과거 numeric → 행/인덱스 축소 + 비교/집계 가속). 도메인은 여전히
 //   무손실 string 계약이므로(model.ts) 매퍼 경계에서만 integer↔Number / bigint↔String 변환한다.
 //   bigint 는 mode:"bigint"(네이티브 BigInt) — string 왕복이 무손실.
-import { pgSchema, varchar, date, time, integer, bigint, text, primaryKey, index } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgSchema, varchar, date, time, timestamp, integer, bigint, text, jsonb, primaryKey, index } from "drizzle-orm/pg-core";
 
 export const market = pgSchema("market");
 
@@ -149,6 +150,63 @@ export const stockNews = market.table(
     (t) => [primaryKey({ columns: [t.stockCode, t.publishedDate, t.srno] })],
 );
 
+// 6. 텔레그램 뉴스 방 아카이브 — NEWS_CHANNELS 9방의 메시지 전부(2023~). stock_news(헤드라인+종목태그)와 합치지 않는다
+//    (decisions.md 「텔레그램 뉴스 방 아카이브」). 종목 태깅·조회수 없음. raw = GramJS 원본 순수 JSON(지운 메시지 보험).
+//    search_text 는 STORED 생성 컬럼(본문+미리보기 제목+설명) + pg_trgm GIN — 표현식 인덱스는 질의 식이 한 글자만
+//    달라도 조용히 인덱스를 안 타므로 컬럼으로 못 박는다. ⚠ INSERT/UPSERT SET 에서 반드시 제외(생성 컬럼).
+//    channel_id 는 -100 접두 없는 양수. grouped_id·photo_id 는 int64 → bigint(mode bigint, 도메인은 string).
+export const telegramChannel = market.table("telegram_channel", {
+    channelId: bigint("channel_id", { mode: "number" }).primaryKey(),
+    /** NEWS_CHANNELS 레지스트리 키(@username 또는 id 문자열) — 표시명과 조인하는 손잡이. */
+    peer: varchar("peer", { length: 64 }).notNull(),
+    username: varchar("username", { length: 64 }),
+    title: text("title").notNull(),
+    /** 일일 sync 커서 — 패스를 완주했을 때만 갱신(중단 구멍 방지). synced_at 은 읽기 coverage 의 근거. */
+    syncedMaxId: integer("synced_max_id"),
+    syncedAt: timestamp("synced_at", { withTimezone: true }),
+});
+
+export const telegramMessage = market.table(
+    "telegram_message",
+    {
+        channelId: bigint("channel_id", { mode: "number" }).notNull(),
+        msgId: integer("msg_id").notNull(),
+
+        postedAt: timestamp("posted_at", { withTimezone: true }).notNull(),
+        editedAt: timestamp("edited_at", { withTimezone: true }),
+        text: text("text").notNull(),
+        /** 서식 엔티티 [{type, offset, length, url?}] — 글자 뒤 숨은 링크(TextUrl)가 여기 있다. */
+        entities: jsonb("entities").$type<Array<{ type: string; offset: number; length: number; url?: string }>>().notNull(),
+
+        wpUrl: text("wp_url"),
+        wpTitle: text("wp_title"),
+        wpDescription: text("wp_description"),
+        wpSite: varchar("wp_site", { length: 120 }),
+
+        fwdChannelId: bigint("fwd_channel_id", { mode: "number" }),
+        fwdMsgId: integer("fwd_msg_id"),
+        fwdFromName: text("fwd_from_name"),
+        fwdPostedAt: timestamp("fwd_posted_at", { withTimezone: true }),
+
+        replyToMsgId: integer("reply_to_msg_id"),
+        groupedId: bigint("grouped_id", { mode: "bigint" }),
+        mediaKind: varchar("media_kind", { length: 12 }).notNull(),
+        photoId: bigint("photo_id", { mode: "bigint" }),
+        raw: jsonb("raw").notNull(),
+
+        searchText: text("search_text").generatedAlwaysAs(
+            sql`coalesce("text", '') || E'
+' || coalesce("wp_title", '') || E'
+' || coalesce("wp_description", '')`,
+        ),
+    },
+    (t) => [
+        primaryKey({ columns: [t.channelId, t.msgId] }),
+        index("telegram_message_posted_at_idx").on(t.postedAt),
+        index("telegram_message_search_trgm_idx").using("gin", sql`${t.searchText} gin_trgm_ops`),
+    ],
+);
+
 // 당일 종목 코멘트(daily_comments)는 사람이 큐레이션하는 편집 데이터라 `curation` 스키마에 있다 → schema/curation.ts.
 
 export type DailyCandleRow = typeof dailyCandles.$inferSelect;
@@ -163,3 +221,7 @@ export type DailyMarketCapRow = typeof dailyMarketCap.$inferSelect;
 export type DailyMarketCapInsert = typeof dailyMarketCap.$inferInsert;
 export type StockNewsRow = typeof stockNews.$inferSelect;
 export type StockNewsInsert = typeof stockNews.$inferInsert;
+export type TelegramChannelRow = typeof telegramChannel.$inferSelect;
+export type TelegramChannelInsert = typeof telegramChannel.$inferInsert;
+export type TelegramMessageRow = typeof telegramMessage.$inferSelect;
+export type TelegramMessageInsert = typeof telegramMessage.$inferInsert;

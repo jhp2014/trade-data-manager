@@ -16,6 +16,7 @@ export { DrizzleMinuteCandleRepository } from "./repositories/minuteCandle.repos
 export { DrizzleStockMasterRepository } from "./repositories/stockMaster.repository.js";
 export { DrizzleDailyMarketCapRepository } from "./repositories/dailyMarketCap.repository.js";
 export { DrizzleStockNewsRepository } from "./repositories/stockNews.repository.js";
+export { DrizzleTelegramMessageRepository } from "./repositories/telegramMessage.repository.js";
 export { DrizzleDailyCommentRepository } from "./repositories/dailyComment.repository.js";
 export { DrizzleChartAnchorRepository } from "./repositories/chartAnchor.repository.js";
 export { DrizzleGroupRepository } from "./repositories/group.repository.js";
@@ -41,6 +42,10 @@ export {
     newsHeadlineToRows,
     rowToNewsHeadline,
 } from "./mappers/news.js";
+export {
+    channelMessageToRow,
+    rowToChannelMessage,
+} from "./mappers/telegramMessage.js";
 export {
     dailyCommentToRow,
     rowToDailyComment,

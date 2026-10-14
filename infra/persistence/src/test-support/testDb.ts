@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PGlite } from "@electric-sql/pglite";
+import { pg_trgm } from "@electric-sql/pglite/contrib/pg_trgm";
 import { drizzle } from "drizzle-orm/pglite";
 import { migrate } from "drizzle-orm/pglite/migrator";
 import * as schema from "../schema/index.js";
@@ -24,7 +25,8 @@ export interface TestDb {
  * (실 DB에선 curation 스트림이 Supabase, 로컬은 미러로 받지만 테스트는 한 pglite 에 둘을 합쳐 재현).
  */
 export async function createTestDb(): Promise<TestDb> {
-    const client = new PGlite();
+    // pg_trgm: 0015(telegram_message search_text GIN) 가 CREATE EXTENSION 을 하므로 WASM 에 확장을 실어야 migrate 가 산다.
+    const client = new PGlite({ extensions: { pg_trgm } });
     const drz = drizzle(client, { schema });
     await migrate(drz, { migrationsFolder: MIGRATIONS_DIR });
     await applyCurationIncrements(client);
