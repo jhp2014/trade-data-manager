@@ -5,6 +5,8 @@ export interface TelegramNewsItem {
     text: string; // 본문 전문
     url?: string; // 대표 링크(있으면)
     ref: string; // `${peer}#${messageId}` — 고유 식별
+    /** 본문 글자 뒤 숨은 링크(TextUrl). offset/length 는 text 의 UTF-16 인덱스. text 가 원문 본문일 때만. */
+    links?: Array<{ offset: number; length: number; url: string }>;
 }
 
 /** 봉투 — items + 이 페이지가 걸어간 가장 과거 날짜(다음 더보기 커서). 빈 날은 클라가 모르므로 서버가 알려줌. */

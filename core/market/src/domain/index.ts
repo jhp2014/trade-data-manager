@@ -19,6 +19,7 @@ export * from "./equity/ipoPrice.js";
 export * from "./news/news.js";
 export * from "./news/newsSearch.js";
 export * from "./news/channelMessage.js";
+export * from "./news/archiveCoverage.js";
 
 // classification — 정적 테마 정체성(시트) + 당일 종목 코멘트(사람 편집)
 export * from "./classification/themeMember.js";

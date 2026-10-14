@@ -3,7 +3,7 @@ import type { DateRange, HeadlineFeedOptions, NewsHeadline, StockNewsStore, Stoc
 import type { Database } from "../db.js";
 import { stockNews } from "../schema/market.js";
 import { newsHeadlineToRows, rowToNewsHeadline } from "../mappers/news.js";
-import { buildConflictUpdateSet } from "./_helpers.js";
+import { buildConflictUpdateSet, escapeLike } from "./_helpers.js";
 
 const CONFLICT_SET = buildConflictUpdateSet(stockNews, ["stockCode", "publishedDate", "srno"]);
 
@@ -80,6 +80,4 @@ export class DrizzleStockNewsRepository implements StockNewsStore, StockNewsRead
 }
 
 /** ILIKE 패턴 이스케이프 — 사용자 키워드의 %/_/\ 를 리터럴로. */
-function escapeLike(raw: string): string {
-    return raw.replace(/[\\%_]/g, (c) => `\\${c}`);
-}
+

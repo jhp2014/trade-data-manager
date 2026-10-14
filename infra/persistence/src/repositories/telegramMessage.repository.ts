@@ -1,13 +1,23 @@
-// 텔레그램 뉴스 방 아카이브 리포지토리 — ChannelMessageStore(수집: 멱등 upsert·범위·커서) 구현.
+// 텔레그램 뉴스 방 아카이브 리포지토리 — ChannelMessageStore(수집: 멱등 upsert·범위·커서) + ChannelMessageReader(검색·coverage).
 // 덮어쓰기 규칙(SQL 로 강제): 같은 (channel_id, msg_id) 는 ① edited_at 이 달라졌거나 ② 비어 있던 링크 미리보기가
 // 채워진 경우에만 갱신한다. ②가 필요한 이유: 게시 직후엔 미리보기가 pending 이라 wp_* 가 비는데, 나중에 채워져도
 // edit_date 는 안 바뀐다. 그 밖(같은 내용 재수집)은 건드리지 않는다 — raw·검색 컬럼이 헛되이 다시 쓰이지 않게.
-import { eq, sql } from "drizzle-orm";
-import type { ChannelBounds, ChannelCursor, ChannelInfo, ChannelMessage, ChannelMessageStore } from "@trade-data-manager/market";
+import { and, count, desc, eq, gte, ilike, lte, sql, type SQL } from "drizzle-orm";
+import type {
+    ArchiveCoverage,
+    ArchivedMessage,
+    ChannelBounds,
+    ChannelCursor,
+    ChannelInfo,
+    ChannelMessage,
+    ChannelMessageQuery,
+    ChannelMessageReader,
+    ChannelMessageStore,
+} from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { telegramChannel, telegramMessage } from "../schema/market.js";
-import { channelMessageToRow } from "../mappers/telegramMessage.js";
-import { buildConflictUpdateSet } from "./_helpers.js";
+import { channelMessageToRow, rowToChannelMessage } from "../mappers/telegramMessage.js";
+import { buildConflictUpdateSet, escapeLike } from "./_helpers.js";
 
 // ⚠ search_text 는 생성 컬럼 — SET 에 들어가면 PG 가 거부한다.
 const CONFLICT_SET = buildConflictUpdateSet(telegramMessage, ["channelId", "msgId", "searchText"]);
@@ -19,7 +29,9 @@ const OVERWRITE_WHEN = sql.raw(
 /** 한 INSERT 의 행 수 상한 — raw 가 행당 수 KB 라 파라미터·패킷을 적당히 끊는다. */
 const CHUNK = 200;
 
-export class DrizzleTelegramMessageRepository implements ChannelMessageStore {
+const DEFAULT_SEARCH_LIMIT = 5000;
+
+export class DrizzleTelegramMessageRepository implements ChannelMessageStore, ChannelMessageReader {
     constructor(private readonly db: Database) {}
 
     async upsertChannel(info: ChannelInfo): Promise<void> {
@@ -77,5 +89,52 @@ export class DrizzleTelegramMessageRepository implements ChannelMessageStore {
             .update(telegramChannel)
             .set({ syncedMaxId: maxId, syncedAt: at })
             .where(eq(telegramChannel.channelId, channelId));
+    }
+
+    // ── ChannelMessageReader ──
+
+    /** 토큰 전부 ILIKE AND(search_text — pg_trgm GIN 이 받는다) × 시각 창, posted_at 내림차순. */
+    async searchMessages(q: ChannelMessageQuery): Promise<ArchivedMessage[]> {
+        const conds: SQL[] = [];
+        if (q.since) conds.push(gte(telegramMessage.postedAt, q.since));
+        if (q.until) conds.push(lte(telegramMessage.postedAt, q.until));
+        for (const t of q.tokens) conds.push(ilike(telegramMessage.searchText, `%${escapeLike(t)}%`));
+        const rows = await this.db
+            .select({ m: telegramMessage, peer: telegramChannel.peer })
+            .from(telegramMessage)
+            .innerJoin(telegramChannel, eq(telegramChannel.channelId, telegramMessage.channelId))
+            .where(conds.length ? and(...conds) : undefined)
+            .orderBy(desc(telegramMessage.postedAt), desc(telegramMessage.msgId))
+            .limit(q.limit ?? DEFAULT_SEARCH_LIMIT);
+        return rows.map((r) => ({ ...rowToChannelMessage(r.m), peer: r.peer }));
+    }
+
+    /**
+     * from = 방별 min(posted_at) 의 max · to = 방별 synced_at 의 min · channels = sync 완주 방 수.
+     * 한 방이라도 synced_at 이 없으면 null(아직 전부 라이브) — 판정은 domain isDayCovered.
+     */
+    async coverage(): Promise<ArchiveCoverage | null> {
+        const [ch] = await this.db
+            .select({
+                channels: count(),
+                synced: sql<number | string>`count(${telegramChannel.syncedAt})`,
+                to: sql<Date | string | null>`min(${telegramChannel.syncedAt})`,
+            })
+            .from(telegramChannel);
+        if (!ch || ch.channels === 0 || Number(ch.synced) < ch.channels || ch.to === null) return null;
+
+        const perChannel = this.db
+            .select({
+                channelId: telegramMessage.channelId,
+                minPosted: sql<Date | string>`min(${telegramMessage.postedAt})`.as("min_posted"),
+            })
+            .from(telegramMessage)
+            .groupBy(telegramMessage.channelId)
+            .as("pc");
+        const [m] = await this.db
+            .select({ from: sql<Date | string | null>`max(${perChannel.minPosted})` })
+            .from(perChannel);
+        if (!m || m.from === null) return null;
+        return { from: new Date(m.from), to: new Date(ch.to), channels: Number(ch.synced) };
     }
 }

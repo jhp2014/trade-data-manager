@@ -100,6 +100,33 @@ describe("DrizzleTelegramMessageRepository (pglite)", () => {
         expect(await repo.cursor(42)).toEqual({ syncedMaxId: null, syncedAt: null });
     });
 
+    it("searchMessages — 토큰 AND 부분일치(미리보기 제목 포함) × 시각 창, 최신순, peer 조인", async () => {
+        await repo.saveMessages([
+            msg(20, { text: "https://x/1", webpage: { url: "https://x/1", title: "삼성전자 신고가 돌파" } }),
+            msg(21, { text: "LG전자 실적" }),
+            msg(22, { text: "삼성전자 하락" }),
+        ]);
+        const hits = await repo.searchMessages({ tokens: ["전자", "삼성"] });
+        expect(hits.map((h) => h.msgId)).toEqual([22, 20]); // 미리보기 제목으로도 걸리고, 최신순
+        expect(hits[0].peer).toBe("@moneythemestock");
+        const windowed = await repo.searchMessages({ tokens: [], since: msg(21).postedAt, until: msg(22).postedAt });
+        expect(windowed.map((h) => h.msgId)).toEqual([22, 21]);
+        // LIKE 메타문자는 글자로
+        expect(await repo.searchMessages({ tokens: ["100%"] })).toEqual([]);
+    });
+
+    it("coverage — 전 방 sync 완주 전엔 null, 뒤엔 from=min(posted) 의 max · to=min(synced_at)", async () => {
+        const other: ChannelInfo = { channelId: 2, peer: "@other", title: "다른 방" };
+        await repo.upsertChannel(other);
+        expect(await repo.coverage()).toBeNull(); // @other 는 synced_at 없음
+        await repo.saveMessages([{ ...msg(1), channelId: 2, msgId: 500, postedAt: new Date("2026-10-13T00:30:00Z") }]);
+        const laterSync = new Date("2026-10-14T11:40:00Z");
+        await repo.markSynced(2, 500, laterSync);
+        const c = await repo.coverage();
+        // CH 의 min(posted)=msg(1) 00:01, other 의 min = 00:30 → from = 00:30(max). to = min(synced) = CH 의 11:30.
+        expect(c).toEqual({ from: new Date("2026-10-13T00:30:00Z"), to: new Date("2026-10-14T11:30:00Z"), channels: 2 });
+    });
+
     it("pg_trgm 부분일치: 단어 중간('전자')으로도 잡힌다", async () => {
         await repo.saveMessages([msg(5, { text: "삼성전자 신고가" })]);
         const rows = await t.db

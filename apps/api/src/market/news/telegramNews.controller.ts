@@ -1,8 +1,9 @@
 import { Controller, Get, Inject, Query } from "@nestjs/common";
-import type { NewsItem, NewsSearcher } from "@trade-data-manager/market";
-import { addDaysYmd } from "@trade-data-manager/market";
+import type { ArchiveCoverage, ChannelMessageReader, NewsItem, NewsSearcher } from "@trade-data-manager/market";
+import { addDaysYmd, isDayCovered, kstDayBounds } from "@trade-data-manager/market";
+import { NEWS_CHANNELS } from "@trade-data-manager/telegram";
 import type { TelegramNewsItem, TelegramNewsPage } from "@trade-data-manager/wire";
-import { NEWS_SEARCHER } from "../tokens.js";
+import { ARCHIVE_NEWS_SEARCHER, CHANNEL_MESSAGE_READER, NEWS_SEARCHER } from "../tokens.js";
 import { assertYmd } from "../validation.js";
 
 const DAY_LIMIT = 200; // 하루 전체를 담을 방당 상한(실제 한계는 since=하루 시작 경계).
@@ -11,19 +12,23 @@ const MAX_WALK_DAYS = 7; // 더보기 한 클릭이 걸어갈 최대 날짜 수(
 
 // NewsItem → 표시용 wire(TelegramNewsItem, contracts/wire). at 은 절대시각 ISO(표시계층에서 KST 포맷).
 function toWire(n: NewsItem): TelegramNewsItem {
-    return { channel: n.channel, at: n.at.toISOString(), text: n.text, url: n.url, ref: n.ref };
+    return { channel: n.channel, at: n.at.toISOString(), text: n.text, url: n.url, ref: n.ref, ...(n.links ? { links: n.links } : {}) };
 }
 
-// 날짜 ± n일은 core/market addDaysYmd 단일 출처 사용.
-
-// GET /news/telegram?q&date[&beforeDate] — 등록 방 전체 키워드 fan-out, 하루 단위로.
+// GET /news/telegram?q&date[&beforeDate] — 등록 방 전체 키워드 검색, 하루 단위로.
 //  · q 생략/빈 문자열: 검색 없이 방들의 최근 메시지 피드("전체 최근" 모드, 방당 DAY_LIMIT 상한).
 //  · beforeDate 없음: focus.date 하루 전체(초기).
 //  · beforeDate 있음: 그 날짜 이전을 하루씩 통으로, 누적 > THRESHOLD 까지(또는 MAX_WALK_DAYS). "더보기".
 // 하루 단위라 방마다 since=하루시작 경계까지 완주 → 구간 누락 없음(count 커서의 skip 문제 회피).
+// 소스 라우팅(날짜별): 그 하루가 아카이브 coverage 안에 통째로 들면 DB(부분일치 검색), 아니면(오늘·미수집·coverage 조회
+// 실패) 라이브 MTProto(토큰 접두 검색). 둘 다 같은 NewsItem·봉투라 클라는 어느 쪽인지 모른다 — 검색 의미 차이는 여기서 끝.
 @Controller("news/telegram")
 export class TelegramNewsController {
-    constructor(@Inject(NEWS_SEARCHER) private readonly searcher: NewsSearcher) {}
+    constructor(
+        @Inject(NEWS_SEARCHER) private readonly live: NewsSearcher,
+        @Inject(ARCHIVE_NEWS_SEARCHER) private readonly archive: NewsSearcher,
+        @Inject(CHANNEL_MESSAGE_READER) private readonly reader: ChannelMessageReader,
+    ) {}
 
     @Get()
     async search(
@@ -33,9 +38,10 @@ export class TelegramNewsController {
     ): Promise<TelegramNewsPage> {
         const query = q?.trim() ?? ""; // "" = 최근 전체 피드(검색 없이)
         const validDate = assertYmd(date);
+        const coverage = await this.coverageOrNull();
 
         if (!beforeDate) {
-            const items = await this.searchDay(query, validDate);
+            const items = await this.searchDay(query, validDate, coverage);
             return { items: items.map(toWire), oldestDate: validDate };
         }
 
@@ -44,7 +50,7 @@ export class TelegramNewsController {
         let day = addDaysYmd(beforeDate, -1);
         let oldest = beforeDate;
         for (let i = 0; i < MAX_WALK_DAYS; i++) {
-            acc.push(...(await this.searchDay(query, day)));
+            acc.push(...(await this.searchDay(query, day, coverage)));
             oldest = day;
             if (acc.length > THRESHOLD) break;
             day = addDaysYmd(day, -1);
@@ -53,10 +59,20 @@ export class TelegramNewsController {
         return { items: acc.map(toWire), oldestDate: oldest };
     }
 
-    // 한 날짜(KST 하루) 전체 검색 — 방마다 하루 경계까지 완주.
-    private searchDay(query: string, day: string): Promise<NewsItem[]> {
-        const since = new Date(`${day}T00:00:00+09:00`);
-        const until = new Date(`${day}T23:59:59+09:00`);
-        return this.searcher.search(query, { since, until, limitPerChannel: DAY_LIMIT });
+    // coverage 조회 실패(테이블 없음 — 마이그 전 등)는 라이브 폴백으로 흡수. 요청당 한 번만 묻는다.
+    private async coverageOrNull(): Promise<ArchiveCoverage | null> {
+        try {
+            return await this.reader.coverage();
+        } catch (err) {
+            console.warn(`[news/telegram] 아카이브 coverage 조회 실패 → 라이브: ${err instanceof Error ? err.message : String(err)}`);
+            return null;
+        }
+    }
+
+    // 한 날짜(KST 하루) 전체 검색 — 방마다 하루 경계까지 완주. 통째로 수집된 날만 DB.
+    private searchDay(query: string, day: string, coverage: ArchiveCoverage | null): Promise<NewsItem[]> {
+        const { since, until } = kstDayBounds(day);
+        const searcher = isDayCovered(day, coverage, NEWS_CHANNELS.length) ? this.archive : this.live;
+        return searcher.search(query, { since, until, limitPerChannel: DAY_LIMIT });
     }
 }

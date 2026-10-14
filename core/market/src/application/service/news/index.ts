@@ -2,3 +2,4 @@
 export * from "./newsBackfillService.js";
 export * from "./newsSearchService.js";
 export * from "./channelArchiveCollectService.js";
+export * from "./archiveNewsSearchService.js";

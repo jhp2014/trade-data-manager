@@ -19,3 +19,4 @@ export * from "./dailyComment.js";
 export * from "./chartAnchor.js";
 export * from "./group.js";
 export * from "./newsSearcher.js";
+export * from "./channelMessageReader.js";

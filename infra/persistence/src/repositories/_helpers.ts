@@ -1,4 +1,9 @@
 import { sql, getTableColumns } from "drizzle-orm";
+
+/** LIKE/ILIKE 패턴 메타문자(\ % _) 이스케이프 — 사용자 입력을 부분일치 패턴에 넣을 때. */
+export function escapeLike(raw: string): string {
+    return raw.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
 import type { PgTable } from "drizzle-orm/pg-core";
 
 /**
