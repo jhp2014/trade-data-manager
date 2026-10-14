@@ -95,6 +95,9 @@ async function runRestore(schema: string, dumpPath: string, db: string, log: Log
     await withClient(db, async (c) => {
         await c.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
         await c.query(`CREATE SCHEMA "${schema}"`);
+        // -n 복원엔 확장이 따라오지 않는다 — market.telegram_message 의 trgm 인덱스(0015)가 public.pg_trgm 을 쓴다.
+        // 전체 덤프(verify 임시 DB)는 덤프 안에 CREATE EXTENSION 이 들어 있어 무관.
+        await c.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public`);
     });
     await runPgToolOn("pg_restore", parseConn(db), [
         "--no-owner",

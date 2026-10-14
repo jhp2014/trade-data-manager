@@ -52,5 +52,5 @@ export const policy = {
      *       curation.*(사람이 편집·삭제 → 정당한 감소). restore 정합성(②a)은 전 base 테이블을
      *       런타임 열거(inspect.listBaseTables)로 대조하므로 여기 하드코딩하지 않는다.
      */
-    guardTables: ["market.daily_candles_raw", "market.minute_candles", "market.stock_news"],
+    guardTables: ["market.daily_candles_raw", "market.minute_candles", "market.stock_news", "market.telegram_message"],
 } as const;
