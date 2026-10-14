@@ -51,7 +51,15 @@ describe("ArchiveNewsSearchService", () => {
                 ref: "@c#2",
                 links: [{ offset: 0, length: 2, url: "https://n.com/2" }],
             },
-            { source: "telegram", channel: "방", at: rows[1].postedAt, text: "제목만", url: "https://a.b/c", ref: "@c#1" },
+            {
+                source: "telegram",
+                channel: "방",
+                at: rows[1].postedAt,
+                text: "제목만",
+                url: "https://a.b/c",
+                ref: "@c#1",
+                preview: { title: "제목만" },
+            },
         ]);
     });
 

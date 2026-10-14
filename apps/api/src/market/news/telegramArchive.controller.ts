@@ -11,7 +11,7 @@ const MAX_LIMIT = 5000;
 const PEERS = NEWS_CHANNELS.map((c) => c.peer);
 
 function toWire(n: NewsItem): TelegramNewsItem {
-    return { channel: n.channel, at: n.at.toISOString(), text: n.text, url: n.url, ref: n.ref, ...(n.links ? { links: n.links } : {}) };
+    return { channel: n.channel, at: n.at.toISOString(), text: n.text, url: n.url, ref: n.ref, ...(n.links ? { links: n.links } : {}), ...(n.preview ? { preview: n.preview } : {}) };
 }
 
 // GET /news/telegram/archive?date= | from=&to= [&q=] [&limit=] [&before=] — **DB 아카이브만** 읽는다(라이브 폴백 없음).

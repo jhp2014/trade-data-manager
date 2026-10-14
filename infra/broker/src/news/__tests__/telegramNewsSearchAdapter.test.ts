@@ -69,6 +69,7 @@ describe("TelegramNewsSearchAdapter", () => {
         });
         expect(item.text).toBe("한화오션, 7%대 강세"); // URL 대신 미리보기 제목
         expect(item.url).toBe(url);
+        expect(item.preview).toEqual({ title: "한화오션, 7%대 강세" });
     });
 
     it("본문 텍스트가 있으면 미리보기 제목보다 본문 우선", async () => {
@@ -80,6 +81,7 @@ describe("TelegramNewsSearchAdapter", () => {
         });
         expect(item.text).toBe("사람이 쓴 코멘트\nhttps://x.com/1");
         expect(item.url).toBe("https://x.com/1"); // 미리보기 URL 우선
+        expect(item.preview).toEqual({ title: "기사 제목" }); // 본문이 있어도 미리보기 글은 preview 로
     });
 
     it("질의 옵션(channel·since·until·limit)을 소스로 전달", async () => {

@@ -33,6 +33,20 @@ export interface NewsItem {
     ref: string;
     /** 본문 안 숨은 링크(text 가 원문 본문일 때만 — 미리보기 제목으로 대체됐으면 offset 이 무의미해 비운다). */
     links?: NewsLink[];
+    /**
+     * 링크 미리보기 글(제목·설명). 검색은 본문+미리보기를 다 보므로, 본문엔 없는 낱말로 걸린 항목을 표시층이
+     * 설명·하이라이트할 재료. 제목·설명 둘 다 없으면 칸 자체가 없다.
+     */
+    preview?: { title?: string; description?: string };
+}
+
+/** webpage → preview 칸(제목·설명 중 하나라도 있을 때만). 라이브·아카이브가 같은 규칙으로. */
+export function previewOf(webpage: NewsPreview | undefined): { title?: string; description?: string } | undefined {
+    if (!webpage) return undefined;
+    const title = webpage.title || undefined;
+    const description = webpage.description || undefined;
+    if (!title && !description) return undefined;
+    return { ...(title ? { title } : {}), ...(description ? { description } : {}) };
 }
 
 /** 본문에서 첫 http(s) 링크 추출(공백 전까지). */

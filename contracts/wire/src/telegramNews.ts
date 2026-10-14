@@ -7,6 +7,8 @@ export interface TelegramNewsItem {
     ref: string; // `${peer}#${messageId}` — 고유 식별
     /** 본문 글자 뒤 숨은 링크(TextUrl). offset/length 는 text 의 UTF-16 인덱스. text 가 원문 본문일 때만. */
     links?: Array<{ offset: number; length: number; url: string }>;
+    /** 링크 미리보기 글(제목·설명) — 검색은 본문+미리보기를 보므로 본문에 없는 낱말로 걸린 항목의 근거. 없으면 칸 없음. */
+    preview?: { title?: string; description?: string };
 }
 
 /**

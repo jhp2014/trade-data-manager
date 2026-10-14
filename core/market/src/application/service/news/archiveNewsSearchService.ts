@@ -2,7 +2,7 @@
 // api 가 날짜별로 둘을 바꿔 끼워도 클라는 모른다. 표시 규칙(presentNewsText)·ref(`${peer}#${msgId}`)가 라이브와 같아
 // dedup·앵커가 그대로 돈다. 검색 의미만 다르다: 라이브 = 토큰 접두, 여긴 부분일치(서버 안의 차이, 사용자 수용).
 // searchPage = 아카이브 전용 입구(/news/telegram/archive): 커서 페이징 + "더 있음" 판정. 커서는 (at, msgId) 문자열.
-import { linksFromEntities, presentNewsText, type NewsItem } from "#domain";
+import { linksFromEntities, presentNewsText, previewOf, type NewsItem } from "#domain";
 import type { ArchivedMessage, ChannelMessageReader, NewsSearcher, NewsSearchOptions } from "#port/query";
 
 export interface ArchiveNewsSearchDeps {
@@ -87,6 +87,7 @@ export class ArchiveNewsSearchService implements NewsSearcher {
             const shown = presentNewsText(m.text, m.webpage);
             if (!shown) continue;
             const links = shown.fromBody ? linksFromEntities(m.entities) : undefined;
+            const preview = previewOf(m.webpage);
             out.push({
                 source: "telegram",
                 channel: this.deps.labels.get(m.peer) ?? m.peer,
@@ -95,6 +96,7 @@ export class ArchiveNewsSearchService implements NewsSearcher {
                 url: shown.url,
                 ref: `${m.peer}#${m.msgId}`,
                 ...(links ? { links } : {}),
+                ...(preview ? { preview } : {}),
             });
         }
         return out;

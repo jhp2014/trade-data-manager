@@ -13,7 +13,7 @@ const PEERS = NEWS_CHANNELS.map((c) => c.peer);
 
 // NewsItem → 표시용 wire(TelegramNewsItem, contracts/wire). at 은 절대시각 ISO(표시계층에서 KST 포맷).
 function toWire(n: NewsItem): TelegramNewsItem {
-    return { channel: n.channel, at: n.at.toISOString(), text: n.text, url: n.url, ref: n.ref, ...(n.links ? { links: n.links } : {}) };
+    return { channel: n.channel, at: n.at.toISOString(), text: n.text, url: n.url, ref: n.ref, ...(n.links ? { links: n.links } : {}), ...(n.preview ? { preview: n.preview } : {}) };
 }
 
 // GET /news/telegram?q&date[&beforeDate] — 등록 방 전체 키워드 검색, 하루 단위로.

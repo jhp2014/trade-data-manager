@@ -4,6 +4,7 @@
 import {
     linksFromEntities,
     presentNewsText,
+    previewOf,
     type NewsChannelSearch,
     type NewsChannelSearchQuery,
     type NewsItem,
@@ -36,6 +37,7 @@ export class TelegramNewsSearchAdapter implements NewsChannelSearch {
             if (!shown) continue; // 본문도 미리보기 제목도 없음(서비스/미디어-only)
             // 숨은 링크는 text 가 원문 본문일 때만 — 제목으로 대체되면 offset 이 무의미.
             const links = shown.fromBody ? linksFromEntities(m.entities) : undefined;
+            const preview = previewOf(m.webpage);
             out.push({
                 source: "telegram",
                 channel,
@@ -44,6 +46,7 @@ export class TelegramNewsSearchAdapter implements NewsChannelSearch {
                 url: shown.url,
                 ref: `${opts.channel}#${m.id}`,
                 ...(links ? { links } : {}),
+                ...(preview ? { preview } : {}),
             });
         }
         return out;
