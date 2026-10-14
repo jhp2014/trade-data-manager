@@ -26,7 +26,7 @@
 ## apps/api/src — NestJS
 
 - `vault/`(VaultModule — MarketModule 과 별개 슬라이스): 복기 vault(trading-review) 타점 노트 fs 직독 읽기 모델 `VaultNotes` + 앞머리 파서 `noteFrontmatter` + `GET /review-notes`. 경로 = env `VAULT_DIR`(`apps/api/.env`, 셸 env 우선 — `vaultEnv`). 쓰기 없음·DB 무관
-- `market.module.ts` 산하 서브도메인별 컨트롤러: **board**(dates/dayReplay/daySummary/theme) / **chart**(chart) / **curation**(chartAnchor/comment/group/sync) / **news**(news/telegramNews) / **stocks**(stocks)
+- `market.module.ts` 산하 서브도메인별 컨트롤러: **board**(dates/dayReplay/daySummary/theme) / **chart**(chart) / **curation**(chartAnchor/comment/group/sync) / **news**(news/telegramNews/telegramArchive — 후자는 DB 아카이브 전용, trade-lab 용) / **stocks**(stocks)
 - 각 그룹 옆에 캐시/read-model 파일 동거: `masterCache`, `derivedCache`(DERIVED_CACHE 단일 인스턴스 — DayBoards 가 쓴다. 옛 RankSections 순위 단면 서버 사전계산은 2026-09-26 은퇴 — 테마 판정은 클라 /day-replay 즉석 계산), `daySnapshotCache`, `grid/`(`pointGrids`+`gridStore`+`pointGrid.controller` — 자동 타점 격자 파일 캐시 대사, `/point-grids` 튜플 서빙 · `axisDeps`(격자·recon 공용 포트 한 벌)·`axisFingerprint`(anchorsFingerprint — 기준선 무효화 지문)), `chartReadModel` — 계산 축(/rank-axes/computed)·좌표 봉 사실(/labeled-point-facts)은 2026-09-27 종단 폐기로 삭제
 
 ## apps/workbench/src
