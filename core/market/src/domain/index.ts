@@ -18,6 +18,7 @@ export * from "./equity/ipoPrice.js";
 // news — 외부 텍스트 이벤트(저장 헤드라인 / 라이브 검색)
 export * from "./news/news.js";
 export * from "./news/newsSearch.js";
+export * from "./news/channelMessage.js";
 
 // classification — 정적 테마 정체성(시트) + 당일 종목 코멘트(사람 편집)
 export * from "./classification/themeMember.js";

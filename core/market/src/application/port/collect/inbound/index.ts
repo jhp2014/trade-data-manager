@@ -3,3 +3,4 @@ export * from "./marketDataCollector.js";
 export * from "./ipoPriceEnricher.js";
 export * from "./dailyStatCollector.js";
 export * from "./newsBackfiller.js";
+export * from "./channelArchiveCollector.js";

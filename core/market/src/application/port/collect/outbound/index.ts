@@ -13,3 +13,5 @@ export * from "./dailyStockStatsProvider.js";
 export * from "./marketCapStore.js";
 export * from "./stockMasterStore.js";
 export * from "./stockNewsStore.js";
+export * from "./channelHistorySource.js";
+export * from "./channelMessageStore.js";
