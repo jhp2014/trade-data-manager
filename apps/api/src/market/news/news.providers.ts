@@ -6,10 +6,11 @@ import { STOCK_NEWS_REPO, NEWS_SEARCHER, ARCHIVE_NEWS_SEARCHER, CHANNEL_MESSAGE_
 import type { Pool } from "../pool.js";
 import { NewsController } from "./news.controller.js";
 import { TelegramNewsController } from "./telegramNews.controller.js";
+import { TelegramArchiveController } from "./telegramArchive.controller.js";
 import { LazyTelegramNewsSearcher } from "./telegramNewsSearcher.js";
 
 // 뉴스 화면의 팩토리 묶음 — 모듈은 이 배열을 그대로 합친다(chart/board/curation/news 1:1).
-export const newsControllers = [NewsController, TelegramNewsController];
+export const newsControllers = [NewsController, TelegramNewsController, TelegramArchiveController];
 
 export const newsProviders: Provider[] = [
     {

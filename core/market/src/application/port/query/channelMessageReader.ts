@@ -14,6 +14,8 @@ export interface ChannelMessageQuery {
     since?: Date;
     /** 이 시각 이전(포함). */
     until?: Date;
+    /** 커서 — (posted_at, msg_id) 가 이보다 엄격히 과거인 행만(내림차순 페이징). */
+    before?: { postedAt: Date; msgId: number };
     /** 전체 상한(안전용). */
     limit?: number;
 }

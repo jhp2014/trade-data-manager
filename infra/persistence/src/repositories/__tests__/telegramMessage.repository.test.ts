@@ -115,6 +115,11 @@ describe("DrizzleTelegramMessageRepository (pglite)", () => {
         // LIKE 메타문자는 글자로 · 레지스트리 밖 방은 안 섞인다
         expect(await repo.searchMessages({ peers: PEERS, tokens: ["100%"] })).toEqual([]);
         expect(await repo.searchMessages({ peers: ["@nobody"], tokens: [] })).toEqual([]);
+        // before 커서 = (posted_at, msg_id) 엄격 과거. 같은 시각이면 msg_id 로 가른다.
+        const sameTime = msg(22).postedAt;
+        await repo.saveMessages([msg(23, { postedAt: sameTime, text: "동시각" })]);
+        const page = await repo.searchMessages({ peers: PEERS, tokens: [], before: { postedAt: sameTime, msgId: 23 }, limit: 2 });
+        expect(page.map((h) => h.msgId)).toEqual([22, 21]);
     });
 
     it("coverage — 전 방 sync 완주 전엔 null, 뒤엔 from=min(posted) 의 max · to=min(synced_at)", async () => {

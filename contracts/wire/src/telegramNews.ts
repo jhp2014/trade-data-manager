@@ -9,6 +9,16 @@ export interface TelegramNewsItem {
     links?: Array<{ offset: number; length: number; url: string }>;
 }
 
+/**
+ * /news/telegram/archive 봉투 — DB 아카이브만(라이브 폴백 없음). coverage = DB 가 통째로 든 구간(null = sync 완주 전):
+ * 빈 items 가 "언급 없음"인지 "아직 수집 안 됨"인지 가르는 재료. nextBefore 는 limit 에 걸렸을 때만(다음 요청의 before=).
+ */
+export interface TelegramArchivePage {
+    items: TelegramNewsItem[];
+    coverage: { from: string; to: string } | null;
+    nextBefore?: string;
+}
+
 /** 봉투 — items + 이 페이지가 걸어간 가장 과거 날짜(다음 더보기 커서). 빈 날은 클라가 모르므로 서버가 알려줌. */
 export interface TelegramNewsPage {
     items: TelegramNewsItem[];

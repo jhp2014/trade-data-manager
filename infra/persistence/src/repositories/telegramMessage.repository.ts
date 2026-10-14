@@ -99,6 +99,10 @@ export class DrizzleTelegramMessageRepository implements ChannelMessageStore, Ch
         const conds: SQL[] = [inArray(telegramChannel.peer, [...q.peers])];
         if (q.since) conds.push(gte(telegramMessage.postedAt, q.since));
         if (q.until) conds.push(lte(telegramMessage.postedAt, q.until));
+        // 행 비교 — posted_at 인덱스를 타고 정렬 키와 같은 순서라 커서 경계가 빈틈없이 맞는다.
+        if (q.before) {
+            conds.push(sql`(${telegramMessage.postedAt}, ${telegramMessage.msgId}) < (${q.before.postedAt}, ${q.before.msgId})`);
+        }
         for (const t of q.tokens) conds.push(ilike(telegramMessage.searchText, `%${escapeLike(t)}%`));
         const rows = await this.db
             .select({ m: telegramMessage, peer: telegramChannel.peer })
