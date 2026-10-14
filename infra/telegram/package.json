@@ -17,7 +17,8 @@
         "clean:all": "rimraf dist node_modules/.cache .turbo tsconfig.tsbuildinfo node_modules",
         "recon:login": "tsx recon/01-login.ts",
         "recon:dialogs": "tsx recon/02-dialogs.ts",
-        "recon:search": "tsx recon/03-search.ts"
+        "recon:search": "tsx recon/03-search.ts",
+        "recon:history-profile": "tsx recon/05-history-profile.ts"
     },
     "dependencies": {
         "dotenv": "^16.4.5",
