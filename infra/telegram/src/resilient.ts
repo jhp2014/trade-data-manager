@@ -6,13 +6,22 @@
 // 를 스스로 건다(양성 소음). 문제는 '재접속 중인 나쁜 창'에 도착한 요청이 자체 타임아웃/재시도 없이
 // 그냥 실패·매달린다는 것. 그래서 요청 단위로 (타임아웃 → 연결계열이면 죽은 연결 버리고 1회 재빌드
 // 재시도) 를 얹어, 배경 상태와 무관하게 한 요청이 스스로 복구되게 한다.
-import type { Telegram, TelegramMessage, TelegramSearchOptions } from "./types.js";
+import type {
+    Telegram,
+    TelegramChannelInfo,
+    TelegramHistoryOptions,
+    TelegramHistoryPage,
+    TelegramMessage,
+    TelegramSearchOptions,
+} from "./types.js";
 
 /** GramJS 한 연결의 저수준 표면(rawClient 가 구현). 상태기계는 이 포트에만 의존 → mock 주입 테스트. */
 export interface RawTelegram {
     /** 로컬 플래그(client.connected). RPC 없이 싸게 연결여부를 본다. */
     isConnected(): boolean;
     searchChannel(peer: string, query: string, opts?: TelegramSearchOptions): Promise<TelegramMessage[]>;
+    historyPage(peer: string, opts?: TelegramHistoryOptions): Promise<TelegramHistoryPage>;
+    resolveChannel(peer: string): Promise<TelegramChannelInfo>;
     sendMessage(peer: string, text: string): Promise<void>;
     /** 업데이트 루프·sender 까지 완전 정리(client.destroy). 재빌드 시 옛 연결 누수 방지. */
     destroy(): Promise<void>;
@@ -23,7 +32,40 @@ export interface Timeouts {
     connectTimeoutMs: number;
     /** searchChannel/sendMessage 한 번의 상한. connected-but-wedged 를 여기서 걸러 재빌드로 넘긴다. */
     opTimeoutMs: number;
+    /**
+     * 히스토리 경로가 FLOOD_WAIT 로 쉬어 줄 누적 상한(기본 30분). 넘으면 flood 를 그대로 던진다
+     * — 백필 CLI 는 다음 실행에서 이어 받으면 되므로 무한정 매달리지 않는다.
+     */
+    maxFloodWaitMs?: number;
 }
+
+const DEFAULT_MAX_FLOOD_WAIT_MS = 30 * 60_000;
+
+/**
+ * GramJS FloodWaitError 판정. ⚠ 메시지에 "FLOOD_WAIT" 글자가 없다 — `"A wait of N seconds is required (caused by …)"`
+ * 이고 식별자는 `code === 420` / `errorMessage === "FLOOD"` / `.seconds` 다. 문자열 정규식만 믿으면 놓친다.
+ */
+export function isFloodError(err: unknown): boolean {
+    if (!err || typeof err !== "object") return false;
+    const e = err as { code?: unknown; errorMessage?: unknown; seconds?: unknown; message?: unknown };
+    if (e.code === 420) return true;
+    if (typeof e.errorMessage === "string" && /^FLOOD/.test(e.errorMessage)) return true;
+    if (typeof e.seconds === "number" && typeof e.message === "string" && /wait of/i.test(e.message)) return true;
+    return typeof e.message === "string" && /FLOOD_WAIT/i.test(e.message);
+}
+
+/** flood 가 요구한 대기 초(모르면 0). */
+export function floodSeconds(err: unknown): number {
+    const s = (err as { seconds?: unknown })?.seconds;
+    return typeof s === "number" && Number.isFinite(s) && s > 0 ? s : 0;
+}
+
+export interface ResilientDeps {
+    /** 테스트 주입용(기본 setTimeout). */
+    sleep?: (ms: number) => Promise<void>;
+}
+
+const realSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
  * promise 를 ms 안에 못 끝내면 TELEGRAM_TIMEOUT:label 로 거절. 밑단 op 를 실제로 취소하진 못하지만
@@ -47,7 +89,7 @@ export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promis
 export function isConnectionError(err: unknown, c: RawTelegram): boolean {
     const msg = err instanceof Error ? err.message : String(err);
     if (/SESSION_REVOKED|AUTH_KEY|USER_DEACTIVATED|세션 무효/i.test(msg)) return false;
-    if (/FLOOD_WAIT/i.test(msg)) return false;
+    if (isFloodError(err)) return false;
     if (/TIMEOUT|not connected|disconnect|connection closed|ECONNRESET|ETIMEDOUT|EPIPE|ENETUNREACH|socket/i.test(msg)) {
         return true;
     }
@@ -62,7 +104,10 @@ export function isConnectionError(err: unknown, c: RawTelegram): boolean {
 export function makeResilient(
     open: () => Promise<RawTelegram>,
     t: Timeouts,
+    deps: ResilientDeps = {},
 ): Telegram & { ensureConnected(): Promise<void> } {
+    const sleep = deps.sleep ?? realSleep;
+    const maxFloodWaitMs = t.maxFloodWaitMs ?? DEFAULT_MAX_FLOOD_WAIT_MS;
     let client: RawTelegram | null = null;
     let opening: Promise<RawTelegram> | null = null;
     let closed = false;
@@ -106,9 +151,33 @@ export function makeResilient(
         }
     }
 
+    // 히스토리 경로 전용: FLOOD_WAIT 면 요구 초만큼 **타임아웃 바깥에서** 쉬고 같은 op 를 다시 청한다
+    // (run 은 이미 끝나 있으므로 수면이 opTimeoutMs 에 안 잡힌다). 누적 상한을 넘으면 그대로 던진다.
+    // 검색·게시 경로는 예전대로 즉시 표면화 — 사용자 요청은 기다리게 하지 않는다.
+    async function runWithFloodWait<T>(label: string, op: (c: RawTelegram) => Promise<T>): Promise<T> {
+        let waitedMs = 0;
+        for (;;) {
+            try {
+                return await run(label, op);
+            } catch (err) {
+                if (!isFloodError(err)) throw err;
+                const waitMs = (floodSeconds(err) + 1) * 1000;
+                waitedMs += waitMs;
+                if (waitedMs > maxFloodWaitMs) throw err;
+                await sleep(waitMs);
+            }
+        }
+    }
+
     return {
         searchChannel(peer, query, opts) {
             return run("searchChannel", (c) => c.searchChannel(peer, query, opts));
+        },
+        historyPage(peer, opts) {
+            return runWithFloodWait("historyPage", (c) => c.historyPage(peer, opts));
+        },
+        resolveChannel(peer) {
+            return runWithFloodWait("resolveChannel", (c) => c.resolveChannel(peer));
         },
         sendMessage(peer, text) {
             return run("sendMessage", (c) => c.sendMessage(peer, text));

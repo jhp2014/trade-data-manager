@@ -6,6 +6,7 @@
 import { Api, type TelegramClient } from "telegram";
 import { NEWS_CHANNELS } from "../src/channels.js";
 import { connectedClient, saveExploration, handleError } from "./_shared.js";
+import { toPlain } from "../src/serialize.js";
 
 const KST_OFFSET = "+09:00";
 const DAY_CAP = 3000; // 하루 표본 안전 상한
@@ -18,26 +19,6 @@ function toPeer(p: string): string | number {
 function kstDayRange(day: string): { start: number; end: number } {
     const start = Math.floor(new Date(`${day}T00:00:00${KST_OFFSET}`).getTime() / 1000);
     return { start, end: start + 86400 };
-}
-
-/** GramJS TL 객체 → 순수 JSON(내부 캐시 _client/_chat 등 제외, BigInteger→문자열, Buffer→길이). */
-function toPlain(v: unknown, depth = 0): unknown {
-    if (depth > 12 || v === null || v === undefined) return v;
-    if (typeof v === "bigint") return v.toString();
-    if (typeof v !== "object") return v;
-    if (Buffer.isBuffer(v)) return { bytes: v.length };
-    const o = v as Record<string, unknown>;
-    // big-integer 라이브러리 인스턴스
-    if (typeof o.toJSNumber === "function" && "value" in o) return String(o.toString());
-    if (Array.isArray(v)) return v.map((x) => toPlain(x, depth + 1));
-    const out: Record<string, unknown> = {};
-    if (typeof o.className === "string") out.className = o.className;
-    for (const [k, val] of Object.entries(o)) {
-        if (k.startsWith("_") || k === "originalArgs" || k === "CONSTRUCTOR_ID" || k === "SUBCLASS_OF_ID" || k === "classType") continue;
-        if (typeof val === "function") continue;
-        out[k] = toPlain(val, depth + 1);
-    }
-    return out;
 }
 
 async function messagesInDay(client: TelegramClient, peer: string | number, day: string): Promise<Api.Message[]> {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { makeResilient, isConnectionError, type RawTelegram } from "../resilient.js";
+import { makeResilient, isConnectionError, isFloodError, type RawTelegram } from "../resilient.js";
 
 const TIMEOUTS = { connectTimeoutMs: 50, opTimeoutMs: 50 };
 
@@ -19,6 +19,14 @@ function fakeRaw(spec: FakeSpec) {
             const step = spec.search[Math.min(i, spec.search.length - 1)];
             i++;
             return step() as unknown as never;
+        },
+        async historyPage() {
+            const step = spec.search[Math.min(i, spec.search.length - 1)];
+            i++;
+            return step() as unknown as never;
+        },
+        async resolveChannel() {
+            return { channelId: 1, title: "x" };
         },
         async sendMessage() {},
         destroy,
@@ -42,6 +50,21 @@ function openQueue(...specs: FakeSpec[]) {
 const ok = (v: string[]) => async () => v;
 const fail = (msg: string) => async () => {
     throw new Error(msg);
+};
+// 실제 GramJS FloodWaitError 모양 — 메시지에 "FLOOD_WAIT" 글자가 없고 code/errorMessage/seconds 로 식별된다.
+function floodError(seconds: number) {
+    const e = new Error(`A wait of ${seconds} seconds is required (caused by messages.GetHistory)`) as Error & {
+        code: number;
+        errorMessage: string;
+        seconds: number;
+    };
+    e.code = 420;
+    e.errorMessage = "FLOOD";
+    e.seconds = seconds;
+    return e;
+}
+const flood = (seconds: number) => async () => {
+    throw floodError(seconds);
 };
 
 describe("makeResilient", () => {
@@ -82,11 +105,36 @@ describe("makeResilient", () => {
         expect(q.calls()).toBe(3);
     });
 
-    it("FLOOD_WAIT 는 터미널 — 재빌드 없이 즉시 표면화", async () => {
-        const q = openQueue({ search: [fail("FLOOD_WAIT_30")] });
+    it("FLOOD_WAIT 는 터미널 — 검색 경로는 재빌드 없이 즉시 표면화", async () => {
+        const q = openQueue({ search: [flood(30)] });
         const tg = makeResilient(q.open, TIMEOUTS);
-        await expect(tg.searchChannel("@x", "q")).rejects.toThrow("FLOOD_WAIT");
+        await expect(tg.searchChannel("@x", "q")).rejects.toThrow("wait of 30");
         expect(q.calls()).toBe(1); // 재빌드 안 함
+    });
+
+    it("히스토리 경로는 FLOOD_WAIT 만큼 쉬고 같은 페이지를 다시 청한다(재빌드 없음)", async () => {
+        const sleep = vi.fn(async () => {});
+        const q = openQueue({ search: [flood(7), ok(["page"])] });
+        const tg = makeResilient(q.open, TIMEOUTS, { sleep });
+        expect(await tg.historyPage("@x")).toEqual(["page"]);
+        expect(sleep).toHaveBeenCalledWith(8_000); // seconds + 1
+        expect(q.calls()).toBe(1);
+        expect(q.built[0].destroy).not.toHaveBeenCalled();
+    });
+
+    it("히스토리 경로 flood 누적이 상한을 넘으면 그대로 던진다", async () => {
+        const sleep = vi.fn(async () => {});
+        const q = openQueue({ search: [flood(20), flood(20), ok(["never"])] });
+        const tg = makeResilient(q.open, { ...TIMEOUTS, maxFloodWaitMs: 30_000 }, { sleep });
+        await expect(tg.historyPage("@x")).rejects.toThrow("wait of 20");
+        expect(sleep).toHaveBeenCalledTimes(1); // 첫 21s 는 쉼, 둘째(누적 42s > 30s)는 포기
+    });
+
+    it("히스토리 경로도 연결 오류는 재빌드로 치유한다", async () => {
+        const q = openQueue({ search: [fail("TIMEOUT")] }, { search: [ok(["healed"])] });
+        const tg = makeResilient(q.open, TIMEOUTS);
+        expect(await tg.historyPage("@x")).toEqual(["healed"]);
+        expect(q.calls()).toBe(2);
     });
 
     it("세션 무효는 터미널 — 재빌드 없이 표면화", async () => {
@@ -137,6 +185,7 @@ describe("isConnectionError", () => {
 
     it("터미널은 false(연결계열 문자열과 겹쳐도)", () => {
         expect(isConnectionError(new Error("FLOOD_WAIT_30"), connected)).toBe(false);
+        expect(isConnectionError(floodError(30), disconnected)).toBe(false); // 실제 모양 — 끊긴 채여도 재빌드 금지
         expect(isConnectionError(new Error("SESSION_REVOKED"), connected)).toBe(false);
         expect(isConnectionError(new Error("AUTH_KEY_UNREGISTERED"), disconnected)).toBe(false);
     });
@@ -144,5 +193,18 @@ describe("isConnectionError", () => {
     it("미상 에러는 현재 연결상태로 판단", () => {
         expect(isConnectionError(new Error("something odd"), connected)).toBe(false);
         expect(isConnectionError(new Error("something odd"), disconnected)).toBe(true);
+    });
+});
+
+describe("isFloodError", () => {
+    it("GramJS 실제 모양(code 420 · errorMessage FLOOD · seconds)을 잡는다", () => {
+        expect(isFloodError(floodError(5))).toBe(true);
+        expect(isFloodError({ code: 420, message: "x" })).toBe(true);
+        expect(isFloodError({ errorMessage: "FLOOD_PREMIUM_WAIT", message: "x" })).toBe(true);
+    });
+    it("옛 문자열 흉내도 잡고, 그 밖은 아니다", () => {
+        expect(isFloodError(new Error("FLOOD_WAIT_30"))).toBe(true);
+        expect(isFloodError(new Error("TIMEOUT"))).toBe(false);
+        expect(isFloodError(null)).toBe(false);
     });
 });

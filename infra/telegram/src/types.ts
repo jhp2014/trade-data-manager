@@ -9,6 +9,18 @@ export interface TelegramWebpage {
     siteName?: string;
 }
 
+/**
+ * 본문 서식 엔티티(TL MessageEntity* 평탄화). offset/length 는 Telegram 규약대로 UTF-16 코드유닛 단위
+ * (JS 문자열 인덱스와 같다). `TextUrl` 만 url 을 든다 — 글자 뒤에 숨은 기사 원문 링크가 여기 있다.
+ */
+export interface TelegramEntity {
+    /** TL 클래스명에서 "MessageEntity" 를 뗀 것: Url · TextUrl · Bold · Hashtag · Blockquote … */
+    type: string;
+    offset: number;
+    length: number;
+    url?: string;
+}
+
 /** 검색 결과 메시지 한 건(원시 — 도메인 매핑은 broker 어댑터 몫). */
 export interface TelegramMessage {
     id: number;
@@ -21,6 +33,8 @@ export interface TelegramMessage {
      * URL-only 메시지가 키워드로 잡히면 실제 매칭어는 보통 여기 있다.
      */
     webpage?: TelegramWebpage;
+    /** 본문 서식(숨은 링크 포함). 아카이브와 같은 모양으로 — 오늘(라이브)과 과거(DB)가 같은 것을 돌려주게. */
+    entities?: TelegramEntity[];
 }
 
 export interface TelegramSearchOptions {
@@ -30,6 +44,60 @@ export interface TelegramSearchOptions {
     until?: Date;
     /** 안전 상한(기본 50). 시간창을 정의하는 게 아니라 폭주 방지용 — 창이 넓으면 이 수에서 끊긴다. */
     limit?: number;
+}
+
+export type TelegramMediaKind = "none" | "photo" | "video" | "document" | "webpage" | "other";
+
+/** 전달(forward) 출처. 채널에서 전달됐으면 channelId+msgId, 사람/숨김이면 fromName 만. */
+export interface TelegramForward {
+    channelId?: number;
+    msgId?: number;
+    fromName?: string;
+    date?: Date;
+}
+
+/** 히스토리 순회로 받은 메시지 한 건 — 아카이브 적재용 리치 모양(검색용 TelegramMessage 의 상위집합). */
+export interface TelegramHistoryMessage {
+    id: number;
+    date: Date;
+    /** 마지막 수정 시각(없으면 미수정). 아카이브는 이 값이 바뀐 행만 덮어쓴다. */
+    editDate?: Date;
+    text: string;
+    entities: TelegramEntity[];
+    webpage?: TelegramWebpage;
+    fwd?: TelegramForward;
+    replyToMsgId?: number;
+    /** 앨범 묶음 id(int64 → 10진 문자열). */
+    groupedId?: string;
+    mediaKind: TelegramMediaKind;
+    /** 사진 id(int64 → 10진 문자열). 나중 이미지 단계가 이것만 보고 채운다. */
+    photoId?: string;
+    /** GramJS 원본의 순수 JSON(serialize.toPlain). 해석하지 않고 박제한다. */
+    raw: unknown;
+}
+
+/**
+ * 히스토리 한 페이지(GetHistory 1회). messages 는 일반 메시지만(서비스·빈 메시지 제외).
+ * pageIds 는 페이지에 실린 **모든** id — 서비스 메시지만 있는 페이지에서도 커서가 전진할 수 있게.
+ * pageIds 가 비면 끝(더 과거 없음).
+ */
+export interface TelegramHistoryPage {
+    messages: TelegramHistoryMessage[];
+    pageIds: number[];
+}
+
+export interface TelegramHistoryOptions {
+    /** 이 id **미만**부터(내림차순). 없으면 최신부터. */
+    offsetId?: number;
+    /** 페이지 크기(기본·최대 100 — Telegram 상한). */
+    limit?: number;
+}
+
+/** 방의 정체(getEntity). channelId 는 -100 접두 없는 양수. */
+export interface TelegramChannelInfo {
+    channelId: number;
+    username?: string;
+    title: string;
 }
 
 export interface Telegram {
@@ -42,7 +110,14 @@ export interface Telegram {
      */
     searchChannel(peer: string, query: string, opts?: TelegramSearchOptions): Promise<TelegramMessage[]>;
     /**
-     * 한 방(peer)에 텍스트 메시지 게시 — 알람 전달용(apps/live). 내 계정 발신이므로
+     * 한 방의 히스토리 한 페이지(RPC 1회, 최신→과거). 아카이브 수집 전용 — FLOOD_WAIT 를 만나면
+     * 그만큼 쉬었다가 같은 페이지를 다시 청한다(상한 안에서). 페이지 단위라 긴 순회도 요청 타임아웃에 안 걸린다.
+     */
+    historyPage(peer: string, opts?: TelegramHistoryOptions): Promise<TelegramHistoryPage>;
+    /** peer → 방 정체(id·username·title). 아카이브의 channel_id 를 여기서 얻는다. */
+    resolveChannel(peer: string): Promise<TelegramChannelInfo>;
+    /**
+     * 한 방(peer) 안에 텍스트 메시지 게시 — 알람 전달용(apps/live). 내 계정 발신이므로
      * 내 다른 기기엔 푸시가 안 온다(기록·타 구독자 알림용). 링크 미리보기 끔.
      */
     sendMessage(peer: string, text: string): Promise<void>;

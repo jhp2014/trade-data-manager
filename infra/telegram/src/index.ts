@@ -11,7 +11,16 @@ export {
     type Telegram,
     type TelegramMessage,
     type TelegramWebpage,
+    type TelegramEntity,
     type TelegramSearchOptions,
+    type TelegramMediaKind,
+    type TelegramForward,
+    type TelegramHistoryMessage,
+    type TelegramHistoryPage,
+    type TelegramHistoryOptions,
+    type TelegramChannelInfo,
 } from "./types.js";
 export { createTelegram } from "./client.js";
+export { isFloodError, floodSeconds } from "./resilient.js";
+export { toPlain } from "./serialize.js";
 export { type TelegramChannel, NEWS_CHANNELS } from "./channels.js";

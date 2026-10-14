@@ -18,7 +18,8 @@
         "recon:login": "tsx recon/01-login.ts",
         "recon:dialogs": "tsx recon/02-dialogs.ts",
         "recon:search": "tsx recon/03-search.ts",
-        "recon:history-profile": "tsx recon/05-history-profile.ts"
+        "recon:history-profile": "tsx recon/05-history-profile.ts",
+        "recon:history-page": "tsx recon/06-history-page.ts"
     },
     "dependencies": {
         "dotenv": "^16.4.5",
