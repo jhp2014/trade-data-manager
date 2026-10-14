@@ -106,25 +106,30 @@ describe("DrizzleTelegramMessageRepository (pglite)", () => {
             msg(21, { text: "LG전자 실적" }),
             msg(22, { text: "삼성전자 하락" }),
         ]);
-        const hits = await repo.searchMessages({ tokens: ["전자", "삼성"] });
+        const PEERS = [INFO.peer];
+        const hits = await repo.searchMessages({ peers: PEERS, tokens: ["전자", "삼성"] });
         expect(hits.map((h) => h.msgId)).toEqual([22, 20]); // 미리보기 제목으로도 걸리고, 최신순
         expect(hits[0].peer).toBe("@moneythemestock");
-        const windowed = await repo.searchMessages({ tokens: [], since: msg(21).postedAt, until: msg(22).postedAt });
+        const windowed = await repo.searchMessages({ peers: PEERS, tokens: [], since: msg(21).postedAt, until: msg(22).postedAt });
         expect(windowed.map((h) => h.msgId)).toEqual([22, 21]);
-        // LIKE 메타문자는 글자로
-        expect(await repo.searchMessages({ tokens: ["100%"] })).toEqual([]);
+        // LIKE 메타문자는 글자로 · 레지스트리 밖 방은 안 섞인다
+        expect(await repo.searchMessages({ peers: PEERS, tokens: ["100%"] })).toEqual([]);
+        expect(await repo.searchMessages({ peers: ["@nobody"], tokens: [] })).toEqual([]);
     });
 
     it("coverage — 전 방 sync 완주 전엔 null, 뒤엔 from=min(posted) 의 max · to=min(synced_at)", async () => {
         const other: ChannelInfo = { channelId: 2, peer: "@other", title: "다른 방" };
+        const PEERS = [INFO.peer, other.peer];
         await repo.upsertChannel(other);
-        expect(await repo.coverage()).toBeNull(); // @other 는 synced_at 없음
+        expect(await repo.coverage(PEERS)).toBeNull(); // @other 는 synced_at 없음
+        expect(await repo.coverage([INFO.peer])).not.toBeNull(); // 레지스트리에서 @other 를 빼면 CH 만으로 판정
         await repo.saveMessages([{ ...msg(1), channelId: 2, msgId: 500, postedAt: new Date("2026-10-13T00:30:00Z") }]);
         const laterSync = new Date("2026-10-14T11:40:00Z");
         await repo.markSynced(2, 500, laterSync);
-        const c = await repo.coverage();
-        // CH 의 min(posted)=msg(1) 00:01, other 의 min = 00:30 → from = 00:30(max). to = min(synced) = CH 의 11:30.
+        const c = await repo.coverage(PEERS);
+        // CH 의 최과거=msg(1) 00:01, other 의 최과거 = 00:30 → from = 00:30(max). to = min(synced) = CH 의 11:30.
         expect(c).toEqual({ from: new Date("2026-10-13T00:30:00Z"), to: new Date("2026-10-14T11:30:00Z"), channels: 2 });
+        expect(await repo.coverage([...PEERS, "@unknown"])).toBeNull(); // 레지스트리에 있는데 DB 에 없는 방
     });
 
     it("pg_trgm 부분일치: 단어 중간('전자')으로도 잡힌다", async () => {

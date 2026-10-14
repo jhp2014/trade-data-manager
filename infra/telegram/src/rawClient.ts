@@ -102,9 +102,10 @@ export async function openRawTelegram(cfg: TelegramConfig, t: Timeouts): Promise
     const client = new TelegramClient(new StringSession(cfg.session), cfg.apiId, cfg.apiHash, {
         connectionRetries: 5,
         // GramJS 는 이 초 이하의 FLOOD_WAIT 를 invoke 안에서 스스로 잔다(기본 60s). 그게 opTimeoutMs(30s)보다
-        // 길면 flood 가 TIMEOUT 으로 둔갑해 연결 오류로 오분류된다 → 임계를 op 타임아웃보다 확실히 짧게.
-        // 그보다 긴 flood 는 FloodWaitError 로 표면화되고 resilient 가 (히스토리 경로만) 바깥에서 쉰다.
-        floodSleepThreshold: 10,
+        // 길면 flood 가 TIMEOUT 으로 둔갑해 연결 오류로 오분류된다 → 임계를 op 타임아웃 밑(수면+요청 < 30s)으로.
+        // 검색·게시(알람) 경로는 이 안의 짧은 flood 를 예전처럼 조용히 넘기고, 그보다 긴 flood 는 FloodWaitError 로
+        // 표면화되어 resilient 가 (히스토리 경로만) 바깥에서 쉰다.
+        floodSleepThreshold: 25,
     });
     (client as unknown as { setLogLevel?: (l: string) => void }).setLogLevel?.("error");
     await withTimeout(client.connect(), t.connectTimeoutMs, "connect");

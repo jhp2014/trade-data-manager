@@ -38,7 +38,7 @@ describe("ArchiveNewsSearchService", () => {
         const since = new Date("2026-10-11T15:00:00Z");
         const items = await svc.search("삼성 전자", { since });
 
-        expect(seen[0]).toEqual({ tokens: ["삼성", "전자"], since, until: undefined, limit: 5000 });
+        expect(seen[0]).toEqual({ peers: ["@c"], tokens: ["삼성", "전자"], since, until: undefined, limit: 5000 });
         expect(items).toEqual([
             {
                 source: "telegram",

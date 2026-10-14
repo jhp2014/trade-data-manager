@@ -595,8 +595,9 @@
 - **진도 = 방별 `msg_id` 커서**(방 안 단조 증가): 일일 = 저장된 최대 id 이후, 백필 = 최소 id 이전으로 이어 내려간다. 빈 번호는 지워진 메시지(정상). KIS 뉴스의 wrap·강제 하강 기계는 불필요. **수정은 흔하다**(방에 따라 76~100%) — `edited_at` 이 바뀐 행만 덮어쓴다.
 - 이미지는 범위 밖(`media_kind`·`photo_id` 만 남겨 나중 단계가 채운다). 실측 사진 ~3%라 800px 기준 2023~ 총 ~2GB 예상 — 넣을 땐 **Postgres 밖 파일**(pg_dump 비대화 금지).
 - **일일 커서(`telegram_channel.synced_max_id`·`synced_at`)는 패스를 완주했을 때만 기록한다** — 내림차순 순회에서 저장 행의 max(msg_id) 를 커서로 유도하면 중단 시 "옛 커서 ~ 이번 최저 id" 가 영구 구멍이 된다. 루프 전진은 저장 행이 아니라 원 페이지 id(서비스 메시지만 있는 페이지). sync 한 패스 = 신규 + 48h 재훑기(수정 반영 — 미리보기는 edit_date 없이 채워지므로 upsert 는 `edited_at` 변경 ∨ 비어 있던 `wp_url` 채워짐일 때 덮어쓴다). 지운 메시지는 DB 에 남긴다.
-- **`synced_at` 은 읽기 coverage 의 근거다** — api `/news/telegram` 은 날짜별로 "그 KST 하루가 [방별 min(posted_at) 의 max, 방별 synced_at 의 min] 안에 통째로 드는가"(`isDayCovered`)로 DB/라이브를 가른다. 오늘·어제 20:30 이후·coverage 조회 실패는 라이브. 봉투·NewsItem·ref 가 같아 클라는 모른다 — 검색 의미 차이(라이브 토큰 접두 / DB 부분일치)는 api 안에서 끝난다(사용자 수용).
-- **FloodWait 판정은 `code 420`/`errorMessage`/`seconds` 다** — GramJS 메시지에 'FLOOD_WAIT' 글자가 없다(옛 정규식은 잠복 버그). 히스토리 순회는 페이지(RPC 1회) 단위 op 이고 flood 대기는 op 타임아웃 **바깥**(`floodSleepThreshold` 10s < opTimeout 30s, 누적 30분 상한). 검색·게시 경로는 즉시 표면화.
+- **빈 방도 완주하면 synced_at 을 찍는다**(커서 0) — coverage 는 **레지스트리(NEWS_CHANNELS) 방 전부**의 synced_at 을 요구하므로 한 방이 영구 null 이면 전체가 라이브에 묶인다. 같은 이유로 coverage·검색은 레지스트리 peer 로 거른다(목록에서 뺀 방의 잔존 행·얼어붙은 synced_at 이 섞이지 않게).
+- **`synced_at` 은 읽기 coverage 의 근거다** — api `/news/telegram` 은 날짜별로 "그 KST 하루가 [방별 min(posted_at) 의 max, 방별 synced_at 의 min] 안에 통째로 드는가"(`isDayCovered`)로 DB/라이브를 가른다. 오늘·어제 20:30 이후·coverage 조회 실패·그 날 DB 검색 실패는 라이브. 봉투·NewsItem·ref 가 같아 클라는 모른다 — 검색 의미 차이(라이브 토큰 접두 / DB 부분일치)는 api 안에서 끝난다(사용자 수용).
+- **FloodWait 판정은 `code 420`/`errorMessage`/`seconds` 다** — GramJS 메시지에 'FLOOD_WAIT' 글자가 없다(옛 정규식은 잠복 버그). 히스토리 순회는 페이지(RPC 1회) 단위 op 이고 flood 대기는 op 타임아웃 **바깥**(`floodSleepThreshold` 25s < opTimeout 30s — 검색·알람 경로의 짧은 flood 는 예전처럼 GramJS 가 잔다; 페이지 요청당 누적 30분 상한). 검색·게시 경로의 긴 flood 는 즉시 표면화. raw 에서 views·forwards·reactions·replies 는 뺀다(가변 수치).
 - **market 확장(pg_trgm)은 public 에 둔다** — `restore -n market`(스키마 모드)과 pglite testDb 는 확장을 따로 보장한다(0015 가 CREATE EXTENSION). market 마이그는 `db:generate` 가 못 만들어(curation 저널 분리 뒤 대화형 프롬프트) SQL·저널을 손으로 쓴다(0013~0015).
 
 ## 그룹 편집 출구 (2026-09-10 설계 확정 → **같은 날 구현·리뷰 완료** — 전체 서사 [[point-group-coordinate-label]])

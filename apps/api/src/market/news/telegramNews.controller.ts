@@ -9,6 +9,7 @@ import { assertYmd } from "../validation.js";
 const DAY_LIMIT = 200; // 하루 전체를 담을 방당 상한(실제 한계는 since=하루 시작 경계).
 const THRESHOLD = 5; // 더보기 한 클릭 = 이 건수를 넘길 때까지 과거 날짜를 하루씩 누적.
 const MAX_WALK_DAYS = 7; // 더보기 한 클릭이 걸어갈 최대 날짜 수(빈 구간 폭주 방지).
+const PEERS = NEWS_CHANNELS.map((c) => c.peer);
 
 // NewsItem → 표시용 wire(TelegramNewsItem, contracts/wire). at 은 절대시각 ISO(표시계층에서 KST 포맷).
 function toWire(n: NewsItem): TelegramNewsItem {
@@ -62,17 +63,24 @@ export class TelegramNewsController {
     // coverage 조회 실패(테이블 없음 — 마이그 전 등)는 라이브 폴백으로 흡수. 요청당 한 번만 묻는다.
     private async coverageOrNull(): Promise<ArchiveCoverage | null> {
         try {
-            return await this.reader.coverage();
+            return await this.reader.coverage(PEERS);
         } catch (err) {
             console.warn(`[news/telegram] 아카이브 coverage 조회 실패 → 라이브: ${err instanceof Error ? err.message : String(err)}`);
             return null;
         }
     }
 
-    // 한 날짜(KST 하루) 전체 검색 — 방마다 하루 경계까지 완주. 통째로 수집된 날만 DB.
-    private searchDay(query: string, day: string, coverage: ArchiveCoverage | null): Promise<NewsItem[]> {
+    // 한 날짜(KST 하루) 전체 검색 — 방마다 하루 경계까지 완주. 통째로 수집된 날만 DB, DB 가 실패하면 그 날은 라이브로.
+    private async searchDay(query: string, day: string, coverage: ArchiveCoverage | null): Promise<NewsItem[]> {
         const { since, until } = kstDayBounds(day);
-        const searcher = isDayCovered(day, coverage, NEWS_CHANNELS.length) ? this.archive : this.live;
-        return searcher.search(query, { since, until, limitPerChannel: DAY_LIMIT });
+        const opts = { since, until, limitPerChannel: DAY_LIMIT };
+        if (isDayCovered(day, coverage, PEERS.length)) {
+            try {
+                return await this.archive.search(query, opts);
+            } catch (err) {
+                console.warn(`[news/telegram] 아카이브 검색 실패(${day}) → 라이브: ${err instanceof Error ? err.message : String(err)}`);
+            }
+        }
+        return this.live.search(query, opts);
     }
 }

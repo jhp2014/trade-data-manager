@@ -2,7 +2,7 @@
 // 덮어쓰기 규칙(SQL 로 강제): 같은 (channel_id, msg_id) 는 ① edited_at 이 달라졌거나 ② 비어 있던 링크 미리보기가
 // 채워진 경우에만 갱신한다. ②가 필요한 이유: 게시 직후엔 미리보기가 pending 이라 wp_* 가 비는데, 나중에 채워져도
 // edit_date 는 안 바뀐다. 그 밖(같은 내용 재수집)은 건드리지 않는다 — raw·검색 컬럼이 헛되이 다시 쓰이지 않게.
-import { and, count, desc, eq, gte, ilike, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, inArray, lte, sql, type SQL } from "drizzle-orm";
 import type {
     ArchiveCoverage,
     ArchivedMessage,
@@ -95,7 +95,8 @@ export class DrizzleTelegramMessageRepository implements ChannelMessageStore, Ch
 
     /** 토큰 전부 ILIKE AND(search_text — pg_trgm GIN 이 받는다) × 시각 창, posted_at 내림차순. */
     async searchMessages(q: ChannelMessageQuery): Promise<ArchivedMessage[]> {
-        const conds: SQL[] = [];
+        if (q.peers.length === 0) return [];
+        const conds: SQL[] = [inArray(telegramChannel.peer, [...q.peers])];
         if (q.since) conds.push(gte(telegramMessage.postedAt, q.since));
         if (q.until) conds.push(lte(telegramMessage.postedAt, q.until));
         for (const t of q.tokens) conds.push(ilike(telegramMessage.searchText, `%${escapeLike(t)}%`));
@@ -103,38 +104,39 @@ export class DrizzleTelegramMessageRepository implements ChannelMessageStore, Ch
             .select({ m: telegramMessage, peer: telegramChannel.peer })
             .from(telegramMessage)
             .innerJoin(telegramChannel, eq(telegramChannel.channelId, telegramMessage.channelId))
-            .where(conds.length ? and(...conds) : undefined)
+            .where(and(...conds))
             .orderBy(desc(telegramMessage.postedAt), desc(telegramMessage.msgId))
             .limit(q.limit ?? DEFAULT_SEARCH_LIMIT);
         return rows.map((r) => ({ ...rowToChannelMessage(r.m), peer: r.peer }));
     }
 
     /**
-     * from = 방별 min(posted_at) 의 max · to = 방별 synced_at 의 min · channels = sync 완주 방 수.
-     * 한 방이라도 synced_at 이 없으면 null(아직 전부 라이브) — 판정은 domain isDayCovered.
+     * from = 방별 "가장 오래된 메시지" posted_at 의 max · to = 방별 synced_at 의 min · channels = sync 완주 방 수.
+     * peers 중 하나라도 synced_at 이 없거나 행이 없으면 null(아직 전부 라이브) — 판정은 domain isDayCovered.
+     * 방별 최과거는 msg_id 단조 증가를 믿고 PK 로 1행만 읽는다(min(posted_at) GROUP BY 는 매 요청 49만 행 seq scan).
      */
-    async coverage(): Promise<ArchiveCoverage | null> {
-        const [ch] = await this.db
-            .select({
-                channels: count(),
-                synced: sql<number | string>`count(${telegramChannel.syncedAt})`,
-                to: sql<Date | string | null>`min(${telegramChannel.syncedAt})`,
-            })
-            .from(telegramChannel);
-        if (!ch || ch.channels === 0 || Number(ch.synced) < ch.channels || ch.to === null) return null;
-
-        const perChannel = this.db
-            .select({
-                channelId: telegramMessage.channelId,
-                minPosted: sql<Date | string>`min(${telegramMessage.postedAt})`.as("min_posted"),
-            })
-            .from(telegramMessage)
-            .groupBy(telegramMessage.channelId)
-            .as("pc");
-        const [m] = await this.db
-            .select({ from: sql<Date | string | null>`max(${perChannel.minPosted})` })
-            .from(perChannel);
-        if (!m || m.from === null) return null;
-        return { from: new Date(m.from), to: new Date(ch.to), channels: Number(ch.synced) };
+    async coverage(peers: readonly string[]): Promise<ArchiveCoverage | null> {
+        if (peers.length === 0) return null;
+        const channels = await this.db
+            .select({ channelId: telegramChannel.channelId, syncedAt: telegramChannel.syncedAt })
+            .from(telegramChannel)
+            .where(inArray(telegramChannel.peer, [...peers]));
+        if (channels.length < peers.length) return null;
+        let to: Date | null = null;
+        let from: Date | null = null;
+        for (const c of channels) {
+            if (c.syncedAt === null) return null;
+            if (to === null || c.syncedAt.getTime() < to.getTime()) to = c.syncedAt;
+            const [oldest] = await this.db
+                .select({ postedAt: telegramMessage.postedAt })
+                .from(telegramMessage)
+                .where(eq(telegramMessage.channelId, c.channelId))
+                .orderBy(asc(telegramMessage.msgId))
+                .limit(1);
+            if (!oldest) return null;
+            if (from === null || oldest.postedAt.getTime() > from.getTime()) from = oldest.postedAt;
+        }
+        if (to === null || from === null) return null;
+        return { from, to, channels: channels.length };
     }
 }

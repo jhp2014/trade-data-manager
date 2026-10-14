@@ -1,10 +1,10 @@
 import { sql, getTableColumns } from "drizzle-orm";
+import type { PgTable } from "drizzle-orm/pg-core";
 
 /** LIKE/ILIKE 패턴 메타문자(\ % _) 이스케이프 — 사용자 입력을 부분일치 패턴에 넣을 때. */
 export function escapeLike(raw: string): string {
     return raw.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
-import type { PgTable } from "drizzle-orm/pg-core";
 
 /**
  * ON CONFLICT DO UPDATE 의 SET 절 자동 생성 — 모든 컬럼을 EXCLUDED.<col> 으로 갱신.

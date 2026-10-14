@@ -53,7 +53,7 @@ export class ChannelArchiveCollectService implements ChannelArchiveCollector {
     async sync(opts?: ChannelArchiveOptions): Promise<ChannelArchiveResult> {
         const now = (this.deps.now ?? (() => new Date()))();
         const floor = now.getTime() - (this.deps.rescanWindowMs ?? DEFAULT_RESCAN_WINDOW_MS);
-        return this.forEachChannel("sync", async (info) => {
+        return this.forEachChannel("sync", async (info, label) => {
             const { store } = this.deps;
             const cursor = await store.cursor(info.channelId);
             // 커서가 없는데 행은 있다(백필이 먼저 돈 경우) → 저장된 최대 id 를 하한으로(이번 패스 완주 시 커서가 생긴다).
@@ -61,31 +61,32 @@ export class ChannelArchiveCollectService implements ChannelArchiveCollector {
             const stop: WalkStop = (oldestId, oldestAt) =>
                 (stopBelowId === null || oldestId <= stopBelowId) && oldestAt !== undefined && oldestAt.getTime() < floor;
 
-            const walked = await this.walk(info, undefined, stop, opts, "sync");
+            const walked = await this.walk(info, label, undefined, stop, opts, "sync");
             if (walked.completed) {
-                // 받은 것이 없으면(방이 비었거나 새 글 0) 커서는 옛 값 유지 — 0 으로 뒤로 가지 않는다.
-                const newMax = walked.newestId ?? stopBelowId;
-                if (newMax !== null) await store.markSynced(info.channelId, newMax, now);
+                // 페이지가 비면(방에 글이 없음) 옛 커서, 그것도 없으면 0 — 완주했으면 synced_at 은 반드시 찍는다
+                // (coverage 가 전 방의 synced_at 을 요구하므로 빈 방 하나가 전체를 라이브로 묶어 두면 안 된다).
+                const newMax = walked.newestId ?? stopBelowId ?? 0;
+                await store.markSynced(info.channelId, newMax, now);
             }
             return walked;
         });
     }
 
     async backfill(since: Date, opts?: ChannelArchiveOptions): Promise<ChannelArchiveResult> {
-        return this.forEachChannel("backfill", async (info) => {
+        return this.forEachChannel("backfill", async (info, label) => {
             const bounds = await this.deps.store.bounds(info.channelId);
             if (bounds && bounds.minPostedAt.getTime() < since.getTime()) {
                 return { pages: 0, saved: 0, completed: true, oldestAt: bounds.minPostedAt, newestId: null };
             }
             const stop: WalkStop = (_oldestId, oldestAt) => oldestAt !== undefined && oldestAt.getTime() < since.getTime();
-            return this.walk(info, bounds?.minId, stop, opts, "backfill");
+            return this.walk(info, label, bounds?.minId, stop, opts, "backfill");
         });
     }
 
     /** 방 순차 순회 + resolve/upsertChannel + 실패 격리. */
     private async forEachChannel(
         phase: "sync" | "backfill",
-        run: (info: ChannelInfo) => Promise<Omit<ChannelCollectOutcome, "peer" | "label" | "error">>,
+        run: (info: ChannelInfo, label: string) => Promise<Omit<ChannelCollectOutcome, "peer" | "label" | "error">>,
     ): Promise<ChannelArchiveResult> {
         const onError =
             this.deps.onError ??
@@ -95,7 +96,7 @@ export class ChannelArchiveCollectService implements ChannelArchiveCollector {
             try {
                 const info = await this.deps.source.resolve(ch.peer);
                 await this.deps.store.upsertChannel({ ...info, peer: ch.peer });
-                const r = await run({ ...info, peer: ch.peer });
+                const r = await run({ ...info, peer: ch.peer }, ch.label);
                 channels.push({ peer: ch.peer, label: ch.label, ...r });
             } catch (err) {
                 onError(ch.peer, err);
@@ -119,6 +120,7 @@ export class ChannelArchiveCollectService implements ChannelArchiveCollector {
      */
     private async walk(
         info: ChannelInfo,
+        label: string,
         offsetId: number | undefined,
         stop: WalkStop,
         opts: ChannelArchiveOptions | undefined,
@@ -149,7 +151,7 @@ export class ChannelArchiveCollectService implements ChannelArchiveCollector {
                 oldestAt = page.messages[page.messages.length - 1].postedAt;
             }
             const oldestId = page.pageIds[page.pageIds.length - 1];
-            opts?.onProgress?.({ phase, peer: info.peer, label: info.title, pages, saved, oldestAt });
+            opts?.onProgress?.({ phase, peer: info.peer, label, pages, saved, oldestAt });
             // 시각은 이 페이지의 마지막 일반 메시지 것 — 서비스 메시지만 있는 페이지면 직전 값이 남는다(더 과거일 뿐).
             if (stop(oldestId, oldestAt)) {
                 completed = true;

@@ -33,8 +33,9 @@ export interface Timeouts {
     /** searchChannel/sendMessage 한 번의 상한. connected-but-wedged 를 여기서 걸러 재빌드로 넘긴다. */
     opTimeoutMs: number;
     /**
-     * 히스토리 경로가 FLOOD_WAIT 로 쉬어 줄 누적 상한(기본 30분). 넘으면 flood 를 그대로 던진다
-     * — 백필 CLI 는 다음 실행에서 이어 받으면 되므로 무한정 매달리지 않는다.
+     * 히스토리 경로가 **한 요청(페이지)당** FLOOD_WAIT 로 쉬어 줄 누적 상한(기본 30분). 넘으면 flood 를 그대로
+     * 던진다 — 백필 CLI 는 다음 실행에서 이어 받으면 되므로 한 페이지에 무한정 매달리지 않는다(프로세스 전체 상한은
+     * 두지 않는다: 페이지마다 쉬고 전진하는 건 정상 경로다).
      */
     maxFloodWaitMs?: number;
 }

@@ -24,6 +24,7 @@ export class ArchiveNewsSearchService implements NewsSearcher {
 
     async search(query: string, opts?: NewsSearchOptions): Promise<NewsItem[]> {
         const rows = await this.deps.reader.searchMessages({
+            peers: [...this.deps.labels.keys()],
             tokens: tokenizeQuery(query),
             since: opts?.since,
             until: opts?.until,

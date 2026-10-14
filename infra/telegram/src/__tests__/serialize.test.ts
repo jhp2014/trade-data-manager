@@ -32,6 +32,15 @@ describe("toPlain", () => {
         expect(out.entities).toEqual([{ className: "MessageEntityUrl", offset: 0, length: 5 }]);
     });
 
+    it("깊이 상한을 넘는 가지는 표식으로 자르고(원객체 반환 금지), 가변 수치 키는 뺀다", () => {
+        let deep: Record<string, unknown> = { leaf: 1 };
+        for (let i = 0; i < 20; i++) deep = { child: deep };
+        const s = JSON.stringify(toPlain(deep)); // 순환·bigint 없이 직렬화돼야 한다
+        expect(s).toContain('"[depth]"');
+        expect(s).not.toContain("leaf");
+        expect(toPlain({ id: 1, views: 10, forwards: 2, reactions: { x: 1 }, replies: { replies: 3 } })).toEqual({ id: 1 });
+    });
+
     it("스칼라·null 은 그대로", () => {
         expect(toPlain(null)).toBeNull();
         expect(toPlain(3)).toBe(3);

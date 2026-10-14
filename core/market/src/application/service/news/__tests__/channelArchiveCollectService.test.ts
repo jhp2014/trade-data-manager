@@ -139,12 +139,24 @@ describe("ChannelArchiveCollectService.sync", () => {
         expect(st.rows.has(89)).toBe(true);
     });
 
-    it("새 글이 0 이면 커서는 옛 값을 유지한다(0 으로 후퇴 금지)", async () => {
+    it("방에 글이 하나도 없으면(빈 페이지) 커서는 옛 값, 그것도 없으면 0 — synced_at 은 반드시 찍는다", async () => {
         const { source } = fakeSource({ ids: [] });
         const st = fakeStore({ cursor: { syncedMaxId: 50, syncedAt: at(50) } });
         await service(source, st.store).sync();
         expect(st.cursor().syncedMaxId).toBe(50);
         expect(st.marks[0]).toEqual({ maxId: 50, at: NOW }); // synced_at 은 갱신(coverage 근거)
+
+        const empty = fakeStore();
+        await service(fakeSource({ ids: [] }).source, empty.store).sync();
+        expect(empty.cursor()).toEqual({ syncedMaxId: 0, syncedAt: NOW }); // 빈 방이 coverage 를 영구 null 로 묶지 않게
+    });
+
+    it("새 글 0(첫 페이지가 커서 이하) — 재훑기만 하고 커서는 그 최상단 id", async () => {
+        const { source, calls } = fakeSource({ ids: [95, 94, 93, 92, 91, 90, 89] });
+        const st = fakeStore({ rows: [95, 94, 93], cursor: { syncedMaxId: 95, syncedAt: at(95) } });
+        await service(source, st.store).sync();
+        expect(calls()).toBe(3); // floor(at 90) 밑 89 까지 재훑기
+        expect(st.cursor().syncedMaxId).toBe(95);
     });
 
     it("maxPagesPerChannel 에 닿으면 미완주 — 커서 불변", async () => {
@@ -220,10 +232,10 @@ describe("ChannelArchiveCollectService.backfill", () => {
         const st = fakeStore();
         const r1 = await service(fakeSource({ ids, failAtPage: 2 }).source, st.store).backfill(SINCE);
         expect(r1.channels[0].completed).toBe(false);
-        expect([...st.rows.keys()].sort()).toEqual([100, 98, 99].sort());
+        expect([...st.rows.keys()].sort((a, b) => a - b)).toEqual([98, 99, 100]);
         const second = fakeSource({ ids });
         const r2 = await service(second.source, st.store).backfill(SINCE);
         expect(r2.channels[0].completed).toBe(true);
-        expect(second.calls()).toBe(3); // 97 미만부터: [97 96 95][94 93 92][91 90 89]
+        expect(second.calls()).toBe(3); // 98 미만부터(저장된 min id=98): [97 96 95][94 93 92][91 90 89]
     });
 });

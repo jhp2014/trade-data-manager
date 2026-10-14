@@ -6,6 +6,8 @@ export interface ArchivedMessage extends ChannelMessage {
 }
 
 export interface ChannelMessageQuery {
+    /** 이 방들만(레지스트리 peer). 목록에서 뺀 방의 잔존 행이 섞이지 않게. */
+    peers: readonly string[];
     /** 전부 포함(AND) 부분일치(대소문자 무시) — 본문+미리보기 제목+설명(search_text). 빈 배열 = 피드. */
     tokens: string[];
     /** 이 시각 이후(포함). */
@@ -23,6 +25,9 @@ export interface ChannelMessageQuery {
 export interface ChannelMessageReader {
     /** posted_at 내림차순. */
     searchMessages(q: ChannelMessageQuery): Promise<ArchivedMessage[]>;
-    /** 전 방이 sync 를 완주한 적이 있어야 값. 아니면 null. */
-    coverage(): Promise<ArchiveCoverage | null>;
+    /**
+     * peers(레지스트리) 전부가 sync 를 완주한 적이 있어야 값. 아니면 null. 목록에서 뺀 방은 안 센다 —
+     * 세면 그 방의 얼어붙은 synced_at 이 to 를 붙잡아 새 날짜가 전부 조용히 라이브로 강등된다.
+     */
+    coverage(peers: readonly string[]): Promise<ArchiveCoverage | null>;
 }
