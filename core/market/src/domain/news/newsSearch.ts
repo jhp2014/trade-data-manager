@@ -66,7 +66,8 @@ export function presentNewsText(
     if (text.trim().length === 0 && !webpage?.title) return null;
     const fromBody = hasBodyText(text);
     return {
-        text: fromBody ? text : (webpage?.title ?? webpage?.description ?? text),
+        // `||` — 출처가 빈 문자열 제목("")을 주는 경우가 있어 ?? 로는 빈 글이 그대로 나간다.
+        text: fromBody ? text : webpage?.title || webpage?.description || text,
         url: webpage?.url ?? text.match(URL_RE)?.[0],
         fromBody,
     };
