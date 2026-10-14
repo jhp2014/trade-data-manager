@@ -13,6 +13,7 @@ import {
     KiwoomRawDailyCandleAdapter,
     KisNewsAdapter,
     TelegramNewsSearchAdapter,
+    TelegramHistoryAdapter,
 } from "@trade-data-manager/broker";
 import {
     createDb,
@@ -23,6 +24,7 @@ import {
     DrizzleStockMasterRepository,
     DrizzleDailyMarketCapRepository,
     DrizzleStockNewsRepository,
+    DrizzleTelegramMessageRepository,
 } from "@trade-data-manager/persistence";
 import {
     MarketDataCollectService,
@@ -30,11 +32,14 @@ import {
     IpoPriceEnrichService,
     NewsBackfillService,
     NewsSearchService,
+    ChannelArchiveCollectService,
     type MarketDataCollector,
     type DailyStatCollector,
     type IpoPriceEnricher,
     type NewsBackfiller,
     type NewsSearcher,
+    type ChannelArchiveCollector,
+    type ChannelMessageStore,
 } from "@trade-data-manager/market";
 import {
     DailyIngestService,
@@ -61,6 +66,11 @@ export interface IngestRuntime {
      * 처음 부를 때만 Telegram 에 접속한다(수집 명령은 접속 안 함). close 가 끊어준다.
      */
     newsSearcher: () => Promise<NewsSearcher>;
+    /**
+     * 텔레그램 뉴스 방 아카이브 수집(Command) — 9방 전 메시지를 telegram_message 에. lazy 접속(검색과 한 연결 공유).
+     * store 를 주면 DB 대신 그 저장소에 쓴다(dry-run = 인메모리).
+     */
+    channelArchive: (store?: ChannelMessageStore) => Promise<ChannelArchiveCollector>;
     /** 보유 리소스(pg 풀·telegram) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -122,18 +132,26 @@ export function createIngestRuntime(): IngestRuntime {
 
     // 텔레그램 뉴스 검색 = 등록 방(NEWS_CHANNELS) 전체에 키워드 fan-out. lazy 접속(검색 명령에서만).
     let telegram: Telegram | null = null;
+    const ensureTelegram = async (): Promise<Telegram> => (telegram ??= await createTelegram());
     let searcher: NewsSearcher | null = null;
     const newsSearcher = async (): Promise<NewsSearcher> => {
         if (!searcher) {
-            telegram = await createTelegram();
+            const tg = await ensureTelegram();
             const labels = new Map(NEWS_CHANNELS.map((c) => [c.peer, c.label]));
             searcher = new NewsSearchService({
-                source: new TelegramNewsSearchAdapter(telegram, labels),
+                source: new TelegramNewsSearchAdapter(tg, labels),
                 channels: NEWS_CHANNELS.map((c) => c.peer),
             });
         }
         return searcher;
     };
+    // 텔레그램 방 아카이브 = 같은 연결로 히스토리 페이지 순회 → telegram_message 멱등 적재(방 순차·커서는 완주 시만).
+    const channelArchive = async (store?: ChannelMessageStore): Promise<ChannelArchiveCollector> =>
+        new ChannelArchiveCollectService({
+            source: new TelegramHistoryAdapter(await ensureTelegram()),
+            store: store ?? new DrizzleTelegramMessageRepository(db),
+            channels: NEWS_CHANNELS,
+        });
 
     return {
         collector,
@@ -141,6 +159,7 @@ export function createIngestRuntime(): IngestRuntime {
         ipoPriceEnricher,
         newsBackfiller,
         newsSearcher,
+        channelArchive,
         close: async () => {
             if (telegram) await telegram.disconnect();
             await pool.end();

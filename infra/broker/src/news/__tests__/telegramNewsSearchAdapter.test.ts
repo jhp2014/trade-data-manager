@@ -95,3 +95,18 @@ describe("TelegramNewsSearchAdapter", () => {
         expect(seen?.opts).toEqual({ since, until: undefined, limit: 10 });
     });
 });
+
+describe("TelegramNewsSearchAdapter — 숨은 링크", () => {
+    it("본문이 원문일 때만 TextUrl 엔티티를 links 로 싣고, 제목으로 대체되면 비운다", async () => {
+        const ents = [{ type: "TextUrl", offset: 0, length: 3, url: "https://n.com/1" }];
+        const out = [
+            { ...msg(1, new Date(), "본문 글", undefined), entities: ents },
+            { ...msg(2, new Date(), "https://a.b/c", { title: "제목" }), entities: ents },
+            { ...msg(3, new Date(), "링크 없음"), entities: [{ type: "Bold", offset: 0, length: 2 }] },
+        ];
+        const items = await new TelegramNewsSearchAdapter(fakeSource(out), new Map()).search("x", { channel: "@c" });
+        expect(items[0].links).toEqual([{ offset: 0, length: 3, url: "https://n.com/1" }]);
+        expect(items[1].links).toBeUndefined();
+        expect("links" in items[2]).toBe(false);
+    });
+});

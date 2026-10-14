@@ -29,6 +29,11 @@ export {
     type TelegramSearchSource,
 } from "./news/telegramNewsSearchAdapter.js";
 export {
+    TelegramHistoryAdapter,
+    telegramToChannelMessage,
+    type TelegramHistorySource,
+} from "./news/telegramHistoryAdapter.js";
+export {
     SheetThemeMembershipAdapter,
     type ThemeSheetSource,
 } from "./theme/sheetThemeMembershipAdapter.js";

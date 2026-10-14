@@ -5,10 +5,13 @@
     collect : pnpm --filter @trade-data-manager/ingest start backfill
               (일상 한방 — 어제까지 N일 캔들·뉴스·일별속성(KRX 시총/상장주식수/소속부) + 공모가,
                오늘 제외, skip-if-present. KRX 는 T-1 제공이라 20:30 시점에 어제치가 확실히 올라와 있다)
+    telegram: pnpm --filter @trade-data-manager/ingest start telegram-sync
+              (텔레그램 뉴스 방 9개 아카이브 — 신규 + 48h 수정 재훑기. 별도 스텝이라 로그가 갈리고
+               텔레그램 실패가 시장 데이터 수집 결과와 섞이지 않는다. 여기서 받은 "어제"가 다음 날 DB 읽기 coverage 가 된다)
     backup  : pnpm --filter @trade-data-manager/db-ops backup
               (curation 미러 Supabase→로컬 내장 + 로컬 전체 덤프 + 복원검증 + Drive 업로드)
 
-  backup 은 collect 실패와 무관하게 실행(백업은 안전망). 둘 중 하나라도 실패하면 exit 1 →
+  backup 은 collect/telegram 실패와 무관하게 실행(백업은 안전망). 하나라도 실패하면 exit 1 →
   작업 스케줄러 LastTaskResult 에 실패로 표시된다. 각 앱이 상세 로그를 자체 기록하므로 여기선
   오케스트레이션 흐름만 nightly.log 에 남긴다.
 #>
@@ -53,14 +56,15 @@ function Invoke-Step([string]$label, [string[]]$pnpmArgs) {
     return $code
 }
 
-Write-Log '===== 야간 작업 시작 (collect → backup) ====='
+Write-Log '===== 야간 작업 시작 (collect → telegram → backup) ====='
 
 $collect = Invoke-Step 'collect (ingest backfill)' @('--filter', '@trade-data-manager/ingest', 'start', 'backfill')
-# collect 실패해도 backup 은 반드시 실행(어제까지 상태라도 떠둔다).
+$telegram = Invoke-Step 'telegram (ingest telegram-sync)' @('--filter', '@trade-data-manager/ingest', 'start', 'telegram-sync')
+# collect/telegram 실패해도 backup 은 반드시 실행(어제까지 상태라도 떠둔다).
 $backup = Invoke-Step 'backup (db-ops)' @('--filter', '@trade-data-manager/db-ops', 'backup')
 
-if ($collect -ne 0 -or $backup -ne 0) {
-    Write-Log "===== 종료: 실패 (collect=$collect, backup=$backup) ====="
+if ($collect -ne 0 -or $telegram -ne 0 -or $backup -ne 0) {
+    Write-Log "===== 종료: 실패 (collect=$collect, telegram=$telegram, backup=$backup) ====="
     exit 1
 }
 Write-Log '===== 종료: 성공 ====='

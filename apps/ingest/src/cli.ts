@@ -6,6 +6,8 @@
 //   daily-stats <from> [to]                      일별 종목 속성(KRX): 시총·상장주식수·소속부
 //   backfill-news <from> [to]                    시황 뉴스 헤드라인
 //   backfill-ipo                                 최근 1년 상장 공모가 enrichment
+//   telegram-sync [--dry-run]                    텔레그램 뉴스 방 아카이브 일일 수집(신규 + 48h 수정 재훑기)
+//   telegram-backfill [since=2023-01-01] [--dry-run]  과거 채움(저장된 최소 id 아래로 이어감, 중단 재개 가능)
 // (overwrite = 일봉 강제 재수집 + 그 날짜 분봉 비우고 새로 — 없으면 skip-if-present)
 import {
     seoulToday,
@@ -13,6 +15,10 @@ import {
     type CollectOptions,
     type CollectResult,
     type NewsItem,
+    type ChannelArchiveOptions,
+    type ChannelArchiveResult,
+    type ChannelMessage,
+    type ChannelMessageStore,
 } from "@trade-data-manager/market";
 import { createIngestRuntime, type IngestRuntime } from "./composition.js";
 
@@ -158,6 +164,65 @@ async function runBackfillIpo(rt: IngestRuntime): Promise<void> {
     if (r.failed.length) console.log(`    실패: ${r.failed.slice(0, 20).join(", ")}${r.failed.length > 20 ? " …" : ""}`);
 }
 
+/**
+ * dry-run 저장소 — DB 에 안 쓰고 받은 메시지를 모아 화면에 찍는다(개발 워크트리에서 배선·매핑 확인용).
+ * 커서·범위는 비어 있는 것으로 답하므로 sync/backfill 다 "처음"처럼 돈다 — maxPagesPerChannel 로 1페이지만.
+ */
+class DryRunStore implements ChannelMessageStore {
+    readonly received: ChannelMessage[] = [];
+    async upsertChannel() {}
+    async saveMessages(ms: ChannelMessage[]) {
+        this.received.push(...ms);
+    }
+    async bounds() {
+        return null;
+    }
+    async cursor() {
+        return { syncedMaxId: null, syncedAt: null };
+    }
+    async markSynced() {}
+}
+
+function printArchiveResult(r: ChannelArchiveResult): void {
+    for (const c of r.channels) {
+        const tail = c.error ? `✗ ${c.error}` : `${c.completed ? "✓" : "…미완주"} 페이지 ${c.pages} · 저장 ${c.saved}`;
+        const oldest = c.oldestAt ? ` · 최과거 ${seoulStamp(c.oldestAt)}` : "";
+        console.log(`  [${c.label}] ${tail}${oldest}`);
+    }
+    const failed = r.channels.filter((c) => c.error).map((c) => c.label);
+    if (failed.length) throw new Error(`방 실패: ${failed.join(", ")}`);
+}
+
+const archiveProgress: ChannelArchiveOptions["onProgress"] = (p) => {
+    if (p.pages % 50 === 0) {
+        console.log(`  [${p.label}] page ${p.pages} · ${p.saved}건${p.oldestAt ? ` · ~${seoulStamp(p.oldestAt)}` : ""}`);
+    }
+};
+
+/** 텔레그램 방 아카이브 — sync(일일) / backfill(since). dry-run 이면 인메모리 저장소 + 방당 1페이지. */
+async function runTelegramArchive(
+    rt: IngestRuntime,
+    mode: { kind: "sync" } | { kind: "backfill"; since: string },
+    dryRun: boolean,
+): Promise<void> {
+    const label =
+        mode.kind === "sync" ? "텔레그램 아카이브 sync(신규 + 48h 재훑기)" : `텔레그램 아카이브 backfill ${mode.since}~`;
+    console.log(`▶ ${label}${dryRun ? " (dry-run: DB 안 씀, 방당 1페이지)" : ""}`);
+    const store = dryRun ? new DryRunStore() : undefined;
+    const collector = await rt.channelArchive(store);
+    const opts: ChannelArchiveOptions = { onProgress: archiveProgress, maxPagesPerChannel: dryRun ? 1 : undefined };
+    const r =
+        mode.kind === "sync" ? await collector.sync(opts) : await collector.backfill(seoulStart(mode.since), opts);
+    if (store) {
+        for (const m of store.received.slice(0, 5)) {
+            const { raw, ...rest } = m;
+            console.log(`  ${JSON.stringify({ ...rest, rawBytes: JSON.stringify(raw).length })}`);
+        }
+        console.log(`  (dry-run: 총 ${store.received.length}건 수신, 위는 앞 5건 · raw 생략)`);
+    }
+    printArchiveResult(r);
+}
+
 /** 한 영역 실행을 격리 — 실패해도 나머지 영역은 진행(복기 데이터는 필수, 뉴스 등은 best-effort). */
 async function runArea(label: string, fn: () => Promise<void>, failures: string[]): Promise<void> {
     try {
@@ -195,6 +260,9 @@ const USAGE =
     "  daily-stats <from> [to]                      일별 종목 속성(KRX) — 시총·상장주식수·소속부(to 생략=하루)\n" +
     "  backfill-news <from> [to]                     시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
     "  backfill-ipo                                  최근 1년 상장 종목 공모가 enrichment(null만)\n" +
+    "  telegram-sync [--dry-run]                     텔레그램 뉴스 방 아카이브 일일 수집(신규 + 48h 수정 재훑기)\n" +
+    "  telegram-backfill [since=2023-01-01] [--dry-run]\n" +
+    "                                               과거 채움 — 저장된 최소 id 아래로 이어감(중단 후 재실행 = 재개)\n" +
     "  news-search <검색어...> [--from <시각>] [--to <시각>] [--limit N]\n" +
     "                                               텔레그램 등록 방 전체 검색(최신순). 검색어 여러 개=AND(종목+키워드).\n" +
     "                                               시각=YYYY-MM-DD 또는 YYYY-MM-DDTHH:MM (예: --from 2026-06-25T09:00).";
@@ -202,6 +270,7 @@ const USAGE =
 async function main(): Promise<void> {
     const raw = process.argv.slice(2);
     const overwrite = raw.includes("--overwrite");
+    const dryRun = raw.includes("--dry-run");
     const [cmd, a1, a2] = raw.filter((a) => !a.startsWith("--"));
     if (!cmd) {
         console.error(USAGE);
@@ -251,6 +320,16 @@ async function main(): Promise<void> {
             }
             case "backfill-ipo": {
                 await runBackfillIpo(rt);
+                break;
+            }
+            case "telegram-sync": {
+                await runTelegramArchive(rt, { kind: "sync" }, dryRun);
+                break;
+            }
+            case "telegram-backfill": {
+                const since = a1 ?? "2023-01-01";
+                assertDate(since, "since");
+                await runTelegramArchive(rt, { kind: "backfill", since }, dryRun);
                 break;
             }
             case "news-search": {
