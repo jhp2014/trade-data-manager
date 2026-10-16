@@ -22,6 +22,11 @@ export default defineConfig(({ mode }) => {
                     changeOrigin: true,
                     rewrite: stripApi,
                 },
+                "/api/chart": {
+                    target: labApiTarget,
+                    changeOrigin: true,
+                    rewrite: stripApi,
+                },
                 "/api/stocks/master": {
                     target: labApiTarget,
                     changeOrigin: true,

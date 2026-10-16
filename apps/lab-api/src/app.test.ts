@@ -9,13 +9,16 @@ let root: string;
 let close: () => void;
 let call: (path: string, method?: string) => Promise<{ status: number; headers: Headers; json: Record<string, unknown> }>;
 
-type Ports = Partial<Pick<Parameters<typeof createApp>[0], "listDates" | "listStockMeta" | "telegramArchive" | "onError">>;
+type Ports = Partial<
+    Pick<Parameters<typeof createApp>[0], "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "onError">
+>;
 function make(r: string, ports: Ports = {}): void {
     const made = createApp({
         judgmentRoot: r,
         listDates: async () => [],
         listStockMeta: async () => [],
         telegramArchive: { searchPage: async () => ({ items: [] }), coverage: async () => null },
+        chartByCode: () => Promise.reject(new Error("스텁 없음")),
         ...ports,
     });
     close = made.close;
@@ -95,6 +98,27 @@ describe("stocks/master", () => {
         const r = await call("/stocks/master");
         expect(r.status).toBe(200);
         expect(r.json).toEqual(meta);
+    });
+});
+
+describe("chart", () => {
+    it("code·date 검증 통과 시 주입된 chartByCode 결과를 그대로", async () => {
+        close();
+        const bundle = { stockCode: "000001", daily: [], minutes: [], basePrice: null };
+        make(root, { chartByCode: async (code, date) => ({ ...bundle, stockCode: `${code}@${date}` }) });
+        const r = await call("/chart?code=000001&date=2025-01-02");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual({ ...bundle, stockCode: "000001@2025-01-02" });
+    });
+    it("code 없음·date 불량 = 400, NestJS 와 같은 body", async () => {
+        close();
+        make(root);
+        const noCode = await call("/chart?date=2025-01-02");
+        expect(noCode.status).toBe(400);
+        expect(noCode.json).toEqual({ message: "code 필수", error: "Bad Request", statusCode: 400 });
+        const badDate = await call("/chart?code=000001&date=2025-02-30");
+        expect(badDate.status).toBe(400);
+        expect(badDate.json).toEqual({ message: "date 가 유효한 날짜가 아님: 2025-02-30", error: "Bad Request", statusCode: 400 });
     });
 });
 

@@ -5,12 +5,14 @@
 //   GET /dates                                        → string[](YYYY-MM-DD 오름차순) · tdm api GET /dates 와 같은 경로·꼴(lab 프록시가 /api 만 떼고 넘긴다)
 //   GET /stocks/master                                → StockMeta[](코드 오름차순 전량) · tdm api 와 같은 꼴, 캐시 없이 직쿼리
 //   GET /news/telegram/archive?date=|from=&to=[&q=…]  → TelegramArchivePage · 조립은 market/telegramArchive.ts, 400 은 NestJS 와 같은 body
+//   GET /chart?code=&date=                            → ChartBundle(일봉 2년+dense 분봉+basePrice·rawScale) · 조립은 market/chart.ts
 import { statSync } from "node:fs";
 import { Hono } from "hono";
 import type { DataDate, StockMeta } from "@trade-data-manager/wire";
 import { HistoryError, HistoryRepo } from "./judgment/history.js";
+import type { ChartByCode } from "./market/chart.js";
 import { telegramArchivePage, type TelegramArchivePorts } from "./market/telegramArchive.js";
-import { BadRequest } from "./market/validation.js";
+import { assertStockCode, assertYmd, BadRequest } from "./market/validation.js";
 
 /** 판단 저장소가 있는가 — 503 판정과 기동 경고가 같은 질문을 쓴다(main.ts). */
 export function hasJudgmentRoot(p: string): boolean {
@@ -30,11 +32,13 @@ export interface AppOptions {
     listStockMeta: () => Promise<StockMeta[]>;
     /** GET /news/telegram/archive 의 데이터 — 아카이브 검색·coverage(market/telegramArchive.ts). */
     telegramArchive: TelegramArchivePorts;
+    /** GET /chart 의 데이터 — ChartBundle 조립(market/chart.ts 의 makeChartByCode). */
+    chartByCode: ChartByCode;
     /** 예상 밖 오류(500) 로깅 — HistoryError 같은 요청 쪽 잘못은 안 온다. */
     onError?: (e: unknown) => void;
 }
 
-export function createApp({ judgmentRoot, listDates, listStockMeta, telegramArchive, onError = () => undefined }: AppOptions) {
+export function createApp({ judgmentRoot, listDates, listStockMeta, telegramArchive, chartByCode, onError = () => undefined }: AppOptions) {
     const history = new HistoryRepo(judgmentRoot);
     const app = new Hono();
 
@@ -54,6 +58,9 @@ export function createApp({ judgmentRoot, listDates, listStockMeta, telegramArch
 
     app.get("/dates", async (c) => c.json(await listDates()));
     app.get("/stocks/master", async (c) => c.json(await listStockMeta()));
+    app.get("/chart", async (c) =>
+        c.json(await chartByCode(assertStockCode(c.req.query("code")), assertYmd(c.req.query("date")))),
+    );
     app.get("/news/telegram/archive", async (c) =>
         c.json(
             await telegramArchivePage(telegramArchive, {
