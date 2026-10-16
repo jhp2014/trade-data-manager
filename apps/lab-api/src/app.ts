@@ -31,7 +31,7 @@ export function hasJudgmentRoot(p: string): boolean {
 export interface AppOptions {
     /** 판단 저장소(trade-judgment) 루트. 없으면 서버는 뜨되 /judgment 요청에 503. */
     judgmentRoot: string;
-    /** GET /dates 의 데이터 — 분봉 있는 거래일 전체(오름차순). 캐시 없이 매 요청 조회(사용자 결정). */
+    /** GET /dates 의 데이터 — 분봉 있는 거래일 전체(오름차순). wiring 은 파일 물화+꼬리 증분(market/dataDates.ts). */
     listDates: () => Promise<DataDate[]>;
     /** GET /stocks/master 의 데이터 — 종목 마스터 전량(코드·이름·시장, 코드 오름차순). 캐시 없음. */
     listStockMeta: () => Promise<StockMeta[]>;

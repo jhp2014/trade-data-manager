@@ -1,5 +1,5 @@
 // 기동 — 포트는 LAB_API_PORT(사용 3300 / 개발 3310, launch.json lab-api-dev), 판단 저장소는 JUDGMENT_DIR(기본: 레포 옆 trade-judgment).
-// market DB 는 읽기만 — /dates 가 분봉 거래일 distinct 를 매 요청 직쿼리한다(캐시 없음).
+// market DB 는 읽기만. /dates 는 파일 물화(.cache/data-dates.json) + 꼬리 증분(market/dataDates.ts).
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
@@ -21,6 +21,7 @@ import {
 import { NEWS_CHANNELS } from "../../../infra/telegram/src/channels.js";
 import { createApp, hasJudgmentRoot } from "./app.js";
 import { makeChartByCode } from "./market/chart.js";
+import { MaterializedDataDates } from "./market/dataDates.js";
 import { makeDayFlowByDate } from "./market/dayFlow.js";
 
 const port = Number(process.env.LAB_API_PORT ?? 3300);
@@ -41,13 +42,15 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
         const rawDaily = new DrizzleRawDailyCandleRepository(db);
         const master = new DrizzleStockMasterRepository(db);
         const telegram = new DrizzleTelegramMessageRepository(db);
+        const dates = new MaterializedDataDates(minutes); // /dates 파일 물화(.cache) — 풀스캔 6~20s 를 첫 생성 1회로
+
         const archive = new ArchiveNewsSearchService({
             reader: telegram,
             labels: new Map(NEWS_CHANNELS.map((c) => [c.peer, c.label])),
         });
         const peers = NEWS_CHANNELS.map((c) => c.peer);
         return {
-            listDates: () => minutes.listMinuteDates(),
+            listDates: () => dates.list(),
             listStockMeta: () => master.listAllMeta(),
             telegramArchive: {
                 searchPage: (q, opts) => archive.searchPage(q, opts),

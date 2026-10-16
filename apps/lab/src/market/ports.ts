@@ -13,7 +13,7 @@ export interface StockData {
 }
 
 export interface CalendarData {
-    /** 분봉(장중 데이터) 있는 거래일 YYYY-MM-DD, 오름차순(전역·종목무관). 캐시 없는 직쿼리라 수 초 걸린다 — 자주 다시 묻지 말 것. */
+    /** 분봉(장중 데이터) 있는 거래일 YYYY-MM-DD, 오름차순(전역·종목무관). lab-api 가 파일로 물화해 두고 꼬리만 증분 확인한다(첫 생성만 수 초). */
     tradingDays(signal?: AbortSignal): Promise<string[]>;
 }
 
