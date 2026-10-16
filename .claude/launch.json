@@ -22,6 +22,19 @@
         "--strictPort"
       ],
       "port": 3110
+    },
+    {
+      "name": "lab-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@trade-data-manager/lab",
+        "dev",
+        "--port",
+        "3210",
+        "--strictPort"
+      ],
+      "port": 3210
     }
   ]
 }

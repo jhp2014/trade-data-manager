@@ -7,27 +7,28 @@ trade-data-manager — 한국 주식 데이터 수집·큐레이션·실시간 �
 
 ## 작업 위치 (개발/사용 인스턴스 분리)
 
-사용자는 **`C:\Users\whdgn\Dev\trade-data-manager` (main, api 3001 / workbench 3100)** 에서 프로그램을 실사용한다.
-개발은 **`C:\Users\whdgn\Dev\tdm-work` (git worktree, api 3011 / workbench 3110)** 에서만 한다 — 사용자가 쓰는 중에도 개발이 굴러가게 하려는 구성.
+사용자는 **`C:\Users\whdgn\Dev\trade-data-manager` (main, api 3001 / workbench 3100 / lab 3200)** 에서 프로그램을 실사용한다.
+개발은 **`C:\Users\whdgn\Dev\tdm-work` (git worktree, api 3011 / workbench 3110 / lab 3210)** 에서만 한다 — 사용자가 쓰는 중에도 개발이 굴러가게 하려는 구성.
 
 - 세션이 사용자 폴더에서 시작됐으면 **먼저 `C:\Users\whdgn\Dev\tdm-work` 로 옮기고** 작업한다. 사용자 폴더의 파일은 고치지 않는다(그 폴더의 dev 서버가 떠 있어 화면이 흔들린다).
-- 개발 서버 기동: `$env:API_PORT=3011; pnpm --filter @trade-data-manager/api dev` · `pnpm --filter @trade-data-manager/workbench dev -- --port 3110`.
-  루트 `pnpm dev` 는 3001/3100 을 뺏으므로 **개발 워크트리에서 금지**. 같은 이유로 `.claude/launch.json` 에는 **개발 항목(api-dev·workbench-dev)만 둔다** — 사용자 포트를 띄울 손잡이를 아예 안 만드는 것이 경고문보다 확실하다(사용자 화면을 봐야 하면 `preview_start` 에 url 을 직접 준다). apps/live 는 양쪽 다 VPS(100.74.165.85:3002)를 본다.
+- 개발 서버 기동: `$env:API_PORT=3011; pnpm --filter @trade-data-manager/api dev` · `pnpm --filter @trade-data-manager/workbench dev -- --port 3110` · `pnpm --filter @trade-data-manager/lab dev -- --port 3210`.
+  루트 `pnpm dev` 는 3001/3100/3200 을 뺏으므로 **개발 워크트리에서 금지**. 같은 이유로 `.claude/launch.json` 에는 **개발 항목(api-dev·workbench-dev·lab-dev)만 둔다** — 사용자 포트를 띄울 손잡이를 아예 안 만드는 것이 경고문보다 확실하다(사용자 화면을 봐야 하면 `preview_start` 에 url 을 직접 준다). apps/live 는 양쪽 다 VPS(100.74.165.85:3002)를 본다.
 - **공유 자원 — 개발 쪽에서 금지**: market 로컬 Postgres 는 한 벌이다. `ingest backfill`·`db-ops backup` 실행 금지(사용자 데이터가 바뀐다), drizzle 마이그레이션 금지(스키마 변경 작업은 사용자가 사용을 멈추고 진행하기로 합의). curation(Supabase)·live 알람 설정은 **읽기만**.
 - 야간 스케줄러(20:30 collect→backup)는 사용자 폴더 고정.
-- worktree 신설 시 git 추적 밖 물건을 수동 복사: `.env` 6개(`infra/persistence·kis·kiwoom·krx·google·telegram`), `apps/workbench/.env.local`(`API_PROXY_TARGET=http://localhost:3011`), `apps/api/.env`(`VAULT_DIR` — 복기 노트 [탐색], 사용자 폴더 반영 때도 수동 생성), `apps/api/.cache`(~760MB, 안 하면 격자·순위 재굽기).
+- worktree 신설 시 git 추적 밖 물건을 수동 복사: `.env` 6개(`infra/persistence·kis·kiwoom·krx·google·telegram`), `apps/workbench/.env.local`·`apps/lab/.env.local`(둘 다 `API_PROXY_TARGET=http://localhost:3011`), `apps/api/.env`(`VAULT_DIR` — 복기 노트 [탐색], 사용자 폴더 반영 때도 수동 생성), `apps/api/.cache`(~760MB, 안 하면 격자·순위 재굽기).
 - 반영은 사용자가 요청할 때 사용자 폴더에서 fast-forward + 앱 재시작. 브랜치는 한 줄 유지(머지 커밋 금지).
 ## 구조 (헥사고날)
 
 ```
-apps/       api · db-ops · ingest · live · workbench   (진입점)
-core/       market                                      (순수 도메인)
-contracts/  wire                                        (서버↔클라 계약)
+apps/       api · db-ops · ingest · lab · live · workbench   (진입점)
+core/       market                                            (순수 도메인)
+contracts/  wire                                              (서버↔클라 계약)
 infra/      broker · google · kis · kiwoom · persistence · telegram  (어댑터)
 ```
 
 - `apps/api` — NestJS 백엔드 (workbench가 대면하는 REST)
 - `apps/workbench` — Vite+React 작업대, dockview 기반 패널 셸
+- `apps/lab` — 판단 학습 실험실(옛 독립 저장소 trade-lab, 2026-10-16 편입). tdm 데이터는 읽기(GET)만, 판단은 별도 저장소 `C:\Users\whdgn\Dev\trade-judgment` 파일로. 장기적으로 workbench·api 를 대체해 간다(설계: `apps/lab/DESIGN.md`)
 - `apps/live` — 실시간 모니터/알람/트레이더, iwinv VPS 상주
 - `apps/db-ops` — 백업 (market + curation 미러)
 - `apps/ingest` — 수집 CLI (일봉/분봉/뉴스 백필)

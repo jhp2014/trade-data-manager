@@ -1,0 +1,26 @@
+# Dependency directories
+node_modules/
+
+# Build outputs
+/dist/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# api 응답 캐시
+.data/
+
+# Cache
+.cache/
+
+# Turborepo
+.turbo
+
+# TypeScript
+*.tsbuildinfo

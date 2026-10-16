@@ -1,0 +1,180 @@
+:root {
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --border: #d9dde3;
+    --text: #1d2330;
+    --text-2: #5b6474;
+    --text-3: #8a93a3;
+    --hover: #eef1f5;
+    /* workbench 와 같은 글꼴 — Pretendard(index.html 에서 로드), 없으면 시스템 한글 글꼴. */
+    --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    /* 보드(테마 패널) 팔레트 — workbench styles/theme.css 와 같은 값(옮겨 온 부품이 이 이름을 쓴다). */
+    --bg-primary: #ffffff;
+    --bg-secondary: #f7f8fa;
+    --bg-tertiary: #eef1f5;
+    --text-primary: #171b21;
+    --text-secondary: #4c5664;
+    --text-tertiary: #7b8492;
+    --border-subtle: #eef0f3;
+    --border-default: #dfe4ea;
+    --border-strong: #c7ced8;
+    --accent-primary: #16796f;
+    --accent-hover: #0f625a;
+    --accent-soft: #e7f5f2;
+    --rise: #ef4444;
+    --fall: #3b82f6;
+    /* 헤더 일시 알림·경고 정보 — workbench styles/theme.css 와 같은 값. */
+    --warning: #be7a00;
+    --warning-soft: #fff5db;
+}
+
+html,
+body,
+#root {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+    color: inherit;
+}
+
+/* 숫자(종목코드·날짜·시각·금액) — 고정폭 글꼴 대신 같은 글꼴의 고정폭 숫자. */
+.tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+}
+
+/* dockview 라이트 테마의 글꼴 — 테마 클래스가 자기 변수를 직접 정의하므로(상속이 안 닿는다) 그 클래스에 덮는다.
+   :root 를 붙여 특이도를 올려 두면 import 순서가 바뀌어도 이긴다. */
+:root .dockview-theme-light {
+    --dv-font-family: var(--font-sans);
+    /* 탭 줄 높이 — 기본 35px 은 탭 안 가장 큰 것(경로 칩 15px + 색띠 2px)에 비해 위아래가 비었다. */
+    --dv-tabs-and-actions-container-height: 26px;
+}
+/* 탭 칸의 위아래 패딩(기본 4px)을 없앤다 — 있으면 경로 색띠가 줄 바닥이 아니라 글씨 바로 밑에 붙는다.
+   세로 배치는 탭 내용(shell/PanelTab.tsx)이 맡는다. */
+:root .dockview-theme-light .dv-tab {
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+/* 1분 신호 종목이 든 테마 카드 — 테두리가 깜빡인다. */
+@keyframes board-blink {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
+    50% {
+        box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.45);
+    }
+}
+.board-blink {
+    animation: board-blink 1.4s ease-in-out infinite;
+}
+
+/* 가로 칩 줄 — 스크롤바는 숨기고 휠로 넘긴다. */
+.no-scrollbar {
+    scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+
+/* 아이콘 버튼(탭 줄 오른쪽 ⓘ·컨트롤 판 버튼) — workbench styles/theme.css 와 같은 값. */
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    background: transparent;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+}
+.icon-btn:hover:not(:disabled) {
+    color: var(--accent-primary);
+}
+.icon-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* 올리면 나오는 버튼 — 평소엔 자리도 없다가, 감싼 것(.hover-host)에 마우스를 올리거나 그 안에 포커스가 있으면
+   살짝 늘며 나온다. 패널 탭의 최소화 · 경로 카드의 접기/펼치기가 쓴다.
+   폭 0 + 왼쪽 음수 여백으로 감싼 것의 gap(6px)까지 접어 둔다 — 감싼 것은 gap 6px 의 flex 여야 한다. */
+.hover-host .hover-reveal {
+    max-width: 0;
+    margin-left: -6px;
+    padding: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-width 0.12s ease, margin-left 0.12s ease, padding 0.12s ease, opacity 0.12s ease;
+}
+.hover-host:hover .hover-reveal,
+.hover-host:focus-within .hover-reveal {
+    max-width: 16px;
+    margin-left: 0;
+    padding: 0 2px;
+    opacity: 0.5;
+}
+.hover-host .hover-reveal:hover {
+    opacity: 1;
+}
+
+/* 경로 우클릭 판의 기록 줄 — 지우기 × 는 줄에 마우스를 올릴 때만. */
+.history-row .history-x {
+    opacity: 0;
+}
+.history-row:hover .history-x {
+    opacity: 0.5;
+}
+.history-row .history-x:hover {
+    opacity: 1;
+}
+
+/* 보드 종목 줄(board/StockRow.tsx) — 구분선 대신 바탕으로만 가른다. 배경은 여기서만 칠한다(인라인 배경은 :hover 를 이긴다).
+   평면 목록(대금순·등락순)은 줄이 길고 많아 한 줄 건너 옅은 바탕. 카드 안은 줄무늬 없이 hover 만. */
+.stock-row {
+    background: transparent;
+}
+.stock-list-striped > .stock-row:nth-child(even) {
+    background: var(--bg-secondary);
+}
+.stock-row:hover,
+.stock-list-striped > .stock-row:nth-child(even):hover {
+    background: var(--bg-tertiary);
+}
+.stock-row[data-selected],
+.stock-row[data-selected]:hover,
+.stock-list-striped > .stock-row[data-selected]:nth-child(even) {
+    background: var(--accent-soft);
+}
+
+/* 판 안 메뉴 줄(ui/popover/menu.tsx) — 배경은 여기서만 칠한다(인라인 배경은 :hover 를 이긴다). */
+.menu-item {
+    background: transparent;
+}
+.menu-item:not(:disabled):hover {
+    background: var(--bg-tertiary);
+}
+.menu-item[data-selected] {
+    background: var(--accent-soft);
+}
+.menu-item[data-selected]:not(:disabled):hover {
+    background: color-mix(in srgb, var(--accent-soft), var(--accent-primary) 8%);
+}
