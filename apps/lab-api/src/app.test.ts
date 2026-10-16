@@ -9,8 +9,8 @@ let root: string;
 let close: () => void;
 let call: (path: string, method?: string) => Promise<{ status: number; headers: Headers; json: Record<string, unknown> }>;
 
-function make(r: string): void {
-    const made = createApp({ judgmentRoot: r });
+function make(r: string, listDates: () => Promise<string[]> = async () => []): void {
+    const made = createApp({ judgmentRoot: r, listDates });
     close = made.close;
     call = async (path, method = "GET") => {
         const res = await made.app.request(path, { method });
@@ -57,5 +57,30 @@ describe("history", () => {
         const r = await call("/judgment/history/themes?date=2025-02-01");
         expect(r.status).toBe(503);
         expect(r.headers.get("cache-control")).toBe("no-store");
+    });
+});
+
+describe("dates", () => {
+    it("주입된 listDates 를 그대로 배열로 — no-store 는 /judgment 전용이라 없음", async () => {
+        close();
+        make(root, async () => ["2025-01-02", "2025-01-03"]);
+        const r = await call("/dates");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual(["2025-01-02", "2025-01-03"]);
+        expect(r.headers.get("cache-control")).toBeNull();
+    });
+    it("listDates 실패 = 500 JSON + onError — 빈 배열로 삼키지 않는다", async () => {
+        close();
+        const seen: unknown[] = [];
+        const made = createApp({
+            judgmentRoot: root,
+            listDates: () => Promise.reject(new Error("DB down")),
+            onError: (e) => seen.push(e),
+        });
+        close = made.close;
+        const res = await made.app.request("/dates");
+        expect(res.status).toBe(500);
+        expect(await res.json()).toEqual({ error: "lab-api 서버 오류" });
+        expect(seen).toHaveLength(1);
     });
 });
