@@ -20,9 +20,10 @@ const DATE = "2026-07-31";
 const T = kstToUnix(DATE, "10:00:00");
 
 // 이름은 시계열(/day-flow)에 없다 — 마스터(stockMaster) 클라 조인으로 온다.
+// 계약은 분당 원값 — 기준가 없음(base 폴백 = 시가 100)이라 close 100+r 이 곧 r% 로 파생된다(flowDerive).
 const stock = (code: string, rate: number, marketCap: string | null = null): DayFlowStock => ({
     code,
-    times: [T], rate: [rate], high: [rate], low: [0], open: 0, cumAmount: [1e9],
+    times: [T], close: [100 + rate], high: [100 + rate], low: [100], amount: [1e9], open: 100,
     basePrice: { krx: null, un: null }, marketCap,
 });
 const flow: DayFlow = {

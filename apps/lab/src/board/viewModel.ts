@@ -4,12 +4,13 @@
 //   · 큐레이션 표시(annotated) — tdm 큐레이션 피드에 기대고, trade-lab 라벨과는 다른 계통이다.
 //   · 거래대금 구간 카운트(hover 막대) — 쓰는 화면을 가져오지 않았다.
 // 남은 계산은 전부 t 까지의 값만 쓴다(snapshotAt = t 이하 마지막 분, 신호 = t−60초).
-import type { DayFlowStock, PriceMode } from "../market/types.js";
+import type { DerivedFlowStock } from "../market/flowDerive.js";
+import type { PriceMode } from "../market/types.js";
 import type { BoardStock } from "./boardTypes.js";
 import { evaluateSignal, groupStocks, isMover, rebasePct, selectHotUniverse, snapshotAt, stocksByTheme, themeParents, type Grouped } from "./domain.js";
 
-/** 보드 입력 종목 — /day-flow 시계열에 소속(membership)이 입힌 테마를 얹은 것. */
-export type ThemedStock = DayFlowStock & { themes: string[] };
+/** 보드 입력 종목 — /day-flow 를 % 공간으로 파생한 것(flowDerive)에 소속(membership)이 입힌 테마를 얹은 것. */
+export type ThemedStock = DerivedFlowStock & { themes: string[] };
 
 /** 유니버스 크기 — 거래대금 상위 amountN ∪ 등락률 상위 rateN(workbench 기본값). */
 export const DEFAULT_UNIVERSE = { amountN: 80, rateN: 40 } as const;

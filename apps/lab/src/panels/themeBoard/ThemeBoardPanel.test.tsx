@@ -18,10 +18,17 @@ const T0930 = kstToUnix(DATE, "09:30:00");
 const T1000 = kstToUnix(DATE, "10:00:00");
 
 // 09:30 엔 반도체(알파·베타) 카드만 — 조선 종목(감마·델타)은 10:00 에 첫 거래가 나와 그때 카드가 생긴다.
+// 계약은 분당 원값 — 기준가 없음(base 폴백 = 시가 100)이라 close 100+r 이 곧 r% 로 파생된다(flowDerive).
 const stock = (code: string, rate: [number, number], times = [T0930, T1000]): DayFlowStock => ({
     code,
-    times, rate, high: rate, low: [0, 0], open: 0, cumAmount: [1e9, 2e9],
-    basePrice: { krx: null, un: null }, marketCap: null,
+    times,
+    close: rate.map((r) => 100 + r),
+    high: rate.map((r) => 100 + r),
+    low: [100, 100],
+    amount: [1e9, 1e9],
+    open: 100,
+    basePrice: { krx: null, un: null },
+    marketCap: null,
 });
 const flow: DayFlow = {
     date: DATE,
@@ -49,7 +56,8 @@ function renderPanel(calls: string[] = []) {
     const m = fakeMarket({
         dayFlow: async (date: string) => {
             calls.push(date);
-            return flow;
+            // 호출마다 새 봉투 — 파생(deriveFlow)이 flow 객체 단위로 캐시되므로, 테스트가 고친 fixture 가 보이게.
+            return { date: flow.date, stocks: [...flow.stocks] };
         },
         stockMaster: async () => Object.entries(NAMES).map(([stockCode, name]) => ({ stockCode, name, market: "거래소" })),
     });

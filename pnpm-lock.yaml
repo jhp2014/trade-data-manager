@@ -149,6 +149,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.59.0
         version: 5.100.5(react@18.3.1)
+      '@trade-data-manager/market':
+        specifier: workspace:*
+        version: link:../../core/market
       '@trade-data-manager/wire':
         specifier: workspace:*
         version: link:../../contracts/wire

@@ -98,6 +98,56 @@ function r2(x: number): number {
 }
 
 /**
+ * 원값 → base 대비 %(소수 2자리). base 0 이면 0(결손 폴백은 호출자 몫).
+ * 서버(deriveMinutes)와 lab 클라 파생(flowDerive — 가격 기반 /day-flow 를 % 공간으로)이 같은 식을 쓴다 — 수식 단일 출처.
+ */
+export function pctOfBase(won: number, base: number): number {
+    return base === 0 ? 0 : r2(((won - base) / base) * 100);
+}
+
+/** 분당 원값 → % 시계열 파생. base 는 쓴 값을 돌려준다(호출자가 다른 분봉 % 에도 같은 base 를 쓰게). */
+export interface PctSeries {
+    rate: number[]; // 분당 종가 %
+    high: number[]; // 그 분까지의 고가 %(누적 최대)
+    low: number[]; // 그 분까지의 저가 %(누적 최소)
+    cumAmount: number[]; // 그 분까지의 누적 거래대금(원)
+    open: number; // 당일 시가 %
+    base: number; // 실제 쓴 기준가(폴백 해소 뒤)
+}
+
+/**
+ * 분당 원값(dense 타임라인) → % 공간 파생 — 기준가 폴백(없으면 당일 시가)·러닝 고저·누적 대금까지 한 벌.
+ * 서버(deriveMinutes → /day-replay)와 lab 클라(flowDerive → /day-flow 소비)가 **같은 함수**를 쓴다 —
+ * 한쪽만 바뀌어 workbench 복기와 lab 보드의 % 가 조용히 갈라지는 일을 원천 차단(수식·누적 단일 출처).
+ */
+export function pctSeriesOf(
+    bars: { close: number[]; high: number[]; low: number[]; amount: number[] },
+    openWon: number,
+    baseUn: number | null,
+): PctSeries {
+    const base = baseUn ?? openWon;
+    const pct = (won: number): number => pctOfBase(won, base);
+    const n = bars.close.length;
+    const rate = new Array<number>(n);
+    const high = new Array<number>(n);
+    const low = new Array<number>(n);
+    const cumAmount = new Array<number>(n);
+    let hi = -Infinity;
+    let lo = Infinity;
+    let cum = 0;
+    for (let i = 0; i < n; i++) {
+        hi = Math.max(hi, bars.high[i]);
+        lo = Math.min(lo, bars.low[i]);
+        cum += bars.amount[i];
+        rate[i] = pct(bars.close[i]);
+        high[i] = pct(hi);
+        low[i] = pct(lo);
+        cumAmount[i] = cum;
+    }
+    return { rate, high, low, cumAmount, open: pct(openWon), base };
+}
+
+/**
  * % 재기저(일차변환) — fromBase 대비 %를 toBase 대비 %로. 같은 가격 v 에서 나온 %라 수학적 동치:
  * v = fromBase×(1+pct/100) → (v−toBase)/toBase×100 = fromBase×(100+pct)/toBase − 100.
  * 복기·라이브 보드의 KRX 기준가 토글이 UN% 시계열을 즉석 변환(파일·와이어 이중화 불필요).
@@ -154,44 +204,44 @@ export function deriveMinutes(
 
     const trailingHighs = trailingHighsOf(adjDaily, date);
     const bp = basePricesOf(rawDaily, adjDaily, date);
-    const base = bp.base.un ?? Number(minutes[0].un.open);
-    const pct = (won: number): number => (base === 0 ? 0 : r2(((won - base) / base) * 100));
 
+    // 분당 원값 추출 — %·누적 파생은 pctSeriesOf(수식·누적 단일 출처: lab /day-flow 클라 파생과 같은 함수).
     const n = minutes.length;
     const times = new Array<number>(n);
-    const rate = new Array<number>(n);
-    const high = new Array<number>(n);
-    const low = new Array<number>(n);
-    const cumAmount = new Array<number>(n);
-    const minuteOpen = new Array<number>(n);
-    const minuteHigh = new Array<number>(n);
-    const minuteLow = new Array<number>(n);
-
-    let hi = -Infinity;
-    let lo = Infinity;
-    let cum = 0;
+    const openW = new Array<number>(n);
+    const highW = new Array<number>(n);
+    const lowW = new Array<number>(n);
+    const closeW = new Array<number>(n);
+    const amountW = new Array<number>(n);
     for (let i = 0; i < n; i++) {
         const m = minutes[i];
-        const o = Number(m.un.open);
-        const h = Number(m.un.high);
-        const l = Number(m.un.low);
-        const c = Number(m.un.close);
-        hi = Math.max(hi, h);
-        lo = Math.min(lo, l);
-        cum += Number(
+        times[i] = kstToUnix(m.date, m.time);
+        openW[i] = Number(m.un.open);
+        highW[i] = Number(m.un.high);
+        lowW[i] = Number(m.un.low);
+        closeW[i] = Number(m.un.close);
+        amountW[i] = Number(
             computeMinuteTradingAmount({ open: m.un.open, high: m.un.high, low: m.un.low, close: m.un.close, volume: m.un.volume }),
         );
-        times[i] = kstToUnix(m.date, m.time);
-        rate[i] = pct(c);
-        high[i] = pct(hi);
-        low[i] = pct(lo);
-        cumAmount[i] = cum;
-        minuteOpen[i] = pct(o);
-        minuteHigh[i] = pct(h);
-        minuteLow[i] = pct(l);
     }
+    const s = pctSeriesOf({ close: closeW, high: highW, low: lowW, amount: amountW }, openW[0], bp.base.un);
+    const pct = (won: number): number => pctOfBase(won, s.base);
 
-    return { code, times, rate, high, low, open: pct(Number(minutes[0].un.open)), cumAmount, minuteOpen, minuteHigh, minuteLow, trailingHighs, basePrice: bp.base, baseFactor: bp.factor };
+    return {
+        code,
+        times,
+        rate: s.rate,
+        high: s.high,
+        low: s.low,
+        open: s.open,
+        cumAmount: s.cumAmount,
+        minuteOpen: openW.map(pct),
+        minuteHigh: highW.map(pct),
+        minuteLow: lowW.map(pct),
+        trailingHighs,
+        basePrice: bp.base,
+        baseFactor: bp.factor,
+    };
 }
 
 /**

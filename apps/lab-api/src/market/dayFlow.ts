@@ -1,10 +1,15 @@
 // DayFlow 조립 — tdm api 의 DerivedCache.doBuild(파일 베이크·완료판정·테마 조인 포함)를 재현하지 않고,
-// 같은 재료(universe·분봉·원주가/수정주가 일봉·시총)를 요청마다 직계산한다(결정 로그 「trade-lab 편입」:
-// /day-replay 는 재현하지 않는다 — lab 전용 /day-flow). 종목당 파생은 core deriveMinutes 그대로.
+// 같은 재료(universe·분봉·원주가/수정주가 일봉·시총)를 요청마다 직계산한다.
+// 계약 원칙(결정 로그 「trade-lab 편입」): **서버 = 분당 사실 + 기준가, 표현(%·누적·기준 전환)은 전부 클라.**
+// 그래서 core deriveMinutes(% 선계산)를 쓰지 않고 같은 재료 단계(densifyMinutes + basePricesOf +
+// computeMinuteTradingAmount + kstToUnix)로 분당 원값만 담는다 — dense 타임라인(빈 분 flat-fill, 대금 0)은 동일.
 import {
-    deriveMinutes,
-    subtractMonths,
+    basePricesOf,
+    computeMinuteTradingAmount,
+    densifyMinutes,
+    kstToUnix,
     mapWithConcurrency,
+    subtractMonths,
     RAW_DAILY_LOOKBACK_MONTHS,
     type AdjustedDailyReader,
     type DailyMarketCapReader,
@@ -21,6 +26,7 @@ export interface DayFlowDeps {
     universe: DailyUniverseProvider;
     minute: MinuteReader;
     rawDaily: RawDailyReader;
+    /** 수정주가 일봉 — basePricesOf 의 이벤트(감자·액분) 보정 재료(원주가와 대조). */
     adjDaily: AdjustedDailyReader;
     marketCap: DailyMarketCapReader;
 }
@@ -43,17 +49,32 @@ export function makeDayFlowByDate({ universe, minute, rawDaily, adjDaily, market
                 rawDaily.getRawDailyCandles(code, range),
                 adjDaily.getDailyCandles(code, range),
             ]);
-            const d = deriveMinutes(code, minutes, raw, adj, date);
-            if (d === null) return null; // 분봉 없음(이론상 universe 밖) → skip
+            const dense = densifyMinutes(minutes);
+            if (dense.length === 0) return null; // 분봉 없음(이론상 universe 밖) → skip
+
+            const n = dense.length;
+            const times = new Array<number>(n);
+            const close = new Array<number>(n);
+            const high = new Array<number>(n);
+            const low = new Array<number>(n);
+            const amount = new Array<number>(n);
+            for (let i = 0; i < n; i++) {
+                const m = dense[i];
+                times[i] = kstToUnix(m.date, m.time);
+                close[i] = Number(m.un.close);
+                high[i] = Number(m.un.high);
+                low[i] = Number(m.un.low);
+                amount[i] = Number(computeMinuteTradingAmount(m.un));
+            }
             return {
                 code,
-                times: d.times,
-                rate: d.rate,
-                high: d.high,
-                low: d.low,
-                open: d.open,
-                cumAmount: d.cumAmount,
-                basePrice: d.basePrice,
+                times,
+                close,
+                high,
+                low,
+                amount,
+                open: Number(dense[0].un.open),
+                basePrice: basePricesOf(raw, adj, date).base,
                 marketCap: capByCode.get(code) ?? null,
             };
         });

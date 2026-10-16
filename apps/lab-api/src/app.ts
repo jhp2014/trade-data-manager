@@ -7,7 +7,7 @@
 //   GET /news/telegram/archive?date=|from=&to=[&q=…]  → TelegramArchivePage · 조립은 market/telegramArchive.ts, 400 은 NestJS 와 같은 body
 //   GET /chart?code=&date=                            → ChartBundle(일봉 2년+dense 분봉+basePrice·rawScale) · 조립은 market/chart.ts
 //   GET /news/hts?date=[&code=&q=&before…]            → HtsNewsItem[](최신순) · 조립은 market/htsNews.ts
-//   GET /day-flow?date=                               → DayFlow(그날 universe 전부의 분당 % 시계열) · lab 전용 계약, 조립은 market/dayFlow.ts
+//   GET /day-flow?date=                               → DayFlow(그날 universe 전부의 분당 원값 — 표현(%·누적)은 클라) · lab 전용 계약, 조립은 market/dayFlow.ts
 import { statSync } from "node:fs";
 import { Hono } from "hono";
 import type { DataDate, StockMeta } from "@trade-data-manager/wire";

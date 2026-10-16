@@ -65,8 +65,8 @@ export interface StockMeta {
 }
 
 /**
- * GET /day-flow?date — 그날 수집 종목 전부의 분당 % 시계열(lab 전용 계약, lab-api 서빙 — contracts/wire 정의를
- * 그대로 쓴다). % 는 전부 통합(UN) 기준가 대비 한 벌(소수 2자리), times 는 kstToUnix(date, time) 로 만든 unix 초.
+ * GET /day-flow?date — 그날 수집 종목 전부의 **분당 원값**(lab 전용 계약, lab-api 서빙 — contracts/wire 정의를
+ * 그대로 쓴다). 표현(%·누적·기준 전환)은 전부 클라 몫 — 받은 뒤 flowDerive.ts 가 % 공간으로 파생한다.
  * 옛 /day-replay 와 달리 name·market(마스터 클라 조인)·themes(시트 의존 소멸)가 없다.
  */
 export type { DayFlow, DayFlowStock } from "@trade-data-manager/wire";

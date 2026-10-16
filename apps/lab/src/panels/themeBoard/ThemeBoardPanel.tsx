@@ -7,7 +7,8 @@ import { CLOSE_TIME, usePanelPath } from "../../store/paths.js";
 import { usePanelUi, usePanelUiNumber } from "../../store/panelUi.js";
 import { useDayFlow, useStockNameOf } from "../../market/queries.js";
 import { kstToUnix } from "../../market/domain.js";
-import type { DayFlowStock, PriceMode } from "../../market/types.js";
+import { deriveFlow } from "../../market/flowDerive.js";
+import type { PriceMode } from "../../market/types.js";
 import { DEFAULT_UNIVERSE, buildThemeBoard, focusPlace, type ThemedStock } from "../../board/viewModel.js";
 import { BoardLayout } from "../../board/BoardLayout.js";
 import { useSelfPick } from "../../board/useSelfPick.js";
@@ -64,8 +65,10 @@ export function ThemeBoardPanel({ panelId, membership, onInspect, children }: {
     const themes = membership.themes;
     const index = useMemo(() => {
         if (!flow || !themes) return null;
-        const withThemes = (s: DayFlowStock): ThemedStock => ({ ...s, themes: themes.get(s.code) ?? [] });
-        return new Map(flow.stocks.map((s) => [s.code, withThemes(s)]));
+        // 원값 → % 파생(deriveFlow — flow 객체당 한 벌 공유) + 테마 입히기. 보드는 % 공간(ThemedStock)만 본다.
+        const entries: [string, ThemedStock][] = [];
+        for (const d of deriveFlow(flow).values()) entries.push([d.code, { ...d, themes: themes.get(d.code) ?? [] }]);
+        return new Map(entries);
     }, [flow, themes]);
     const shownTime = time || CLOSE_TIME;
     const tUnix = flow ? kstToUnix(flow.date, `${shownTime}:00`) : 0;

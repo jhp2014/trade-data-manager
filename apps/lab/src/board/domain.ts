@@ -1,7 +1,8 @@
-// 테마 보드 순수 계산 — tdm-work core/market/src/domain 에서 보드가 쓰는 것만 옮겨 왔다(외부 import 0).
+// 테마 보드 순수 계산 — tdm-work core/market/src/domain 에서 보드가 쓰는 것만 옮겨 왔다.
 //   board/ranking.ts(유니버스) · board/roster.ts(테마 로스터·포함관계·관련 테마) · board/grouping.ts(카드 묶기)
-//   board/signals.ts(주도주·1분 신호) · replay/dayReplay.ts(rebasePct) · replay/rankSection.ts(lastIndexAtOrBefore)
-import type { DayFlowStock } from "../market/types.js";
+//   board/signals.ts(주도주·1분 신호) · replay/rankSection.ts(lastIndexAtOrBefore)
+// 예외: % 수식(rebasePct)만은 복사가 아니라 core 재수출 — /day-flow 가격 전환으로 % 파생이 core 단일 출처가 되면서.
+import type { DerivedFlowStock } from "../market/flowDerive.js";
 
 // ── 시점 스냅샷 ───────────────────────────────────────────────
 
@@ -32,16 +33,15 @@ export interface Snapshot {
 }
 
 /** 시점 t 의 스냅샷 — t 이하 마지막 분의 값(그 시각까지의 정보만). t 이전 데이터가 없으면 null(아직 미개장). */
-export function snapshotAt(s: Pick<DayFlowStock, "code" | "times" | "rate" | "open" | "high" | "low" | "cumAmount">, t: number): Snapshot | null {
+export function snapshotAt(s: Pick<DerivedFlowStock, "code" | "times" | "rate" | "open" | "high" | "low" | "cumAmount">, t: number): Snapshot | null {
     const i = lastIndexAtOrBefore(s.times, t);
     if (i < 0) return null;
     return { code: s.code, rate: s.rate[i], openPct: s.open, highPct: s.high[i], lowPct: s.low[i], cumAmount: s.cumAmount[i] };
 }
 
-/** % 재기저 — fromBase 대비 % 를 toBase 대비 % 로(같은 가격). 통합(UN) % 를 KRX 기준으로 바꿀 때. 소수 2자리. */
-export function rebasePct(pct: number, fromBase: number, toBase: number): number {
-    return Math.round(((fromBase * (100 + pct)) / toBase - 100) * 100) / 100;
-}
+// % 재기저(KRX 토글)는 core rebasePct 를 재수출 — 가격 기반 /day-flow 전환으로 % 수식이 core 단일 출처가 되면서
+// 이 파일의 복사본도 걷었다(한쪽만 바뀌면 workbench 복기와 lab 보드의 KRX % 가 0.01 단위로 갈라진다).
+export { rebasePct } from "@trade-data-manager/market/domain";
 
 // ── 유니버스 ─────────────────────────────────────────────────
 
