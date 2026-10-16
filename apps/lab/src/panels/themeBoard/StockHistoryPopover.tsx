@@ -89,8 +89,9 @@ export function HistoryBody({ h, intraday }: { h: StockHistory; intraday: boolea
                     h.themes.map((t) => (
                         <div key={t.theme} style={{ display: "grid", gridTemplateColumns: "auto auto 1fr", alignItems: "baseline", columnGap: 8, padding: "2px 12px" }}>
                             <span style={{ fontWeight: 600 }}>{t.theme}</span>
-                            <span className="tabular" style={{ color: "var(--text-secondary)", whiteSpace: "nowrap" }} title={`${t.first} ~ ${t.last}`}>
+                            <span className="tabular" style={{ color: "var(--text-secondary)", whiteSpace: "nowrap" }} title={`움직인 날 ${t.first} ~ ${t.last}${t.listed ? ` · 구성 첫 등재 ${t.listed}` : ""}`}>
                                 {t.n}번 · {short(t.first)}~{short(t.last)}
+                                {t.listed && <span style={{ color: "var(--text-tertiary)" }}> · 등재 {short(t.listed)}</span>}
                             </span>
                             <span style={{ color: "var(--text-tertiary)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={t.details.join(" · ")}>
                                 {t.details.filter((d) => d !== t.theme).join(" · ")}
@@ -100,7 +101,8 @@ export function HistoryBody({ h, intraday }: { h: StockHistory; intraday: boolea
                 )}
             </Section>
             <Section title="이력" aside={`${h.lines.length}일`}>
-                {h.lines.length === 0 ? <Note>{empty}</Note> : h.lines.map((l) => <Line key={l.date} l={l} />)}
+                {/* 한 날짜에 출처별 줄이 따로 온다(cafe · awake 합집합) — 날짜만으로는 키가 겹친다. */}
+                {h.lines.length === 0 ? <Note>{empty}</Note> : h.lines.map((l) => <Line key={`${l.date}|${l.sources.join("·")}`} l={l} />)}
             </Section>
         </>
     );
@@ -149,6 +151,9 @@ function Line({ l, showReasons = false }: { l: HistoryLine; showReasons?: boolea
                             {d}
                         </span>
                     ))}
+                </span>
+                <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: 10, color: "var(--text-tertiary)" }} title="근거 출처">
+                    {l.sources.join("·")}
                 </span>
             </div>
             {l.issue && <div style={{ color: "var(--text-primary)", marginTop: 1 }}>{l.issue}</div>}

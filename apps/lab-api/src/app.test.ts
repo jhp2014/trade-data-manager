@@ -35,14 +35,14 @@ function make(r: string, ports: Ports = {}): void {
 
 beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "judgment-app-"));
-    await mkdir(join(root, "이력"), { recursive: true });
+    await mkdir(join(root, "이력-awake"), { recursive: true });
     await mkdir(join(root, "관점"), { recursive: true });
     await writeFile(join(root, "관점", "테마 사전.md"), "| 테마 | 이력 이름 | 상위 |\n|---|---|---|\n| 반도체 | HBM | |\n");
     const rows = [
         { v: 1, kind: "stock", id: "stock", code: "000001", name: "알파" },
         { v: 1, kind: "issue", id: "2025-01-02", date: "2025-01-02", themes: ["HBM"], issue: "x", high: null, evidence: [{ src: "cafe", title: "1. HBM", pct: 5 }] },
     ];
-    await writeFile(join(root, "이력", "000001.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    await writeFile(join(root, "이력-awake", "000001.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
     make(root);
 });
 afterEach(async () => {

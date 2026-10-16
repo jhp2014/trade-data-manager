@@ -40,7 +40,7 @@ const MASTER = [
 const alphaHistory: StockHistory = {
     code: "000001", name: "알파", asOf: DATE,
     closing: { date: DATE, details: ["반도체 유리기판"], themes: ["유리기판", "반도체"], issue: "유리기판 양산", pct: 9.1, limitUp: false, reasons: ["1. 유리기판 상용화 기대감에 관련주 상승"], sources: ["cafe"] },
-    themes: [{ theme: "반도체", n: 3, first: "2025-01-02", last: "2026-07-30", details: ["HBM", "반도체"] }],
+    themes: [{ theme: "반도체", n: 3, first: "2025-01-02", last: "2026-07-30", listed: "2024-12-20", details: ["HBM", "반도체"] }],
     lines: [{ date: "2026-07-30", details: ["HBM"], themes: ["반도체"], issue: "HBM 공급 기대", pct: 12.3, limitUp: false, reasons: [], sources: ["cafe"] }],
     coverage: { from: "2023-02-14", to: "2026-07-30" },
 };
@@ -129,7 +129,8 @@ describe("ThemePanel(이력 소속)", () => {
         const pop = await layer();
         expect(pop.getByTitle("시가총액").textContent).toBe("시총 1.2조");
         expect(await pop.findByText("장마감 정리")).toBeTruthy();
-        expect(pop.getByText("3번 · 25.01.02~26.07.30")).toBeTruthy();
+        // 움직인 날 수·기간 + 구성 첫 등재일(테마구성) — 한 줄에 같이 보인다.
+        expect(pop.getByTitle(/구성 첫 등재 2024-12-20/).textContent).toBe("3번 · 25.01.02~26.07.30 · 등재 24.12.20");
         expect(pop.getByText("HBM 공급 기대")).toBeTruthy();
         // 경로 시각 10:00 — 장 마감 뒤 정보는 접혀 있고, 누르면 펼친다.
         expect(pop.getByText("장 마감 뒤 정보 — 지금 시각엔 아직 없다")).toBeTruthy();

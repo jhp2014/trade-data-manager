@@ -1,7 +1,12 @@
-// 이슈 이력 읽기 — trade-judgment 의 이력/<코드>.jsonl 전부와 관점/테마 사전.md 를 메모리에 올린다(app.ts 의 /judgment 라우트가 쓴다). 순수 node.
-// 형식: trade-judgment/이력/형식.md. 이력의 테마 이름(세부)을 사전으로 테마에 잇는 규칙은 trade-judgment/tools/theme-dict.mjs 와 같다
-// (사전 「쓰는 법」 — 같은 이름 → 괄호 속 이름 → 괄호 설명을 뗀 이름 → 끝이 가장 길게 맞는 이름, 상위가 있으면 그것도).
-// 이력 · 사전 파일이 바뀌면 다음 요청 때 다시 읽는다(fs.watch).
+// 이슈 이력 읽기 — trade-judgment 의 두 폴더와 관점/테마 사전.md 를 메모리에 올린다(app.ts 의 /judgment 라우트가 쓴다). 순수 node.
+//   이력-awake/<코드>.jsonl  — AWAKE 브리핑의 "움직인 날"(기계 생성·재생성 가능). 형식: 이력-awake/형식.md(줄 꼴은 이력/형식.md 와 같다)
+//   테마구성/<테마>.jsonl    — 날짜별 구성 스냅샷(등재 — 움직임과 섞지 않는다, 테마구성/형식.md)
+// 옛 이력/(cafe, 주도주시황)은 2026-10-16 은퇴 — **읽지 않는다**(폴더가 곧 삭제돼도 오류 없이 견딘다).
+// 의미 규칙(decisions 「테마 소속의 소스」): 빈도 n·구동일 = 이력-awake 의 움직인 날 · 첫 등재일 = 테마구성에서 ·
+// asOf(그날 이전만) 차단은 둘 모두. 줄의 소스 구분(sources)은 유지한다 — 소스는 또 늘 수 있다(telegram·hts 등).
+// 테마 이름(세부)을 사전으로 테마에 잇는 규칙은 trade-judgment/tools/theme-dict.mjs 와 같다(같은 이름 → 괄호 속 →
+// 괄호 뗀 이름 → 끝이 가장 길게 맞는 이름, 상위 포함) — 테마구성의 테마명도 같은 사전을 거친다.
+// 파일이 바뀌면 다음 요청 때 다시 읽는다(fs.watch).
 import { watch, type FSWatcher } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -99,9 +104,12 @@ export interface HistoryLine {
 
 export interface ThemeCount {
     theme: string;
+    /** 움직인 날 수(두 이력 합집합 — 같은 날 양쪽에 있으면 하루). */
     n: number;
     first: string;
     last: string;
+    /** 이 테마 구성 명단에 처음 등재된 날(테마구성/, asOf 이전) — 등재 기록이 없거나 아직 모르면 null. */
+    listed: string | null;
     /** 이 테마로 이어진 세부 이름들(자주 쓴 순). */
     details: string[];
 }
@@ -187,30 +195,42 @@ function toLine(r: Raw, dict: ThemeDict): HistoryLine {
     };
 }
 
-/** 기준일 이전 줄로 테마를 센다 — 많이 · 최근 순. */
-function countThemes(lines: readonly HistoryLine[]): ThemeCount[] {
-    const by = new Map<string, ThemeCount & { det: Map<string, number> }>();
+/**
+ * 기준일 이전 줄로 테마를 센다 — 많이 · 최근 순. n 은 **날짜** 수다(두 소스가 같은 날 겹치면 하루 —
+ * 줄 수로 세면 cafe+awake 가 같은 날을 두 번 센다). 등재일(listed)은 테마구성에서(없으면 null).
+ */
+function countThemes(lines: readonly HistoryLine[], listedOf: (theme: string) => string | null = () => null): ThemeCount[] {
+    const by = new Map<string, { theme: string; dates: Set<string>; first: string; last: string; det: Map<string, number> }>();
     for (const l of lines)
         for (const t of l.themes) {
-            const c = by.get(t) ?? { theme: t, n: 0, first: l.date, last: l.date, details: [], det: new Map() };
-            c.n++;
+            const c = by.get(t) ?? { theme: t, dates: new Set<string>(), first: l.date, last: l.date, det: new Map() };
+            c.dates.add(l.date);
             if (l.date < c.first) c.first = l.date;
             if (l.date > c.last) c.last = l.date;
             for (const d of l.details) c.det.set(d, (c.det.get(d) ?? 0) + 1);
             by.set(t, c);
         }
     return [...by.values()]
-        .map(({ det, ...c }) => ({ ...c, details: [...det].sort((a, b) => b[1] - a[1]).map(([d]) => d) }))
+        .map(({ det, dates, ...c }) => ({
+            ...c,
+            n: dates.size,
+            listed: listedOf(c.theme),
+            details: [...det].sort((a, b) => b[1] - a[1]).map(([d]) => d),
+        }))
         .sort((a, b) => b.n - a.n || b.last.localeCompare(a.last));
 }
+
+/** 종목 → (테마 → 등재일들, 오름차순 유니크) — 테마구성/ 스냅샷에서. 테마명은 사전으로 이은 것(상위 포함). */
+type Listings = Map<string, Map<string, string[]>>;
 
 interface Loaded {
     stocks: Map<string, Stock>;
     dict: ThemeDict;
     coverage: Coverage | null;
+    listings: Listings;
 }
 
-const WATCHED = ["이력", "관점"] as const;
+const WATCHED = ["이력-awake", "테마구성", "관점"] as const;
 
 /** 이력 · 사전을 메모리에 들고, 파일이 바뀌면 다음 요청 때 다시 읽는다. */
 export class HistoryRepo {
@@ -230,7 +250,7 @@ export class HistoryRepo {
         this.load().catch(() => undefined);
     }
 
-    /** 그날 이전 이력으로 종목마다 테마(많이 · 최근 순). 이력이 없거나 묶인 테마가 없는 종목은 빠진다. */
+    /** 그날 이전 이력(두 소스 합집합)으로 종목마다 테마(많이 · 최근 순). 이력이 없거나 묶인 테마가 없는 종목은 빠진다. */
     async themesAsOf(date: string): Promise<{ stocks: Record<string, string[]>; coverage: Coverage | null }> {
         if (!DATE.test(date)) throw new HistoryError(400, `날짜 형식이 아니다: ${date}`);
         const { stocks, dict, coverage } = await this.load();
@@ -243,22 +263,28 @@ export class HistoryRepo {
         return { stocks: out, coverage };
     }
 
-    /** 한 종목의 이력 — 기준일 이전 줄 · 테마별 셈 · 기준일의 장 마감 정리. 이력 파일이 없으면 404. */
+    /** 한 종목의 이력 — 기준일 이전 줄(두 소스) · 테마별 셈(+첫 등재일) · 기준일의 장 마감 정리. 이력 파일이 없으면 404. */
     async stock(code: string, date: string): Promise<StockHistory> {
         if (!CODE.test(code)) throw new HistoryError(400, `종목 코드가 아니다: ${code}`);
         if (!DATE.test(date)) throw new HistoryError(400, `날짜 형식이 아니다: ${date}`);
-        const { stocks, dict, coverage } = await this.load();
+        const { stocks, dict, coverage, listings } = await this.load();
         const s = stocks.get(code);
         if (!s) throw new HistoryError(404, `이력이 없다: ${code}`);
         const before = s.lines.filter((l) => l.date < date).map((l) => toLine(l, dict));
-        const today = s.lines.find((l) => l.date === date);
-        const closing = today ? toLine(today, dict) : null;
+        // 장 마감 정리는 cafe(주도주시황) 전용 — 같은 날 awake 줄이 있어도 섞지 않는다.
+        const closing = s.lines.filter((l) => l.date === date).map((l) => toLine(l, dict)).find((l) => l.sources.includes("cafe")) ?? null;
+        // 첫 등재일 = 테마구성에서 그 테마 스냅샷에 처음 나타난 날 — asOf 차단(그날 이전만 안다).
+        const listedByTheme = listings.get(code);
+        const listedOf = (theme: string): string | null => {
+            const first = listedByTheme?.get(theme)?.[0];
+            return first !== undefined && first < date ? first : null;
+        };
         return {
             code,
             name: s.name,
             asOf: date,
-            closing: closing && closing.sources.includes("cafe") ? closing : null,
-            themes: countThemes(before),
+            closing,
+            themes: countThemes(before, listedOf),
             lines: before.reverse(),
             coverage,
         };
@@ -282,8 +308,9 @@ export class HistoryRepo {
         return this.data;
     }
 
-    private async read(): Promise<Loaded> {
-        const dir = join(this.root, "이력");
+    /** 한 이력 폴더를 종목 맵으로 — 폴더가 없으면 빈 맵(부재를 오류 없이 견딘다). */
+    private async readStocks(sub: string): Promise<Map<string, Stock>> {
+        const dir = join(this.root, sub);
         const files = (await readdir(dir).catch(() => [] as string[])).filter((f) => /^[0-9A-Z]{6}\.jsonl$/.test(f));
         const stocks = new Map<string, Stock>();
         await Promise.all(
@@ -292,11 +319,56 @@ export class HistoryRepo {
                 if (s) stocks.set(f.slice(0, 6), s);
             }),
         );
-        const dictText = await readFile(join(this.root, "관점", "테마 사전.md"), "utf8").catch(() => "");
+        return stocks;
+    }
+
+    /** 테마구성/ 스냅샷 → 종목 → (테마 → 등재일들). 테마명은 줄의 theme 칸(파일명 아님 — 치환 겹침)을 사전으로 잇는다. */
+    private async readListings(dict: ThemeDict): Promise<Listings> {
+        const dir = join(this.root, "테마구성");
+        const files = (await readdir(dir).catch(() => [] as string[])).filter((f) => f.endsWith(".jsonl"));
+        const byCode: Listings = new Map();
+        await Promise.all(
+            files.map(async (f) => {
+                for (const l of (await readFile(join(dir, f), "utf8")).split(/\r?\n/)) {
+                    if (!l.trim()) continue;
+                    let r: Record<string, unknown>;
+                    try {
+                        r = JSON.parse(l) as Record<string, unknown>;
+                    } catch {
+                        continue;
+                    }
+                    if (r.kind !== "snapshot" || typeof r.date !== "string" || !DATE.test(r.date)) continue;
+                    if (typeof r.theme !== "string" || !Array.isArray(r.stocks)) continue;
+                    const themes = dict.resolve(r.theme);
+                    if (themes.length === 0) continue; // 사전에 안 묶이는 이름 — 움직인 날 쪽과 같은 규칙(조인 불가)
+                    for (const code of r.stocks) {
+                        if (typeof code !== "string" || !CODE.test(code)) continue;
+                        let per = byCode.get(code);
+                        if (!per) byCode.set(code, (per = new Map()));
+                        for (const t of themes) {
+                            const dates = per.get(t);
+                            if (dates) dates.push(r.date);
+                            else per.set(t, [r.date]);
+                        }
+                    }
+                }
+            }),
+        );
+        for (const per of byCode.values()) for (const [t, dates] of per) per.set(t, [...new Set(dates)].sort());
+        return byCode;
+    }
+
+    private async read(): Promise<Loaded> {
+        const [stocks, dictText] = await Promise.all([
+            this.readStocks("이력-awake"), // 옛 이력/(cafe)은 은퇴 — 읽지 않는다
+            readFile(join(this.root, "관점", "테마 사전.md"), "utf8").catch(() => ""),
+        ]);
+        const dict = parseThemeDict(dictText);
+        const listings = await this.readListings(dict);
         const froms = [...stocks.values()].flatMap((s) => (s.from && s.to ? [s.from] : [])).sort();
         const tos = [...stocks.values()].flatMap((s) => (s.from && s.to ? [s.to] : [])).sort();
         const coverage: Coverage | null = froms.length ? { from: froms[0]!, to: tos.at(-1)! } : null;
-        return { stocks, dict: parseThemeDict(dictText), coverage };
+        return { stocks, dict, coverage, listings };
     }
 
     /** 이력 · 관점 폴더를 본다 — 무엇이든 바뀌면 다음 요청 때 다시 읽는다. 둘 다 지켜보면 true(아니면 읽은 것을 캐시하지 않는다). */

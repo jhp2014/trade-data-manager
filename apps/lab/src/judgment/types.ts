@@ -1,5 +1,5 @@
-// 판단 저장소(trade-judgment)의 이슈 이력 — 원본 규약: trade-judgment/이력/형식.md, 테마 묶기: 관점/테마 사전.md.
-// 화면은 이 모양만 안다 — 주는 쪽은 apps/lab-api(src/judgment/history.ts)다.
+// 판단 저장소(trade-judgment)의 이슈 이력 — 원본 규약: trade-judgment/이력-awake/형식.md(움직인 날) ·
+// 테마구성/형식.md(등재), 테마 묶기: 관점/테마 사전.md. 화면은 이 모양만 안다 — 주는 쪽은 apps/lab-api(src/judgment/history.ts)다.
 
 /** 이력 한 줄(그날). */
 export interface HistoryLine {
@@ -14,16 +14,19 @@ export interface HistoryLine {
     limitUp: boolean;
     /** 장 마감 정리(주도주시황)의 묶음 이유들 — 그날의 문맥. */
     reasons: string[];
-    /** 근거 출처(cafe · telegram · hts). */
+    /** 근거 출처(cafe · awake · telegram · hts) — 화면이 소스를 가려 보는 재료. */
     sources: string[];
 }
 
 /** 기준일 이전 이력에서 테마 하나를 센 것. */
 export interface ThemeCount {
     theme: string;
+    /** 움직인 날 수(이력-awake — 소스가 늘면 날짜 단위 합집합). */
     n: number;
     first: string;
     last: string;
+    /** 이 테마 구성 명단에 처음 등재된 날(테마구성/, 기준일 이전) — 등재 기록이 없거나 아직 모르면 null. */
+    listed: string | null;
     /** 이 테마로 이어진 세부 이름들(자주 쓴 순). */
     details: string[];
 }
