@@ -625,6 +625,9 @@
 - **판단(라벨·관점·사례)은 trade-judgment 저장소에 남는다** — 코드는 갈아엎을 수 있고 판단은 쌓이기만 한다(생명주기가 다르다). tdm 레포에 흡수하지 않는다.
 - **workbench 부품은 복사해 온다 — 공용 패키지로 뽑지 않는다.** workbench 는 장기 은퇴 예정이라 공용화는 역방향이다. 복사한 순간부터 lab 의 것.
 - **새 백엔드는 Hono(`apps/lab-api`, 사용 3300/개발 3310)로, strangler 순서로 api 를 잠식한다**: ① 임시 판단 서버(Vite 미들웨어)를 독립 앱으로 승격(**2026-10-16 집행** — lab 은 Vite 프록시 둘 `/api`·`/judgment` 로 가른다, 화면 코드 무변경) → ② lab 이 쓰는 읽기 경로를 `core/market`+`infra/persistence` 재사용으로 직접 서빙 → ③ 큐레이션 쓰기가 파일로 컷오버되면 그 쓰기도 인수 → ④ workbench 은퇴와 함께 api 은퇴. NestJS 재사용은 기각(사용자 한 명·읽기 위주에 모듈 보일러플레이트·느린 재시작이 비용, 헥사고날 코어라 프레임워크에 안 묶임). 빅뱅 대체도 기각.
+  - 이식 규칙(2026-10-16): **캐시 기구는 베끼지 않는다**(직쿼리, 필요해지면 그때) · **응답 타입은 `contracts/wire` import 로 고정한다**(손 타이핑 금지 — 응답 꼴은 api 와 동일 유지, lab 전용 슬리밍은 api 은퇴 후) · **검증은 api(3011) vs lab-api(3310) 응답 비교**가 기본 게이트.
+  - 파생 값의 파일 물화(2026-10-16): **DB 에서 언제든 재생성 가능한 파생 값은 `.cache/` 파일로 물화해도 된다 — 이것은 "캐시 기구"가 아니라 물화다.** 급을 가른다: **판단 = 정본·git·trade-judgment**(쌓이기만 한다) vs **물화 = 재생성 가능·.cache·git 제외·인스턴스마다 한 벌**(지워도 된다, 백업 안 한다). 첫 적용 = lab-api `/dates` 의 `data-dates.json`(파일 읽기 + `listMinuteDates(after)` 꼬리 증분 — 무파일 풀스캔이 실측 6~20s 로 사용자 공유 DB 를 때렸고, 메모리 캐시는 tsx watch 재시작마다 그 비용을 다시 낸다. api 의 `DataDatesCache` 와 같은 패턴). 거래일 달력 테이블 신설(수집이 쓰는 일급 데이터화)은 기각 아님 — 수집 경로를 손볼 때 재검토.
+  - **/day-replay 는 재현하지 않는다 — lab 전용 `/day-flow` 로 대체한다**(2026-10-16, "동일 응답" 규칙의 유일한 예외 — api 호환 유지 비용이 스냅샷 기계 전체라서). 계약은 wire 신설 `DayFlow`: `code·times·rate[]·high[]·low[]·open·cumAmount[]·basePrice·marketCap` — 시저고는 유지(종목 줄 가로 미니 캔들이 소비), **`name`·`market` 제거**(lab 이 든 /stocks/master 클라 조인), **`themes` 제거**(구글 시트 의존 소멸 — 시트 테마 판은 은퇴, 「테마」 판은 judgment 이력 소속이라 무관). 서버는 파일 베이크·완료판정·스키마버전 없이 직계산(universe·분봉·기준가·시총 repo + core `deriveMinutes`) — 느리면 실측 보고 후 메모리 LRU 만 검토. api 의 /day-replay 는 workbench 용으로 그대로 남는다. 이식 완료 시 lab 의 tdm api 의존 = 0.
 - **큐레이션의 파일 전환은 데이터셋 단위 컷오버** — 양쪽(Supabase·파일) 동시 정본 기간을 두지 않는다. 전환 전까지 정본은 tdm curation.
 - 전체 서사: [[trade-lab-project]]·이 세션 project 메모리.
 
