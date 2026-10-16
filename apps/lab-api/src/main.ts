@@ -23,6 +23,7 @@ import { createApp, hasJudgmentRoot } from "./app.js";
 import { makeChartByCode } from "./market/chart.js";
 import { MaterializedDataDates } from "./market/dataDates.js";
 import { makeDayFlowByDate } from "./market/dayFlow.js";
+import { makeCachedDayFlowBody } from "./market/dayFlowCache.js";
 
 const port = Number(process.env.LAB_API_PORT ?? 3300);
 const judgmentRoot =
@@ -31,7 +32,7 @@ const judgmentRoot =
 // market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — /judgment 는 멀쩡하고 시장 경로만 500(판단 저장소 없음=503 과 같은 부분 실패 결).
 type MarketPorts = Pick<
     Parameters<typeof createApp>[0],
-    "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "dayFlowByDate"
+    "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "dayFlowBody"
 >;
 function wireMarket(): MarketPorts & { closePool: () => void } {
     try {
@@ -58,12 +59,16 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
             },
             chartByCode: makeChartByCode({ dailyCandle: daily, minuteCandle: minutes, rawDailyCandle: rawDaily }),
             stockNews: new DrizzleStockNewsRepository(db),
-            dayFlowByDate: makeDayFlowByDate({
-                universe: new DrizzleDailyUniverseProvider(db),
-                minute: minutes,
-                rawDaily,
-                adjDaily: daily,
-                marketCap: new DrizzleDailyMarketCapRepository(db),
+            // 과거 날짜 LRU(문자열 4벌) + 앞뒤 거래일 선계산 — 이웃 판정은 dates 물화 재사용.
+            dayFlowBody: makeCachedDayFlowBody({
+                compute: makeDayFlowByDate({
+                    universe: new DrizzleDailyUniverseProvider(db),
+                    minute: minutes,
+                    rawDaily,
+                    adjDaily: daily,
+                    marketCap: new DrizzleDailyMarketCapRepository(db),
+                }),
+                tradingDays: () => dates.list(),
             }),
             closePool: () => void pool.end(),
         };
@@ -76,7 +81,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
             telegramArchive: { searchPage: reject, coverage: reject },
             chartByCode: reject,
             stockNews: { getHeadlines: reject, feedHeadlines: reject },
-            dayFlowByDate: reject,
+            dayFlowBody: reject,
             closePool: () => undefined,
         };
     }

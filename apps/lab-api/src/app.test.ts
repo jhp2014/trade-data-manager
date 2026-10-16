@@ -12,7 +12,7 @@ let call: (path: string, method?: string) => Promise<{ status: number; headers: 
 type Ports = Partial<
     Pick<
         Parameters<typeof createApp>[0],
-        "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "dayFlowByDate" | "onError"
+        "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "dayFlowBody" | "onError"
     >
 >;
 function make(r: string, ports: Ports = {}): void {
@@ -23,7 +23,7 @@ function make(r: string, ports: Ports = {}): void {
         telegramArchive: { searchPage: async () => ({ items: [] }), coverage: async () => null },
         chartByCode: () => Promise.reject(new Error("스텁 없음")),
         stockNews: { getHeadlines: async () => [], feedHeadlines: async () => [] },
-        dayFlowByDate: async (date) => ({ date, stocks: [] }),
+        dayFlowBody: async (date) => JSON.stringify({ date, stocks: [] }),
         ...ports,
     });
     close = made.close;
@@ -128,11 +128,12 @@ describe("chart", () => {
 });
 
 describe("day-flow", () => {
-    it("date 검증 통과 시 주입된 dayFlowByDate 결과를 그대로 — date 없으면 400", async () => {
+    it("date 검증 통과 시 주입된 dayFlowBody 문자열을 그대로(JSON content-type) — date 없으면 400", async () => {
         close();
-        make(root, { dayFlowByDate: async (date) => ({ date, stocks: [] }) });
+        make(root, { dayFlowBody: async (date) => JSON.stringify({ date, stocks: [] }) });
         const r = await call("/day-flow?date=2025-01-02");
         expect(r.status).toBe(200);
+        expect(r.headers.get("content-type")).toContain("application/json");
         expect(r.json).toEqual({ date: "2025-01-02", stocks: [] });
         const bad = await call("/day-flow");
         expect(bad.status).toBe(400);
