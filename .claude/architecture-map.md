@@ -40,8 +40,8 @@
 
 ## apps/lab-api/src — lab 이 대면하는 백엔드 (Hono, 2026-10-16 신설)
 
-- `app.ts`(Hono 라우트 — `/judgment/history/themes`·`/judgment/history/stocks/:code`, 저장소 없음 503·GET 아님 405·no-store · `/dates` — tdm api 와 같은 string[] 꼴, 캐시 없이 분봉 거래일 distinct 직쿼리) · `main.ts`(기동 — LAB_API_PORT, JUDGMENT_DIR 기본 레포 옆 trade-judgment, market DB 는 persistence 재사용·미설정이어도 서버는 뜸) · `judgment/history.ts`(이슈 이력·테마 사전 읽기 모델, fs.watch 재적재 — 옛 lab 임시 판단 서버에서 승격)
-- tdm api 의 lab 읽기 경로를 단계적으로 잠식해 api 를 은퇴시키는 그릇(strangler) — 1호 이식 `/dates`(lab 의 Vite 프록시가 `/api/dates` 만 lab-api 로 분기). 결정 로그 「trade-lab 편입」 절
+- `app.ts`(Hono 라우트 — `/judgment/history/themes`·`/judgment/history/stocks/:code`, 저장소 없음 503·GET 아님 405·no-store · 시장 경로 `/dates`·`/stocks/master`·`/chart`·`/news/hts`·`/news/telegram/archive` — tdm api 와 같은 경로·응답 꼴(wire), 캐시 기구 없이 직쿼리, 400 도 NestJS 와 같은 body) · `main.ts`(기동 — LAB_API_PORT, JUDGMENT_DIR 기본 레포 옆 trade-judgment, market DB 는 persistence 재사용·미설정이어도 서버는 뜨고 시장 경로만 500) · `judgment/history.ts`(이슈 이력·테마 사전 읽기 모델, fs.watch 재적재) · `market/`(조립 — chart.ts=ChartBundle, telegramArchive.ts, htsNews.ts, validation.ts)
+- tdm api 의 lab 읽기 경로를 단계적으로 잠식해 api 를 은퇴시키는 그릇(strangler) — lab 의 Vite 프록시가 경로별로 lab-api 로 분기(`/api` 앞 선언). 이식 완료 5경로 뒤 lab 의 tdm api 의존은 `/day-replay` 하나. 결정 로그 「trade-lab 편입」 절
 
 ## apps/live/src
 

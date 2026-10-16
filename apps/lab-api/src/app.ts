@@ -105,7 +105,9 @@ export function createApp({
         // 시장 경로의 400 — tdm api(NestJS BadRequestException)와 같은 body(strangler: 에러 응답도 동일하게).
         if (e instanceof BadRequest) return c.json({ message: e.message, error: "Bad Request", statusCode: 400 }, 400);
         onError(e);
-        return c.json({ error: "lab-api 서버 오류" }, 500);
+        // /judgment 는 {error} 꼴 유지(기존 클라 계약), 시장 경로는 NestJS 500 과 같은 body — lab 의 serverMessage 가 message 를 꺼낸다.
+        if (new URL(c.req.url).pathname.startsWith("/judgment")) return c.json({ error: "lab-api 서버 오류" }, 500);
+        return c.json({ statusCode: 500, message: "Internal server error" }, 500);
     });
 
     return { app, warm: () => history.warm(), close: () => history.close() };

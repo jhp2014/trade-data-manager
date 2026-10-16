@@ -83,13 +83,13 @@ describe("dates", () => {
         expect(r.json).toEqual(["2025-01-02", "2025-01-03"]);
         expect(r.headers.get("cache-control")).toBeNull();
     });
-    it("listDates 실패 = 500 JSON + onError — 빈 배열로 삼키지 않는다", async () => {
+    it("listDates 실패 = NestJS 꼴 500 + onError — 빈 배열로 삼키지 않는다", async () => {
         close();
         const seen: unknown[] = [];
         make(root, { listDates: () => Promise.reject(new Error("DB down")), onError: (e) => seen.push(e) });
         const r = await call("/dates");
         expect(r.status).toBe(500);
-        expect(r.json).toEqual({ error: "lab-api 서버 오류" });
+        expect(r.json).toEqual({ statusCode: 500, message: "Internal server error" });
         expect(seen).toHaveLength(1);
     });
 });
@@ -136,7 +136,7 @@ describe("news/hts", () => {
         expect(r.status).toBe(200);
         expect(r.json).toEqual([{ ...wire, srno: "8" }, wire]);
     });
-    it("커서 페이징 — feedHeadlines(before)로 그대로, beforeSrno 불량은 400", async () => {
+    it("커서 페이징 — feedHeadlines(before)로 그대로, beforeSrno 불량·누락은 400", async () => {
         close();
         const seen: unknown[] = [];
         make(root, {
@@ -155,6 +155,27 @@ describe("news/hts", () => {
         const bad = await call("/news/hts?date=2025-01-03&beforeDate=2025-01-02&beforeSrno=x7");
         expect(bad.status).toBe(400);
         expect(bad.json).toEqual({ message: "beforeSrno 형식(숫자)", error: "Bad Request", statusCode: 400 });
+        expect((await call("/news/hts?date=2025-01-03&beforeDate=2025-01-02")).status).toBe(400);
+    });
+    it("초기 로드(전체 시황) = feedHeadlines(onOrBefore) — limit 불량은 30 폴백·상한 100, code 불량 400", async () => {
+        close();
+        const seen: unknown[] = [];
+        make(root, {
+            stockNews: {
+                getHeadlines: async () => [],
+                feedHeadlines: async (opts) => {
+                    seen.push(opts);
+                    return [];
+                },
+            },
+        });
+        await call("/news/hts?date=2025-01-03&limit=abc");
+        expect(seen[0]).toMatchObject({ onOrBefore: "2025-01-03", limit: 30 });
+        await call("/news/hts?date=2025-01-03&limit=250");
+        expect(seen[1]).toMatchObject({ limit: 100 });
+        const bad = await call("/news/hts?date=2025-01-03&code=5930");
+        expect(bad.status).toBe(400);
+        expect(bad.json).toEqual({ message: "code 형식(6자리 영숫자): 5930", error: "Bad Request", statusCode: 400 });
     });
 });
 
@@ -192,5 +213,26 @@ describe("news/telegram/archive", () => {
         const badBefore = await call("/news/telegram/archive?date=2025-01-02&before=garbage");
         expect(badBefore.status).toBe(400);
         expect(badBefore.json).toEqual({ message: "잘못된 before 커서: garbage", error: "Bad Request", statusCode: 400 });
+    });
+    it("from>to·to 누락·limit 불량 = 400, limit 상한은 5000 으로 자름", async () => {
+        close();
+        const seen: Array<{ limit: number }> = [];
+        make(root, {
+            telegramArchive: {
+                searchPage: async (_q, opts) => {
+                    seen.push({ limit: opts.limit });
+                    return { items: [] };
+                },
+                coverage: async () => null,
+            },
+        });
+        expect((await call("/news/telegram/archive?from=2025-01-03&to=2025-01-02")).status).toBe(400);
+        expect((await call("/news/telegram/archive?from=2025-01-02")).status).toBe(400);
+        expect((await call("/news/telegram/archive?date=2025-01-02&limit=0")).status).toBe(400);
+        expect((await call("/news/telegram/archive?date=2025-01-02&limit=1.5")).status).toBe(400);
+        await call("/news/telegram/archive?date=2025-01-02&limit=99999");
+        expect(seen[0]).toEqual({ limit: 5000 });
+        await call("/news/telegram/archive?date=2025-01-02");
+        expect(seen[1]).toEqual({ limit: 2000 });
     });
 });

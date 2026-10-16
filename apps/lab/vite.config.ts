@@ -2,7 +2,9 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
 // 화면은 src/. 서버는 프록시 둘로 가른다 — /api 는 tdm api(시장 데이터, GET 만), /judgment 는 lab-api(판단 저장소).
-// 단 lab-api 로 이식된 시장 읽기 경로(/api/dates)는 /api 보다 먼저 선언해 lab-api 로 보낸다(Vite 는 선언 순서 prefix 매칭) — strangler.
+// 단 lab-api 로 이식된 시장 읽기 경로(/api/dates·stocks/master·chart·news/hts·news/telegram/archive)는 /api 보다
+// 먼저 선언해 lab-api 로 보낸다(선언 순서 매칭) — strangler. 키는 정확 매칭 정규식(^…(\?|$)): 맨 prefix 로 두면
+// /api/chart 가 /api/chart-anchors/* 같은 api 잔류 경로까지 삼킨다.
 // 포트: 사용(trade-data-manager) 3200 / 개발(tdm-work) 3210(--port 로 올림, launch.json lab-dev).
 // 프록시 타겟 기본은 사용 포트(:3001 · :3300) — 개발 워크트리는 .env.local 의 *_PROXY_TARGET 으로 :3011 · :3310 을 가리킨다.
 export default defineConfig(({ mode }) => {
@@ -17,28 +19,28 @@ export default defineConfig(({ mode }) => {
             port: 3200,
             strictPort: true,
             proxy: {
-                "/api/dates": {
+                "^/api/dates(\\?|$)": {
                     target: labApiTarget,
                     changeOrigin: true,
                     rewrite: stripApi,
                 },
-                "/api/chart": {
+                "^/api/chart(\\?|$)": {
                     target: labApiTarget,
                     changeOrigin: true,
                     rewrite: stripApi,
                 },
-                "/api/stocks/master": {
+                "^/api/stocks/master(\\?|$)": {
                     target: labApiTarget,
                     changeOrigin: true,
                     rewrite: stripApi,
                 },
-                // news 하위는 경로별 정확 분기 — "/api/news" 로 넓게 잡지 않는다(라이브 /news/telegram 류는 api 에 남는다).
-                "/api/news/hts": {
+                // news 하위도 경로 단위 정확 분기 — 라이브 /news/telegram(검색)은 api 에 남는다.
+                "^/api/news/hts(\\?|$)": {
                     target: labApiTarget,
                     changeOrigin: true,
                     rewrite: stripApi,
                 },
-                "/api/news/telegram": {
+                "^/api/news/telegram/archive(\\?|$)": {
                     target: labApiTarget,
                     changeOrigin: true,
                     rewrite: stripApi,
