@@ -204,6 +204,9 @@ importers:
       '@hono/node-server':
         specifier: ^2.1.5
         version: 2.1.5(hono@4.13.13)
+      '@trade-data-manager/market':
+        specifier: workspace:*
+        version: link:../../core/market
       '@trade-data-manager/persistence':
         specifier: workspace:*
         version: link:../../infra/persistence

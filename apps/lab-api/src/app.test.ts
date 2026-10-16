@@ -9,9 +9,15 @@ let root: string;
 let close: () => void;
 let call: (path: string, method?: string) => Promise<{ status: number; headers: Headers; json: Record<string, unknown> }>;
 
-type Ports = Partial<Pick<Parameters<typeof createApp>[0], "listDates" | "listStockMeta" | "onError">>;
+type Ports = Partial<Pick<Parameters<typeof createApp>[0], "listDates" | "listStockMeta" | "telegramArchive" | "onError">>;
 function make(r: string, ports: Ports = {}): void {
-    const made = createApp({ judgmentRoot: r, listDates: async () => [], listStockMeta: async () => [], ...ports });
+    const made = createApp({
+        judgmentRoot: r,
+        listDates: async () => [],
+        listStockMeta: async () => [],
+        telegramArchive: { searchPage: async () => ({ items: [] }), coverage: async () => null },
+        ...ports,
+    });
     close = made.close;
     call = async (path, method = "GET") => {
         const res = await made.app.request(path, { method });
@@ -89,5 +95,42 @@ describe("stocks/master", () => {
         const r = await call("/stocks/master");
         expect(r.status).toBe(200);
         expect(r.json).toEqual(meta);
+    });
+});
+
+describe("news/telegram/archive", () => {
+    it("date 하루 — items 는 wire 꼴(at ISO), coverage ISO, nextBefore 있을 때만", async () => {
+        close();
+        make(root, {
+            telegramArchive: {
+                searchPage: async () => ({
+                    items: [{ source: "telegram", channel: "방", at: new Date("2025-01-02T01:00:00Z"), text: "본문", ref: "p#1" }],
+                    nextBefore: "2025-01-02T01:00:00.000Z#1",
+                }),
+                coverage: async () => ({ from: new Date("2024-01-01T00:00:00Z"), to: new Date("2025-02-01T00:00:00Z") }),
+            },
+        });
+        const r = await call("/news/telegram/archive?date=2025-01-02");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual({
+            items: [{ channel: "방", at: "2025-01-02T01:00:00.000Z", text: "본문", ref: "p#1" }],
+            coverage: { from: "2024-01-01T00:00:00.000Z", to: "2025-02-01T00:00:00.000Z" },
+            nextBefore: "2025-01-02T01:00:00.000Z#1",
+        });
+    });
+    it("날짜 없음·잘못된 before = 400, NestJS 와 같은 body", async () => {
+        close();
+        make(root, {
+            telegramArchive: {
+                searchPage: () => Promise.reject(new Error("잘못된 before 커서: garbage")),
+                coverage: async () => null,
+            },
+        });
+        const missing = await call("/news/telegram/archive");
+        expect(missing.status).toBe(400);
+        expect(missing.json).toEqual({ message: "date= 또는 from=&to= 가 필요합니다", error: "Bad Request", statusCode: 400 });
+        const badBefore = await call("/news/telegram/archive?date=2025-01-02&before=garbage");
+        expect(badBefore.status).toBe(400);
+        expect(badBefore.json).toEqual({ message: "잘못된 before 커서: garbage", error: "Bad Request", statusCode: 400 });
     });
 });

@@ -27,6 +27,12 @@ export default defineConfig(({ mode }) => {
                     changeOrigin: true,
                     rewrite: stripApi,
                 },
+                // /news/hts 등 다른 news 경로는 api 에 남는다 — "/api/news" 로 넓게 잡지 않는다.
+                "/api/news/telegram": {
+                    target: labApiTarget,
+                    changeOrigin: true,
+                    rewrite: stripApi,
+                },
                 "/api": {
                     target: apiTarget,
                     changeOrigin: true,

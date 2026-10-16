@@ -4,10 +4,13 @@
 //   GET /judgment/history/stocks/<코드>?date=<날짜>   → StockHistory(judgment/history.ts)   · 이력 없음 404
 //   GET /dates                                        → string[](YYYY-MM-DD 오름차순) · tdm api GET /dates 와 같은 경로·꼴(lab 프록시가 /api 만 떼고 넘긴다)
 //   GET /stocks/master                                → StockMeta[](코드 오름차순 전량) · tdm api 와 같은 꼴, 캐시 없이 직쿼리
+//   GET /news/telegram/archive?date=|from=&to=[&q=…]  → TelegramArchivePage · 조립은 market/telegramArchive.ts, 400 은 NestJS 와 같은 body
 import { statSync } from "node:fs";
 import { Hono } from "hono";
 import type { DataDate, StockMeta } from "@trade-data-manager/wire";
 import { HistoryError, HistoryRepo } from "./judgment/history.js";
+import { telegramArchivePage, type TelegramArchivePorts } from "./market/telegramArchive.js";
+import { BadRequest } from "./market/validation.js";
 
 /** 판단 저장소가 있는가 — 503 판정과 기동 경고가 같은 질문을 쓴다(main.ts). */
 export function hasJudgmentRoot(p: string): boolean {
@@ -25,11 +28,13 @@ export interface AppOptions {
     listDates: () => Promise<DataDate[]>;
     /** GET /stocks/master 의 데이터 — 종목 마스터 전량(코드·이름·시장, 코드 오름차순). 캐시 없음. */
     listStockMeta: () => Promise<StockMeta[]>;
+    /** GET /news/telegram/archive 의 데이터 — 아카이브 검색·coverage(market/telegramArchive.ts). */
+    telegramArchive: TelegramArchivePorts;
     /** 예상 밖 오류(500) 로깅 — HistoryError 같은 요청 쪽 잘못은 안 온다. */
     onError?: (e: unknown) => void;
 }
 
-export function createApp({ judgmentRoot, listDates, listStockMeta, onError = () => undefined }: AppOptions) {
+export function createApp({ judgmentRoot, listDates, listStockMeta, telegramArchive, onError = () => undefined }: AppOptions) {
     const history = new HistoryRepo(judgmentRoot);
     const app = new Hono();
 
@@ -49,10 +54,24 @@ export function createApp({ judgmentRoot, listDates, listStockMeta, onError = ()
 
     app.get("/dates", async (c) => c.json(await listDates()));
     app.get("/stocks/master", async (c) => c.json(await listStockMeta()));
+    app.get("/news/telegram/archive", async (c) =>
+        c.json(
+            await telegramArchivePage(telegramArchive, {
+                date: c.req.query("date"),
+                from: c.req.query("from"),
+                to: c.req.query("to"),
+                q: c.req.query("q"),
+                limit: c.req.query("limit"),
+                before: c.req.query("before"),
+            }),
+        ),
+    );
 
     app.notFound((c) => c.json({ error: `없는 경로: ${new URL(c.req.url).pathname}` }, 404));
     app.onError((e, c) => {
         if (e instanceof HistoryError) return c.json({ error: e.message }, e.status);
+        // 시장 경로의 400 — tdm api(NestJS BadRequestException)와 같은 body(strangler: 에러 응답도 동일하게).
+        if (e instanceof BadRequest) return c.json({ message: e.message, error: "Bad Request", statusCode: 400 }, 400);
         onError(e);
         return c.json({ error: "lab-api 서버 오류" }, 500);
     });
