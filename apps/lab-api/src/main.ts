@@ -11,6 +11,7 @@ import {
     DrizzleMinuteCandleRepository,
     DrizzleRawDailyCandleRepository,
     DrizzleStockMasterRepository,
+    DrizzleStockNewsRepository,
     DrizzleTelegramMessageRepository,
 } from "@trade-data-manager/persistence";
 // 패키지 지정자("@trade-data-manager/telegram")는 index 가 GramJS(client.ts)를 모듈 로드에 끌고 온다 —
@@ -24,7 +25,10 @@ const judgmentRoot =
     process.env.JUDGMENT_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../trade-judgment");
 
 // market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — /judgment 는 멀쩡하고 시장 경로만 500(판단 저장소 없음=503 과 같은 부분 실패 결).
-type MarketPorts = Pick<Parameters<typeof createApp>[0], "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode">;
+type MarketPorts = Pick<
+    Parameters<typeof createApp>[0],
+    "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews"
+>;
 function wireMarket(): MarketPorts & { closePool: () => void } {
     try {
         const pool = createPoolFromEnv();
@@ -49,6 +53,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
                 minuteCandle: minutes,
                 rawDailyCandle: new DrizzleRawDailyCandleRepository(db),
             }),
+            stockNews: new DrizzleStockNewsRepository(db),
             closePool: () => void pool.end(),
         };
     } catch (e) {
@@ -59,6 +64,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
             listStockMeta: reject,
             telegramArchive: { searchPage: reject, coverage: reject },
             chartByCode: reject,
+            stockNews: { getHeadlines: reject, feedHeadlines: reject },
             closePool: () => undefined,
         };
     }

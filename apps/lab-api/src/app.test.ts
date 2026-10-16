@@ -10,7 +10,10 @@ let close: () => void;
 let call: (path: string, method?: string) => Promise<{ status: number; headers: Headers; json: Record<string, unknown> }>;
 
 type Ports = Partial<
-    Pick<Parameters<typeof createApp>[0], "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "onError">
+    Pick<
+        Parameters<typeof createApp>[0],
+        "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "onError"
+    >
 >;
 function make(r: string, ports: Ports = {}): void {
     const made = createApp({
@@ -19,6 +22,7 @@ function make(r: string, ports: Ports = {}): void {
         listStockMeta: async () => [],
         telegramArchive: { searchPage: async () => ({ items: [] }), coverage: async () => null },
         chartByCode: () => Promise.reject(new Error("스텁 없음")),
+        stockNews: { getHeadlines: async () => [], feedHeadlines: async () => [] },
         ...ports,
     });
     close = made.close;
@@ -119,6 +123,38 @@ describe("chart", () => {
         const badDate = await call("/chart?code=000001&date=2025-02-30");
         expect(badDate.status).toBe(400);
         expect(badDate.json).toEqual({ message: "date 가 유효한 날짜가 아님: 2025-02-30", error: "Bad Request", statusCode: 400 });
+    });
+});
+
+describe("news/hts", () => {
+    const h = { srno: "7", date: "2025-01-02", time: "090000", title: "제목", sourceName: "HTS", categoryCode: "01", sourceCode: "x", stockCodes: [] };
+    const wire = { srno: "7", date: "2025-01-02", time: "090000", title: "제목", sourceName: "HTS", categoryCode: "01" };
+    it("종목+무키워드 = 그 날 전체를 내림차순으로 — wire 꼴(sourceCode·stockCodes 탈락)", async () => {
+        close();
+        make(root, { stockNews: { getHeadlines: async () => [h, { ...h, srno: "8" }], feedHeadlines: async () => [] } });
+        const r = await call("/news/hts?code=000001&date=2025-01-02");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual([{ ...wire, srno: "8" }, wire]);
+    });
+    it("커서 페이징 — feedHeadlines(before)로 그대로, beforeSrno 불량은 400", async () => {
+        close();
+        const seen: unknown[] = [];
+        make(root, {
+            stockNews: {
+                getHeadlines: async () => [],
+                feedHeadlines: async (opts) => {
+                    seen.push(opts);
+                    return [h];
+                },
+            },
+        });
+        const r = await call("/news/hts?date=2025-01-03&beforeDate=2025-01-02&beforeSrno=7&limit=10");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual([wire]);
+        expect(seen[0]).toMatchObject({ before: { publishedDate: "2025-01-02", srno: "7" }, limit: 10 });
+        const bad = await call("/news/hts?date=2025-01-03&beforeDate=2025-01-02&beforeSrno=x7");
+        expect(bad.status).toBe(400);
+        expect(bad.json).toEqual({ message: "beforeSrno 형식(숫자)", error: "Bad Request", statusCode: 400 });
     });
 });
 
