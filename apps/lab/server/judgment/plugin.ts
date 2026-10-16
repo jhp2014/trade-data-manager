@@ -1,4 +1,4 @@
-// 임시 판단 서버 — Vite dev 서버에 /judgment/* 를 붙인다(화면 쪽 어댑터: web/src/judgment/server.ts).
+// 임시 판단 서버 — Vite dev 서버에 /judgment/* 를 붙인다(화면 쪽 어댑터: src/judgment/server.ts).
 // trade-judgment 의 이슈 이력을 메모리에 올려 읽기만 한다(쓰기 없음 — 이력은 Claude 가 파일로 쌓는다).
 // tdm 이 이력을 내려 주게 되면 이 서버는 빠진다 — 화면은 ports.ts 만 알고, 어댑터만 바꾼다.
 //   GET /judgment/history/themes?date=<날짜>          → { date, stocks: { <코드>: [테마…] }, coverage }  · 그날 이전 이력으로
