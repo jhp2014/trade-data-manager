@@ -9,8 +9,9 @@ let root: string;
 let close: () => void;
 let call: (path: string, method?: string) => Promise<{ status: number; headers: Headers; json: Record<string, unknown> }>;
 
-function make(r: string, listDates: () => Promise<string[]> = async () => []): void {
-    const made = createApp({ judgmentRoot: r, listDates });
+type Ports = Partial<Pick<Parameters<typeof createApp>[0], "listDates" | "listStockMeta" | "onError">>;
+function make(r: string, ports: Ports = {}): void {
+    const made = createApp({ judgmentRoot: r, listDates: async () => [], listStockMeta: async () => [], ...ports });
     close = made.close;
     call = async (path, method = "GET") => {
         const res = await made.app.request(path, { method });
@@ -63,7 +64,7 @@ describe("history", () => {
 describe("dates", () => {
     it("주입된 listDates 를 그대로 배열로 — no-store 는 /judgment 전용이라 없음", async () => {
         close();
-        make(root, async () => ["2025-01-02", "2025-01-03"]);
+        make(root, { listDates: async () => ["2025-01-02", "2025-01-03"] });
         const r = await call("/dates");
         expect(r.status).toBe(200);
         expect(r.json).toEqual(["2025-01-02", "2025-01-03"]);
@@ -72,15 +73,21 @@ describe("dates", () => {
     it("listDates 실패 = 500 JSON + onError — 빈 배열로 삼키지 않는다", async () => {
         close();
         const seen: unknown[] = [];
-        const made = createApp({
-            judgmentRoot: root,
-            listDates: () => Promise.reject(new Error("DB down")),
-            onError: (e) => seen.push(e),
-        });
-        close = made.close;
-        const res = await made.app.request("/dates");
-        expect(res.status).toBe(500);
-        expect(await res.json()).toEqual({ error: "lab-api 서버 오류" });
+        make(root, { listDates: () => Promise.reject(new Error("DB down")), onError: (e) => seen.push(e) });
+        const r = await call("/dates");
+        expect(r.status).toBe(500);
+        expect(r.json).toEqual({ error: "lab-api 서버 오류" });
         expect(seen).toHaveLength(1);
+    });
+});
+
+describe("stocks/master", () => {
+    it("주입된 listStockMeta 를 그대로 배열로", async () => {
+        close();
+        const meta = [{ stockCode: "000001", name: "알파", market: "거래소" }];
+        make(root, { listStockMeta: async () => meta });
+        const r = await call("/stocks/master");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual(meta);
     });
 });

@@ -3,32 +3,42 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
-import { createPoolFromEnv, createDb, DrizzleMinuteCandleRepository } from "@trade-data-manager/persistence";
+import {
+    createPoolFromEnv,
+    createDb,
+    DrizzleMinuteCandleRepository,
+    DrizzleStockMasterRepository,
+} from "@trade-data-manager/persistence";
 import { createApp, hasJudgmentRoot } from "./app.js";
 
 const port = Number(process.env.LAB_API_PORT ?? 3300);
 const judgmentRoot =
     process.env.JUDGMENT_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../trade-judgment");
 
-// market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — /judgment 는 멀쩡하고 /dates 만 500(판단 저장소 없음=503 과 같은 부분 실패 결).
-function wireDates(): { listDates: () => Promise<string[]>; closePool: () => void } {
+// market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — /judgment 는 멀쩡하고 시장 경로만 500(판단 저장소 없음=503 과 같은 부분 실패 결).
+type MarketPorts = Pick<Parameters<typeof createApp>[0], "listDates" | "listStockMeta">;
+function wireMarket(): MarketPorts & { closePool: () => void } {
     try {
         const pool = createPoolFromEnv();
-        const repo = new DrizzleMinuteCandleRepository(createDb(pool));
-        return { listDates: () => repo.listMinuteDates(), closePool: () => void pool.end() };
-    } catch (e) {
-        console.warn("[lab-api] market DB 미설정 — /dates 요청은 500:", e instanceof Error ? e.message : e);
+        const db = createDb(pool);
+        const minutes = new DrizzleMinuteCandleRepository(db);
+        const master = new DrizzleStockMasterRepository(db);
         return {
-            listDates: () => Promise.reject(new Error("market DB 미설정(DATABASE_URL)")),
-            closePool: () => undefined,
+            listDates: () => minutes.listMinuteDates(),
+            listStockMeta: () => master.listAllMeta(),
+            closePool: () => void pool.end(),
         };
+    } catch (e) {
+        console.warn("[lab-api] market DB 미설정 — 시장 경로 요청은 500:", e instanceof Error ? e.message : e);
+        const reject = () => Promise.reject(new Error("market DB 미설정(DATABASE_URL)"));
+        return { listDates: reject, listStockMeta: reject, closePool: () => undefined };
     }
 }
-const { listDates, closePool } = wireDates();
+const { closePool, ...market } = wireMarket();
 
 const { app, warm, close } = createApp({
     judgmentRoot,
-    listDates,
+    ...market,
     onError: (e) => console.error("[lab-api]", e),
 });
 if (hasJudgmentRoot(judgmentRoot)) warm();
