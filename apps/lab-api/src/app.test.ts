@@ -12,7 +12,7 @@ let call: (path: string, method?: string) => Promise<{ status: number; headers: 
 type Ports = Partial<
     Pick<
         Parameters<typeof createApp>[0],
-        "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "onError"
+        "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "dayFlowByDate" | "onError"
     >
 >;
 function make(r: string, ports: Ports = {}): void {
@@ -23,6 +23,7 @@ function make(r: string, ports: Ports = {}): void {
         telegramArchive: { searchPage: async () => ({ items: [] }), coverage: async () => null },
         chartByCode: () => Promise.reject(new Error("스텁 없음")),
         stockNews: { getHeadlines: async () => [], feedHeadlines: async () => [] },
+        dayFlowByDate: async (date) => ({ date, stocks: [] }),
         ...ports,
     });
     close = made.close;
@@ -123,6 +124,19 @@ describe("chart", () => {
         const badDate = await call("/chart?code=000001&date=2025-02-30");
         expect(badDate.status).toBe(400);
         expect(badDate.json).toEqual({ message: "date 가 유효한 날짜가 아님: 2025-02-30", error: "Bad Request", statusCode: 400 });
+    });
+});
+
+describe("day-flow", () => {
+    it("date 검증 통과 시 주입된 dayFlowByDate 결과를 그대로 — date 없으면 400", async () => {
+        close();
+        make(root, { dayFlowByDate: async (date) => ({ date, stocks: [] }) });
+        const r = await call("/day-flow?date=2025-01-02");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual({ date: "2025-01-02", stocks: [] });
+        const bad = await call("/day-flow");
+        expect(bad.status).toBe(400);
+        expect(bad.json).toEqual({ message: "date 필수(YYYY-MM-DD)", error: "Bad Request", statusCode: 400 });
     });
 });
 

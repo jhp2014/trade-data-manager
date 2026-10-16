@@ -7,12 +7,14 @@
 //   GET /news/telegram/archive?date=|from=&to=[&q=…]  → TelegramArchivePage · 조립은 market/telegramArchive.ts, 400 은 NestJS 와 같은 body
 //   GET /chart?code=&date=                            → ChartBundle(일봉 2년+dense 분봉+basePrice·rawScale) · 조립은 market/chart.ts
 //   GET /news/hts?date=[&code=&q=&before…]            → HtsNewsItem[](최신순) · 조립은 market/htsNews.ts
+//   GET /day-flow?date=                               → DayFlow(그날 universe 전부의 분당 % 시계열) · lab 전용 계약, 조립은 market/dayFlow.ts
 import { statSync } from "node:fs";
 import { Hono } from "hono";
 import type { DataDate, StockMeta } from "@trade-data-manager/wire";
 import { HistoryError, HistoryRepo } from "./judgment/history.js";
 import type { StockNewsReader } from "@trade-data-manager/market";
 import type { ChartByCode } from "./market/chart.js";
+import type { DayFlowByDate } from "./market/dayFlow.js";
 import { htsNews } from "./market/htsNews.js";
 import { telegramArchivePage, type TelegramArchivePorts } from "./market/telegramArchive.js";
 import { assertStockCode, assertYmd, BadRequest } from "./market/validation.js";
@@ -39,6 +41,8 @@ export interface AppOptions {
     chartByCode: ChartByCode;
     /** GET /news/hts 의 데이터 — core StockNewsReader(읽기 2개) 그대로(market/htsNews.ts 가 소비). */
     stockNews: StockNewsReader;
+    /** GET /day-flow 의 데이터 — DayFlow 조립(market/dayFlow.ts 의 makeDayFlowByDate). */
+    dayFlowByDate: DayFlowByDate;
     /** 예상 밖 오류(500) 로깅 — HistoryError 같은 요청 쪽 잘못은 안 온다. */
     onError?: (e: unknown) => void;
 }
@@ -50,6 +54,7 @@ export function createApp({
     telegramArchive,
     chartByCode,
     stockNews,
+    dayFlowByDate,
     onError = () => undefined,
 }: AppOptions) {
     const history = new HistoryRepo(judgmentRoot);
@@ -74,6 +79,7 @@ export function createApp({
     app.get("/chart", async (c) =>
         c.json(await chartByCode(assertStockCode(c.req.query("code")), assertYmd(c.req.query("date")))),
     );
+    app.get("/day-flow", async (c) => c.json(await dayFlowByDate(assertYmd(c.req.query("date")))));
     app.get("/news/hts", async (c) =>
         c.json(
             await htsNews(stockNews, {

@@ -8,6 +8,8 @@ import {
     createPoolFromEnv,
     createDb,
     DrizzleDailyCandleRepository,
+    DrizzleDailyMarketCapRepository,
+    DrizzleDailyUniverseProvider,
     DrizzleMinuteCandleRepository,
     DrizzleRawDailyCandleRepository,
     DrizzleStockMasterRepository,
@@ -19,6 +21,7 @@ import {
 import { NEWS_CHANNELS } from "../../../infra/telegram/src/channels.js";
 import { createApp, hasJudgmentRoot } from "./app.js";
 import { makeChartByCode } from "./market/chart.js";
+import { makeDayFlowByDate } from "./market/dayFlow.js";
 
 const port = Number(process.env.LAB_API_PORT ?? 3300);
 const judgmentRoot =
@@ -27,13 +30,15 @@ const judgmentRoot =
 // market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — /judgment 는 멀쩡하고 시장 경로만 500(판단 저장소 없음=503 과 같은 부분 실패 결).
 type MarketPorts = Pick<
     Parameters<typeof createApp>[0],
-    "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews"
+    "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "dayFlowByDate"
 >;
 function wireMarket(): MarketPorts & { closePool: () => void } {
     try {
         const pool = createPoolFromEnv();
         const db = createDb(pool);
         const minutes = new DrizzleMinuteCandleRepository(db);
+        const daily = new DrizzleDailyCandleRepository(db);
+        const rawDaily = new DrizzleRawDailyCandleRepository(db);
         const master = new DrizzleStockMasterRepository(db);
         const telegram = new DrizzleTelegramMessageRepository(db);
         const archive = new ArchiveNewsSearchService({
@@ -48,12 +53,15 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
                 searchPage: (q, opts) => archive.searchPage(q, opts),
                 coverage: () => telegram.coverage(peers),
             },
-            chartByCode: makeChartByCode({
-                dailyCandle: new DrizzleDailyCandleRepository(db),
-                minuteCandle: minutes,
-                rawDailyCandle: new DrizzleRawDailyCandleRepository(db),
-            }),
+            chartByCode: makeChartByCode({ dailyCandle: daily, minuteCandle: minutes, rawDailyCandle: rawDaily }),
             stockNews: new DrizzleStockNewsRepository(db),
+            dayFlowByDate: makeDayFlowByDate({
+                universe: new DrizzleDailyUniverseProvider(db),
+                minute: minutes,
+                rawDaily,
+                adjDaily: daily,
+                marketCap: new DrizzleDailyMarketCapRepository(db),
+            }),
             closePool: () => void pool.end(),
         };
     } catch (e) {
@@ -65,6 +73,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
             telegramArchive: { searchPage: reject, coverage: reject },
             chartByCode: reject,
             stockNews: { getHeadlines: reject, feedHeadlines: reject },
+            dayFlowByDate: reject,
             closePool: () => undefined,
         };
     }
