@@ -1,14 +1,14 @@
 // 테마 보드 패널의 몸 — 경로의 (날짜, 시각)의 테마 단면. 시각이 없으면 장 마감(15:30).
-// 「테마」(이력 소속 — ThemePanel)와 「시트 테마」(시계열에 실려 온 시트 소속 — SheetThemePanel)가 같이 쓴다.
+// 시계열(/day-flow)에는 소속이 없다 — 테마는 언제나 membership(「테마」 판은 판단 이력)이 입힌다.
 // 종목 줄 클릭 = 경로의 종목, 테마 머리 클릭 = 그 카드 접기/펼치기(경로에 테마는 없다).
 // 이 패널에서 고른 종목은 판을 움직이지 않고, 다른 곳에서 바뀐 종목은 그 테마들을 맨 위로 올린다.
 import { useCallback, useMemo, type ReactNode } from "react";
 import { CLOSE_TIME, usePanelPath } from "../../store/paths.js";
 import { usePanelUi, usePanelUiNumber } from "../../store/panelUi.js";
-import { useDayReplay } from "../../market/queries.js";
+import { useDayFlow, useStockNameOf } from "../../market/queries.js";
 import { kstToUnix } from "../../market/domain.js";
-import type { PriceMode, ReplayStock } from "../../market/types.js";
-import { DEFAULT_UNIVERSE, buildThemeBoard, focusPlace } from "../../board/viewModel.js";
+import type { DayFlowStock, PriceMode } from "../../market/types.js";
+import { DEFAULT_UNIVERSE, buildThemeBoard, focusPlace, type ThemedStock } from "../../board/viewModel.js";
 import { BoardLayout } from "../../board/BoardLayout.js";
 import { useSelfPick } from "../../board/useSelfPick.js";
 import { FlatStockList } from "../../board/FlatStockList.js";
@@ -31,7 +31,7 @@ const MARKETS = MARKET_VALUES.map((o) => o.v);
 /** 유니버스 상위 N 의 범위 — 0 = 그 순위로는 안 뽑음. 하루 종목이 ~900 이라 2000 이면 사실상 전부. */
 const UNIVERSE_RANGE = { min: 0, max: 2000 };
 
-/** 종목 → 테마 바꿔 끼우기 — 그날 시계열의 시트 소속 대신. 여기 없는 종목은 테마 없음(미분류). */
+/** 종목 → 테마 입히기 — 시계열(/day-flow)에는 소속이 없다. 여기 없는 종목은 테마 없음(미분류). */
 export interface Membership {
     /** 받은 날짜의 소속(아직 못 받았으면 undefined). */
     themes: ReadonlyMap<string, string[]> | undefined;
@@ -44,8 +44,8 @@ export interface Membership {
 
 export function ThemeBoardPanel({ panelId, membership, onInspect, children }: {
     panelId: string;
-    /** 없으면 시계열의 시트 소속 그대로. */
-    membership?: Membership;
+    /** 종목 → 테마 소속(필수 — 시계열에는 소속이 없다). */
+    membership: Membership;
     onInspect?: OnInspect;
     /** 판 위에 덧붙일 것(우클릭 창 등). */
     children?: ReactNode;
@@ -56,20 +56,23 @@ export function ThemeBoardPanel({ panelId, membership, onInspect, children }: {
     const [market, setMarket] = usePanelUi(panelId, "market", MARKETS, "un");
     const [amountN, setAmountN] = usePanelUiNumber(panelId, "amountN", UNIVERSE_RANGE, DEFAULT_UNIVERSE.amountN);
     const [rateN, setRateN] = usePanelUiNumber(panelId, "rateN", UNIVERSE_RANGE, DEFAULT_UNIVERSE.rateN);
-    const q = useDayReplay(date);
+    const q = useDayFlow(date);
+    const nameOf = useStockNameOf();
 
     // 날짜가 바뀌는 동안엔 직전 날의 데이터가 온다 — 시각은 **받은 데이터의 날짜**로 잰다(다른 날 시각을 섞지 않게).
-    const replay = q.data;
-    const swapping = membership !== undefined;
-    const themes = membership?.themes;
+    const flow = q.data;
+    const themes = membership.themes;
     const index = useMemo(() => {
-        if (!replay || (swapping && !themes)) return null;
-        const swap = (s: ReplayStock): ReplayStock => (themes ? { ...s, themes: themes.get(s.code) ?? [] } : s);
-        return new Map(replay.stocks.map((s) => [s.code, swap(s)]));
-    }, [replay, themes, swapping]);
+        if (!flow || !themes) return null;
+        const withThemes = (s: DayFlowStock): ThemedStock => ({ ...s, themes: themes.get(s.code) ?? [] });
+        return new Map(flow.stocks.map((s) => [s.code, withThemes(s)]));
+    }, [flow, themes]);
     const shownTime = time || CLOSE_TIME;
-    const tUnix = replay ? kstToUnix(replay.date, `${shownTime}:00`) : 0;
-    const board = useMemo(() => (index ? buildThemeBoard(index, tUnix, market, { amountN, rateN }) : null), [index, tUnix, market, amountN, rateN]);
+    const tUnix = flow ? kstToUnix(flow.date, `${shownTime}:00`) : 0;
+    const board = useMemo(
+        () => (index ? buildThemeBoard(index, tUnix, market, { amountN, rateN }, nameOf) : null),
+        [index, tUnix, market, amountN, rateN, nameOf],
+    );
 
     // 이 패널에서 고른 종목 — 그 종목으로 바뀐 것은 판을 움직이지 않는다(제자리).
     const { pick, isSelfPick } = useSelfPick(code, useCallback((c: string) => write({ code: c }), [write]));
@@ -85,10 +88,10 @@ export function ThemeBoardPanel({ panelId, membership, onInspect, children }: {
                 text: () => {
                     const place = board ? focusPlace(board.grouped, code) : null;
                     if (!place || (place !== "랭킹 밖" && view !== "group")) return null;
-                    return `현재 종목 ${place === "미분류" && membership ? membership.unclassified : place}`;
+                    return `현재 종목 ${place === "미분류" ? membership.unclassified : place}`;
                 },
             },
-            { id: "membership", name: "소속 알림", help: "소속 출처가 이 날짜를 다 덮지 못할 때", text: () => membership?.note ?? null },
+            { id: "membership", name: "소속 알림", help: "소속 출처가 이 날짜를 다 덮지 못할 때", text: () => membership.note },
             { id: "count", name: "종목 수", tabular: true, help: "지금 유니버스의 종목 수", text: () => (board ? `${board.stocks.length}종목` : null) },
             // 날짜가 바뀌는 동안엔 직전 날의 판을 그대로 두므로 알림만.
             { id: "loading", name: "불러오는 중", transient: true, tone: "accent", text: () => (q.isPlaceholderData && q.isFetching ? "불러오는 중…" : null) },
@@ -108,20 +111,20 @@ export function ThemeBoardPanel({ panelId, membership, onInspect, children }: {
     let body: ReactNode;
     if (!date) body = <Center>경로 {path.id} 에 날짜를 넣으세요.</Center>;
     else if (q.isError) body = <Center>테마 오류: {q.error.message}</Center>;
-    else if (membership?.error) body = <Center>이력 오류: {membership.error.message}</Center>;
-    else if (!board && replay && swapping) body = <Center>{replay.date} 이력 소속 불러오는 중…</Center>;
-    else if (!board) body = <Center>{date} 불러오는 중… (처음 보는 날짜는 서버가 굽느라 오래 걸릴 수 있다)</Center>;
+    else if (membership.error) body = <Center>이력 오류: {membership.error.message}</Center>;
+    else if (!board && flow) body = <Center>{flow.date} 이력 소속 불러오는 중…</Center>;
+    else if (!board) body = <Center>{date} 불러오는 중… (서버가 그날 전 종목을 즉석 계산한다 — 수 초)</Center>;
     else if (view === "group")
         body = (
             <BoardLayout
-                key={replay?.date}
+                key={flow?.date}
                 grouped={board.grouped}
                 parents={board.parents}
                 focusCode={code}
                 onPick={pick}
                 isSelfPick={isSelfPick}
                 onInspect={onInspect}
-                unclassifiedName={membership?.unclassified}
+                unclassifiedName={membership.unclassified}
             />
         );
     else body = <FlatStockList stocks={board.stocks} code={code} onPick={pick} onInspect={onInspect} sort={view} />;

@@ -1,10 +1,9 @@
 // 테마 보드 계산 — workbench lib/boardViewModel.test.ts 의 복기 보드 경우에서 옮기고(필터·큐레이션·구간 카운트는 뺀 기능이라 제외),
 // 사후 정보·카드 묶기를 더했다.
 import { describe, expect, it } from "vitest";
-import { buildThemeBoard, focusPlace } from "./viewModel.js";
-import type { ReplayStock } from "../market/types.js";
+import { buildThemeBoard, focusPlace, type ThemedStock } from "./viewModel.js";
 
-const rstock = (code: string, over: Partial<ReplayStock>): ReplayStock => ({
+const rstock = (code: string, over: Partial<ThemedStock>): ThemedStock => ({
     code,
     times: [100, 160],
     rate: [1, 5],
@@ -13,13 +12,11 @@ const rstock = (code: string, over: Partial<ReplayStock>): ReplayStock => ({
     open: 0,
     cumAmount: [10, 20],
     basePrice: { krx: null, un: null },
-    name: code,
-    market: "KOSPI",
     marketCap: null,
     themes: ["T"],
     ...over,
 });
-const indexOf = (...s: ReplayStock[]) => new Map(s.map((x) => [x.code, x]));
+const indexOf = (...s: ThemedStock[]) => new Map(s.map((x) => [x.code, x]));
 const codes = (b: ReturnType<typeof buildThemeBoard>) => b.stocks.map((s) => s.code);
 
 describe("buildThemeBoard", () => {
@@ -53,6 +50,12 @@ describe("buildThemeBoard", () => {
         expect(a?.highPct).toBe(8.16);
         expect(a?.isMover).toBe(false); // 통합 5% 는 5% 초과가 아니다
         expect(b.stocks.find((s) => s.code === "B")?.changeRate).toBe(5);
+    });
+
+    it("이름은 nameOf 조인 — 모르는 코드는 코드 그대로", () => {
+        const idx = indexOf(rstock("A", {}), rstock("B", {}));
+        const b = buildThemeBoard(idx, 200, "un", { amountN: 5, rateN: 5 }, (code) => (code === "A" ? "알파" : null));
+        expect(b.stocks.map((s) => s.name).sort()).toEqual(["B", "알파"]);
     });
 
     it("1분 신호 — 직전 1분 등락률 +0.6%p 이상 그리고 거래대금 60억 이상", () => {

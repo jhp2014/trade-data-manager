@@ -1,6 +1,6 @@
 // 시장 데이터 창구 — 패널·훅은 이 인터페이스만 안다(fetch·URL 은 구현 몫).
 // 쓰는 쪽이 필요한 것만 의존하도록 종류별로 나눈다. 구현(tdm.ts / 테스트 가짜)은 여럿을 한 번에 구현해도 된다.
-import type { ChartBundle, DayReplay, HtsCursor, HtsNewsItem, StockMeta, TelegramArchivePage } from "./types.js";
+import type { ChartBundle, DayFlow, HtsCursor, HtsNewsItem, StockMeta, TelegramArchivePage } from "./types.js";
 
 export interface ChartData {
     /** 일봉 2년 + 그 날 분봉 + 분봉 % 기준가. */
@@ -13,13 +13,13 @@ export interface StockData {
 }
 
 export interface CalendarData {
-    /** 분봉(장중 데이터) 있는 거래일 YYYY-MM-DD, 오름차순(전역·종목무관). 서버가 파일 캐시로 두고 저녁 수집분까지 꼬리만 더한다. */
+    /** 분봉(장중 데이터) 있는 거래일 YYYY-MM-DD, 오름차순(전역·종목무관). 캐시 없는 직쿼리라 수 초 걸린다 — 자주 다시 묻지 말 것. */
     tradingDays(signal?: AbortSignal): Promise<string[]>;
 }
 
 export interface ThemeData {
-    /** 그날 전 종목의 분당 시계열 + 테마 소속. 서버가 과거 날짜를 파일 캐시로 굽는다(처음 한 번은 느릴 수 있다). */
-    dayReplay(date: string, signal?: AbortSignal): Promise<DayReplay>;
+    /** 그날 전 종목의 분당 시계열(/day-flow — 테마 소속 없음, 소속은 판단 이력이 입힌다). 서버가 요청마다 직계산한다(~3초). */
+    dayFlow(date: string, signal?: AbortSignal): Promise<DayFlow>;
 }
 
 export interface NewsData {

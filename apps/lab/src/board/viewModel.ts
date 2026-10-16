@@ -4,9 +4,12 @@
 //   · 큐레이션 표시(annotated) — tdm 큐레이션 피드에 기대고, trade-lab 라벨과는 다른 계통이다.
 //   · 거래대금 구간 카운트(hover 막대) — 쓰는 화면을 가져오지 않았다.
 // 남은 계산은 전부 t 까지의 값만 쓴다(snapshotAt = t 이하 마지막 분, 신호 = t−60초).
-import type { PriceMode, ReplayStock } from "../market/types.js";
+import type { DayFlowStock, PriceMode } from "../market/types.js";
 import type { BoardStock } from "./boardTypes.js";
 import { evaluateSignal, groupStocks, isMover, rebasePct, selectHotUniverse, snapshotAt, stocksByTheme, themeParents, type Grouped } from "./domain.js";
+
+/** 보드 입력 종목 — /day-flow 시계열에 소속(membership)이 입힌 테마를 얹은 것. */
+export type ThemedStock = DayFlowStock & { themes: string[] };
 
 /** 유니버스 크기 — 거래대금 상위 amountN ∪ 등락률 상위 rateN(workbench 기본값). */
 export const DEFAULT_UNIVERSE = { amountN: 80, rateN: 40 } as const;
@@ -24,10 +27,12 @@ export interface ThemeBoard {
  * KRX 기준가로 바꾼다(기준가가 없으면 UN 그대로).
  */
 export function buildThemeBoard(
-    index: ReadonlyMap<string, ReplayStock>,
+    index: ReadonlyMap<string, ThemedStock>,
     tUnix: number,
     market: PriceMode,
     universe: { amountN: number; rateN: number } = DEFAULT_UNIVERSE,
+    /** 코드 → 종목명(마스터 클라 조인) — 모르면 코드 그대로. */
+    nameOf: (code: string) => string | null = () => null,
 ): ThemeBoard {
     const snaps: { code: string; changeRate: number; amount: number; openPct: number; highPct: number; lowPct: number }[] = [];
     for (const s of index.values()) {
@@ -47,8 +52,7 @@ export function buildThemeBoard(
         const view = (p: number): number => (market === "krx" && un !== null && krx !== null ? rebasePct(p, un, krx) : p);
         stocks.push({
             code: snap.code,
-            name: s.name ?? snap.code,
-            market: s.market,
+            name: nameOf(snap.code) ?? snap.code,
             themes: s.themes,
             changeRate: view(snap.changeRate),
             openPct: view(snap.openPct),

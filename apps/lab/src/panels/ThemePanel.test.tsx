@@ -1,11 +1,11 @@
 // 테마 패널(이력 소속) — 가짜 시장 데이터 · 가짜 판단 저장소를 주입해 "그날 이전 이력으로 묶기 → 우클릭 = 종목 이력 창"을 본다.
-// 보드 공통 동작(시각 단면 · 승격 · 유니버스 · 헤더)은 SheetThemePanel.test 가 본다 — 같은 몸(ThemeBoardPanel)이다.
+// 보드 공통 동작(시각 단면 · 승격 · 유니버스 · 헤더)은 themeBoard/ThemeBoardPanel.test 가 본다 — 같은 몸이다.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MarketProvider } from "../market/MarketProvider.js";
 import { fakeMarket } from "../market/testing.js";
-import type { DayReplay, ReplayStock } from "../market/types.js";
+import type { DayFlow, DayFlowStock } from "../market/types.js";
 import { kstToUnix } from "../market/domain.js";
 import { JudgmentProvider } from "../judgment/JudgmentProvider.js";
 import { fakeJudgment, type FakeJudgmentData } from "../judgment/testing.js";
@@ -19,16 +19,22 @@ import { ThemePanel } from "./ThemePanel.js";
 const DATE = "2026-07-31";
 const T = kstToUnix(DATE, "10:00:00");
 
-// 시트 소속은 일부러 엉뚱하게(「시트」) — 이 패널은 시트를 보지 않는다.
-const stock = (code: string, name: string, rate: number, marketCap: string | null = null): ReplayStock => ({
-    code, name, themes: ["시트"],
+// 이름은 시계열(/day-flow)에 없다 — 마스터(stockMaster) 클라 조인으로 온다.
+const stock = (code: string, rate: number, marketCap: string | null = null): DayFlowStock => ({
+    code,
     times: [T], rate: [rate], high: [rate], low: [0], open: 0, cumAmount: [1e9],
-    basePrice: { krx: null, un: null }, market: "KOSPI", marketCap,
+    basePrice: { krx: null, un: null }, marketCap,
 });
-const replay: DayReplay = {
+const flow: DayFlow = {
     date: DATE,
-    stocks: [stock("000001", "알파", 9, "1230000000000"), stock("000002", "베타", 8), stock("000003", "감마", 7), stock("000004", "델타", 6)],
+    stocks: [stock("000001", 9, "1230000000000"), stock("000002", 8), stock("000003", 7), stock("000004", 6)],
 };
+const MASTER = [
+    { stockCode: "000001", name: "알파", market: "거래소" },
+    { stockCode: "000002", name: "베타", market: "거래소" },
+    { stockCode: "000003", name: "감마", market: "거래소" },
+    { stockCode: "000004", name: "델타", market: "거래소" },
+];
 
 const alphaHistory: StockHistory = {
     code: "000001", name: "알파", asOf: DATE,
@@ -41,15 +47,16 @@ const alphaHistory: StockHistory = {
 const DATE2 = "2026-08-03";
 const COVER = { from: "2023-02-14", to: "2026-07-30" };
 
-/** replays: 날짜 → 시계열. gate: 날짜 → 그 시계열 응답을 늦출 약속. */
-function renderPanel(data: FakeJudgmentData, opts: { replays?: Record<string, DayReplay>; gate?: Record<string, Promise<void>> } = {}) {
+/** flows: 날짜 → 시계열. gate: 날짜 → 그 시계열 응답을 늦출 약속. */
+function renderPanel(data: FakeJudgmentData, opts: { flows?: Record<string, DayFlow>; gate?: Record<string, Promise<void>> } = {}) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const replays = opts.replays ?? { [DATE]: replay };
+    const flows = opts.flows ?? { [DATE]: flow };
     const market = fakeMarket({
-        dayReplay: async (date: string) => {
+        dayFlow: async (date: string) => {
             await opts.gate?.[date];
-            return replays[date] ?? replay;
+            return flows[date] ?? flow;
         },
+        stockMaster: async () => MASTER,
     });
     return render(
         <QueryClientProvider client={qc}>
@@ -83,11 +90,10 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ThemePanel(이력 소속)", () => {
-    it("시트 대신 그날의 이력 소속으로 묶는다 — 묶인 이력이 없는 종목은 「테마 이력 없음」", async () => {
+    it("그날의 이력 소속으로 묶는다 — 묶인 이력이 없는 종목은 「테마 이력 없음」", async () => {
         renderPanel({ themes: { [DATE]: { "000001": ["반도체", "유리기판"], "000002": ["반도체"], "000003": ["조선"] } } });
         await waitFor(() => expect(cardNames()).toContain("반도체"));
         expect(cardNames()).toEqual(["반도체", "개별 종목", "테마 이력 없음"]);
-        expect(screen.queryAllByText("시트")).toHaveLength(0);
     });
 
     it("날짜를 바꾸는 동안 — 직전 날 판에 새 날 소속을 입히지 않는다(새 날 시계열이 오면 그때 바뀐다)", async () => {
@@ -96,7 +102,7 @@ describe("ThemePanel(이력 소속)", () => {
         const both = { "000001": ["반도체"], "000002": ["반도체"] };
         renderPanel(
             { themes: { [DATE]: both, [DATE2]: { "000001": ["조선"], "000002": ["조선"] } } },
-            { replays: { [DATE]: replay, [DATE2]: { ...replay, date: DATE2 } }, gate },
+            { flows: { [DATE]: flow, [DATE2]: { ...flow, date: DATE2 } }, gate },
         );
         await waitFor(() => expect(cardNames()).toContain("반도체"));
         act(() => usePaths.getState().write("A", { date: DATE2 }));

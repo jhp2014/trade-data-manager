@@ -65,38 +65,11 @@ export interface StockMeta {
 }
 
 /**
- * GET /day-replay?date — 그날 수집 종목 전부의 분당 % 시계열 + 메타(테마 소속 포함). 하루 수백~900종목, 원본 ~26MB(gzip ~4MB).
- * % 는 전부 통합(UN) 기준가 대비 한 벌(소수 2자리). times 는 kstToUnix(date, time) 로 만든 unix 초.
- * 서버가 주는 분봉 OHLC(minuteOpen/High/Low)·120일 고가(trailingHighs)는 테마 보드가 안 써서 받자마자 버린다
- * (메모리 하루 ~32MB → ~23MB, tdm.ts). 필요해지면 여기와 tdm.ts 를 같이 늘린다.
+ * GET /day-flow?date — 그날 수집 종목 전부의 분당 % 시계열(lab 전용 계약, lab-api 서빙 — contracts/wire 정의를
+ * 그대로 쓴다). % 는 전부 통합(UN) 기준가 대비 한 벌(소수 2자리), times 는 kstToUnix(date, time) 로 만든 unix 초.
+ * 옛 /day-replay 와 달리 name·market(마스터 클라 조인)·themes(시트 의존 소멸)가 없다.
  */
-export interface ReplayStock {
-    code: string;
-    times: number[];
-    /** 분당 종가 등락률 % */
-    rate: number[];
-    /** 그 분까지의 고가 %(누적 최대) */
-    high: number[];
-    /** 그 분까지의 저가 %(누적 최소) */
-    low: number[];
-    /** 당일 시가 % */
-    open: number;
-    /** 그 분까지의 누적 거래대금(원) */
-    cumAmount: number[];
-    /** 등락률 기준가(KRX 기준 재계산용) */
-    basePrice: ByMarket<number | null>;
-    name: string | null;
-    market: string | null;
-    /** 시가총액(원, 직전 거래일 기준) */
-    marketCap: string | null;
-    /** 테마명 — 시트에 없는 종목은 [] */
-    themes: string[];
-}
-
-export interface DayReplay {
-    date: string;
-    stocks: ReplayStock[];
-}
+export type { DayFlow, DayFlowStock } from "@trade-data-manager/wire";
 
 /** GET /news/hts 한 건 — HTS(시황) 헤드라인. 응답은 늘 최신순. */
 export interface HtsNewsItem {

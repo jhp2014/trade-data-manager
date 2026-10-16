@@ -21,11 +21,10 @@ export interface RelatedInfo {
 /** 종목 줄 우클릭 — 그 종목과 누른 자리(화면 좌표). */
 export type OnInspect = (code: string, at: { x: number; y: number }) => void;
 
-/** 보드의 종목 한 줄 — 그 시각의 값. */
+/** 보드의 종목 한 줄 — 그 시각의 값. 이름은 마스터 조인(useStockNameOf), 테마는 소속(membership)이 입힌 것. */
 export interface BoardStock {
     code: string;
     name: string;
-    market: string | null;
     themes: string[];
     changeRate: number;
     openPct: number;

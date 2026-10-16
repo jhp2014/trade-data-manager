@@ -2,7 +2,6 @@ import type { FunctionComponent, ReactNode } from "react";
 import type { IDockviewPanelProps } from "dockview-react";
 import { ChartPanel } from "../panels/ChartPanel.js";
 import { ThemePanel } from "../panels/ThemePanel.js";
-import { SheetThemePanel } from "../panels/SheetThemePanel.js";
 import { HtsNewsPanel } from "../panels/HtsNewsPanel.js";
 import { TelegramPanel } from "../panels/TelegramPanel.js";
 import { PanelFrame } from "../header/PanelFrame.js";
@@ -20,9 +19,9 @@ export interface PanelType {
 
 export const PANEL_TYPES: PanelType[] = [
     { base: "chart", title: "차트", render: (id) => <ChartPanel panelId={id} /> },
-    // base "theme" 은 원래 시트 소속 테마 패널이었다 — 저장된 배치의 그 패널이 그대로 시트 테마로 열리게 이름만 바꿨다.
+    // base "theme"(옛 시트 테마)은 2026-10-16 은퇴 — /day-flow 전환으로 시트 소속이 시계열에서 사라졌다.
+    // 저장된 배치에 남은 "theme" 패널은 sanitize(부팅 때 대장 정리)가 걷는다.
     { base: "htheme", title: "테마", render: (id) => <ThemePanel panelId={id} /> },
-    { base: "theme", title: "시트 테마", render: (id) => <SheetThemePanel panelId={id} /> },
     { base: "hts", title: "HTS뉴스", render: (id) => <HtsNewsPanel panelId={id} /> },
     { base: "telegram", title: "텔레그램", render: (id) => <TelegramPanel panelId={id} /> },
 ];

@@ -149,6 +149,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.59.0
         version: 5.100.5(react@18.3.1)
+      '@trade-data-manager/wire':
+        specifier: workspace:*
+        version: link:../../contracts/wire
       dockview-react:
         specifier: ^4.13.1
         version: 4.13.1(react@18.3.1)

@@ -1,7 +1,7 @@
 // 테마 보드 순수 계산 — tdm-work core/market/src/domain 에서 보드가 쓰는 것만 옮겨 왔다(외부 import 0).
 //   board/ranking.ts(유니버스) · board/roster.ts(테마 로스터·포함관계·관련 테마) · board/grouping.ts(카드 묶기)
 //   board/signals.ts(주도주·1분 신호) · replay/dayReplay.ts(rebasePct) · replay/rankSection.ts(lastIndexAtOrBefore)
-import type { ReplayStock } from "../market/types.js";
+import type { DayFlowStock } from "../market/types.js";
 
 // ── 시점 스냅샷 ───────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ export interface Snapshot {
 }
 
 /** 시점 t 의 스냅샷 — t 이하 마지막 분의 값(그 시각까지의 정보만). t 이전 데이터가 없으면 null(아직 미개장). */
-export function snapshotAt(s: Pick<ReplayStock, "code" | "times" | "rate" | "open" | "high" | "low" | "cumAmount">, t: number): Snapshot | null {
+export function snapshotAt(s: Pick<DayFlowStock, "code" | "times" | "rate" | "open" | "high" | "low" | "cumAmount">, t: number): Snapshot | null {
     const i = lastIndexAtOrBefore(s.times, t);
     if (i < 0) return null;
     return { code: s.code, rate: s.rate[i], openPct: s.open, highPct: s.high[i], lowPct: s.low[i], cumAmount: s.cumAmount[i] };

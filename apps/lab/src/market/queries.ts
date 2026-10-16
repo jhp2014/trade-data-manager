@@ -3,7 +3,7 @@ import { useEffect, useMemo } from "react";
 import { keepPreviousData, queryOptions, useQuery, useQueryClient, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { kstToday } from "./domain.js";
 import { useCalendarData, useChartData, useStockData, useThemeData } from "./MarketProvider.js";
-import type { ChartBundle, DayReplay } from "./types.js";
+import type { ChartBundle, DayFlow } from "./types.js";
 import type { ChartData } from "./ports.js";
 
 const TODAY_STALE = 60_000; // 오늘 시세는 수집이 채우는 중일 수 있다 — 1분 뒤 재조회 허용
@@ -50,16 +50,16 @@ export function useStockName(code: string): string | null {
     return useStockNameOf()(code);
 }
 
-/** 메모리에 남길 /day-replay 날짜 수 — 하루 ~23MB. 지금 화면에 떠 있는 날짜는 수와 상관없이 남는다. */
-export const DAY_REPLAY_KEEP = 4;
-const dayReplayUsedAt = new Map<string, number>();
+/** 메모리에 남길 /day-flow 날짜 수 — 하루 ~9MB(쓰는 필드만 온다). 지금 화면에 떠 있는 날짜는 수와 상관없이 남는다. */
+export const DAY_FLOW_KEEP = 4;
+const dayFlowUsedAt = new Map<string, number>();
 
 /**
- * 최근 본 날짜 keep 개만 남기고 나머지 /day-replay 캐시를 지운다 — 보고 있는(구독 중인) 날짜는 지우지 않는다.
- * 지운 날짜로 돌아가면 다시 받는다(서버가 과거 날짜를 파일 캐시로 두어 ~1초).
+ * 최근 본 날짜 keep 개만 남기고 나머지 /day-flow 캐시를 지운다 — 보고 있는(구독 중인) 날짜는 지우지 않는다.
+ * 지운 날짜로 돌아가면 다시 받는다(서버가 캐시 없이 직계산해 ~3초).
  */
-export function pruneDayReplays(qc: QueryClient, keep = DAY_REPLAY_KEEP, usedAt: ReadonlyMap<string, number> = dayReplayUsedAt): void {
-    const queries = qc.getQueryCache().findAll({ queryKey: ["day-replay"] });
+export function pruneDayFlows(qc: QueryClient, keep = DAY_FLOW_KEEP, usedAt: ReadonlyMap<string, number> = dayFlowUsedAt): void {
+    const queries = qc.getQueryCache().findAll({ queryKey: ["day-flow"] });
     if (queries.length <= keep) return;
     const dateOf = (q: (typeof queries)[number]): string => String(q.queryKey[1]);
     const ranked = [...queries].sort((a, b) => (usedAt.get(dateOf(b)) ?? 0) - (usedAt.get(dateOf(a)) ?? 0));
@@ -67,20 +67,21 @@ export function pruneDayReplays(qc: QueryClient, keep = DAY_REPLAY_KEEP, usedAt:
 }
 
 /**
- * 그날 전 종목 분당 시계열 + 테마 소속 — 크다(메모리 하루 ~23MB). 같은 날짜는 패널이 여럿이어도 한 번 받고,
- * 최근 본 날짜 DAY_REPLAY_KEEP 개까지 남긴다(두세 날짜를 오가며 비교해도 다시 받지 않게). 날짜가 바뀌는 동안 직전 날을 보여 준다.
+ * 그날 전 종목 분당 시계열(/day-flow — 테마 소속은 안 실려 온다, 판단 이력이 입힌다) — 크다(하루 ~9MB).
+ * 같은 날짜는 패널이 여럿이어도 한 번 받고, 최근 본 날짜 DAY_FLOW_KEEP 개까지 남긴다(두세 날짜를 오가며
+ * 비교해도 다시 받지 않게). 날짜가 바뀌는 동안 직전 날을 보여 준다.
  */
-export function useDayReplay(date: string): UseQueryResult<DayReplay, Error> {
+export function useDayFlow(date: string): UseQueryResult<DayFlow, Error> {
     const port = useThemeData();
     const qc = useQueryClient();
     useEffect(() => {
         if (!date) return;
-        dayReplayUsedAt.set(date, Date.now());
-        pruneDayReplays(qc);
+        dayFlowUsedAt.set(date, Date.now());
+        pruneDayFlows(qc);
     }, [date, qc]);
     return useQuery({
-        queryKey: ["day-replay", date],
-        queryFn: ({ signal }) => port.dayReplay(date, signal),
+        queryKey: ["day-flow", date],
+        queryFn: ({ signal }) => port.dayFlow(date, signal),
         enabled: date !== "",
         staleTime: histStale(date),
         gcTime: 60 * 60_000,

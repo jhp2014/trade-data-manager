@@ -1,49 +1,63 @@
-// 시트 테마 패널 — 가짜 시장 데이터를 주입해 "경로 → 그 날짜·시각의 단면 → 클릭 → 경로" 흐름을 확인한다.
+// 테마 보드 몸(ThemeBoardPanel)의 공통 동작 — 경로 → 그 날짜·시각의 단면 → 클릭 → 경로, 승격·카드·유니버스·헤더.
+// 소속은 membership 주입(옛 시트 테마 패널의 테스트를 /day-flow 전환 때 이식 — 이름은 마스터 조인으로 온다).
+import { useMemo, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { MarketProvider } from "../market/MarketProvider.js";
-import { fakeMarket } from "../market/testing.js";
-import type { DayReplay, ReplayStock } from "../market/types.js";
-import { kstToUnix } from "../market/domain.js";
-import { usePaths } from "../store/paths.js";
-import { usePanelUiStore } from "../store/panelUi.js";
-import { Framed, headerLine, openControls, pinToLine, resetHeaderLedger } from "../test/framed.js";
-import { SheetThemePanel } from "./SheetThemePanel.js";
+import { MarketProvider } from "../../market/MarketProvider.js";
+import { fakeMarket } from "../../market/testing.js";
+import type { DayFlow, DayFlowStock } from "../../market/types.js";
+import { kstToUnix } from "../../market/domain.js";
+import { usePaths } from "../../store/paths.js";
+import { usePanelUiStore } from "../../store/panelUi.js";
+import { Framed, headerLine, openControls, pinToLine, resetHeaderLedger } from "../../test/framed.js";
+import { ThemeBoardPanel, type Membership } from "./ThemeBoardPanel.js";
 
 const DATE = "2026-07-31";
 const T0930 = kstToUnix(DATE, "09:30:00");
 const T1000 = kstToUnix(DATE, "10:00:00");
 
 // 09:30 엔 반도체(알파·베타) 카드만 — 조선 종목(감마·델타)은 10:00 에 첫 거래가 나와 그때 카드가 생긴다.
-const stock = (code: string, name: string, themes: string[], rate: [number, number], times = [T0930, T1000]): ReplayStock => ({
-    code, name, themes,
+const stock = (code: string, rate: [number, number], times = [T0930, T1000]): DayFlowStock => ({
+    code,
     times, rate, high: rate, low: [0, 0], open: 0, cumAmount: [1e9, 2e9],
-    basePrice: { krx: null, un: null }, market: "KOSPI", marketCap: null,
+    basePrice: { krx: null, un: null }, marketCap: null,
 });
-const replay: DayReplay = {
+const flow: DayFlow = {
     date: DATE,
-    stocks: [
-        stock("000001", "알파", ["반도체"], [9, 9]),
-        stock("000002", "베타", ["반도체"], [8, 8]),
-        stock("000003", "감마", ["조선"], [12, 12], [T1000, T1000 + 60]),
-        stock("000004", "델타", ["조선"], [11, 11], [T1000, T1000 + 60]),
-    ],
+    stocks: [stock("000001", [9, 9]), stock("000002", [8, 8]), stock("000003", [12, 12], [T1000, T1000 + 60]), stock("000004", [11, 11], [T1000, T1000 + 60])],
 };
+const NAMES: Record<string, string> = {
+    "000001": "알파", "000002": "베타", "000003": "감마", "000004": "델타", "000005": "엡실론", "000006": "제타", "000007": "에타",
+};
+// 소속 — 테스트가 고치고 finally 로 되돌린다(마운트 때 한 번 읽는다).
+const themesOf: Record<string, string[]> = {};
+const resetThemes = (): void => {
+    for (const k of Object.keys(themesOf)) delete themesOf[k];
+    Object.assign(themesOf, { "000001": ["반도체"], "000002": ["반도체"], "000003": ["조선"], "000004": ["조선"] });
+};
+
+/** membership 을 마운트 때 themesOf 에서 굳힌다 — 패널은 소속을 주입으로만 받는다. */
+function Board(): JSX.Element {
+    const [themes] = useState(() => new Map(Object.entries(themesOf)));
+    const membership = useMemo<Membership>(() => ({ themes, error: null, unclassified: "미분류", note: null }), [themes]);
+    return <ThemeBoardPanel panelId="board-1" membership={membership} />;
+}
 
 function renderPanel(calls: string[] = []) {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const m = fakeMarket({
-        dayReplay: async (date: string) => {
+        dayFlow: async (date: string) => {
             calls.push(date);
-            return replay;
+            return flow;
         },
+        stockMaster: async () => Object.entries(NAMES).map(([stockCode, name]) => ({ stockCode, name, market: "거래소" })),
     });
     return render(
         <QueryClientProvider client={qc}>
             <MarketProvider market={m}>
-                <Framed panelId="theme-1">
-                    <SheetThemePanel panelId="theme-1" />
+                <Framed panelId="board-1">
+                    <Board />
                 </Framed>
             </MarketProvider>
         </QueryClientProvider>,
@@ -55,11 +69,12 @@ beforeEach(() => {
     usePaths.setState(usePaths.getInitialState(), true);
     usePanelUiStore.setState({ ui: {} });
     resetHeaderLedger();
-    usePaths.getState().bind("theme-1", "A");
+    resetThemes();
+    usePaths.getState().bind("board-1", "A");
 });
 afterEach(cleanup);
 
-describe("SheetThemePanel", () => {
+describe("ThemeBoardPanel", () => {
     it("날짜가 없으면 요청하지 않는다", () => {
         const calls: string[] = [];
         renderPanel(calls);
@@ -92,7 +107,7 @@ describe("SheetThemePanel", () => {
 
     it("평면 보기에서 종목 줄 클릭 = 경로의 종목", async () => {
         usePaths.getState().write("A", { date: DATE, time: "10:00" });
-        usePanelUiStore.getState().set("theme-1", "view", "rate");
+        usePanelUiStore.getState().set("board-1", "view", "rate");
         renderPanel();
         fireEvent.click(await screen.findByText("알파"));
         const s = usePaths.getState().paths.find((p) => p.id === "A")!.s;
@@ -100,7 +115,7 @@ describe("SheetThemePanel", () => {
     });
 });
 
-describe("SheetThemePanel — 승격 · 카드 · 유니버스", () => {
+describe("ThemeBoardPanel — 승격 · 카드 · 유니버스", () => {
     const bandThemes = (container: HTMLElement) =>
         [...container.querySelectorAll('[data-band="current"] [title^="카드 "]')].map((el) => (el.textContent ?? "").replace(/\d+.*$/, "").trim());
 
@@ -109,7 +124,7 @@ describe("SheetThemePanel — 승격 · 카드 · 유니버스", () => {
         const { container } = renderPanel();
         await waitFor(() => expect(bandThemes(container)).toEqual(["조선"]));
         // 띠 카드(전체로 펼쳐짐)에서 델타(조선)를 이 패널에서 고른다
-        fireEvent.click(screen.getAllByText("델타")[0]);
+        fireEvent.click((await screen.findAllByText("델타"))[0]);
         expect(usePaths.getState().paths.find((p) => p.id === "A")!.s.code).toBe("000004");
         // 바깥에서 알파(반도체)로 → 반도체가 띠로
         act(() => usePaths.getState().write("A", { code: "000001" }));
@@ -121,9 +136,10 @@ describe("SheetThemePanel — 승격 · 카드 · 유니버스", () => {
 
     it("더 큰 테마에 통째로 포함된 테마도 카드로 보인다(자동 숨김 없음)", async () => {
         // 조선 멤버(감마·델타)가 모두 '방산' 에도 속하고 방산은 멤버가 더 많다 → 조선 ⊂ 방산
-        replay.stocks.push(stock("000005", "엡실론", ["방산"], [10, 10]));
-        replay.stocks[2].themes = ["조선", "방산"];
-        replay.stocks[3].themes = ["조선", "방산"];
+        flow.stocks.push(stock("000005", [10, 10]));
+        themesOf["000005"] = ["방산"];
+        themesOf["000003"] = ["조선", "방산"];
+        themesOf["000004"] = ["조선", "방산"];
         try {
             usePaths.getState().write("A", { date: DATE, time: "10:00" });
             renderPanel();
@@ -137,33 +153,30 @@ describe("SheetThemePanel — 승격 · 카드 · 유니버스", () => {
             const up = screen.getAllByTitle("이 테마가 속한 상위 테마")[0]; // 조선 카드에서 — 숫자 자리가 같아야
             expect(up.textContent).toBe("방산3조선2");
         } finally {
-            replay.stocks.pop();
-            replay.stocks[2].themes = ["조선"];
-            replay.stocks[3].themes = ["조선"];
+            flow.stocks.pop();
         }
     });
 
     it("겹치는 관련 테마 = 이 카드에 함께 든 종목 / 그 테마 종목", async () => {
         // 알파(반도체)가 조선에도 → 반도체 카드의 관련 테마 「조선」 1/3, 조선 카드의 「반도체」 1/2
-        replay.stocks[0].themes = ["반도체", "조선"];
-        try {
-            usePaths.getState().write("A", { date: DATE, time: "10:00" });
-            renderPanel();
-            const pill = await screen.findByTitle("관련 테마 — 「조선」 3종목 중 1종목이 이 카드에도 있다");
-            expect(pill.textContent).toBe("조선1/3");
-            expect(screen.getByTitle("관련 테마 — 「반도체」 2종목 중 1종목이 이 카드에도 있다").textContent).toBe("반도체1/2");
-        } finally {
-            replay.stocks[0].themes = ["반도체"];
-        }
+        themesOf["000001"] = ["반도체", "조선"];
+        usePaths.getState().write("A", { date: DATE, time: "10:00" });
+        renderPanel();
+        const pill = await screen.findByTitle("관련 테마 — 「조선」 3종목 중 1종목이 이 카드에도 있다");
+        expect(pill.textContent).toBe("조선1/3");
+        expect(screen.getByTitle("관련 테마 — 「반도체」 2종목 중 1종목이 이 카드에도 있다").textContent).toBe("반도체1/2");
     });
 
     it("펼치면 주도주 · 틈 · 나머지 — 주도주만 있는 카드엔 틈이 없다", async () => {
-        replay.stocks.push(stock("000006", "제타", ["반도체"], [2, 2])); // 2% = 주도주 아님(나머지)
+        flow.stocks.push(stock("000006", [2, 2])); // 2% = 주도주 아님(나머지)
+        themesOf["000006"] = ["반도체"];
         try {
             usePaths.getState().write("A", { date: DATE, time: "10:00" });
             const { container } = renderPanel();
             await screen.findAllByTitle("클릭: 펼치기");
             for (const bar of screen.getAllByTitle("클릭: 펼치기")) fireEvent.click(bar);
+            // 이름(마스터 조인)이 들어온 뒤 본다 — 줄 이름으로 카드 구성을 비교한다.
+            await screen.findAllByText("알파");
             // 카드마다 [줄 이름 | 틈] 순서
             const cards = [...container.querySelectorAll('[title="클릭: 접기"]')].map((bar) =>
                 [...bar.nextElementSibling!.children].map((el) => (el.hasAttribute("data-boundary") ? "|" : (el.textContent ?? "").replace(/^\d+/, "").slice(0, 2))),
@@ -171,7 +184,7 @@ describe("SheetThemePanel — 승격 · 카드 · 유니버스", () => {
             expect(cards).toContainEqual(["알파", "베타", "|", "제타"]);
             expect(cards).toContainEqual(["감마", "델타"]);
         } finally {
-            replay.stocks.pop();
+            flow.stocks.pop();
         }
     });
 
@@ -179,19 +192,43 @@ describe("SheetThemePanel — 승격 · 카드 · 유니버스", () => {
         usePaths.getState().write("A", { date: DATE, time: "10:00" }); // 종목 없음 → 띠 없음, 카드는 모두 접힘
         renderPanel();
         const bar = (await screen.findAllByTitle("클릭: 펼치기"))[0];
-        expect(screen.queryAllByText("알파").length + screen.queryAllByText("감마").length).toBe(0);
+        // 이름(알파…)만 세면 마스터가 늦게 온 사이의 회귀를 놓친다 — 코드 꼴 줄도 함께 0 이어야 "접힘"이다.
+        const rows = () => ["알파", "감마", "000001", "000003"].reduce((n, t) => n + screen.queryAllByText(t).length, 0);
+        expect(rows()).toBe(0);
         fireEvent.click(bar);
         expect(bar.title).toBe("클릭: 접기");
-        expect(screen.queryAllByText("알파").length + screen.queryAllByText("감마").length).toBeGreaterThan(0);
+        await waitFor(() => expect(rows()).toBeGreaterThan(0));
         fireEvent.click(bar);
         expect(bar.title).toBe("클릭: 펼치기");
-        expect(screen.queryAllByText("알파").length + screen.queryAllByText("감마").length).toBe(0);
+        expect(rows()).toBe(0);
+    });
+
+    it("소속을 받기 전엔 「이력 소속 불러오는 중」 — 전 종목을 「미분류」로 단정하지 않는다 · 이력 오류는 그대로 보인다", async () => {
+        usePaths.getState().write("A", { date: DATE, time: "10:00" });
+        const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+        const m = fakeMarket({ dayFlow: async () => flow, stockMaster: async () => [] });
+        const page = (membership: Membership) =>
+            render(
+                <QueryClientProvider client={qc}>
+                    <MarketProvider market={m}>
+                        <Framed panelId="board-1">
+                            <ThemeBoardPanel panelId="board-1" membership={membership} />
+                        </Framed>
+                    </MarketProvider>
+                </QueryClientProvider>,
+            );
+        const loading = page({ themes: undefined, error: null, unclassified: "미분류", note: null });
+        expect(await screen.findByText(/이력 소속 불러오는 중/)).toBeTruthy();
+        expect(screen.queryAllByTitle(/^카드 /)).toHaveLength(0);
+        loading.unmount();
+        page({ themes: undefined, error: new Error("저장소 깨짐"), unclassified: "미분류", note: null });
+        expect(await screen.findByText("이력 오류: 저장소 깨짐")).toBeTruthy();
     });
 
     it("현재 종목이 테마 카드 밖이면 헤더 줄에 그 자리(랭킹 밖)", async () => {
         usePaths.getState().write("A", { date: DATE, time: "10:00", code: "000001" }); // 알파 = 반도체 카드
         renderPanel();
-        const line = headerLine("theme-1")!;
+        const line = headerLine("board-1")!;
         expect(await screen.findByText("4종목")).toBeTruthy();
         expect(within(line).queryByText(/현재 종목/)).toBeNull();
         act(() => usePaths.getState().write("A", { code: "999999" })); // 그날 없는 종목
@@ -199,16 +236,17 @@ describe("SheetThemePanel — 승격 · 카드 · 유니버스", () => {
     });
 
     it("개별·미분류 자리는 테마 보기에서만 — 평면 목록엔 꼬리 카드가 없다", async () => {
-        replay.stocks.push(stock("000007", "에타", [], [9, 9])); // 테마 없음 = 미분류
+        flow.stocks.push(stock("000007", [9, 9]));
+        themesOf["000007"] = []; // 테마 없음 = 미분류
         try {
             usePaths.getState().write("A", { date: DATE, time: "10:00", code: "000007" });
             renderPanel();
-            const line = headerLine("theme-1")!;
+            const line = headerLine("board-1")!;
             await waitFor(() => expect(within(line).getByText("현재 종목 미분류")).toBeTruthy());
-            act(() => usePanelUiStore.getState().set("theme-1", "view", "amount"));
+            act(() => usePanelUiStore.getState().set("board-1", "view", "amount"));
             await waitFor(() => expect(within(line).queryByText(/현재 종목/)).toBeNull());
         } finally {
-            replay.stocks.pop();
+            flow.stocks.pop();
         }
     });
 
@@ -216,7 +254,7 @@ describe("SheetThemePanel — 승격 · 카드 · 유니버스", () => {
         usePaths.getState().write("A", { date: DATE, time: "10:00" });
         renderPanel();
         expect(await screen.findByText("4종목")).toBeTruthy();
-        openControls("theme-1");
+        openControls("board-1");
         const opener = () => document.querySelector<HTMLButtonElement>('[data-board-row="universe"] button')!;
         fireEvent.click(opener()); // 판 안의 요약 트리거 → 칸 둘이 든 판
         const fields = () => screen.getAllByRole("textbox").filter((el) => (el as HTMLInputElement).title.includes("상위 N")) as HTMLInputElement[];
@@ -226,7 +264,7 @@ describe("SheetThemePanel — 승격 · 카드 · 유니버스", () => {
         fireEvent.change(rate, { target: { value: "0" } });
         fireEvent.keyDown(rate, { key: "Enter" });
         expect(await screen.findByText("1종목")).toBeTruthy();
-        expect(usePanelUiStore.getState().ui["theme-1"]).toMatchObject({ amountN: 1, rateN: 0 });
+        expect(usePanelUiStore.getState().ui["board-1"]).toMatchObject({ amountN: 1, rateN: 0 });
         expect(opener().textContent).toContain("1 ∪ 0"); // 트리거 요약
         // 범위를 넘는 값은 잘린 값으로 보인다(친 글자가 남지 않는다)
         fireEvent.change(amount, { target: { value: "5000" } });
@@ -241,10 +279,10 @@ describe("SheetThemePanel — 승격 · 카드 · 유니버스", () => {
         usePaths.getState().write("A", { date: DATE, time: "10:00" });
         renderPanel();
         expect(await screen.findByText("4종목")).toBeTruthy();
-        expect(within(headerLine("theme-1")!).queryAllByRole("textbox")).toHaveLength(0); // 기본은 판 안
-        openControls("theme-1");
+        expect(within(headerLine("board-1")!).queryAllByRole("textbox")).toHaveLength(0); // 기본은 판 안
+        openControls("board-1");
         pinToLine("universe");
-        const [amount, rate] = within(headerLine("theme-1")!).getAllByRole("textbox") as HTMLInputElement[];
+        const [amount, rate] = within(headerLine("board-1")!).getAllByRole("textbox") as HTMLInputElement[];
         expect([amount.title, rate.title]).toEqual(["거래대금 상위 N", "등락률 상위 N"]);
         fireEvent.change(amount, { target: { value: "1" } });
         fireEvent.keyDown(amount, { key: "Enter" });
