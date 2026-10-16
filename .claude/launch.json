@@ -24,6 +24,15 @@
       "port": 3110
     },
     {
+      "name": "lab-api-dev",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set LAB_API_PORT=3310&& pnpm --filter @trade-data-manager/lab-api dev"
+      ],
+      "port": 3310
+    },
+    {
       "name": "lab-dev",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [

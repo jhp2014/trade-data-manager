@@ -1,4 +1,4 @@
-// 이슈 이력 읽기 — trade-judgment 의 이력/<코드>.jsonl 전부와 관점/테마 사전.md 를 메모리에 올린다(임시 판단 서버가 쓴다). 순수 node.
+// 이슈 이력 읽기 — trade-judgment 의 이력/<코드>.jsonl 전부와 관점/테마 사전.md 를 메모리에 올린다(app.ts 의 /judgment 라우트가 쓴다). 순수 node.
 // 형식: trade-judgment/이력/형식.md. 이력의 테마 이름(세부)을 사전으로 테마에 잇는 규칙은 trade-judgment/tools/theme-dict.mjs 와 같다
 // (사전 「쓰는 법」 — 같은 이름 → 괄호 속 이름 → 괄호 설명을 뗀 이름 → 끝이 가장 길게 맞는 이름, 상위가 있으면 그것도).
 // 이력 · 사전 파일이 바뀌면 다음 요청 때 다시 읽는다(fs.watch).

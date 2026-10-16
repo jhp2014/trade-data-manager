@@ -1,5 +1,5 @@
 // 판단 저장소(trade-judgment)의 이슈 이력 — 원본 규약: trade-judgment/이력/형식.md, 테마 묶기: 관점/테마 사전.md.
-// 화면은 이 모양만 안다 — 지금은 임시 서버(trade-lab/server/judgment/history.ts)가, 나중엔 tdm 이 같은 모양을 준다.
+// 화면은 이 모양만 안다 — 주는 쪽은 apps/lab-api(src/judgment/history.ts)다.
 
 /** 이력 한 줄(그날). */
 export interface HistoryLine {

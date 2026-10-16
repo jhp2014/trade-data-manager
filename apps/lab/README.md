@@ -5,5 +5,5 @@
 
 - 독립 저장소 `jhp2014/trade-lab` 에서 2026-10-16 `apps/lab` 으로 편입(squash import). 그 전 이력은 원 저장소의 `moved-to-tdm` 태그까지.
 - 시장 데이터는 tdm api(읽기 전용 GET)에서 `/api/*` 프록시로 가져온다.
-- 사람의 라벨·문서·판단은 별도 저장소 `trade-judgment`(로컬) 파일에 둔다 — 임시 판단 서버(`/judgment/*`)가 읽는다.
+- 사람의 라벨·문서·판단은 별도 저장소 `trade-judgment`(로컬) 파일에 둔다 — `apps/lab-api`(`/judgment/*`)가 읽는다.
 - 설계 문서: [DESIGN.md](./DESIGN.md)

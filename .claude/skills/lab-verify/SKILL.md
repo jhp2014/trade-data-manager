@@ -23,6 +23,7 @@ verifier : 1패스 + 재검증 2회      (FAIL 0이면 즉시 종료, 재검증�
 
 ```
 ├─ Bash(run_in_background): pnpm --filter @trade-data-manager/lab type-check && pnpm --filter @trade-data-manager/lab test     수 초
+│    (lab-api 를 고쳤으면 @trade-data-manager/lab-api 의 type-check·test 도 같이 — lab-api 는 수 초면 끝난다)
 ├─ lab-reviewer                                              변경 diff 를 넘긴다
 ├─ lab-verifier #1  주소 http://v1.localhost:3210             시나리오 묶음 1
 └─ lab-verifier #2  주소 http://v2.localhost:3210             시나리오 묶음 2 (필요할 때만)

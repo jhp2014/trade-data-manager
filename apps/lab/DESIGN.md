@@ -88,12 +88,12 @@ labels/타점.jsonl       {"id":"…","자리":"402340@2026-07-31T09:44","매매
 
 ## 6. 구조
 
+> 2026-10-16 tdm 모노레포 편입 — 화면 = `apps/lab`(사용 3200 / 개발 3210), 백엔드 = `apps/lab-api`(Hono, 사용 3300 / 개발 3310).
+> lab-api 는 판단 저장소 읽기가 1호 입주자고, 앞으로 tdm api 의 lab 읽기 경로를 단계적으로 잠식한다(strangler — 결정 로그 「trade-lab 편입」 절).
+
 ```
-trade-lab/
-├ web/        화면 — Vite + React + dockview. workbench 부품을 복사해 쓴다(복사한 순간부터 trade-lab 의 것)
-├ server/     임시 판단 서버 — Vite 개발 서버 미들웨어 /judgment/*(명령 하나 · 포트 하나). tdm 이 이력을 내려 주면 은퇴
-├ tools/      AI 분석 스크립트 + api.mjs(tdm api 통로 · 허용 경로 · .data 캐시)
-└ .data/      시장 데이터 캐시 (git 제외)
+apps/lab/         화면 — Vite + React + dockview(src/). workbench 부품을 복사해 쓴다(복사한 순간부터 lab 의 것)
+apps/lab-api/     lab 이 대면하는 백엔드(Hono) — /judgment/*(trade-judgment 읽기). AI 분석 스크립트·.data 캐시는 trade-judgment/tools 에
 
 trade-judgment/   (별도 git, 로컬 전용) — trading-review 의 후속: 판단 · 관점 · 분석 스크립트 · 작업 방식(CLAUDE.md)
 ├ 관점/       보는 법 노트 — 「당일 테마」 · 「테마 정리」 · 「테마 사전」(이력 이름 → 테마) …
@@ -104,10 +104,11 @@ trade-judgment/   (별도 git, 로컬 전용) — trading-review 의 후속: 판
 ```
 
 ```
-화면 ──/api/*──→ Vite 프록시 ────────→ tdm api :3001      시장 데이터 — workbench 와 같은 길
-화면 ──/judgment/*─→ 임시 판단 서버 ──→ trade-judgment/이력 · 관점/테마 사전   읽기만 — 메모리에 올리고 파일이 바뀌면 다시 읽는다. 화면은 judgment/ports.ts 창구만 안다
-AI 스크립트 ──→ api.mjs ──→ tdm api                         분석 — 화면과 무관, 화면이 꺼져 있어도 된다
-AI 스크립트 ──→ trade-judgment/이력 (tools/cafe/build.mjs)             이력 쌓기 — 화면은 다음에 읽을 때 새 파일을 본다
+화면 ──/api/*──→ Vite 프록시 ────→ tdm api :3001(개발 3011)         시장 데이터 — workbench 와 같은 길, GET 만
+화면 ──/judgment/*─→ Vite 프록시 ──→ lab-api :3300(개발 3310) ──→ trade-judgment/이력 · 관점/테마 사전
+                                     읽기만 — 메모리에 올리고 파일이 바뀌면 다시 읽는다. 화면은 judgment/ports.ts 창구만 안다
+AI 스크립트 ──→ api.mjs ──→ tdm api                                  분석 — 화면과 무관, 화면이 꺼져 있어도 된다
+AI 스크립트 ──→ trade-judgment/이력 (tools/cafe/build.mjs)           이력 쌓기 — 화면은 다음에 읽을 때 새 파일을 본다
 ```
 
 - **tdm 은 그대로 쓴다.** 시장 데이터(분봉 흐름 `/day-replay`, 차트 `/chart`, 테마 소속, 날짜, 종목명, 기준선 `/chart-anchors/all`, 라벨 `/groups`, 뉴스)는 tdm api 에 이미 있다.

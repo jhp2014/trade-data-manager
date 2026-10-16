@@ -1,5 +1,5 @@
-// 판단 저장소 어댑터 — 임시 판단 서버(trade-lab/server/judgment, Vite dev 서버의 /judgment/*)에 붙는다.
-// tdm 이 이력을 내려 주게 되면 이 파일만 바꾼다(패널은 ports.ts 만 안다).
+// 판단 저장소 어댑터 — lab-api(/judgment/*, Vite 프록시 경유)에 붙는다.
+// 주는 쪽이 바뀌면 이 파일만 바꾼다(패널은 ports.ts 만 안다).
 import type { JudgmentStore } from "./ports.js";
 import type { Coverage, StockHistory } from "./types.js";
 
