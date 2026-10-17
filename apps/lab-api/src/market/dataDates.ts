@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { kstToday, type MinuteDateReader } from "@trade-data-manager/market";
 
-// 기본 경로는 cwd 가 아니라 앱 루트(apps/lab-api/.cache) 고정 — 어디서 띄워도 같은 파일을 본다(main.ts 의 judgmentRoot 와 같은 결).
+// 기본 경로는 cwd 가 아니라 앱 루트(apps/lab-api/.cache) 고정 — 어디서 띄워도 같은 파일을 본다.
 const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const DEFAULT_FILE = process.env.LAB_API_DATES_CACHE_FILE ?? path.resolve(APP_ROOT, ".cache/data-dates.json");
 

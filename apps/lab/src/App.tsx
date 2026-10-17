@@ -3,8 +3,6 @@ import type { DockviewApi } from "dockview-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MarketProvider } from "./market/MarketProvider.js";
 import { tdmMarket } from "./market/tdm.js";
-import { JudgmentProvider } from "./judgment/JudgmentProvider.js";
-import { judgmentServer } from "./judgment/server.js";
 import { PathBar } from "./shell/PathBar.js";
 import { Shell } from "./shell/Shell.js";
 import { Taskbar } from "./shell/Taskbar.js";
@@ -20,7 +18,6 @@ export function App(): JSX.Element {
     return (
         <QueryClientProvider client={queryClient}>
             <MarketProvider market={tdmMarket}>
-            <JudgmentProvider store={judgmentServer}>
                 <Hotkeys api={api} />
                 <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
                     <PathBar />
@@ -28,7 +25,6 @@ export function App(): JSX.Element {
                     <Taskbar api={api} />
                 </div>
                 <SettingsModal api={api} />
-            </JudgmentProvider>
             </MarketProvider>
         </QueryClientProvider>
     );

@@ -1,17 +1,13 @@
-// lab 이 대면하는 백엔드(Hono) — 1호 입주자는 판단 저장소(trade-judgment) 읽기, 2호는 시장 읽기(/dates, tdm api 잠식 1호).
-// 화면 쪽 어댑터는 apps/lab/src/judgment/server.ts — lab 의 Vite 프록시가 /judgment/* 를 이리로 보낸다(경로 그대로, rewrite 없음).
-//   GET /judgment/history/themes?date=<날짜>          → { date, stocks: { <코드>: [테마…] }, coverage }  · 그날 이전 이력으로
-//   GET /judgment/history/stocks/<코드>?date=<날짜>   → StockHistory(judgment/history.ts)   · 이력 없음 404
+// lab 이 대면하는 백엔드(Hono) — 시장 읽기 전용. 옛 /judgment(trade-judgment 판단 저장소 읽기)는 2026-10-17 은퇴 —
+// 등록부 기반 새 조회가 후계(tdm-ai, 결정 로그 「판단·AI 가공의 작업장」).
 //   GET /dates                                        → string[](YYYY-MM-DD 오름차순) · tdm api GET /dates 와 같은 경로·꼴(lab 프록시가 /api 만 떼고 넘긴다)
 //   GET /stocks/master                                → StockMeta[](코드 오름차순 전량) · tdm api 와 같은 꼴, 캐시 없이 직쿼리
 //   GET /news/telegram/archive?date=|from=&to=[&q=…]  → TelegramArchivePage · 조립은 market/telegramArchive.ts, 400 은 NestJS 와 같은 body
 //   GET /chart?code=&date=                            → ChartBundle(일봉 2년+dense 분봉+basePrice·rawScale) · 조립은 market/chart.ts
 //   GET /news/hts?date=[&code=&q=&before…]            → HtsNewsItem[](최신순) · 조립은 market/htsNews.ts
 //   GET /day-flow?date=                               → DayFlow(그날 universe 전부의 분당 원값 — 표현(%·누적)은 클라) · lab 전용 계약, 조립은 market/dayFlow.ts
-import { statSync } from "node:fs";
 import { Hono } from "hono";
 import type { DataDate, StockMeta } from "@trade-data-manager/wire";
-import { HistoryError, HistoryRepo } from "./judgment/history.js";
 import type { StockNewsReader } from "@trade-data-manager/market";
 import type { ChartByCode } from "./market/chart.js";
 import type { DayFlowBody } from "./market/dayFlowCache.js";
@@ -19,18 +15,7 @@ import { htsNews } from "./market/htsNews.js";
 import { telegramArchivePage, type TelegramArchivePorts } from "./market/telegramArchive.js";
 import { assertStockCode, assertYmd, BadRequest } from "./market/validation.js";
 
-/** 판단 저장소가 있는가 — 503 판정과 기동 경고가 같은 질문을 쓴다(main.ts). */
-export function hasJudgmentRoot(p: string): boolean {
-    try {
-        return statSync(p).isDirectory();
-    } catch {
-        return false;
-    }
-}
-
 export interface AppOptions {
-    /** 판단 저장소(trade-judgment) 루트. 없으면 서버는 뜨되 /judgment 요청에 503. */
-    judgmentRoot: string;
     /** GET /dates 의 데이터 — 분봉 있는 거래일 전체(오름차순). wiring 은 파일 물화+꼬리 증분(market/dataDates.ts). */
     listDates: () => Promise<DataDate[]>;
     /** GET /stocks/master 의 데이터 — 종목 마스터 전량(코드·이름·시장, 코드 오름차순). 캐시 없음. */
@@ -43,12 +28,11 @@ export interface AppOptions {
     stockNews: StockNewsReader;
     /** GET /day-flow 의 데이터 — JSON **문자열**(캐시 히트 때 재직렬화를 피한다, market/dayFlowCache.ts). */
     dayFlowBody: DayFlowBody;
-    /** 예상 밖 오류(500) 로깅 — HistoryError 같은 요청 쪽 잘못은 안 온다. */
+    /** 예상 밖 오류(500) 로깅 — BadRequest 같은 요청 쪽 잘못은 안 온다. */
     onError?: (e: unknown) => void;
 }
 
 export function createApp({
-    judgmentRoot,
     listDates,
     listStockMeta,
     telegramArchive,
@@ -56,22 +40,13 @@ export function createApp({
     stockNews,
     dayFlowBody,
     onError = () => undefined,
-}: AppOptions) {
-    const history = new HistoryRepo(judgmentRoot);
+}: AppOptions): Hono {
     const app = new Hono();
 
-    app.use("/judgment/*", async (c, next) => {
-        c.header("cache-control", "no-store"); // 503·405 를 포함한 모든 /judgment 응답에
-        if (!hasJudgmentRoot(judgmentRoot)) return c.json({ error: `판단 저장소가 없다: ${judgmentRoot}` }, 503);
+    // lab-api 는 읽기 전용 — GET 외는 경로가 있어도 405(규칙을 코드로: 쓰기 라우트가 생기는 것 자체를 막는다).
+    app.use("*", async (c, next) => {
         if (c.req.method !== "GET") return c.json({ error: "GET 만 받는다" }, 405);
         await next();
-    });
-    app.get("/judgment/history/themes", async (c) => {
-        const date = c.req.query("date") ?? "";
-        return c.json({ date, ...(await history.themesAsOf(date)) });
-    });
-    app.get("/judgment/history/stocks/:code", async (c) => {
-        return c.json(await history.stock(c.req.param("code"), c.req.query("date") ?? ""));
     });
 
     app.get("/dates", async (c) => c.json(await listDates()));
@@ -109,14 +84,12 @@ export function createApp({
 
     app.notFound((c) => c.json({ error: `없는 경로: ${new URL(c.req.url).pathname}` }, 404));
     app.onError((e, c) => {
-        if (e instanceof HistoryError) return c.json({ error: e.message }, e.status);
         // 시장 경로의 400 — tdm api(NestJS BadRequestException)와 같은 body(strangler: 에러 응답도 동일하게).
         if (e instanceof BadRequest) return c.json({ message: e.message, error: "Bad Request", statusCode: 400 }, 400);
         onError(e);
-        // /judgment 는 {error} 꼴 유지(기존 클라 계약), 시장 경로는 NestJS 500 과 같은 body — lab 의 serverMessage 가 message 를 꺼낸다.
-        if (new URL(c.req.url).pathname.startsWith("/judgment")) return c.json({ error: "lab-api 서버 오류" }, 500);
+        // NestJS 500 과 같은 body — lab 의 serverMessage 가 message 를 꺼낸다.
         return c.json({ statusCode: 500, message: "Internal server error" }, 500);
     });
 
-    return { app, warm: () => history.warm(), close: () => history.close() };
+    return app;
 }

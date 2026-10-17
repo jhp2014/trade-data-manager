@@ -18,7 +18,7 @@ export interface CalendarData {
 }
 
 export interface ThemeData {
-    /** 그날 전 종목의 분당 시계열(/day-flow — 테마 소속 없음, 소속은 판단 이력이 입힌다). 서버가 요청마다 직계산한다(~3초). */
+    /** 그날 전 종목의 분당 시계열(/day-flow — 테마 소속 없음, 소속은 소비하는 쪽이 입힌다). 과거 날짜는 서버 LRU, 미스는 직계산(~3초). */
     dayFlow(date: string, signal?: AbortSignal): Promise<DayFlow>;
 }
 

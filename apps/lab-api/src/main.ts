@@ -1,7 +1,5 @@
-// 기동 — 포트는 LAB_API_PORT(사용 3300 / 개발 3310, launch.json lab-api-dev), 판단 저장소는 JUDGMENT_DIR(기본: 레포 옆 trade-judgment).
+// 기동 — 포트는 LAB_API_PORT(사용 3300 / 개발 3310, launch.json lab-api-dev).
 // market DB 는 읽기만. /dates 는 파일 물화(.cache/data-dates.json) + 꼬리 증분(market/dataDates.ts).
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { serve } from "@hono/node-server";
 import { ArchiveNewsSearchService } from "@trade-data-manager/market";
 import {
@@ -19,17 +17,15 @@ import {
 // 패키지 지정자("@trade-data-manager/telegram")는 index 가 GramJS(client.ts)를 모듈 로드에 끌고 온다 —
 // 상수(채널 레지스트리)만 필요하므로 파일 직접 경로로 피한다(exports 는 패키지 지정자에만 적용).
 import { NEWS_CHANNELS } from "../../../infra/telegram/src/channels.js";
-import { createApp, hasJudgmentRoot } from "./app.js";
+import { createApp } from "./app.js";
 import { makeChartByCode } from "./market/chart.js";
 import { MaterializedDataDates } from "./market/dataDates.js";
 import { makeDayFlowByDate } from "./market/dayFlow.js";
 import { makeCachedDayFlowBody } from "./market/dayFlowCache.js";
 
 const port = Number(process.env.LAB_API_PORT ?? 3300);
-const judgmentRoot =
-    process.env.JUDGMENT_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../trade-judgment");
 
-// market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — /judgment 는 멀쩡하고 시장 경로만 500(판단 저장소 없음=503 과 같은 부분 실패 결).
+// market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — 요청마다 500 으로 원인을 말한다(기동 크래시보다 진단이 쉽다).
 type MarketPorts = Pick<
     Parameters<typeof createApp>[0],
     "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "dayFlowBody"
@@ -88,19 +84,10 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
 }
 const { closePool, ...market } = wireMarket();
 
-const { app, warm, close } = createApp({
-    judgmentRoot,
-    ...market,
-    onError: (e) => console.error("[lab-api]", e),
-});
-if (hasJudgmentRoot(judgmentRoot)) warm();
-else console.warn(`[judgment] 판단 저장소가 없다: ${judgmentRoot} — /judgment 요청은 503`);
+const app = createApp({ ...market, onError: (e) => console.error("[lab-api]", e) });
 
-// loopback 에만 붙는다 — 개인 판단 이력이라, 소비자도 같은 기기의 Vite 프록시뿐이다(옛 Vite 내장 시절과 같은 노출 범위).
+// loopback 에만 붙는다 — 소비자가 같은 기기의 Vite 프록시뿐이다.
 const server = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, (info) => {
-    console.log(`lab-api :${info.port} (judgment: ${judgmentRoot})`);
+    console.log(`lab-api :${info.port}`);
 });
-server.on("close", () => {
-    close();
-    closePool();
-});
+server.on("close", closePool);

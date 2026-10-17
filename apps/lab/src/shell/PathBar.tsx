@@ -1,5 +1,6 @@
 // 상단 줄 — 경로 카드들(가로 스크롤 — 넘쳐도 아래로 내려가지 않는다) + ⚙(설정 창: 경로 추가·삭제 · 패널 열기 · 화면 · 차트 · 단축키).
-// 경로 카드에 입력칸은 없다. 날짜만 여기서 고르고(거래일 판), 시각·종목은 패널 클릭(분봉 차트·뉴스 줄·테마 패널)이 쓴다.
+// 경로 카드에 입력칸은 없다. 날짜만 여기서 고르고(거래일 판), 시각·종목은 패널 클릭(분봉 차트·뉴스 줄)이 쓴다.
+// ⚠ 종목을 고르던 테마 판이 2026-10-17 은퇴해 지금은 종목 입구가 기록 복원(우클릭 판)뿐이다 — 등록부 기반 새 테마 패널이 입구를 되살린다.
 // 이름표(A·B) 클릭 = 그 경로를 활성으로. 펼침/접음은 카드에 마우스를 올리면 끝에 나오는 ▸/◂ 로(활성과 따로).
 // 활성 경로는 경로 색 고리로 보인다 — 접혀 있어도. 활성은 그 밖에 날짜를 바꾸거나, 그 경로를 보는 패널에서 클릭하거나,
 // 펼친 카드의 빈 곳을 눌러도 옮겨 온다.
@@ -136,7 +137,7 @@ function CardFace({ path, menuOpen, onMenu }: { path: Path; menuOpen: boolean; o
                 {time}
             </span>
             <Sep />
-            <span title={path.s.code ? `${path.s.code} — 테마 패널의 종목 줄을 눌러 바꾼다` : "종목 — 테마 패널의 종목 줄을 눌러 고른다"} style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: stock ? "var(--text-primary)" : "var(--text-3)" }}>
+            <span title={path.s.code ? path.s.code : "종목 — 고르는 판(새 테마 패널)이 올 때까지는 우클릭 판의 기록으로만 바꾼다"} style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: stock ? "var(--text-primary)" : "var(--text-3)" }}>
                 {stock ?? "종목 —"}
             </span>
             {fold}

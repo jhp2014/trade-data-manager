@@ -1,23 +1,10 @@
-// 경로 · 상태 코드를 본다(계산은 judgment/history.test). Hono 라 서버 없이 app.request 로 부른다.
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+// 경로 · 상태 코드를 본다(계산은 market/* 테스트). Hono 라 서버 없이 app.request 로 부른다.
+import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 
-let root: string;
-let close: () => void;
-let call: (path: string, method?: string) => Promise<{ status: number; headers: Headers; json: Record<string, unknown> }>;
-
-type Ports = Partial<
-    Pick<
-        Parameters<typeof createApp>[0],
-        "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "dayFlowBody" | "onError"
-    >
->;
-function make(r: string, ports: Ports = {}): void {
-    const made = createApp({
-        judgmentRoot: r,
+type Ports = Partial<Parameters<typeof createApp>[0]>;
+function make(ports: Ports = {}) {
+    const app = createApp({
         listDates: async () => [],
         listStockMeta: async () => [],
         telegramArchive: { searchPage: async () => ({ items: [] }), coverage: async () => null },
@@ -26,68 +13,33 @@ function make(r: string, ports: Ports = {}): void {
         dayFlowBody: async (date) => JSON.stringify({ date, stocks: [] }),
         ...ports,
     });
-    close = made.close;
-    call = async (path, method = "GET") => {
-        const res = await made.app.request(path, { method });
-        return { status: res.status, headers: res.headers, json: (await res.json()) as Record<string, unknown> };
+    return async (path: string, method = "GET") => {
+        const res = await app.request(path, { method });
+        return { status: res.status, headers: res.headers, json: (await res.json()) as unknown };
     };
 }
 
-beforeEach(async () => {
-    root = await mkdtemp(join(tmpdir(), "judgment-app-"));
-    await mkdir(join(root, "이력-awake"), { recursive: true });
-    await mkdir(join(root, "관점"), { recursive: true });
-    await writeFile(join(root, "관점", "테마 사전.md"), "| 테마 | 이력 이름 | 상위 |\n|---|---|---|\n| 반도체 | HBM | |\n");
-    const rows = [
-        { v: 1, kind: "stock", id: "stock", code: "000001", name: "알파" },
-        { v: 1, kind: "issue", id: "2025-01-02", date: "2025-01-02", themes: ["HBM"], issue: "x", high: null, evidence: [{ src: "cafe", title: "1. HBM", pct: 5 }] },
-    ];
-    await writeFile(join(root, "이력-awake", "000001.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
-    make(root);
-});
-afterEach(async () => {
-    close();
-    await rm(root, { recursive: true, force: true });
-});
-
-describe("history", () => {
-    it("themes · stocks 200 (+no-store)", async () => {
-        const t = await call("/judgment/history/themes?date=2025-02-01");
-        expect(t.status).toBe(200);
-        expect(t.json).toEqual({ date: "2025-02-01", stocks: { "000001": ["반도체"] }, coverage: null });
-        expect(t.headers.get("cache-control")).toBe("no-store");
-        const s = await call("/judgment/history/stocks/000001?date=2025-02-01");
-        expect(s.status).toBe(200);
-        expect(s.json).toMatchObject({ code: "000001", name: "알파", asOf: "2025-02-01", closing: null });
-    });
-    it("날짜 형식 400 · 이력 없음 404 · GET 아님 405 · 없는 경로 404", async () => {
-        expect((await call("/judgment/history/themes")).status).toBe(400);
-        expect((await call("/judgment/history/stocks/999999?date=2025-02-01")).status).toBe(404);
-        expect((await call("/judgment/history/themes?date=2025-02-01", "POST")).status).toBe(405);
-        expect((await call("/judgment/cases/x/2025-02-01")).status).toBe(404);
-    });
-    it("판단 저장소가 없으면 503 (+no-store)", async () => {
-        close();
-        make(join(root, "없음"));
-        const r = await call("/judgment/history/themes?date=2025-02-01");
-        expect(r.status).toBe(503);
-        expect(r.headers.get("cache-control")).toBe("no-store");
-    });
+it("없는 경로는 404 · GET 외는 405(읽기 전용)", async () => {
+    const call = make();
+    const r = await call("/judgment/history/themes?date=2025-01-02"); // 은퇴한 경로도 그냥 404
+    expect(r.status).toBe(404);
+    expect(r.json).toEqual({ error: "없는 경로: /judgment/history/themes" });
+    const post = await call("/dates", "POST"); // 있는 경로여도 쓰기는 막는다 — lab-api 는 읽기만
+    expect(post.status).toBe(405);
+    expect(post.json).toEqual({ error: "GET 만 받는다" });
 });
 
 describe("dates", () => {
-    it("주입된 listDates 를 그대로 배열로 — no-store 는 /judgment 전용이라 없음", async () => {
-        close();
-        make(root, { listDates: async () => ["2025-01-02", "2025-01-03"] });
+    it("주입된 listDates 를 그대로 배열로 — no-store 없음", async () => {
+        const call = make({ listDates: async () => ["2025-01-02", "2025-01-03"] });
         const r = await call("/dates");
         expect(r.status).toBe(200);
         expect(r.json).toEqual(["2025-01-02", "2025-01-03"]);
         expect(r.headers.get("cache-control")).toBeNull();
     });
     it("listDates 실패 = NestJS 꼴 500 + onError — 빈 배열로 삼키지 않는다", async () => {
-        close();
         const seen: unknown[] = [];
-        make(root, { listDates: () => Promise.reject(new Error("DB down")), onError: (e) => seen.push(e) });
+        const call = make({ listDates: () => Promise.reject(new Error("DB down")), onError: (e) => seen.push(e) });
         const r = await call("/dates");
         expect(r.status).toBe(500);
         expect(r.json).toEqual({ statusCode: 500, message: "Internal server error" });
@@ -97,9 +49,8 @@ describe("dates", () => {
 
 describe("stocks/master", () => {
     it("주입된 listStockMeta 를 그대로 배열로", async () => {
-        close();
         const meta = [{ stockCode: "000001", name: "알파", market: "거래소" }];
-        make(root, { listStockMeta: async () => meta });
+        const call = make({ listStockMeta: async () => meta });
         const r = await call("/stocks/master");
         expect(r.status).toBe(200);
         expect(r.json).toEqual(meta);
@@ -108,16 +59,14 @@ describe("stocks/master", () => {
 
 describe("chart", () => {
     it("code·date 검증 통과 시 주입된 chartByCode 결과를 그대로", async () => {
-        close();
         const bundle = { stockCode: "000001", daily: [], minutes: [], basePrice: null };
-        make(root, { chartByCode: async (code, date) => ({ ...bundle, stockCode: `${code}@${date}` }) });
+        const call = make({ chartByCode: async (code, date) => ({ ...bundle, stockCode: `${code}@${date}` }) });
         const r = await call("/chart?code=000001&date=2025-01-02");
         expect(r.status).toBe(200);
         expect(r.json).toEqual({ ...bundle, stockCode: "000001@2025-01-02" });
     });
     it("code 없음·date 불량 = 400, NestJS 와 같은 body", async () => {
-        close();
-        make(root);
+        const call = make();
         const noCode = await call("/chart?date=2025-01-02");
         expect(noCode.status).toBe(400);
         expect(noCode.json).toEqual({ message: "code 필수", error: "Bad Request", statusCode: 400 });
@@ -129,8 +78,7 @@ describe("chart", () => {
 
 describe("day-flow", () => {
     it("date 검증 통과 시 주입된 dayFlowBody 문자열을 그대로(JSON content-type) — date 없으면 400", async () => {
-        close();
-        make(root, { dayFlowBody: async (date) => JSON.stringify({ date, stocks: [] }) });
+        const call = make();
         const r = await call("/day-flow?date=2025-01-02");
         expect(r.status).toBe(200);
         expect(r.headers.get("content-type")).toContain("application/json");
@@ -145,16 +93,14 @@ describe("news/hts", () => {
     const h = { srno: "7", date: "2025-01-02", time: "090000", title: "제목", sourceName: "HTS", categoryCode: "01", sourceCode: "x", stockCodes: [] };
     const wire = { srno: "7", date: "2025-01-02", time: "090000", title: "제목", sourceName: "HTS", categoryCode: "01" };
     it("종목+무키워드 = 그 날 전체를 내림차순으로 — wire 꼴(sourceCode·stockCodes 탈락)", async () => {
-        close();
-        make(root, { stockNews: { getHeadlines: async () => [h, { ...h, srno: "8" }], feedHeadlines: async () => [] } });
+        const call = make({ stockNews: { getHeadlines: async () => [h, { ...h, srno: "8" }], feedHeadlines: async () => [] } });
         const r = await call("/news/hts?code=000001&date=2025-01-02");
         expect(r.status).toBe(200);
         expect(r.json).toEqual([{ ...wire, srno: "8" }, wire]);
     });
     it("커서 페이징 — feedHeadlines(before)로 그대로, beforeSrno 불량·누락은 400", async () => {
-        close();
         const seen: unknown[] = [];
-        make(root, {
+        const call = make({
             stockNews: {
                 getHeadlines: async () => [],
                 feedHeadlines: async (opts) => {
@@ -173,9 +119,8 @@ describe("news/hts", () => {
         expect((await call("/news/hts?date=2025-01-03&beforeDate=2025-01-02")).status).toBe(400);
     });
     it("초기 로드(전체 시황) = feedHeadlines(onOrBefore) — limit 불량은 30 폴백·상한 100, code 불량 400", async () => {
-        close();
         const seen: unknown[] = [];
-        make(root, {
+        const call = make({
             stockNews: {
                 getHeadlines: async () => [],
                 feedHeadlines: async (opts) => {
@@ -196,8 +141,7 @@ describe("news/hts", () => {
 
 describe("news/telegram/archive", () => {
     it("date 하루 — items 는 wire 꼴(at ISO), coverage ISO, nextBefore 있을 때만", async () => {
-        close();
-        make(root, {
+        const call = make({
             telegramArchive: {
                 searchPage: async () => ({
                     items: [{ source: "telegram", channel: "방", at: new Date("2025-01-02T01:00:00Z"), text: "본문", ref: "p#1" }],
@@ -215,8 +159,7 @@ describe("news/telegram/archive", () => {
         });
     });
     it("날짜 없음·잘못된 before = 400, NestJS 와 같은 body", async () => {
-        close();
-        make(root, {
+        const call = make({
             telegramArchive: {
                 searchPage: () => Promise.reject(new Error("잘못된 before 커서: garbage")),
                 coverage: async () => null,
@@ -230,9 +173,8 @@ describe("news/telegram/archive", () => {
         expect(badBefore.json).toEqual({ message: "잘못된 before 커서: garbage", error: "Bad Request", statusCode: 400 });
     });
     it("from>to·to 누락·limit 불량 = 400, limit 상한은 5000 으로 자름", async () => {
-        close();
         const seen: Array<{ limit: number }> = [];
-        make(root, {
+        const call = make({
             telegramArchive: {
                 searchPage: async (_q, opts) => {
                     seen.push({ limit: opts.limit });

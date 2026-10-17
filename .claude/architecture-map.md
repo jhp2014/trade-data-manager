@@ -36,11 +36,11 @@
 ## apps/lab/src — 판단 학습 실험실 화면 (옛 독립 저장소 trade-lab, 2026-10-16 편입)
 
 - Vite+React+dockview — workbench 와 별개 셸: 전역 focus 대신 **경로** `{종목,날짜,시각}` 모델(`store/paths.ts` 의 `usePanelPath`). 포트 사용 3200 / 개발 3210
-- 서버는 Vite 프록시로 가른다: 시장 읽기(`/api/day-flow`·`dates`·`chart`·`stocks/master`·`news/hts`·`news/telegram/archive` — 정확 매칭 정규식)와 `/judgment/*` 는 lab-api(사용 3300/개발 3310), 나머지 `/api/*` 기본 항목만 tdm api(**GET 만**, 사용 3001/개발 3011 — 지금 소비자 0, 장래 큐레이션 계통용). workbench 부품은 복사해 온다(복사한 순간부터 lab 의 것 — 공용화하지 않는다, workbench 는 장기적으로 은퇴 예정). 규칙 전체는 `apps/lab/DESIGN.md`
+- 서버는 Vite 프록시로 가른다: 시장 읽기(`/api/day-flow`·`dates`·`chart`·`stocks/master`·`news/hts`·`news/telegram/archive` — 정확 매칭 정규식)는 lab-api(사용 3300/개발 3310), 나머지 `/api/*` 기본 항목만 tdm api(**GET 만**, 사용 3001/개발 3011 — 지금 소비자 0, 장래 큐레이션 계통용). judgment 읽기(이력 기반 테마 판 htheme 포함)는 2026-10-17 은퇴 — 등록부 기반 새 조회·새 패널이 후계(결정 로그 「판단·AI 가공의 작업장」). workbench 부품은 복사해 온다(복사한 순간부터 lab 의 것 — 공용화하지 않는다, workbench 는 장기적으로 은퇴 예정). 규칙 전체는 `apps/lab/DESIGN.md`
 
 ## apps/lab-api/src — lab 이 대면하는 백엔드 (Hono, 2026-10-16 신설)
 
-- `app.ts`(Hono 라우트 — `/judgment/history/themes`·`/judgment/history/stocks/:code`, 저장소 없음 503·GET 아님 405·no-store · 시장 경로 `/dates`·`/stocks/master`·`/chart`·`/news/hts`·`/news/telegram/archive`(tdm api 와 같은 경로·응답 꼴(wire), 캐시 기구 없이 직쿼리 — 단 `/dates` 는 파일 물화+꼬리 증분(market/dataDates.ts, .cache/), 400 도 NestJS 와 같은 body) · `/day-flow`(lab 전용 계약 — /day-replay 를 재현하지 않는다, wire `DayFlow` 분당 원값 · 과거 날짜 메모리 LRU 4(직렬화 문자열)+앞뒤 거래일 선계산, market/dayFlowCache.ts)) · `main.ts`(기동 — LAB_API_PORT, JUDGMENT_DIR 기본 레포 옆 trade-judgment, market DB 는 persistence 재사용·미설정이어도 서버는 뜨고 시장 경로만 500) · `judgment/history.ts`(이슈 이력·테마 사전 읽기 모델, fs.watch 재적재) · `market/`(조립 — chart.ts=ChartBundle, dayFlow.ts=DayFlow(universe·분봉·일봉 2벌·시총+core deriveMinutes 직계산), telegramArchive.ts, htsNews.ts, validation.ts)
+- `app.ts`(Hono 라우트, 시장 읽기 전용 — `/dates`·`/stocks/master`·`/chart`·`/news/hts`·`/news/telegram/archive`(tdm api 와 같은 경로·응답 꼴(wire), 캐시 기구 없이 직쿼리 — 단 `/dates` 는 파일 물화+꼬리 증분(market/dataDates.ts, .cache/), 400 도 NestJS 와 같은 body) · `/day-flow`(lab 전용 계약 — /day-replay 를 재현하지 않는다, wire `DayFlow` 분당 원값 · 과거 날짜 메모리 LRU 4(직렬화 문자열)+앞뒤 거래일 선계산, market/dayFlowCache.ts)) · `main.ts`(기동 — LAB_API_PORT, market DB 는 persistence 재사용·미설정이어도 서버는 뜨고 시장 경로만 500) · `market/`(조립 — chart.ts=ChartBundle, dayFlow.ts=DayFlow(universe·분봉·일봉 2벌·시총+core deriveMinutes 직계산), telegramArchive.ts, htsNews.ts, validation.ts). 옛 `/judgment/*`(trade-judgment 읽기)는 2026-10-17 은퇴
 - tdm api 의 lab 읽기 경로를 단계적으로 잠식해 api 를 은퇴시키는 그릇(strangler) — lab 의 Vite 프록시가 경로별로 lab-api 로 분기(`/api` 앞 선언, 정확 매칭 정규식). /day-flow 전환으로 **lab 의 tdm api 의존 = 0**(기본 `/api` 프록시는 장래 큐레이션 계통용으로만 남음). 결정 로그 「trade-lab 편입」 절
 
 ## apps/live/src

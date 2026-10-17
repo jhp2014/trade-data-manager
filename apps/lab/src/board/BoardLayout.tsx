@@ -4,7 +4,7 @@
 //   · 승격 출처 — 이 보드에서 직접 고른 종목이면 제자리(isSelfPick), 다른 곳(경로 줄·차트·다른 패널)에서 바뀌면
 //     그 종목이 든 테마 카드들을 맨 위 "현재 종목" 띠로 올리고 스크롤한다.
 //   · 위 칩 줄(테마 바로가기·현재 종목 테마·1분 신호 테마)과 포함관계 자동 숨김은 뺐다 — 카드는 전부 보이고,
-//     1분 신호는 카드 테두리 깜빡임이, 현재 종목이 카드 밖인 자리는 패널 헤더(ThemeBoardPanel)가 보인다.
+//     1분 신호는 카드 테두리 깜빡임이, 현재 종목이 카드 밖인 자리는 쓰는 패널의 헤더 선언이 보인다.
 //   · 즐겨찾기·드래그·수동 숨김·w/s 순회·필터는 뺐다.
 import { useEffect, useRef, useState } from "react";
 import { ThemeCard } from "./BoardCard.js";
@@ -38,7 +38,7 @@ export function BoardLayout({
     isSelfPick: (code: string) => boolean;
     /** 종목 줄 우클릭 — 있으면 브라우저 메뉴 대신 이것을 부른다. */
     onInspect?: OnInspect;
-    /** 미분류 꼬리 카드 이름(이력 소속이면 「테마 이력 없음」). */
+    /** 미분류 꼬리 카드 이름 — 소속 출처가 정한다(안 주면 「미분류」). */
     unclassifiedName?: string;
 }): JSX.Element {
     const cardRefs = useRef(new Map<string, HTMLElement>());

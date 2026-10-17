@@ -67,17 +67,16 @@ export function destroyPanel(api: DockviewApi, panelId: string): void {
 }
 
 /**
- * 기본 배치 — 테마 A | 테마 B / 차트 A | 차트 B / HTS뉴스 | 텔레그램(활성).
+ * 기본 배치 — 차트 A | 차트 B / HTS뉴스 | 텔레그램(활성). (옛 테마 판(htheme)은 2026-10-17 은퇴 —
+ * 등록부 기반 새 테마 패널이 오면 다시 자리를 잡는다.)
  * A·B 경로가 없으면(사용자가 지웠으면) 활성으로 건다. 이 배치에 없던 패널은 최소화로 남는다.
  */
 export function buildDefaultLayout(api: DockviewApi): void {
     api.clear();
     const paths = usePaths.getState().paths;
     const has = (id: string): PathRef => (paths.some((p) => p.id === id) ? id : ACTIVE);
-    addNew(api, "htheme-1", has("A"));
-    addNew(api, "htheme-2", has("B"), { referencePanel: "htheme-1", direction: "right" });
-    addNew(api, "chart-1", has("A"), { referencePanel: "htheme-1", direction: "below" });
-    addNew(api, "chart-2", has("B"), { referencePanel: "htheme-2", direction: "below" });
+    addNew(api, "chart-1", has("A"));
+    addNew(api, "chart-2", has("B"), { referencePanel: "chart-1", direction: "right" });
     addNew(api, "hts-1", ACTIVE, { direction: "below" });
     addNew(api, "telegram-1", ACTIVE, { referencePanel: "hts-1", direction: "right" });
     syncOpen(api);
@@ -101,6 +100,8 @@ export function captureScreen(api: DockviewApi): ScreenSnapshot {
 export function loadScreen(api: DockviewApi, snap: ScreenSnapshot): boolean {
     const { json } = sanitizeLayout(snap.layout, VALID_COMPONENTS);
     const ids = Object.keys(json.panels ?? {});
+    // 은퇴한 판만 담은 화면 — 정리하고 나면 빈 배치다. 열면 "성공한 빈 화면"이 되므로 실패로 돌려 지금 배치를 지킨다.
+    if (ids.length === 0 && Object.keys(snap.layout.panels ?? {}).length > 0) return false;
     const before = { layout: api.toJSON(), bindings: { ...usePaths.getState().bindings }, ui: { ...usePanelUiStore.getState().ui }, slots: [...useDock.getState().slots] };
     for (const id of ids) {
         const p = snap.panels[id];

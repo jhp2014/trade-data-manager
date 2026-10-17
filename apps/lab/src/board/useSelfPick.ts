@@ -1,5 +1,5 @@
 // 보드에서 직접 고른 종목 기억 — 보드는 "이 보드에서 고른 종목"이면 판을 움직이지 않고(제자리), 다른 곳에서 바뀐
-// 종목이면 그 테마들을 맨 위로 올린다(BoardLayout 의 isSelfPick). 테마 보드 몸(panels/themeBoard)이 쓴다.
+// 종목이면 그 테마들을 맨 위로 올린다(BoardLayout 의 isSelfPick). 옛 테마 판이 쓰던 것 — 등록부 기반 새 테마 패널의 재료로 남긴다.
 import { useCallback, useEffect, useRef } from "react";
 
 /** code = 지금 경로의 종목, write = 경로에 쓰기. pick = 보드 행 클릭(기억 + 쓰기). */

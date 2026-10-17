@@ -67,7 +67,7 @@ export function pruneDayFlows(qc: QueryClient, keep = DAY_FLOW_KEEP, usedAt: Rea
 }
 
 /**
- * 그날 전 종목 분당 시계열(/day-flow — 테마 소속은 안 실려 온다, 판단 이력이 입힌다) — 크다(하루 ~9MB).
+ * 그날 전 종목 분당 시계열(/day-flow — 테마 소속은 안 실려 온다, 소비하는 쪽이 입힌다) — 크다(하루 ~9MB).
  * 같은 날짜는 패널이 여럿이어도 한 번 받고, 최근 본 날짜 DAY_FLOW_KEEP 개까지 남긴다(두세 날짜를 오가며
  * 비교해도 다시 받지 않게). 날짜가 바뀌는 동안 직전 날을 보여 준다.
  */

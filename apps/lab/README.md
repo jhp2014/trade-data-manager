@@ -4,6 +4,6 @@
 "이런 상황에서는 이런 대응이 이런 확률"을 데이터로 찾아가는 실험실.
 
 - 독립 저장소 `jhp2014/trade-lab` 에서 2026-10-16 `apps/lab` 으로 편입(squash import). 그 전 이력은 원 저장소의 `moved-to-tdm` 태그까지.
-- 시장 데이터는 tdm api(읽기 전용 GET)에서 `/api/*` 프록시로 가져온다.
-- 사람의 라벨·문서·판단은 별도 저장소 `trade-judgment`(로컬) 파일에 둔다 — `apps/lab-api`(`/judgment/*`)가 읽는다.
+- 시장 데이터는 `apps/lab-api`(읽기 전용 GET)에서 `/api/*` 프록시로 가져온다.
+- 판단·AI 가공은 별도 작업장 `tdm-ai`(로컬 git)에 — lab 의 judgment 읽기는 2026-10-17 은퇴, 등록부 기반 새 조회·새 패널이 후계(decisions.md 「판단·AI 가공의 작업장」).
 - 설계 문서: [DESIGN.md](./DESIGN.md)
