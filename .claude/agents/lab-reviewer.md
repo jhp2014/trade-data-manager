@@ -31,7 +31,7 @@ tools: Read, Grep, Glob, ReportFindings
 
 ### trade-lab 규칙 (category: rule)
 
-1. **tdm 데이터에 쓰지 않는다.** lab 이 tdm api(`/api/*`)로 보내는 요청은 읽기(GET)뿐이어야 한다. 쓰기는 판단 저장소(`/judgment/*`, trade-judgment 파일)만. market DB 직접 접근, 구글 시트·Supabase 에 닿는 쓰기 경로는 금지다. lab 변경이 다른 패키지(`apps/api`·`apps/workbench`·`core`·`infra`)의 코드를 같이 고치면 지적한다 — 별도 작업으로 가른다.
+1. **tdm 데이터에 쓰지 않는다.** lab 이 서버로 보내는 요청은 읽기(GET)뿐이어야 한다 — lab 에 쓰기 경로는 없다(판단·AI 가공은 별도 작업장 tdm-ai 의 몫. 옛 `/judgment` 읽기도 2026-10-17 은퇴 — lab 코드에 되살아나면 지적한다). market DB 직접 접근, 구글 시트·Supabase 에 닿는 쓰기 경로는 금지다. lab 변경이 다른 패키지(`apps/api`·`apps/workbench`·`core`·`infra`)의 코드를 같이 고치면 지적한다 — 별도 작업으로 가른다.
 2. **텔레그램은 아카이브(`/news/telegram/archive`, tdm DB)만 읽는다.** 라이브 `/news/telegram` 은 요청마다 개인 세션으로 텔레그램을 실시간 검색하는 외부 호출이라, 많이 부르면 계정이 요청 제한에 걸린다 — lab 코드가 라이브 경로를 부르면 지적한다. 아카이브는 DB 라 자동으로 불러도 된다. 수집 범위(`coverage`) 밖의 날을 "언급 없음"으로 보이면 지적한다("아직 모름"이다).
 3. **패널은 경로를 통해서만 상황을 읽고 쓴다.** 경로 = `{종목, 날짜, 시각}`. 패널은 `usePanelPath(panelId)` 로 읽고, 패널 안의 클릭은 그 `write()` 로만 쓴다. workbench 의 전역 `focus`·`usePlaneBus`·`useWorkbench` 를 끌고 오면 지적한다.
 4. **패널은 복제할 수 있어야 한다.** 패널별 상태는 panelId 단위로 갈려야 한다. 모듈 전역 변수나 고정 키 하나에 상태를 두면 복제한 패널끼리 섞인다.
