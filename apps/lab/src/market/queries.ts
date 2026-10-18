@@ -2,8 +2,9 @@
 import { useEffect, useMemo } from "react";
 import { keepPreviousData, queryOptions, useQuery, useQueryClient, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { kstToday } from "./domain.js";
+import { ApiError } from "./http.js";
 import { useCalendarData, useChartData, useStockData, useThemeData } from "./MarketProvider.js";
-import type { ChartBundle, DayFlow } from "./types.js";
+import type { ChartBundle, DayFlow, StockMoves } from "./types.js";
 import type { ChartData } from "./ports.js";
 
 const TODAY_STALE = 60_000; // 오늘 시세는 수집이 채우는 중일 수 있다 — 1분 뒤 재조회 허용
@@ -48,6 +49,22 @@ export function useTradingDays(): UseQueryResult<string[], Error> {
 /** 종목명 하나. */
 export function useStockName(code: string): string | null {
     return useStockNameOf()(code);
+}
+
+/**
+ * 그 종목의 움직인 날(tdm-ai 이력, /theme/stocks). asOf 를 주면 서버가 date <= asOf(당일 포함)로 자른다.
+ * 이력 없는 종목은 404(ApiError) — 오류가 아니라 "이력 없음"이므로 재시도하지 않고, 소비 쪽이 status 로 가른다.
+ * 저장소는 lab-api 재시작 때만 바뀐다 — 마스터와 같은 주기면 충분.
+ */
+export function useStockMoves(code: string, asOf?: string): UseQueryResult<StockMoves, Error> {
+    const port = useThemeData();
+    return useQuery({
+        queryKey: ["stock-moves", code, asOf ?? ""],
+        queryFn: ({ signal }) => port.stockMoves(code, asOf, signal),
+        enabled: code !== "",
+        staleTime: META_STALE,
+        retry: (count, e) => !(e instanceof ApiError && e.status === 404) && count < 1,
+    });
 }
 
 /** 메모리에 남길 /day-flow 날짜 수 — 하루 ~9MB(쓰는 필드만 온다). 지금 화면에 떠 있는 날짜는 수와 상관없이 남는다. */

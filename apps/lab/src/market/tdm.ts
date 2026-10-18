@@ -1,7 +1,7 @@
 // 시장 데이터 창구의 tdm api 구현 — 엔드포인트는 전부 읽기(GET).
 import { apiGet } from "./http.js";
 import type { Market } from "./ports.js";
-import type { ChartBundle, DayFlow, HtsNewsItem, StockMeta, TelegramArchivePage } from "./types.js";
+import type { ChartBundle, DayFlow, HtsNewsItem, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
 
 export const tdmMarket: Market = {
     chart: (code, date, signal) => apiGet<ChartBundle>("chart", { code, date }, signal),
@@ -9,6 +9,7 @@ export const tdmMarket: Market = {
     tradingDays: (signal) => apiGet<string[]>("dates", undefined, signal),
     // lab 전용 계약(/day-flow, lab-api) — 쓰는 필드만 와서 slimming 이 필요 없다(옛 /day-replay 는 받자마자 깎았다).
     dayFlow: (date, signal) => apiGet<DayFlow>("day-flow", { date }, signal),
+    stockMoves: (code, asOf, signal) => apiGet<StockMoves>(`theme/stocks/${code}`, asOf ? { asOf } : undefined, signal),
     htsNews: ({ code, q, date, before, limit }, signal) => {
         const query: Record<string, string> = { date, limit: String(limit) };
         if (code) query.code = code;

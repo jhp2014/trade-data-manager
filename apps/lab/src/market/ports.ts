@@ -1,6 +1,6 @@
 // 시장 데이터 창구 — 패널·훅은 이 인터페이스만 안다(fetch·URL 은 구현 몫).
 // 쓰는 쪽이 필요한 것만 의존하도록 종류별로 나눈다. 구현(tdm.ts / 테스트 가짜)은 여럿을 한 번에 구현해도 된다.
-import type { ChartBundle, DayFlow, HtsCursor, HtsNewsItem, StockMeta, TelegramArchivePage } from "./types.js";
+import type { ChartBundle, DayFlow, HtsCursor, HtsNewsItem, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
 
 export interface ChartData {
     /** 일봉 2년 + 그 날 분봉 + 분봉 % 기준가. */
@@ -20,6 +20,8 @@ export interface CalendarData {
 export interface ThemeData {
     /** 그날 전 종목의 분당 시계열(/day-flow — 테마 소속 없음, 소속은 소비하는 쪽이 입힌다). 과거 날짜는 서버 LRU, 미스는 직계산(~3초). */
     dayFlow(date: string, signal?: AbortSignal): Promise<DayFlow>;
+    /** 그 종목의 움직인 날(tdm-ai 이력). asOf = 그날까지만(당일 포함, 사후정보 차단은 서버 몫). 이력 없는 종목은 404(ApiError). */
+    stockMoves(code: string, asOf?: string, signal?: AbortSignal): Promise<StockMoves>;
 }
 
 export interface NewsData {

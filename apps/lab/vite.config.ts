@@ -39,6 +39,17 @@ export default defineConfig(({ mode }) => {
                     changeOrigin: true,
                     rewrite: stripApi,
                 },
+                // theme 하위도 정확 분기 — 옛 workbench /theme/members(tdm api)와 섞이지 않게 lab-api 경로만.
+                "^/api/theme/registry(\\?|$)": {
+                    target: labApiTarget,
+                    changeOrigin: true,
+                    rewrite: stripApi,
+                },
+                "^/api/theme/stocks/": {
+                    target: labApiTarget,
+                    changeOrigin: true,
+                    rewrite: stripApi,
+                },
                 // news 하위도 경로 단위 정확 분기 — 라이브 /news/telegram(검색)은 api 에 남는다.
                 "^/api/news/hts(\\?|$)": {
                     target: labApiTarget,

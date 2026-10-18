@@ -10,6 +10,7 @@ export function fakeMarket<T extends Partial<Market>>(stubs: T): Market & T {
         stockMaster: notStubbed("stockMaster"),
         tradingDays: notStubbed("tradingDays"),
         dayFlow: notStubbed("dayFlow"),
+        stockMoves: notStubbed("stockMoves"),
         htsNews: notStubbed("htsNews"),
         telegramArchive: notStubbed("telegramArchive"),
         ...stubs,
