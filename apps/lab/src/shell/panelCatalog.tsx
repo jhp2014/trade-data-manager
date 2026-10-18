@@ -1,5 +1,6 @@
 import type { FunctionComponent, ReactNode } from "react";
 import type { IDockviewPanelProps } from "dockview-react";
+import { BoardPanel } from "../panels/BoardPanel.js";
 import { ChartPanel } from "../panels/ChartPanel.js";
 import { HtsNewsPanel } from "../panels/HtsNewsPanel.js";
 import { TelegramPanel } from "../panels/TelegramPanel.js";
@@ -20,7 +21,9 @@ export const PANEL_TYPES: PanelType[] = [
     { base: "chart", title: "차트", render: (id) => <ChartPanel panelId={id} /> },
     // 은퇴한 base 둘 — 저장 배치에 남은 패널은 sanitize(부팅 때 대장 정리)가 조용히 걷는다:
     //   "theme"(옛 시트 테마, 2026-10-16 — /day-flow 전환으로 시트 소속 소멸)
-    //   "htheme"(이력 기반 테마, 2026-10-17 — judgment 읽기 은퇴. 등록부 기반 새 테마 패널이 후계 예정)
+    //   "htheme"(이력 기반 테마, 2026-10-17 — judgment 읽기 은퇴)
+    // "board" 가 그 후계의 골격 — 소속 공급원(등록부 기반 판정)이 생기기 전까지 전 종목 미분류.
+    { base: "board", title: "테마 보드", render: (id) => <BoardPanel panelId={id} /> },
     { base: "hts", title: "HTS뉴스", render: (id) => <HtsNewsPanel panelId={id} /> },
     { base: "telegram", title: "텔레그램", render: (id) => <TelegramPanel panelId={id} /> },
 ];
