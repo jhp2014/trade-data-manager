@@ -69,15 +69,17 @@ export function StockHistoryPopover({ code, asOf, at, onClose }: {
                     ) : moves.data === undefined ? (
                         <Note>이력 불러오는 중…</Note>
                     ) : lines.length === 0 ? (
-                        // asOf 가 기록 범위 앞이면 "없음"이 아니라 "아직 모름" — 그 구간은 아카이브가 훑지 않았다.
+                        // asOf 가 기록 범위(from~to) 밖이면 "없음"이 아니라 "아직 모름" — 그 구간은 아카이브가 훑지 않았다.
                         <Note>
                             {q.trim()
                                 ? "검색과 맞는 이력 없음"
                                 : asOf && asOf < moves.data.from
                                   ? `기록 범위(${moves.data.from}~) 이전 — 아직 모른다`
-                                  : asOf
-                                    ? `${asOf} 까지 움직인 날 없음(기록 ${moves.data.from}~)`
-                                    : "움직인 날 없음"}
+                                  : asOf && asOf > moves.data.to
+                                    ? `기록(${moves.data.from}~${moves.data.to}) 안 움직인 날 없음 — 그 뒤는 아직 모른다`
+                                    : asOf
+                                      ? `${asOf} 까지 움직인 날 없음(기록 ${moves.data.from}~)`
+                                      : "움직인 날 없음"}
                         </Note>
                     ) : (
                         <>

@@ -38,9 +38,9 @@ export interface Membership {
     /** 받은 날짜의 소속(아직 못 받았으면 undefined). */
     themes: ReadonlyMap<string, string[]> | undefined;
     error: Error | null;
-    /** 미분류 꼬리 카드 이름(이력 소속이면 「테마 이력 없음」 · 「이력 범위 밖」). */
+    /** 미분류 꼬리 카드 이름 — 공급원이 "소속 없음"의 뜻을 정한다(범위 밖 · 기록 없음 등). */
     unclassified: string;
-    /** 헤더에 붙일 소속 알림(이력이 덮는 기간 밖 등). 없으면 null. */
+    /** 헤더에 붙일 소속 알림(공급원이 그 날짜를 다 덮지 못할 때 등). 없으면 null. */
     note: string | null;
 }
 
@@ -115,8 +115,8 @@ export function ThemeBoardPanel({ panelId, membership, onInspect, children }: {
     let body: ReactNode;
     if (!date) body = <Center>경로 {path.id} 에 날짜를 넣으세요.</Center>;
     else if (q.isError) body = <Center>테마 오류: {q.error.message}</Center>;
-    else if (membership.error) body = <Center>이력 오류: {membership.error.message}</Center>;
-    else if (!board && flow) body = <Center>{flow.date} 이력 소속 불러오는 중…</Center>;
+    else if (membership.error) body = <Center>소속 오류: {membership.error.message}</Center>;
+    else if (!board && flow) body = <Center>{flow.date} 소속 불러오는 중…</Center>;
     else if (!board) body = <Center>{date} 불러오는 중… (서버가 그날 전 종목을 즉석 계산한다 — 수 초)</Center>;
     else if (view === "group")
         body = (

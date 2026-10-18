@@ -2,7 +2,9 @@
 // 같은 타입으로 적재) · 소비 apps/lab. workbench 의 옛 /theme/members 계약(theme.ts)과는 별개.
 //   GET /theme/registry                       → ThemeKeyword[](등록부 그대로)
 //   GET /theme/stocks/{code}?asOf=YYYY-MM-DD  → StockMoves. asOf 가 있으면 issues 를 date <= asOf(당일 포함)로
-//                                               **서버가** 자른다 — 복기 중 사후정보 차단은 서버 몫. 없는 종목은 404.
+//                                               **서버가** 자른다 — 복기 중 사후정보 차단은 서버 몫. 없는 종목은 404,
+//                                               body.error 가 "이력 없는 종목"으로 시작(배선 오류 404 "없는 경로"와
+//                                               가르는 판별 문자열 — lab StockHistoryPopover 가 본다. 바꾸면 양쪽 함께).
 
 /** 등록부 한 줄 = 테마 하나(tdm-ai views/theme/keywords.jsonl). */
 export interface ThemeKeyword {

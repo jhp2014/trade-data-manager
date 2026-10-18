@@ -90,5 +90,9 @@ describe("StockHistoryPopover", () => {
         cleanup();
         renderPopover(async () => ({ ...MOVES, issues: [] }), "2024-06-30");
         await waitFor(() => expect(screen.getByText(/2024-06-30 까지 움직인 날 없음\(기록 2023-01-02~\)/)).toBeTruthy());
+        cleanup();
+        // 범위 뒤도 "없음" 단정 금지 — to 뒤는 아직 훑지 않았다.
+        renderPopover(async () => ({ ...MOVES, issues: [] }), "2026-10-18");
+        await waitFor(() => expect(screen.getByText(/기록\(2023-01-02~2026-10-17\) 안 움직인 날 없음 — 그 뒤는 아직 모른다/)).toBeTruthy());
     });
 });

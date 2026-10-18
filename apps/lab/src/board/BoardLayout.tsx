@@ -144,7 +144,8 @@ export function BoardLayout({
                     )}
                     {grouped.unclassified.length > 0 && (
                         <div key={`unc-${focusInUnclassified}`} ref={(el) => register(UNCLASSIFIED_REF, el)} style={{ scrollMarginTop: 8 }}>
-                            <ThemeCard theme={unclassifiedName} stocks={grouped.unclassified} focusCode={focusCode} onPick={onPick} onInspect={onInspect} showRank={false} initialMode={focusInUnclassified ? "open" : "collapsed"} />
+                            {/* 테마 카드가 하나도 없으면(소속 공급원 없음) 미분류가 판의 전부 — 접힌 채 시작할 이유가 없다. */}
+                            <ThemeCard theme={unclassifiedName} stocks={grouped.unclassified} focusCode={focusCode} onPick={onPick} onInspect={onInspect} showRank={false} initialMode={focusInUnclassified || grouped.themes.length === 0 ? "open" : "collapsed"} />
                         </div>
                     )}
                     {empty && <Center>표시할 종목 없음</Center>}
