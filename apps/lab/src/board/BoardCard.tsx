@@ -1,10 +1,9 @@
-// 테마 카드 — 머리(테마명·종목 수) + 등락률 분포 막대(누르면 접기/펼치기) + 종목 줄 + 관련 테마 줄.
+// 테마 카드 — 머리(테마명·종목 수) + 종목 줄 + 관련 테마 줄. 머리 클릭이 접기/펼치기다.
 // workbench components/board/BoardCard.tsx 에서 옮겼다(즐겨찾기·수동 숨김·드래그는 뺐다).
-// 머리 클릭도 접기/펼치기다(분포 막대보다 큰 손잡이).
 import { useState } from "react";
 import { ScrollRow } from "../ui/ScrollRow.js";
 import { StockRow } from "./StockRow.js";
-import { AXIS_HI, fmtRate1, type BoardStock, type ListMode, type OnInspect, type RelatedInfo } from "./boardTypes.js";
+import type { BoardStock, ListMode, OnInspect, RelatedInfo } from "./boardTypes.js";
 
 export function ThemeCard({
     theme,
@@ -56,8 +55,6 @@ export function ThemeCard({
                         {stocks.length}
                     </span>
                 </div>
-
-                <DistBar stocks={stocks} mode={mode} onToggle={toggle} />
 
                 {/* 주도주 | 나머지 — 선 대신 틈으로 가른다(줄 구분선을 뺀 것과 같은 결). */}
                 {mode === "open" && (
@@ -168,55 +165,4 @@ function relBoxStyle(relIsChild: boolean): React.CSSProperties {
         color: relIsChild ? "var(--accent-primary)" : "var(--text-secondary)",
         background: relIsChild ? "var(--accent-soft)" : "var(--bg-primary)",
     };
-}
-
-/** 분포 미니맵(수평선) — baseline + 점 + 눈금 + 축 라벨. 클릭 = 접기/펼치기.
- *  market-eye: 펼쳤을 때 하이라이트 밴드(0~끝) + 축 라벨 강조. */
-function DistBar({ stocks, mode, onToggle }: { stocks: BoardStock[]; mode: ListMode; onToggle: () => void }): JSX.Element {
-    const x = (r: number): number => Math.max(0, Math.min(100, (r / AXIS_HI) * 100));
-    const ticks = [5, 10, 20, 30];
-    const open = mode === "open";
-    return (
-        <div onClick={onToggle} title={open ? "클릭: 접기" : "클릭: 펼치기"} style={{ position: "relative", height: 24, margin: "3px 10px", cursor: "pointer" }}>
-            {/* 펼침 하이라이트 밴드(점·눈금 뒤) */}
-            {open && (
-                <div style={{ position: "absolute", left: 0, width: "100%", top: 2, height: 12, background: "var(--accent-soft)", borderRadius: 3, zIndex: 0 }} />
-            )}
-            <div style={{ position: "absolute", left: 0, right: 0, top: 8, height: 1, background: "var(--border-default)" }} />
-            {ticks.map((t) => (
-                <div key={`t${t}`} style={{ position: "absolute", left: `${x(t)}%`, top: 4, width: 1, height: 8, background: "var(--border-subtle)", transform: "translateX(-50%)" }} />
-            ))}
-            {stocks
-                .filter((s) => s.changeRate >= 0 && s.changeRate <= AXIS_HI)
-                .map((s) => (
-                    <div
-                        key={s.code}
-                        title={`${s.name} ${fmtRate1(s.changeRate)}`}
-                        style={{
-                            position: "absolute",
-                            left: `${x(s.changeRate)}%`,
-                            top: 8,
-                            width: s.signal ? 8 : 6,
-                            height: s.signal ? 8 : 6,
-                            borderRadius: "50%",
-                            transform: "translate(-50%, -50%)",
-                            background: s.signal ? "#f59e0b" : s.isMover ? "var(--rise)" : "var(--fall)",
-                            opacity: s.signal ? 1 : s.isMover ? 0.5 : 0.38,
-                            zIndex: s.signal ? 3 : s.isMover ? 1 : 0,
-                        }}
-                    />
-                ))}
-            {/* 축 라벨(활성 구간 강조) */}
-            <span className="tabular" style={{ position: "absolute", left: 0, top: 14, fontSize: 9, color: open ? "var(--text-secondary)" : "var(--text-tertiary)", fontWeight: open ? 700 : 400 }}>0%</span>
-            {ticks.map((t, i) => (
-                <span
-                    key={`l${t}`}
-                    className="tabular"
-                    style={{ position: "absolute", left: `${x(t)}%`, top: 14, fontSize: 9, color: open ? "var(--text-secondary)" : "var(--text-tertiary)", fontWeight: open ? 700 : 400, whiteSpace: "nowrap", transform: i === ticks.length - 1 ? "translateX(-100%)" : "translateX(-50%)" }}
-                >
-                    {t}%
-                </span>
-            ))}
-        </div>
-    );
 }

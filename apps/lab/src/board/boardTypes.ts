@@ -2,10 +2,7 @@
 import type { DeltaHit, RelationKind } from "./domain.js";
 import { fmtPct } from "../lib/format.js";
 
-export const AXIS_LO = -5; // 눕힌 캔들 축 하한
-export const AXIS_HI = 30; // 캔들/분포 축 상한
-
-/** 카드 종목 표시 — 접힘(분포 막대만) / 펼침(주도주 · 나머지 전부). */
+/** 카드 종목 표시 — 접힘(머리·관련 테마만) / 펼침(주도주 · 나머지 전부). */
 export type ListMode = "collapsed" | "open";
 
 /** 관련 테마 1건(카드 아래 줄) — 관계 종류 + 이 카드에 함께 든 종목 수 / 그 테마 종목 수(유니버스 기준). */
