@@ -219,6 +219,9 @@ importers:
       '@trade-data-manager/wire':
         specifier: workspace:*
         version: link:../../contracts/wire
+      dotenv:
+        specifier: ^16.4.5
+        version: 16.6.1
       hono:
         specifier: ^4.13.13
         version: 4.13.13

@@ -1,6 +1,10 @@
 // 기동 — 포트는 LAB_API_PORT(사용 3300 / 개발 3310, launch.json lab-api-dev).
 // market DB 는 읽기만. /dates 는 파일 물화(.cache/data-dates.json) + 꼬리 증분(market/dataDates.ts).
 // 테마 저장소는 TDM_AI_DIR(판단 작업장 tdm-ai 경로)를 읽기만 — 기동 1회 적재, reload 없음(반영 = 재시작, theme/store.ts).
+// TDM_AI_DIR 는 자급 .env(apps/lab-api/.env — git 밖, 수동 생성)에 둔다 — apps/api 의 VAULT_DIR 와 같은 패턴.
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { config } from "dotenv";
 import { serve } from "@hono/node-server";
 import { ArchiveNewsSearchService } from "@trade-data-manager/market";
 import {
@@ -24,6 +28,9 @@ import { MaterializedDataDates } from "./market/dataDates.js";
 import { makeDayFlowByDate } from "./market/dayFlow.js";
 import { makeCachedDayFlowBody } from "./market/dayFlowCache.js";
 import { loadThemeStore, type ThemeStore } from "./theme/store.js";
+
+// 자급 .env 1회 로드(없으면 조용히 넘어간다) — 이미 있는 process.env 는 덮지 않는다(dotenv 기본).
+config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.env") });
 
 const port = Number(process.env.LAB_API_PORT ?? 3300);
 

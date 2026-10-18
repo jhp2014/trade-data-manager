@@ -17,6 +17,7 @@
         "@trade-data-manager/market": "workspace:*",
         "@trade-data-manager/persistence": "workspace:*",
         "@trade-data-manager/wire": "workspace:*",
+        "dotenv": "^16.4.5",
         "hono": "^4.13.13"
     },
     "devDependencies": {
