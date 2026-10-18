@@ -1,5 +1,6 @@
 // 기동 — 포트는 LAB_API_PORT(사용 3300 / 개발 3310, launch.json lab-api-dev).
 // market DB 는 읽기만. /dates 는 파일 물화(.cache/data-dates.json) + 꼬리 증분(market/dataDates.ts).
+// 테마 저장소는 TDM_AI_DIR(판단 작업장 tdm-ai 경로)를 읽기만 — 기동 1회 적재, reload 없음(반영 = 재시작, theme/store.ts).
 import { serve } from "@hono/node-server";
 import { ArchiveNewsSearchService } from "@trade-data-manager/market";
 import {
@@ -22,6 +23,7 @@ import { makeChartByCode } from "./market/chart.js";
 import { MaterializedDataDates } from "./market/dataDates.js";
 import { makeDayFlowByDate } from "./market/dayFlow.js";
 import { makeCachedDayFlowBody } from "./market/dayFlowCache.js";
+import { loadThemeStore, type ThemeStore } from "./theme/store.js";
 
 const port = Number(process.env.LAB_API_PORT ?? 3300);
 
@@ -83,6 +85,26 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
     }
 }
 const { closePool, ...market } = wireMarket();
+
+// 테마 저장소(tdm-ai 읽기 전용) — 미설정·적재 실패여도 서버는 뜬다(시장 경로와 무관). 조회 라우트는 화면 설계 뒤.
+async function wireTheme(): Promise<ThemeStore | null> {
+    const dir = process.env.TDM_AI_DIR;
+    if (!dir) {
+        console.warn("[lab-api] TDM_AI_DIR 미설정 — 테마 저장소 적재 생략");
+        return null;
+    }
+    try {
+        const store = await loadThemeStore(dir);
+        console.log(
+            `[lab-api] 테마 저장소 적재 — 키워드 ${store.keywords.length} · 종목 ${store.movesByCode.size} · 테마 ${store.rostersByTheme.size} (반영은 재시작)`,
+        );
+        return store;
+    } catch (e) {
+        console.warn("[lab-api] 테마 저장소 적재 실패 — 테마 쪽은 비활성:", e instanceof Error ? e.message : e);
+        return null;
+    }
+}
+export const themeStore = await wireTheme();
 
 const app = createApp({ ...market, onError: (e) => console.error("[lab-api]", e) });
 
