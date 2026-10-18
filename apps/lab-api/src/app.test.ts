@@ -11,6 +11,7 @@ function make(ports: Ports = {}) {
         chartByCode: () => Promise.reject(new Error("스텁 없음")),
         stockNews: { getHeadlines: async () => [], feedHeadlines: async () => [] },
         dayFlowBody: async (date) => JSON.stringify({ date, stocks: [] }),
+        theme: null,
         ...ports,
     });
     return async (path: string, method = "GET") => {
@@ -86,6 +87,61 @@ describe("day-flow", () => {
         const bad = await call("/day-flow");
         expect(bad.status).toBe(400);
         expect(bad.json).toEqual({ message: "date 필수(YYYY-MM-DD)", error: "Bad Request", statusCode: 400 });
+    });
+});
+
+describe("theme", () => {
+    const issue = (date: string) => ({
+        date,
+        themes: ["이차전지"],
+        issue: `${date} 사유`,
+        evidence: [{ src: "tg", date, time: "09:00", title: "제목", ref: "p#1" }],
+    });
+    const moves = { code: "000001", name: "알파", from: "2023-01-02", to: "2026-10-17", issues: [issue("2025-01-02"), issue("2025-01-03"), issue("2025-02-03")] };
+    const store = {
+        keywords: [{ theme: "이차전지", tier: 1 as const, kind: "basic" as const, aliases: ["2차전지"] }],
+        movesByCode: new Map([["000001", moves]]),
+    };
+
+    it("registry — 주입된 keywords 를 그대로 배열로", async () => {
+        const call = make({ theme: store });
+        const r = await call("/theme/registry");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual(store.keywords);
+    });
+    it("stocks/:code — 전체, asOf 는 date <= asOf(당일 포함)로 서버가 자른다", async () => {
+        const call = make({ theme: store });
+        const all = await call("/theme/stocks/000001");
+        expect(all.status).toBe(200);
+        expect(all.json).toEqual(moves);
+        const cut = await call("/theme/stocks/000001?asOf=2025-01-03");
+        expect(cut.json).toEqual({ ...moves, issues: [issue("2025-01-02"), issue("2025-01-03")] });
+    });
+    it("stocks/:code — 이력 없는 종목은 빈 issues 가 아니라 404", async () => {
+        const call = make({ theme: store });
+        const r = await call("/theme/stocks/999999");
+        expect(r.status).toBe(404);
+        expect(r.json).toEqual({ error: "이력 없는 종목: 999999" });
+    });
+    it("stocks/:code — code 형식·asOf 불량은 400", async () => {
+        const call = make({ theme: store });
+        const badCode = await call("/theme/stocks/5930");
+        expect(badCode.status).toBe(400);
+        expect(badCode.json).toEqual({ message: "code 형식(6자리 영숫자): 5930", error: "Bad Request", statusCode: 400 });
+        const badAsOf = await call("/theme/stocks/000001?asOf=2025-02-30");
+        expect(badAsOf.status).toBe(400);
+        expect(badAsOf.json).toEqual({ message: "asOf 가 유효한 날짜가 아님: 2025-02-30", error: "Bad Request", statusCode: 400 });
+    });
+    it("저장소 미적재(theme=null) = NestJS 꼴 500 + onError — market DB 미설정과 같은 결", async () => {
+        const seen: unknown[] = [];
+        const call = make({ onError: (e) => seen.push(e) }); // 기본 theme: null
+        for (const path of ["/theme/registry", "/theme/stocks/000001"]) {
+            const r = await call(path);
+            expect(r.status).toBe(500);
+            expect(r.json).toEqual({ statusCode: 500, message: "Internal server error" });
+        }
+        expect(seen).toHaveLength(2);
+        expect((seen[0] as Error).message).toContain("TDM_AI_DIR");
     });
 });
 

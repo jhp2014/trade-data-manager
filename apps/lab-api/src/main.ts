@@ -93,7 +93,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
 }
 const { closePool, ...market } = wireMarket();
 
-// 테마 저장소(tdm-ai 읽기 전용) — 미설정·적재 실패여도 서버는 뜬다(시장 경로와 무관). 조회 라우트는 화면 설계 뒤.
+// 테마 저장소(tdm-ai 읽기 전용) — 미설정·적재 실패여도 서버는 뜬다(시장 경로와 무관). null 이면 /theme/* 가 요청마다 500.
 async function wireTheme(): Promise<ThemeStore | null> {
     const dir = process.env.TDM_AI_DIR;
     if (!dir) {
@@ -111,9 +111,9 @@ async function wireTheme(): Promise<ThemeStore | null> {
         return null;
     }
 }
-export const themeStore = await wireTheme();
+const themeStore = await wireTheme();
 
-const app = createApp({ ...market, onError: (e) => console.error("[lab-api]", e) });
+const app = createApp({ ...market, theme: themeStore, onError: (e) => console.error("[lab-api]", e) });
 
 // loopback 에만 붙는다 — 소비자가 같은 기기의 Vite 프록시뿐이다.
 const server = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, (info) => {

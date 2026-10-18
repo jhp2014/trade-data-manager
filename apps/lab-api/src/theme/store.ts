@@ -5,40 +5,12 @@
 //   facts/theme/moves/<코드>.jsonl   — 종목별 움직인 날 · facts/FORMAT.md
 //   facts/theme/rosters/<테마>.jsonl — 테마별 구성 스냅샷 · facts/FORMAT.md
 // 깨진 줄은 건너뛰지 않고 throw — 데이터는 기계 생성이라, 틀리면 tdm-ai 쪽 파서를 고쳐 재생성하는 게 맞다.
+// 등록부·움직인 날의 모양은 wire 의 /theme 계약(labTheme.ts)이 단일 출처 — 적재가 곧 응답 모양이다.
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import type { MoveIssue, StockMoves, ThemeKeyword } from "@trade-data-manager/wire";
 
-/** 등록부 한 줄 = 테마 하나. */
-export interface ThemeKeyword {
-    theme: string;
-    /** 1 = 큰 테마(기본 묶음 단위) · 2 = 세부 테마(정체 유지). */
-    tier: 1 | 2;
-    /** 세부만 — 소속 큰 테마. */
-    parent?: string;
-    /** basic = 기본(상시) · event = 이벤트(마지막 활동일 뒤 일정 기간 지나면 숨김 — 노출은 조회 몫). */
-    kind: "basic" | "event";
-    /** 같은 말(다른 표기) — 조회 때 이 테마로 흡수된다. */
-    aliases: string[];
-}
-
-/** 이력(움직인 날)의 이슈 줄 — 종목이 그날 왜 움직였나. */
-export interface MoveIssue {
-    date: string;
-    /** 그날 엮인 테마(그때 쓰인 이름 그대로 — 등록부 흡수는 조회 때). */
-    themes: string[];
-    issue: string;
-    evidence: Array<{ src: string; date: string; time: string; title: string; ref: string; pct?: number }>;
-}
-
-export interface StockMoves {
-    code: string;
-    name: string;
-    /** 아카이브에서 훑은 범위 — 모든 종목이 같다. */
-    from: string;
-    to: string;
-    /** 날짜 오름차순. */
-    issues: MoveIssue[];
-}
+export type { MoveIssue, StockMoves, ThemeKeyword };
 
 /** 테마구성의 스냅샷 줄 — 그날 그 테마 명단. */
 export interface RosterSnapshot {

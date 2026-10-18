@@ -9,6 +9,7 @@ export type * from "./daySummary.js";
 export type * from "./dayReplay.js";
 export type * from "./dayFlow.js";
 export type * from "./theme.js";
+export type * from "./labTheme.js";
 export type * from "./comment.js";
 export type * from "./chartAnchor.js";
 export type * from "./group.js";

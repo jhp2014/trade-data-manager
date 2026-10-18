@@ -6,9 +6,12 @@
 //   GET /chart?code=&date=                            → ChartBundle(일봉 2년+dense 분봉+basePrice·rawScale) · 조립은 market/chart.ts
 //   GET /news/hts?date=[&code=&q=&before…]            → HtsNewsItem[](최신순) · 조립은 market/htsNews.ts
 //   GET /day-flow?date=                               → DayFlow(그날 universe 전부의 분당 원값 — 표현(%·누적)은 클라) · lab 전용 계약, 조립은 market/dayFlow.ts
+//   GET /theme/registry                               → ThemeKeyword[](tdm-ai 등록부 그대로) · 계약은 wire/labTheme.ts
+//   GET /theme/stocks/:code?asOf=                     → StockMoves(움직인 날) · asOf 있으면 date <= asOf 만(사후정보 차단은 서버 몫), 없는 종목 404
 import { Hono } from "hono";
 import type { DataDate, StockMeta } from "@trade-data-manager/wire";
 import type { StockNewsReader } from "@trade-data-manager/market";
+import type { ThemeStore } from "./theme/store.js";
 import type { ChartByCode } from "./market/chart.js";
 import type { DayFlowBody } from "./market/dayFlowCache.js";
 import { htsNews } from "./market/htsNews.js";
@@ -28,6 +31,8 @@ export interface AppOptions {
     stockNews: StockNewsReader;
     /** GET /day-flow 의 데이터 — JSON **문자열**(캐시 히트 때 재직렬화를 피한다, market/dayFlowCache.ts). */
     dayFlowBody: DayFlowBody;
+    /** GET /theme/* 의 데이터 — tdm-ai 테마 저장소(theme/store.ts). null = TDM_AI_DIR 미설정/적재 실패 → 요청마다 500(market DB 미설정과 같은 결). */
+    theme: Pick<ThemeStore, "keywords" | "movesByCode"> | null;
     /** 예상 밖 오류(500) 로깅 — BadRequest 같은 요청 쪽 잘못은 안 온다. */
     onError?: (e: unknown) => void;
 }
@@ -39,6 +44,7 @@ export function createApp({
     chartByCode,
     stockNews,
     dayFlowBody,
+    theme,
     onError = () => undefined,
 }: AppOptions): Hono {
     const app = new Hono();
@@ -81,6 +87,23 @@ export function createApp({
             }),
         ),
     );
+
+    // 테마 저장소가 비면(miswiring 아님 — TDM_AI_DIR 미설정/적재 실패) 원인 메시지로 throw → onError 로그 + 500.
+    const requireTheme = () => {
+        if (!theme) throw new Error("테마 저장소 미적재(TDM_AI_DIR 미설정 또는 적재 실패)");
+        return theme;
+    };
+    app.get("/theme/registry", (c) => c.json(requireTheme().keywords));
+    app.get("/theme/stocks/:code", (c) => {
+        const store = requireTheme();
+        const code = assertStockCode(c.req.param("code"));
+        const asOfRaw = c.req.query("asOf");
+        const asOf = asOfRaw === undefined ? undefined : assertYmd(asOfRaw, "asOf");
+        const moves = store.movesByCode.get(code);
+        // 이력 없는 종목은 빈 issues 가 아니라 404 — "기록이 없다"와 "움직인 날이 없다"를 섞지 않는다.
+        if (!moves) return c.json({ error: `이력 없는 종목: ${code}` }, 404);
+        return c.json(asOf === undefined ? moves : { ...moves, issues: moves.issues.filter((i) => i.date <= asOf) });
+    });
 
     app.notFound((c) => c.json({ error: `없는 경로: ${new URL(c.req.url).pathname}` }, 404));
     app.onError((e, c) => {
