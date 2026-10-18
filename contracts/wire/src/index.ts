@@ -1,4 +1,4 @@
-// @trade-data-manager/wire — apps/api(생산)와 apps/workbench(소비)가 공유하는 HTTP 계약(타입 전용).
+// @trade-data-manager/wire — 서버(apps/api·apps/lab-api, 생산)와 클라(apps/workbench·apps/lab, 소비)가 공유하는 HTTP 계약(타입 전용).
 // 예전엔 서버(apps/api)와 클라(apps/workbench)가 같은 응답 모양을 각자 손으로 적어(드리프트 위험) 두었다.
 // 이제 계약을 이 한 곳에 두고 양쪽이 import → 서버 응답 모양이 바뀌면 클라가 컴파일 에러로 잡힌다.
 //

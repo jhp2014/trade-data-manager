@@ -10,8 +10,6 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { MoveIssue, StockMoves, ThemeKeyword } from "@trade-data-manager/wire";
 
-export type { MoveIssue, StockMoves, ThemeKeyword };
-
 /** 테마구성의 스냅샷 줄 — 그날 그 테마 명단. */
 export interface RosterSnapshot {
     date: string;

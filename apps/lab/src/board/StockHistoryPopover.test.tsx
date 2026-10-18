@@ -69,9 +69,26 @@ describe("StockHistoryPopover", () => {
         expect(screen.getByText(/검색과 맞는 이력 없음/)).toBeTruthy();
     });
 
-    it("404 = 이력 없는 종목 안내(오류 아님)", async () => {
-        renderPopover(() => Promise.reject(new ApiError("이력 없는 종목: 000001", 404, "")));
+    it("404(이력 없는 종목) = 안내, 404(없는 경로 — 옛 lab-api 배선) = 오류로 가른다", async () => {
+        renderPopover(() => Promise.reject(new ApiError("이력 없는 종목: 000001", 404, '{"error":"이력 없는 종목: 000001"}')));
         await waitFor(() => expect(screen.getByText(/이력 없음 — 움직인 날 기록에 없는 종목/)).toBeTruthy());
         expect(screen.queryByText(/이력 오류/)).toBeNull();
+        cleanup();
+        renderPopover(() => Promise.reject(new ApiError("GET /api/theme/stocks/000001 404", 404, '{"error":"없는 경로: /theme/stocks/000001"}')));
+        await waitFor(() => expect(screen.getByText(/이력 오류/)).toBeTruthy());
+    });
+
+    it("404 아닌 오류(500) = 이력 오류 표시", async () => {
+        renderPopover(() => Promise.reject(new ApiError("Internal server error", 500, "")));
+        // useStockMoves 는 404 외엔 1회 재시도한다 — 재시도가 끝나야 오류가 뜬다.
+        await waitFor(() => expect(screen.getByText(/이력 오류: Internal server error/)).toBeTruthy(), { timeout: 4000 });
+    });
+
+    it("asOf 가 기록 범위 앞 = 「아직 모른다」, 범위 안 빈 결과 = 「움직인 날 없음」", async () => {
+        renderPopover(async () => ({ ...MOVES, issues: [] }), "2022-11-30");
+        await waitFor(() => expect(screen.getByText(/기록 범위\(2023-01-02~\) 이전 — 아직 모른다/)).toBeTruthy());
+        cleanup();
+        renderPopover(async () => ({ ...MOVES, issues: [] }), "2024-06-30");
+        await waitFor(() => expect(screen.getByText(/2024-06-30 까지 움직인 날 없음\(기록 2023-01-02~\)/)).toBeTruthy());
     });
 });

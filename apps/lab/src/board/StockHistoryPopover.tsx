@@ -7,10 +7,12 @@ import { useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FloatingSurface } from "../ui/popover/FloatingSurface.js";
 import { useCloseOnDetach } from "../ui/popover/useFitInViewport.js";
+import { ScrollRow } from "../ui/ScrollRow.js";
 import { ApiError } from "../market/http.js";
 import { useStockMoves, useStockName } from "../market/queries.js";
 import type { MoveIssue } from "../market/types.js";
 
+/** 쓰는 쪽 계약: (code, at)마다 key 로 새로 만든다 — 배치 방향·검색어가 인스턴스에 남는다(BoardPanel 참조). */
 export function StockHistoryPopover({ code, asOf, at, onClose }: {
     code: string;
     /** 복기 중 보는 날짜 — 주면 서버가 date <= asOf(당일 포함)만 준다(사후정보 차단). */
@@ -27,7 +29,8 @@ export function StockHistoryPopover({ code, asOf, at, onClose }: {
     const [q, setQ] = useState("");
     const masterName = useStockName(code);
     const moves = useStockMoves(code, asOf);
-    const notFound = moves.error instanceof ApiError && moves.error.status === 404;
+    // 404 는 두 가지 — "이력 없는 종목"(데이터)과 "없는 경로"(배선 오류, 옛 lab-api 가 떠 있을 때). body 로 가른다.
+    const notFound = moves.error instanceof ApiError && moves.error.status === 404 && moves.error.body.includes("이력 없는 종목");
     // 서버는 날짜 오름차순 — 화면은 최근부터.
     const lines = useMemo(() => {
         const desc = [...(moves.data?.issues ?? [])].reverse();
@@ -66,7 +69,16 @@ export function StockHistoryPopover({ code, asOf, at, onClose }: {
                     ) : moves.data === undefined ? (
                         <Note>이력 불러오는 중…</Note>
                     ) : lines.length === 0 ? (
-                        <Note>{q.trim() ? "검색과 맞는 이력 없음" : asOf ? `${asOf} 까지 움직인 날 없음(기록 ${moves.data.from}~)` : "움직인 날 없음"}</Note>
+                        // asOf 가 기록 범위 앞이면 "없음"이 아니라 "아직 모름" — 그 구간은 아카이브가 훑지 않았다.
+                        <Note>
+                            {q.trim()
+                                ? "검색과 맞는 이력 없음"
+                                : asOf && asOf < moves.data.from
+                                  ? `기록 범위(${moves.data.from}~) 이전 — 아직 모른다`
+                                  : asOf
+                                    ? `${asOf} 까지 움직인 날 없음(기록 ${moves.data.from}~)`
+                                    : "움직인 날 없음"}
+                        </Note>
                     ) : (
                         <>
                             {lines.map((l) => <Line key={l.date} l={l} />)}
@@ -87,13 +99,14 @@ function Line({ l }: { l: MoveIssue }): JSX.Element {
         <div style={{ padding: "4px 12px", borderBottom: "1px solid var(--border-subtle)" }}>
             <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 0 }}>
                 <span className="tabular" style={{ color: "var(--text-secondary)", flexShrink: 0 }}>{l.date}</span>
-                <span style={{ display: "inline-flex", gap: 3, minWidth: 0, overflow: "hidden" }} title={l.themes.join(" · ")}>
+                {/* 칩이 넘치면 자르지 않고 가로 스크롤(ScrollRow 규약 — 자식은 flexShrink 0). */}
+                <ScrollRow gap={3} style={{ flex: 1 }}>
                     {l.themes.map((t) => (
-                        <span key={t} style={{ fontSize: 10, color: "var(--text-secondary)", background: "var(--bg-tertiary)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
+                        <span key={t} style={{ flexShrink: 0, fontSize: 10, color: "var(--text-secondary)", background: "var(--bg-tertiary)", borderRadius: 4, padding: "0 4px", whiteSpace: "nowrap" }}>
                             {t}
                         </span>
                     ))}
-                </span>
+                </ScrollRow>
             </div>
             {l.issue && <div style={{ color: "var(--text-primary)", marginTop: 1 }}>{l.issue}</div>}
             {l.evidence.map((e) => (
