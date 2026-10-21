@@ -6,7 +6,7 @@
 //                                               body.error 가 "이력 없는 종목"으로 시작(배선 오류 404 "없는 경로"와
 //                                               가르는 판별 문자열 — lab StockHistoryPopover 가 본다. 바꾸면 양쪽 함께).
 
-/** 등록부 한 줄 = 테마 하나(tdm-ai views/theme/keywords.jsonl). */
+/** 등록부 한 줄 = 테마 하나(tdm-ai judgments/theme/keywords.jsonl). */
 export interface ThemeKeyword {
     theme: string;
     /** 1 = 큰 테마(기본 묶음 단위) · 2 = 세부 테마(정체 유지). */

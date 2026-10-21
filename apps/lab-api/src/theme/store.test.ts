@@ -10,11 +10,11 @@ let dir: string;
 const jsonl = (rows: unknown[]) => rows.map((r) => JSON.stringify(r)).join("\n") + "\n";
 
 async function seed() {
-    await mkdir(join(dir, "views/theme"), { recursive: true });
+    await mkdir(join(dir, "judgments/theme"), { recursive: true });
     await mkdir(join(dir, "facts/theme/moves"), { recursive: true });
     await mkdir(join(dir, "facts/theme/rosters"), { recursive: true });
     await writeFile(
-        join(dir, "views/theme/keywords.jsonl"),
+        join(dir, "judgments/theme/keywords.jsonl"),
         jsonl([
             { theme: "반도체", tier: 1, kind: "basic", aliases: ["반도체/소부장", "AI반도체"] },
             { theme: "HBM", tier: 2, parent: "반도체", kind: "basic", aliases: ["반도체/HBM"] },
