@@ -1,7 +1,7 @@
 // 테마 저장소 적재 — 판단 작업장 tdm-ai(경로는 env TDM_AI_DIR)의 파일을 **읽기만** 해서 메모리에 든다.
 // 기동 때 1회 적재, 감시(watch)·reload 없음 — 테마 기록은 자주 안 바뀌므로 반영 = 서버 재시작(사용자 결정 2026-10-18).
 // 읽는 것(정본은 tdm-ai, 칸 정의도 그쪽 문서가 집):
-//   judgments/theme/keywords.jsonl — 테마 키워드 등록부(테마·큰/세부·소속·같은 말·성격) · judgments/INDEX.md (사람이 승인한 데이터 급)
+//   judgments/theme/keywords.jsonl — 테마 키워드 등록부(테마·상시/한시·같은 말) · judgments/INDEX.md (사람이 승인한 데이터 급)
 //   facts/theme/moves/<코드>.jsonl   — 종목별 움직인 날 · facts/FORMAT.md
 //   facts/theme/rosters/<테마>.jsonl — 테마별 구성 스냅샷 · facts/FORMAT.md
 // 깨진 줄은 건너뛰지 않고 throw — 데이터는 기계 생성이라, 틀리면 tdm-ai 쪽 파서를 고쳐 재생성하는 게 맞다.

@@ -6,16 +6,14 @@
 //                                               body.error 가 "이력 없는 종목"으로 시작(배선 오류 404 "없는 경로"와
 //                                               가르는 판별 문자열 — lab StockHistoryPopover 가 본다. 바꾸면 양쪽 함께).
 
-/** 등록부 한 줄 = 테마 하나(tdm-ai judgments/theme/keywords.jsonl). */
+/** 등록부 한 줄 = 테마 하나(tdm-ai judgments/theme/keywords.jsonl). 계층(tier·parent)은 없다 —
+ *  테마 간 포함관계는 등록하지 않고 화면이 그날의 멤버 집합 겹침으로 파생한다. */
 export interface ThemeKeyword {
     theme: string;
-    /** 1 = 큰 테마(기본 묶음 단위) · 2 = 세부 테마(정체 유지). */
-    tier: 1 | 2;
-    /** 세부만 — 소속 큰 테마. */
-    parent?: string;
-    /** basic = 기본(상시) · event = 이벤트(마지막 활동일 뒤 일정 기간 지나면 숨김 — 노출은 조회 몫). */
-    kind: "basic" | "event";
-    /** 같은 말(다른 표기) — 조회 때 이 테마로 흡수된다. */
+    /** standing = 상시(활동성 무관 노출 · 종목의 정체가 될 수 있음) ·
+     *  transient = 한시(활동 창 안에서만 노출 · 정체 불가 — 미등록 이름도 한시 자동. 노출은 조회 몫). */
+    kind: "standing" | "transient";
+    /** 같은 말(다른 표기) — 조회 때 이 테마로 흡수된다. 카드로 서지 않고 이력에만 원 이름 그대로. */
     aliases: string[];
 }
 

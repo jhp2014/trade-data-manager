@@ -16,9 +16,8 @@ async function seed() {
     await writeFile(
         join(dir, "judgments/theme/keywords.jsonl"),
         jsonl([
-            { theme: "반도체", tier: 1, kind: "basic", aliases: ["반도체/소부장", "AI반도체"] },
-            { theme: "HBM", tier: 2, parent: "반도체", kind: "basic", aliases: ["반도체/HBM"] },
-            { theme: "중동", tier: 1, kind: "event", aliases: ["중동 전쟁"] },
+            { theme: "반도체", kind: "standing", aliases: ["반도체/소부장", "AI반도체", "HBM", "반도체/HBM"] },
+            { theme: "중동", kind: "transient", aliases: ["중동 전쟁"] },
         ]),
     );
     await writeFile(
@@ -59,11 +58,11 @@ afterEach(async () => {
 describe("loadThemeStore", () => {
     it("등록부를 읽고 같은 말을 흡수한다(띄어쓰기·대소문자 무시)", async () => {
         const s = await loadThemeStore(dir);
-        expect(s.keywords).toHaveLength(3);
+        expect(s.keywords).toHaveLength(2);
         expect(s.themeOf("반도체/소부장")).toBe("반도체");
         expect(s.themeOf("ai반도체")).toBe("반도체");
         expect(s.themeOf("중동전쟁")).toBe("중동"); // "중동 전쟁" 의 공백 무시
-        expect(s.themeOf("반도체/HBM")).toBe("HBM"); // 세부는 제 이름으로(큰 흡수는 조회 몫)
+        expect(s.themeOf("반도체/HBM")).toBe("반도체"); // 같은 말은 테마로 흡수(계층 없음)
         expect(s.themeOf("없는이름")).toBeNull();
     });
 
