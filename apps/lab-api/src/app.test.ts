@@ -99,7 +99,7 @@ describe("theme", () => {
     });
     const moves = { code: "000001", name: "알파", from: "2023-01-02", to: "2026-10-17", issues: [issue("2025-01-02"), issue("2025-01-03"), issue("2025-02-03")] };
     const store = {
-        keywords: [{ theme: "이차전지", kind: "standing" as const, aliases: ["2차전지"] }],
+        keywords: [{ theme: "2차전지", kind: "standing" as const, aliases: ["이차전지"], criteria: "배터리 셀·소재·장비." }],
         movesByCode: new Map([["000001", moves]]),
     };
 

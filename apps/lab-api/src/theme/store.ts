@@ -1,7 +1,8 @@
 // 테마 저장소 적재 — 판단 작업장 tdm-ai(경로는 env TDM_AI_DIR)의 파일을 **읽기만** 해서 메모리에 든다.
 // 기동 때 1회 적재, 감시(watch)·reload 없음 — 테마 기록은 자주 안 바뀌므로 반영 = 서버 재시작(사용자 결정 2026-10-18).
 // 읽는 것(정본은 tdm-ai, 칸 정의도 그쪽 문서가 집):
-//   theme/keywords.jsonl — 테마 키워드 등록부(테마·상시/한시·같은 말, 장부 — by 표기) · theme/INDEX.md
+//   theme/registry.jsonl  — 테마 등록부(테마·상시/한시/그룹·같은 말·기준, 장부 — by 표기) · theme/INDEX.md
+//   theme/relations.jsonl — 상위 관계(한시의 흡수처) — 등록부와 합쳐 ThemeKeyword.parent 로 낸다
 //   theme/raw/moves/<코드>.jsonl   — 종목별 움직인 날(raw) · theme/FORMAT.md
 //   theme/raw/rosters/<테마>.jsonl — 테마별 구성 스냅샷(raw) · theme/FORMAT.md
 // 깨진 줄은 건너뛰지 않고 throw — 데이터는 기계 생성이라, 틀리면 tdm-ai 쪽 파서를 고쳐 재생성하는 게 맞다.
@@ -54,8 +55,20 @@ async function listJsonl(dir: string): Promise<string[]> {
 
 /** tdm-ai 작업장에서 등록부·facts 를 읽어 메모리 저장소를 만든다(1회성 — reload 없음). */
 export async function loadThemeStore(tdmAiDir: string): Promise<ThemeStore> {
-    // 등록부
-    const keywords = (await readJsonl(path.join(tdmAiDir, "theme/keywords.jsonl"))) as ThemeKeyword[];
+    // 등록부 + 상위 관계(parent) 합치기 — by 는 작업장 내부 표기라 응답에 싣지 않는다
+    const regRows = (await readJsonl(path.join(tdmAiDir, "theme/registry.jsonl"))) as Array<ThemeKeyword & { by: string }>;
+    const parentOf = new Map(
+        ((await readJsonl(path.join(tdmAiDir, "theme/relations.jsonl"))) as Array<{ a: string; rel: string; b: string }>)
+            .filter((r) => r.rel === "parent")
+            .map((r) => [r.a, r.b]),
+    );
+    const keywords: ThemeKeyword[] = regRows.map(({ theme, kind, aliases, criteria }) => ({
+        theme,
+        kind,
+        aliases,
+        criteria,
+        ...(parentOf.has(theme) ? { parent: parentOf.get(theme) } : {}),
+    }));
     const nameMap = new Map<string, string>();
     for (const k of keywords) for (const n of [k.theme, ...k.aliases]) nameMap.set(norm(n), k.theme);
 

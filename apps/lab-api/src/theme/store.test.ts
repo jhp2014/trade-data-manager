@@ -14,12 +14,14 @@ async function seed() {
     await mkdir(join(dir, "theme/raw/moves"), { recursive: true });
     await mkdir(join(dir, "theme/raw/rosters"), { recursive: true });
     await writeFile(
-        join(dir, "theme/keywords.jsonl"),
+        join(dir, "theme/registry.jsonl"),
         jsonl([
-            { theme: "반도체", kind: "standing", aliases: ["반도체/소부장", "AI반도체", "HBM", "반도체/HBM"] },
-            { theme: "중동", kind: "transient", aliases: ["중동 전쟁"] },
+            { theme: "반도체", kind: "standing", aliases: ["반도체/소부장", "AI반도체", "HBM", "반도체/HBM"], criteria: "칩 — 메모리 가격이 동인.", by: "user" },
+            { theme: "유리기판", kind: "transient", aliases: [], criteria: "유리기판 직접 연관만.", by: "user" },
+            { theme: "SK그룹", kind: "group", aliases: ["SK"], criteria: "SK그룹 계열이 함께 움직임.", by: "user" },
         ]),
     );
+    await writeFile(join(dir, "theme/relations.jsonl"), jsonl([{ a: "유리기판", rel: "parent", b: "반도체", by: "user" }]));
     await writeFile(
         join(dir, "theme/raw/moves/000001.jsonl"),
         jsonl([
@@ -58,12 +60,21 @@ afterEach(async () => {
 describe("loadThemeStore", () => {
     it("등록부를 읽고 같은 말을 흡수한다(띄어쓰기·대소문자 무시)", async () => {
         const s = await loadThemeStore(dir);
-        expect(s.keywords).toHaveLength(2);
+        expect(s.keywords).toHaveLength(3);
         expect(s.themeOf("반도체/소부장")).toBe("반도체");
         expect(s.themeOf("ai반도체")).toBe("반도체");
-        expect(s.themeOf("중동전쟁")).toBe("중동"); // "중동 전쟁" 의 공백 무시
+        expect(s.themeOf("sk")).toBe("SK그룹"); // 그룹도 같은 말 흡수
         expect(s.themeOf("반도체/HBM")).toBe("반도체"); // 같은 말은 테마로 흡수(계층 없음)
         expect(s.themeOf("없는이름")).toBeNull();
+    });
+
+    it("relations 의 parent 를 등록부 줄에 합치고, by 는 응답에 싣지 않는다", async () => {
+        const s = await loadThemeStore(dir);
+        const glass = s.keywords.find((k) => k.theme === "유리기판");
+        expect(glass?.parent).toBe("반도체");
+        expect(glass?.criteria).toBe("유리기판 직접 연관만.");
+        expect(s.keywords.find((k) => k.theme === "반도체")?.parent).toBeUndefined();
+        expect(Object.keys(glass ?? {})).not.toContain("by");
     });
 
     it("moves 를 종목코드로, rosters 를 줄의 theme 칸으로 가른다(날짜 오름차순)", async () => {
