@@ -203,14 +203,22 @@ describe("news/telegram/archive", () => {
                     items: [{ source: "telegram", channel: "방", at: new Date("2025-01-02T01:00:00Z"), text: "본문", ref: "p#1" }],
                     nextBefore: "2025-01-02T01:00:00.000Z#1",
                 }),
-                coverage: async () => ({ from: new Date("2024-01-01T00:00:00Z"), to: new Date("2025-02-01T00:00:00Z") }),
+                coverage: async () => ({
+                    from: new Date("2024-01-01T00:00:00Z"),
+                    to: new Date("2025-02-01T00:00:00Z"),
+                    channels: [{ channel: "방", from: new Date("2022-01-01T00:00:00Z") }],
+                }),
             },
         });
         const r = await call("/news/telegram/archive?date=2025-01-02");
         expect(r.status).toBe(200);
         expect(r.json).toEqual({
             items: [{ channel: "방", at: "2025-01-02T01:00:00.000Z", text: "본문", ref: "p#1" }],
-            coverage: { from: "2024-01-01T00:00:00.000Z", to: "2025-02-01T00:00:00.000Z" },
+            coverage: {
+                from: "2024-01-01T00:00:00.000Z",
+                to: "2025-02-01T00:00:00.000Z",
+                channels: [{ channel: "방", from: "2022-01-01T00:00:00.000Z" }],
+            },
             nextBefore: "2025-01-02T01:00:00.000Z#1",
         });
     });

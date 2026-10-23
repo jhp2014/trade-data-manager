@@ -114,9 +114,11 @@ export interface TelegramNewsItem {
  * GET /news/telegram/archive 봉투 — tdm DB 아카이브(라이브 아님).
  * coverage = DB 에 빠짐없이 든 구간(ISO, UTC). 그 밖의 날짜는 비었거나 불완전하다 — "언급 없음"이 아니라 "아직 모름".
  * null = 수집이 아직 한 바퀴도 안 돌았다. nextBefore = limit 에 걸렸을 때 다음 요청의 before.
+ * coverage.channels = 방별 가장 오래된 메시지(channel = 아이템의 방 표시명) — 백필 깊이가 방마다 달라 from 앞의 날에도
+ * 어떤 방은 빠짐없다. 옛 서버는 안 보낸다(없으면 from 앞은 전부 모름).
  */
 export interface TelegramArchivePage {
     items: TelegramNewsItem[];
-    coverage: { from: string; to: string } | null;
+    coverage: { from: string; to: string; channels?: { channel: string; from: string }[] } | null;
     nextBefore?: string;
 }

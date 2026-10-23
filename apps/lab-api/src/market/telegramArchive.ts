@@ -13,8 +13,8 @@ export interface TelegramArchivePorts {
         query: string,
         opts: { since?: Date; until?: Date; limit: number; before?: string },
     ): Promise<{ items: NewsItem[]; nextBefore?: string }>;
-    /** 등록 방 전체의 coverage — peers 는 wiring 이 고정. null = sync 완주 전. */
-    coverage(): Promise<{ from: Date; to: Date } | null>;
+    /** 등록 방 전체의 coverage — peers 는 wiring 이 고정, channels 는 방별 최과거(표시명 — wiring 이 peer 를 바꿔 준다). null = sync 완주 전. */
+    coverage(): Promise<{ from: Date; to: Date; channels: { channel: string; from: Date }[] } | null>;
 }
 
 export interface TelegramArchiveQuery {
@@ -53,7 +53,13 @@ export async function telegramArchivePage(ports: TelegramArchivePorts, query: Te
     ]);
     return {
         items: page.items.map(toWire),
-        coverage: coverage ? { from: coverage.from.toISOString(), to: coverage.to.toISOString() } : null,
+        coverage: coverage
+            ? {
+                  from: coverage.from.toISOString(),
+                  to: coverage.to.toISOString(),
+                  channels: coverage.channels.map((c) => ({ channel: c.channel, from: c.from.toISOString() })),
+              }
+            : null,
         ...(page.nextBefore ? { nextBefore: page.nextBefore } : {}),
     };
 }

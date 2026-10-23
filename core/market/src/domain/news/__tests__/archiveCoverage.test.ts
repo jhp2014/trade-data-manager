@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { isDayCovered, kstDayBounds } from "../archiveCoverage.js";
 
-const cov = (from: string, to: string, channels = 9) => ({ from: new Date(from), to: new Date(to), channels });
+const cov = (from: string, to: string, channels = 9) => ({ from: new Date(from), to: new Date(to), channels, perChannel: [] });
 
 describe("isDayCovered", () => {
     // 백필 2023-01-01~ · 어제 20:30 KST 에 sync 완주 = 2026-10-13T11:30Z

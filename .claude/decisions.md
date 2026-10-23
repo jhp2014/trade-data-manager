@@ -587,7 +587,7 @@
 
 ## 텔레그램 뉴스 방 아카이브 (2026-10-14 설계 확정 — 옛 "DB 적재 안 함 = 라이브 검색만"을 뒤집음. 전체 서사 [[telegram-news-design]])
 
-- **`NEWS_CHANNELS` 9방의 메시지를 전부 `market` 에 저장한다 — 검색 결과만 고르지 않는다.** 근거는 보관이 아니라(텔레그램은 안 사라진다) 백업·로컬 반복 조회·**부분일치 검색**(서버 검색은 토큰 접두만 — `전자`로 "삼성전자" 불가) · 하루/종목 재료와의 조인이다. 범위 **2023-01-01~**(9방 모두 그 전 개설, 실측 ~49만 건·하루 ~480건). 수집 데이터라 market(curation 아님).
+- **`NEWS_CHANNELS` 9방의 메시지를 전부 `market` 에 저장한다 — 검색 결과만 고르지 않는다.** 근거는 보관이 아니라(텔레그램은 안 사라진다) 백업·로컬 반복 조회·**부분일치 검색**(서버 검색은 토큰 접두만 — `전자`로 "삼성전자" 불가) · 하루/종목 재료와의 조인이다. 범위 기본 **2023-01-01~**(9방 모두 그 전 개설, 실측 ~49만 건·하루 ~480건), **특징주 레이더·주식 급등일보만 2022-01-01~**(2026-10-23 — 분류 재료로 더 긴 이력이 값진 두 방). 방별 깊이는 `telegram-backfill <since> --channel 낱말,...` 로 다르게 내린다(전 방을 같은 깊이로 맞추지 않는다 — 나머지 방은 그만큼의 값이 없다). 수집 데이터라 market(curation 아님).
 - **HTS 뉴스(`stock_news`)와 테이블을 합치지 않는다** — 헤드라인+KIS 종목태그 vs 본문·서식·링크 미리보기·전달·답글·앨범·수정. 패널을 안 합친 결정(NewsHeadline vs NewsItem)과 같은 이유.
 - **원본(`raw` jsonb)을 함께 박제한다** — 지운 메시지는 재수집이 불가능하고, 지금 안 쓰는 필드(미리보기 사진·PDF 메타 등)를 재수집 없이 꺼내기 위해. 직렬화 시 GramJS `originalArgs`·`_` 내부 필드는 뺀다(안 빼면 단계마다 두 배로 부푼다 — recon 05 의 첫 측정이 건당 수백 KB 로 오독). 실측 평균 3.5KB/건(본문 380B).
 - **숨은 링크(`entities`)·링크 미리보기(`wp_*`)는 1급 컬럼이다** — 미리보기가 방 메시지의 68~99%, 머니서퍼는 66% 가 글자 뒤 숨은 링크라 평문만 두면 기사 원문을 잃는다.
@@ -598,6 +598,7 @@
 - **빈 방도 완주하면 synced_at 을 찍는다**(커서 0) — coverage 는 **레지스트리(NEWS_CHANNELS) 방 전부**의 synced_at 을 요구하므로 한 방이 영구 null 이면 전체가 라이브에 묶인다. 같은 이유로 coverage·검색은 레지스트리 peer 로 거른다(목록에서 뺀 방의 잔존 행·얼어붙은 synced_at 이 섞이지 않게).
 - **`synced_at` 은 읽기 coverage 의 근거다** — api `/news/telegram` 은 날짜별로 "그 KST 하루가 [방별 min(posted_at) 의 max, 방별 synced_at 의 min] 안에 통째로 드는가"(`isDayCovered`)로 DB/라이브를 가른다. 오늘·어제 20:30 이후·coverage 조회 실패·그 날 DB 검색 실패는 라이브.
 - **`/news/telegram/archive` 는 DB 만 읽는다(라이브 폴백 없음) — trade-lab(AI 덤프 + 패널) 전용 입구.** `date=`|`from=&to=`, `q` 선택(없으면 그날 전체), `limit` 기본 2000·상한 5000, `nextBefore` 커서((posted_at,msg_id) 행 비교). 봉투에 `coverage` 를 싣는다 — 빈 결과가 "언급 없음"인지 "미수집"인지 클라가 가른다(백필 중엔 coverage 밖 날짜에도 행이 있을 수 있고 그건 불완전으로 읽어야 한다). 과거 걷기는 클라가 date 를 당긴다(DB 호출이 싸서 서버 날짜 걷기·oldestDate 봉투가 불요). 라이브 `/news/telegram` 은 tdm workbench 용으로 그대로. 봉투·NewsItem·ref 가 같아 클라는 모른다 — 검색 의미 차이(라이브 토큰 접두 / DB 부분일치)는 api 안에서 끝난다(사용자 수용).
+- **coverage 봉투는 방별 최과거(`channels[{channel(표시명), from}]`)도 싣는다** — 백필 깊이가 방마다 달라 `from`(전 방 기준) 앞에도 빠짐없는 방이 있다. `from`·`isDayCovered` 는 전 방 기준 그대로(api 라이브 분기 불변 — 일부 방만 든 날을 DB 로 답하면 나머지 방이 빠진다). lab 은 `from` 앞의 날에 "그 방의 from ≤ 그날 00:00 KST"인 방을 빠짐없다고 표시하고, 더보기는 가장 이른 방 시작까지 내려간다. lab 타입은 `channels` 를 optional 로 받는다(옛 서버 = from 앞은 모름). 기각: 전 방 from 하나만 두고 lab 이 알아서 해석(A안 — lab 더보기가 from 에서 멈춰 더 깊은 방이 안 보인다).
 - **FloodWait 판정은 `code 420`/`errorMessage`/`seconds` 다** — GramJS 메시지에 'FLOOD_WAIT' 글자가 없다(옛 정규식은 잠복 버그). 히스토리 순회는 페이지(RPC 1회) 단위 op 이고 flood 대기는 op 타임아웃 **바깥**(`floodSleepThreshold` 25s < opTimeout 30s — 검색·알람 경로의 짧은 flood 는 예전처럼 GramJS 가 잔다; 페이지 요청당 누적 30분 상한). 검색·게시 경로의 긴 flood 는 즉시 표면화. raw 에서 views·forwards·reactions·replies 는 뺀다(가변 수치).
 - **market 확장(pg_trgm)은 public 에 둔다** — `restore -n market`(스키마 모드)과 pglite testDb 는 확장을 따로 보장한다(0015 가 CREATE EXTENSION). market 마이그는 `db:generate` 가 못 만들어(curation 저널 분리 뒤 대화형 프롬프트) SQL·저널을 손으로 쓴다(0013~0015).
 

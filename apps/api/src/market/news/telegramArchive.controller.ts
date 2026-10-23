@@ -9,6 +9,7 @@ import { assertYmd } from "../validation.js";
 const DEFAULT_LIMIT = 2000; // 하루 9방 ~480건 — 보통 한 번에 끝난다.
 const MAX_LIMIT = 5000;
 const PEERS = NEWS_CHANNELS.map((c) => c.peer);
+const LABELS = new Map(NEWS_CHANNELS.map((c) => [c.peer, c.label]));
 
 function toWire(n: NewsItem): TelegramNewsItem {
     return { channel: n.channel, at: n.at.toISOString(), text: n.text, url: n.url, ref: n.ref, ...(n.links ? { links: n.links } : {}), ...(n.preview ? { preview: n.preview } : {}) };
@@ -48,7 +49,13 @@ export class TelegramArchiveController {
         ]);
         return {
             items: page.items.map(toWire),
-            coverage: coverage ? { from: coverage.from.toISOString(), to: coverage.to.toISOString() } : null,
+            coverage: coverage
+                ? {
+                      from: coverage.from.toISOString(),
+                      to: coverage.to.toISOString(),
+                      channels: coverage.perChannel.map((c) => ({ channel: LABELS.get(c.peer) ?? c.peer, from: c.from.toISOString() })),
+                  }
+                : null,
             ...(page.nextBefore ? { nextBefore: page.nextBefore } : {}),
         };
     }

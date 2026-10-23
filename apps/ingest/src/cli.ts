@@ -7,7 +7,7 @@
 //   backfill-news <from> [to]                    시황 뉴스 헤드라인
 //   backfill-ipo                                 최근 1년 상장 공모가 enrichment
 //   telegram-sync [--dry-run]                    텔레그램 뉴스 방 아카이브 일일 수집(신규 + 48h 수정 재훑기)
-//   telegram-backfill [since=2023-01-01] [--dry-run]  과거 채움(저장된 최소 id 아래로 이어감, 중단 재개 가능)
+//   telegram-backfill [since=2023-01-01] [--channel 낱말,...] [--dry-run]  과거 채움(저장된 최소 id 아래로 이어감, 중단 재개 가능)
 // (overwrite = 일봉 강제 재수집 + 그 날짜 분봉 비우고 새로 — 없으면 skip-if-present)
 import {
     seoulToday,
@@ -20,6 +20,7 @@ import {
     type ChannelMessage,
     type ChannelMessageStore,
 } from "@trade-data-manager/market";
+import { NEWS_CHANNELS, type TelegramChannel } from "@trade-data-manager/telegram";
 import { createIngestRuntime, type IngestRuntime } from "./composition.js";
 
 /** 절대시간 → "MM-DD HH:MM"(Asia/Seoul). 검색결과 표시용. */
@@ -71,6 +72,24 @@ function flagValue(raw: string[], name: string): string | undefined {
     if (i === -1) return undefined;
     const v = raw[i + 1];
     return v && !v.startsWith("--") ? v : undefined;
+}
+
+/**
+ * `--channel 특징주,급등일보` → 등록 방 중 고른 것. 낱말마다 표시명 부분일치 또는 peer 일치로 정확히 한 방이어야 한다
+ * (못 찾거나 여럿이면 throw — 엉뚱한 방을 몇 시간 내려가지 않게).
+ */
+function pickChannels(spec: string): TelegramChannel[] {
+    const picked: TelegramChannel[] = [];
+    for (const word of spec.split(",").map((w) => w.trim()).filter(Boolean)) {
+        const hits = NEWS_CHANNELS.filter((c) => c.peer === word || c.label.includes(word));
+        if (hits.length !== 1) {
+            const why = hits.length === 0 ? "없음" : `여럿(${hits.map((c) => c.label).join(", ")})`;
+            throw new Error(`--channel "${word}": 등록 방 ${why} — ${NEWS_CHANNELS.map((c) => c.label).join(", ")}`);
+        }
+        if (!picked.includes(hits[0])) picked.push(hits[0]);
+    }
+    if (picked.length === 0) throw new Error("--channel 값이 비었습니다");
+    return picked;
 }
 
 /** "YYYY-MM-DD" → 그 날 Asia/Seoul 자정/끝(절대시간 Date). */
@@ -202,14 +221,15 @@ const archiveProgress: ChannelArchiveOptions["onProgress"] = (p) => {
 /** 텔레그램 방 아카이브 — sync(일일) / backfill(since). dry-run 이면 인메모리 저장소 + 방당 1페이지. */
 async function runTelegramArchive(
     rt: IngestRuntime,
-    mode: { kind: "sync" } | { kind: "backfill"; since: string },
+    mode: { kind: "sync" } | { kind: "backfill"; since: string; channels?: readonly TelegramChannel[] },
     dryRun: boolean,
 ): Promise<void> {
     const label =
         mode.kind === "sync" ? "텔레그램 아카이브 sync(신규 + 48h 재훑기)" : `텔레그램 아카이브 backfill ${mode.since}~`;
-    console.log(`▶ ${label}${dryRun ? " (dry-run: DB 안 씀, 방당 1페이지)" : ""}`);
+    const only = mode.kind === "backfill" && mode.channels ? ` [${mode.channels.map((c) => c.label).join(", ")}]` : "";
+    console.log(`▶ ${label}${only}${dryRun ? " (dry-run: DB 안 씀, 방당 1페이지)" : ""}`);
     const store = dryRun ? new DryRunStore() : undefined;
-    const collector = await rt.channelArchive(store);
+    const collector = await rt.channelArchive(store, mode.kind === "backfill" ? mode.channels : undefined);
     const opts: ChannelArchiveOptions = { onProgress: archiveProgress, maxPagesPerChannel: dryRun ? 1 : undefined };
     const r =
         mode.kind === "sync" ? await collector.sync(opts) : await collector.backfill(seoulStart(mode.since), opts);
@@ -261,8 +281,9 @@ const USAGE =
     "  backfill-news <from> [to]                     시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
     "  backfill-ipo                                  최근 1년 상장 종목 공모가 enrichment(null만)\n" +
     "  telegram-sync [--dry-run]                     텔레그램 뉴스 방 아카이브 일일 수집(신규 + 48h 수정 재훑기)\n" +
-    "  telegram-backfill [since=2023-01-01] [--dry-run]\n" +
-    "                                               과거 채움 — 저장된 최소 id 아래로 이어감(중단 후 재실행 = 재개)\n" +
+    "  telegram-backfill [since=2023-01-01] [--channel 낱말,...] [--dry-run]\n" +
+    "                                               과거 채움 — 저장된 최소 id 아래로 이어감(중단 후 재실행 = 재개).\n" +
+    "                                               --channel = 그 방만(표시명 부분일치·peer, 예: --channel \"특징주,급등일보\")\n" +
     "  news-search <검색어...> [--from <시각>] [--to <시각>] [--limit N]\n" +
     "                                               텔레그램 등록 방 전체 검색(최신순). 검색어 여러 개=AND(종목+키워드).\n" +
     "                                               시각=YYYY-MM-DD 또는 YYYY-MM-DDTHH:MM (예: --from 2026-06-25T09:00).";
@@ -271,7 +292,8 @@ async function main(): Promise<void> {
     const raw = process.argv.slice(2);
     const overwrite = raw.includes("--overwrite");
     const dryRun = raw.includes("--dry-run");
-    const [cmd, a1, a2] = raw.filter((a) => !a.startsWith("--"));
+    // 값을 받는 플래그의 값 토큰은 위치 인자가 아니다(news-search 는 제 플래그를 따로 거른다).
+    const [cmd, a1, a2] = raw.filter((a, i) => !a.startsWith("--") && raw[i - 1] !== "--channel");
     if (!cmd) {
         console.error(USAGE);
         process.exit(1);
@@ -329,7 +351,15 @@ async function main(): Promise<void> {
             case "telegram-backfill": {
                 const since = a1 ?? "2023-01-01";
                 assertDate(since, "since");
-                await runTelegramArchive(rt, { kind: "backfill", since }, dryRun);
+                // 오입력은 조용히 넘기지 않는다 — 모르는 플래그(--channel= · --channels 오타)면 9방 전부, 남는 위치 인자
+                // (PowerShell 이 따옴표 없는 a,b 를 인자 둘로 쪼갬)면 앞 방만 몇 시간 내려간다.
+                const unknown = raw.filter((a) => a.startsWith("--") && a !== "--channel" && a !== "--dry-run");
+                if (unknown.length) throw new Error(`telegram-backfill: 모르는 플래그 ${unknown.join(" ")}`);
+                if (a2 !== undefined) throw new Error(`telegram-backfill: 남는 인자 "${a2}" — 방 여럿은 따옴표로: --channel "특징주,급등일보"`);
+                const spec = flagValue(raw, "--channel");
+                if (raw.includes("--channel") && !spec) throw new Error('--channel 뒤에 방 낱말이 필요합니다(예: --channel "특징주,급등일보")');
+                const channels = spec ? pickChannels(spec) : undefined;
+                await runTelegramArchive(rt, { kind: "backfill", since, channels }, dryRun);
                 break;
             }
             case "news-search": {

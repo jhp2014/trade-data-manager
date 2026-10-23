@@ -122,12 +122,13 @@ export class DrizzleTelegramMessageRepository implements ChannelMessageStore, Ch
     async coverage(peers: readonly string[]): Promise<ArchiveCoverage | null> {
         if (peers.length === 0) return null;
         const channels = await this.db
-            .select({ channelId: telegramChannel.channelId, syncedAt: telegramChannel.syncedAt })
+            .select({ channelId: telegramChannel.channelId, peer: telegramChannel.peer, syncedAt: telegramChannel.syncedAt })
             .from(telegramChannel)
             .where(inArray(telegramChannel.peer, [...peers]));
         if (channels.length < peers.length) return null;
         let to: Date | null = null;
         let from: Date | null = null;
+        const perChannel: ArchiveCoverage["perChannel"] = [];
         for (const c of channels) {
             if (c.syncedAt === null) return null;
             if (to === null || c.syncedAt.getTime() < to.getTime()) to = c.syncedAt;
@@ -138,9 +139,12 @@ export class DrizzleTelegramMessageRepository implements ChannelMessageStore, Ch
                 .orderBy(asc(telegramMessage.msgId))
                 .limit(1);
             if (!oldest) return null;
+            perChannel.push({ peer: c.peer, from: oldest.postedAt });
             if (from === null || oldest.postedAt.getTime() > from.getTime()) from = oldest.postedAt;
         }
         if (to === null || from === null) return null;
-        return { from, to, channels: channels.length };
+        // 등록 순서로 — 테이블 스캔 순서는 매일 markSynced UPDATE 로 바뀌어 화면의 방 이름 순서가 흔들린다.
+        perChannel.sort((a, b) => peers.indexOf(a.peer) - peers.indexOf(b.peer));
+        return { from, to, channels: channels.length, perChannel };
     }
 }

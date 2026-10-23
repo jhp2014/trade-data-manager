@@ -3,7 +3,7 @@
 import { createKiwoom } from "@trade-data-manager/kiwoom";
 import { createKis } from "@trade-data-manager/kis";
 import { createKrx } from "@trade-data-manager/krx";
-import { createTelegram, NEWS_CHANNELS, type Telegram } from "@trade-data-manager/telegram";
+import { createTelegram, NEWS_CHANNELS, type Telegram, type TelegramChannel } from "@trade-data-manager/telegram";
 import {
     KiwoomDailyAdapter,
     KiwoomMinuteAdapter,
@@ -70,7 +70,8 @@ export interface IngestRuntime {
      * 텔레그램 뉴스 방 아카이브 수집(Command) — 9방 전 메시지를 telegram_message 에. lazy 접속(검색과 한 연결 공유).
      * store 를 주면 DB 대신 그 저장소에 쓴다(dry-run = 인메모리).
      */
-    channelArchive: (store?: ChannelMessageStore) => Promise<ChannelArchiveCollector>;
+    /** channels 생략 = 등록 방(NEWS_CHANNELS) 전부. 백필을 일부 방만 더 깊이 내릴 때 넘긴다. */
+    channelArchive: (store?: ChannelMessageStore, channels?: readonly TelegramChannel[]) => Promise<ChannelArchiveCollector>;
     /** 보유 리소스(pg 풀·telegram) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -146,11 +147,11 @@ export function createIngestRuntime(): IngestRuntime {
         return searcher;
     };
     // 텔레그램 방 아카이브 = 같은 연결로 히스토리 페이지 순회 → telegram_message 멱등 적재(방 순차·커서는 완주 시만).
-    const channelArchive = async (store?: ChannelMessageStore): Promise<ChannelArchiveCollector> =>
+    const channelArchive = async (store?: ChannelMessageStore, channels?: readonly TelegramChannel[]): Promise<ChannelArchiveCollector> =>
         new ChannelArchiveCollectService({
             source: new TelegramHistoryAdapter(await ensureTelegram()),
             store: store ?? new DrizzleTelegramMessageRepository(db),
-            channels: NEWS_CHANNELS,
+            channels: channels ?? NEWS_CHANNELS,
         });
 
     return {

@@ -13,7 +13,7 @@ import { Center } from "../ui/chrome.js";
 import { usePanelHeader } from "../header/registry.js";
 import { useTelegramFeed } from "../news/telegramFeed.js";
 import { usePanelUiStore, usePanelUiText } from "../store/panelUi.js";
-import { coverageLabel, coverageOf, nextWindow, previewHits, telegramItems, telegramLaterCount, type CoverageState } from "../news/telegramNews.js";
+import { coverageLabel, coverageOf, earliestDate, nextWindow, previewHits, telegramItems, telegramLaterCount, type CoverageState } from "../news/telegramNews.js";
 
 const btn: CSSProperties = { border: "1px solid var(--border)", borderRadius: 4, background: "var(--surface)", padding: "1px 8px", fontSize: 11, cursor: "pointer" };
 
@@ -134,13 +134,16 @@ function emptyText(date: string, q: string, cov: CoverageState | null): string {
     const what = `${date} ${q ? `"${q}" ` : ""}메시지 없음`;
     if (!cov || cov.kind === "ok") return what;
     if (cov.kind === "partial") return `${what} — ${coverageLabel(cov)}`;
+    if (cov.kind === "before" && cov.rooms.length) return `${what} — ${cov.rooms.join(" · ")}만 수집된 날짜(다른 방은 모름)`;
     return `${date} — 아직 수집 안 된 날짜라 비어 있을 수 있습니다`;
 }
 
 /** 더 거슬러 갈 수 없을 때 — 왜 멈췄는지. */
 function endText(cov: CoverageState | null, coverage: TelegramArchivePage["coverage"]): string {
     if (!coverage) return "수집 범위를 몰라 더 거슬러 가지 않습니다";
-    if (cov?.kind === "before") return "빠짐없는 수집 범위 앞이라 더 거슬러 가지 않습니다";
+    const earliest = earliestDate(coverage);
+    if (cov?.kind === "before" && !cov.rooms.length) return "빠짐없는 수집 범위 앞이라 더 거슬러 가지 않습니다";
+    if (earliest < kstDateOfIso(coverage.from)) return `가장 이른 수집(${earliest}, 일부 방)까지 봤습니다 — 그 앞은 수집 전`;
     return `빠짐없는 수집의 시작(${kstDateOfIso(coverage.from)} ${kstHmOfIso(coverage.from)})까지 봤습니다 — 그 앞은 일부 방만 있거나 수집 전`;
 }
 

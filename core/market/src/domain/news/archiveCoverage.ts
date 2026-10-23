@@ -7,6 +7,11 @@ export interface ArchiveCoverage {
     to: Date;
     /** sync 를 완주한 방 수. */
     channels: number;
+    /**
+     * 방별 가장 오래된 메시지 시각 — from 은 이 중 최대. 백필 깊이가 방마다 달라(일부 방만 더 내림) from 앞에도
+     * "이 방들은 빠짐없다"를 말할 재료. 하루 판정(isDayCovered)은 쓰지 않는다 — 라이브 분기는 전 방 기준 그대로.
+     */
+    perChannel: { peer: string; from: Date }[];
 }
 
 /** KST 하루 [00:00:00, 23:59:59] 절대시각. */

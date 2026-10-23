@@ -1,7 +1,7 @@
 // 텔레그램 결과 다루기(순수) — 합치기 · 구간 걷기 · 수집 범위 · 경로 시각 이후.
 import { describe, expect, it } from "vitest";
 import type { TelegramNewsItem } from "../market/types.js";
-import { addDays, coverageLabel, coverageOf, nextWindow, previewHits, telegramItems, telegramLaterCount } from "./telegramNews.js";
+import { addDays, coverageLabel, coverageOf, earliestDate, nextWindow, type CoverageState, previewHits, telegramItems, telegramLaterCount } from "./telegramNews.js";
 
 const at = (date: string, hm: string): string => new Date(`${date}T${hm}:00+09:00`).toISOString();
 const item = (ref: string, date: string, hm: string): TelegramNewsItem => ({ channel: "방", at: at(date, hm), text: ref, ref });
@@ -76,7 +76,7 @@ describe("coverageOf — 그 날짜가 수집 범위 안인가", () => {
         expect(coverageOf("2026-07-31", cov)).toEqual({ kind: "ok" });
         expect(coverageOf("2026-07-20", cov)).toEqual({ kind: "partial", since: "09:00" });
         expect(coverageOf("2026-10-14", cov)).toEqual({ kind: "partial", until: "16:29" });
-        expect(coverageOf("2026-07-19", cov)).toEqual({ kind: "before", start: "2026-07-20" });
+        expect(coverageOf("2026-07-19", cov)).toEqual({ kind: "before", start: "2026-07-20", rooms: [] });
         expect(coverageOf("2026-10-15", cov)).toEqual({ kind: "after" });
         expect(coverageOf("2026-07-31", null)).toEqual({ kind: "unknown" });
     });
@@ -97,10 +97,49 @@ describe("coverageOf — 그 날짜가 수집 범위 안인가", () => {
         expect(coverageLabel({ kind: "partial", until: "16:29" })).toBe("16:29까지 빠짐없음");
     });
     it("수집 범위 앞의 날 — 메시지가 있으면 일부 방만, 없으면 수집 전, 검색어로 걸러 비었으면 모름", () => {
-        const b = { kind: "before", start: "2026-07-20" } as const;
+        const b: CoverageState = { kind: "before", start: "2026-07-20", rooms: [] };
         expect(coverageLabel(b, "some")).toBe("일부 방만 수집된 날짜 — 2026-07-20부터 빠짐없음");
         expect(coverageLabel(b, "none")).toBe("수집 전 날짜 — 2026-07-20부터 빠짐없음");
         expect(coverageLabel(b, "unknown")).toBe("수집 전이거나 일부 방만 든 날짜 — 2026-07-20부터 빠짐없음");
+    });
+});
+
+describe("방별 수집 범위 — 일부 방만 더 깊이 백필됐을 때", () => {
+    // 전 방은 2023-06-01 09:00 KST 부터, 특징주 · 급등일보만 2021-12-31 부터(2022-01 백필)
+    const cov = {
+        from: "2023-06-01T00:00:00.000Z",
+        to: "2026-10-14T07:29:00.000Z",
+        channels: [
+            { channel: "특징주 레이더", from: "2021-12-31T01:00:00.000Z" },
+            { channel: "주식 급등일보", from: "2021-12-30T23:00:00.000Z" },
+            { channel: "실시간 주식 뉴스", from: "2023-06-01T00:00:00.000Z" },
+        ],
+    };
+    it("전 방 범위 앞이라도 그날 00:00 전에 시작한 방은 빠짐없다", () => {
+        expect(coverageOf("2022-03-02", cov)).toEqual({ kind: "before", start: "2023-06-01", rooms: ["특징주 레이더", "주식 급등일보"] });
+        // 12-31 00:00 KST = 12-30 15:00Z — 특징주(01:00Z)는 그날 일부만, 급등일보(23:00Z = 12-31 08:00 KST)도 일부만
+        expect(coverageOf("2021-12-31", cov)).toEqual({ kind: "before", start: "2023-06-01", rooms: [] });
+        expect(coverageOf("2022-01-01", cov)).toEqual({ kind: "before", start: "2023-06-01", rooms: ["특징주 레이더", "주식 급등일보"] });
+        // 경계: 방의 최과거가 정확히 그날 00:00 KST(전날 15:00Z)면 그날은 빠짐없다
+        const edge = { ...cov, channels: [{ channel: "특징주 레이더", from: "2022-03-01T15:00:00.000Z" }] };
+        expect(coverageOf("2022-03-02", edge)).toEqual({ kind: "before", start: "2023-06-01", rooms: ["특징주 레이더"] });
+        expect(coverageOf("2022-03-01", edge)).toEqual({ kind: "before", start: "2023-06-01", rooms: [] });
+    });
+    it("한 줄 — 빠짐없는 방 이름", () => {
+        expect(coverageLabel({ kind: "before", start: "2023-06-01", rooms: ["특징주 레이더", "주식 급등일보"] })).toBe(
+            "특징주 레이더 · 주식 급등일보만 빠짐없는 날짜 — 2023-06-01부터 전 방",
+        );
+    });
+    it("더보기는 가장 이른 방의 시작까지 내려간다", () => {
+        expect(earliestDate(cov)).toBe("2021-12-31");
+        expect(nextWindow({ from: "2023-06-01", to: "2023-06-01" }, {}, cov)).toEqual({ from: "2023-05-25", to: "2023-05-31" });
+        expect(nextWindow({ from: "2022-01-03", to: "2022-01-09" }, {}, cov)).toEqual({ from: "2021-12-31", to: "2022-01-02" });
+        expect(nextWindow({ from: "2021-12-31", to: "2022-01-02" }, {}, cov)).toBeUndefined();
+    });
+    it("방별 정보가 없으면(옛 서버) 전 방 시작에서 멈춘다", () => {
+        const old = { from: cov.from, to: cov.to };
+        expect(earliestDate(old)).toBe("2023-06-01");
+        expect(coverageOf("2022-03-02", old)).toEqual({ kind: "before", start: "2023-06-01", rooms: [] });
     });
 });
 

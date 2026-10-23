@@ -133,7 +133,14 @@ describe("DrizzleTelegramMessageRepository (pglite)", () => {
         await repo.markSynced(2, 500, laterSync);
         const c = await repo.coverage(PEERS);
         // CH 의 최과거=msg(1) 00:01, other 의 최과거 = 00:30 → from = 00:30(max). to = min(synced) = CH 의 11:30.
-        expect(c).toEqual({ from: new Date("2026-10-13T00:30:00Z"), to: new Date("2026-10-14T11:30:00Z"), channels: 2 });
+        expect(c).toMatchObject({ from: new Date("2026-10-13T00:30:00Z"), to: new Date("2026-10-14T11:30:00Z"), channels: 2 });
+        // 방별 최과거 — from(max) 앞에서도 "이 방은 빠짐없다"를 말할 재료.
+        expect(c?.perChannel).toEqual([
+            { peer: INFO.peer, from: new Date("2026-10-13T00:01:00Z") },
+            { peer: other.peer, from: new Date("2026-10-13T00:30:00Z") },
+        ]);
+        // 순서 = 넘긴 peers(등록) 순서
+        expect((await repo.coverage([other.peer, INFO.peer]))?.perChannel.map((p) => p.peer)).toEqual([other.peer, INFO.peer]);
         expect(await repo.coverage([...PEERS, "@unknown"])).toBeNull(); // 레지스트리에 있는데 DB 에 없는 방
     });
 

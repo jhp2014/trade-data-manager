@@ -50,17 +50,20 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
         const telegram = new DrizzleTelegramMessageRepository(db);
         const dates = new MaterializedDataDates(minutes); // /dates 파일 물화(.cache) — 풀스캔 6~20s 를 첫 생성 1회로
 
-        const archive = new ArchiveNewsSearchService({
-            reader: telegram,
-            labels: new Map(NEWS_CHANNELS.map((c) => [c.peer, c.label])),
-        });
+        const labels = new Map(NEWS_CHANNELS.map((c) => [c.peer, c.label]));
+        const archive = new ArchiveNewsSearchService({ reader: telegram, labels });
         const peers = NEWS_CHANNELS.map((c) => c.peer);
         return {
             listDates: () => dates.list(),
             listStockMeta: () => master.listAllMeta(),
             telegramArchive: {
                 searchPage: (q, opts) => archive.searchPage(q, opts),
-                coverage: () => telegram.coverage(peers),
+                coverage: async () => {
+                    const c = await telegram.coverage(peers);
+                    if (!c) return null;
+                    const channels = c.perChannel.map((p) => ({ channel: labels.get(p.peer) ?? p.peer, from: p.from }));
+                    return { from: c.from, to: c.to, channels };
+                },
             },
             chartByCode: makeChartByCode({ dailyCandle: daily, minuteCandle: minutes, rawDailyCandle: rawDaily }),
             stockNews: new DrizzleStockNewsRepository(db),

@@ -17,8 +17,19 @@ export interface TelegramNewsItem {
  */
 export interface TelegramArchivePage {
     items: TelegramNewsItem[];
-    coverage: { from: string; to: string } | null;
+    coverage: TelegramArchiveCoverage | null;
     nextBefore?: string;
+}
+
+/**
+ * from = 모든 방이 빠짐없이 드는 시작(방별 최과거의 최대) · to = 모든 방이 sync 를 마친 끝.
+ * channels = 방별 최과거(channel = TelegramNewsItem.channel 과 같은 표시명) — 백필 깊이가 방마다 달라
+ * from 앞의 날에도 "이 방들은 빠짐없다"를 가른다(그 방의 from ≤ 그날 00:00 이면 그 방은 그날 통째로 들었다).
+ */
+export interface TelegramArchiveCoverage {
+    from: string;
+    to: string;
+    channels: Array<{ channel: string; from: string }>;
 }
 
 /** 봉투 — items + 이 페이지가 걸어간 가장 과거 날짜(다음 더보기 커서). 빈 날은 클라가 모르므로 서버가 알려줌. */

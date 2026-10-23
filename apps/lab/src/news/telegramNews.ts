@@ -42,31 +42,43 @@ export function addDays(date: string, n: number): string {
 
 /**
  * 다음 더보기 구간 — 이 구간이 limit 에 걸렸으면 같은 구간을 이어 받고(before), 아니면 바로 앞 한 주.
- * 수집 범위(coverage)의 시작 날짜보다 앞으로는 가지 않는다(그 앞은 비었거나 불완전 — "없다"가 아니라 "모른다").
+ * 가장 일찍 수집된 방의 시작 날짜보다 앞으로는 가지 않는다(그 앞은 어느 방도 없다 — "없다"가 아니라 "모른다").
+ * 전 방이 빠짐없는 범위(coverage.from) 앞이라도 더 깊이 백필된 방이 있으면 거기까지 간다(그 날들은 일부 방만 — coverageOf).
  * 수집 범위를 모르면(null) 더 가지 않는다.
  */
 export function nextWindow(w: TgWindow, page: Pick<TelegramArchivePage, "nextBefore">, coverage: TelegramArchivePage["coverage"]): TgWindow | undefined {
     if (page.nextBefore) return { from: w.from, to: w.to, before: page.nextBefore };
     if (!coverage) return undefined;
-    const start = kstDateOfIso(coverage.from);
+    const start = earliestDate(coverage);
     const to = addDays(w.from, -1);
     if (!start || to < start) return undefined;
     const from = addDays(to, -(MORE_DAYS - 1));
     return { from: from < start ? start : from, to };
 }
 
+/** 가장 일찍 수집된 방의 시작 날짜(KST) — 방별 정보가 없으면(옛 서버) 전 방 시작. */
+export function earliestDate(coverage: NonNullable<TelegramArchivePage["coverage"]>): string {
+    let start = kstDateOfIso(coverage.from);
+    for (const c of coverage.channels ?? []) {
+        const d = kstDateOfIso(c.from);
+        if (d && d < start) start = d;
+    }
+    return start;
+}
+
 /**
  * 그 날짜가 수집 범위 안인가 — 패널이 빈 결과를 "언급 없음"으로 보이지 않게.
  *  ok = 빠짐없이 들었다(그날 00:00 부터 끝까지 — 서버 archiveCoverage.isDayCovered 와 같은 자)
  *  partial = 그날의 일부만 — 수집 시작일이면 since(HH:MM)부터, 수집 끝 날이면 until(HH:MM)까지(둘 다일 수 있다)
- *  before = 빠짐없는 수집이 아직 그 날까지 못 내려갔다(방마다 백필이 따로라 일부 방만 들었을 수 있다)
+ *  before = 전 방이 빠짐없는 범위가 아직 그 날까지 못 내려갔다. rooms = 그래도 그날 통째로 든 방(더 깊이 백필된 방 —
+ *    그 방의 가장 오래된 메시지 ≤ 그날 00:00). 비면 어느 방이 들었는지 모른다(일부 방만 들었을 수 있다)
  *  after = 아직 안 받은 날 · unknown = 수집이 한 바퀴도 안 돌았다
  * 날짜 · 시각은 KST(coverage 는 UTC ISO). coverage.from = 방마다 가장 오래된 메시지 시각 중 가장 늦은 것(tdm).
  */
 export type CoverageState =
     | { kind: "ok" }
     | { kind: "partial"; since?: string; until?: string }
-    | { kind: "before"; start: string }
+    | { kind: "before"; start: string; rooms: string[] }
     | { kind: "after" }
     | { kind: "unknown" };
 
@@ -74,7 +86,11 @@ export function coverageOf(date: string, coverage: TelegramArchivePage["coverage
     if (!coverage) return { kind: "unknown" };
     const start = kstDateOfIso(coverage.from);
     const end = kstDateOfIso(coverage.to);
-    if (date < start) return { kind: "before", start };
+    if (date < start) {
+        const dayStart = Date.parse(`${date}T00:00:00+09:00`);
+        const rooms = (coverage.channels ?? []).filter((c) => Date.parse(c.from) <= dayStart).map((c) => c.channel);
+        return { kind: "before", start, rooms };
+    }
     if (date > end) return { kind: "after" };
     const dayStart = Date.parse(`${date}T00:00:00+09:00`);
     const since = date === start && Date.parse(coverage.from) > dayStart ? kstHmOfIso(coverage.from) : undefined;
@@ -93,6 +109,7 @@ export function coverageLabel(c: CoverageState, seen: "some" | "none" | "unknown
         case "partial":
             return c.since && c.until ? `${c.since}~${c.until}만 빠짐없음` : c.since ? `${c.since}부터 빠짐없음(그 앞은 일부 방만)` : `${c.until}까지 빠짐없음`;
         case "before": {
+            if (c.rooms.length) return `${c.rooms.join(" · ")}만 빠짐없는 날짜 — ${c.start}부터 전 방`;
             const what = seen === "some" ? "일부 방만 수집된 날짜" : seen === "none" ? "수집 전 날짜" : "수집 전이거나 일부 방만 든 날짜";
             return `${what} — ${c.start}부터 빠짐없음`;
         }
