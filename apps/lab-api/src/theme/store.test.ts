@@ -1,5 +1,5 @@
 // 적재 로직만 본다(임시 폴더에 작은 tdm-ai 모양을 만든다) — 등록부 이름 흡수·moves/rosters 적재·깨진 줄 fail-fast.
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -11,8 +11,8 @@ const jsonl = (rows: unknown[]) => rows.map((r) => JSON.stringify(r)).join("\n")
 
 async function seed() {
     await mkdir(join(dir, "theme"), { recursive: true });
-    await mkdir(join(dir, "theme/raw/moves"), { recursive: true });
-    await mkdir(join(dir, "theme/raw/rosters"), { recursive: true });
+    await mkdir(join(dir, "theme/generated/moves"), { recursive: true });
+    await mkdir(join(dir, "theme/generated/rosters"), { recursive: true });
     await writeFile(
         join(dir, "theme/registry.jsonl"),
         jsonl([
@@ -23,7 +23,7 @@ async function seed() {
     );
     await writeFile(join(dir, "theme/relations.jsonl"), jsonl([{ a: "유리기판", rel: "parent", b: "반도체", by: "user" }]));
     await writeFile(
-        join(dir, "theme/raw/moves/000001.jsonl"),
+        join(dir, "theme/generated/moves/000001.jsonl"),
         jsonl([
             { v: 1, kind: "stock", id: "stock", code: "000001", name: "가나다", from: "2023-01-01", to: "2026-10-16" },
             {
@@ -40,7 +40,7 @@ async function seed() {
     );
     // 파일명 치환 충돌 상황 — 한 파일에 두 테마가 같이 산다(theme 칸으로 가른다)
     await writeFile(
-        join(dir, "theme/raw/rosters/겹침.jsonl"),
+        join(dir, "theme/generated/rosters/겹침.jsonl"),
         jsonl([
             { v: 1, kind: "snapshot", id: "2024-01-02:오늘의테마", date: "2024-01-02", type: "오늘의테마", src: "awake", theme: "A/B", stocks: ["000001"], unmatched: [], time: "08:00", refs: ["@x#2"] },
             { v: 1, kind: "snapshot", id: "2024-01-01:오늘의테마", date: "2024-01-01", type: "오늘의테마", src: "awake", theme: "A·B", stocks: ["000002"], unmatched: ["옛이름"], time: "08:00", refs: ["@x#3"], headline: "머리" },
@@ -87,8 +87,15 @@ describe("loadThemeStore", () => {
         expect(s.rostersByTheme.get("A·B")?.map((r) => r.date)).toEqual(["2024-01-01", "2024-02-01"]);
     });
 
+    it("generated/ 가 없으면 옛 이름 raw/ 를 읽는다(개명 이행 중)", async () => {
+        await rename(join(dir, "theme/generated"), join(dir, "theme/raw"));
+        const s = await loadThemeStore(dir);
+        expect(s.movesByCode.get("000001")?.name).toBe("가나다");
+        expect(s.rostersByTheme.size).toBe(2);
+    });
+
     it("깨진 줄은 건너뛰지 않고 throw 한다(재생성으로 고치는 구조)", async () => {
-        await writeFile(join(dir, "theme/raw/rosters/깨짐.jsonl"), "{잘못된 json\n");
+        await writeFile(join(dir, "theme/generated/rosters/깨짐.jsonl"), "{잘못된 json\n");
         await expect(loadThemeStore(dir)).rejects.toThrow(/jsonl 파싱 실패/);
     });
 });

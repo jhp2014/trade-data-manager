@@ -3,8 +3,8 @@
 // 읽는 것(정본은 tdm-ai, 칸 정의도 그쪽 문서가 집):
 //   theme/registry.jsonl  — 테마 등록부(테마·상시/한시/그룹·같은 말·기준, 장부 — by 표기) · theme/INDEX.md
 //   theme/relations.jsonl — 상위 관계(한시의 흡수처) — 등록부와 합쳐 ThemeKeyword.parent 로 낸다
-//   theme/raw/moves/<코드>.jsonl   — 종목별 움직인 날(raw) · theme/FORMAT.md
-//   theme/raw/rosters/<테마>.jsonl — 테마별 구성 스냅샷(raw) · theme/FORMAT.md
+//   theme/generated/moves/<코드>.jsonl   — 종목별 움직인 날(기계 생성) · theme/FORMAT.md
+//   theme/generated/rosters/<테마>.jsonl — 테마별 구성 스냅샷(기계 생성) · theme/FORMAT.md
 // 깨진 줄은 건너뛰지 않고 throw — 데이터는 기계 생성이라, 틀리면 tdm-ai 쪽 파서를 고쳐 재생성하는 게 맞다.
 // 등록부·움직인 날의 모양은 wire 의 /theme 계약(labTheme.ts)이 단일 출처 — 적재가 곧 응답 모양이다.
 import { promises as fs } from "node:fs";
@@ -53,6 +53,17 @@ async function listJsonl(dir: string): Promise<string[]> {
     return (await fs.readdir(dir)).filter((f) => f.endsWith(".jsonl")).map((f) => path.join(dir, f));
 }
 
+/** 기계 생성 폴더 — tdm-ai 가 raw/ → generated/ 로 개명 중(2026-10-26). 옛 이름은 개명이 끝나면 지운다. */
+async function generatedDir(tdmAiDir: string): Promise<string> {
+    const dir = path.join(tdmAiDir, "theme/generated");
+    try {
+        await fs.access(dir);
+        return dir;
+    } catch {
+        return path.join(tdmAiDir, "theme/raw");
+    }
+}
+
 /** tdm-ai 작업장에서 등록부·facts 를 읽어 메모리 저장소를 만든다(1회성 — reload 없음). */
 export async function loadThemeStore(tdmAiDir: string): Promise<ThemeStore> {
     // 등록부 + 상위 관계(parent) 합치기 — by 는 작업장 내부 표기라 응답에 싣지 않는다
@@ -73,8 +84,9 @@ export async function loadThemeStore(tdmAiDir: string): Promise<ThemeStore> {
     for (const k of keywords) for (const n of [k.theme, ...k.aliases]) nameMap.set(norm(n), k.theme);
 
     // 움직인 날 — 파일 하나 = 종목 하나(첫 줄 stock, 나머지 issue — 날짜순은 생성기가 보장)
+    const genDir = await generatedDir(tdmAiDir);
     const movesByCode = new Map<string, StockMoves>();
-    for (const file of await listJsonl(path.join(tdmAiDir, "theme/raw/moves"))) {
+    for (const file of await listJsonl(path.join(genDir, "moves"))) {
         const rows = (await readJsonl(file)) as Array<Record<string, unknown>>;
         const head = rows[0];
         if (head?.kind !== "stock") throw new Error(`종목 줄이 첫 줄이 아니다: ${file}`);
@@ -94,7 +106,7 @@ export async function loadThemeStore(tdmAiDir: string): Promise<ThemeStore> {
 
     // 구성 스냅샷 — 파일명 치환이 겹치면 한 파일에 두 테마가 살 수 있으므로 줄의 theme 칸으로 가른다
     const rostersByTheme = new Map<string, RosterSnapshot[]>();
-    for (const file of await listJsonl(path.join(tdmAiDir, "theme/raw/rosters"))) {
+    for (const file of await listJsonl(path.join(genDir, "rosters"))) {
         for (const r of (await readJsonl(file)) as Array<Record<string, unknown>>) {
             if (r.kind !== "snapshot") continue;
             const snap: RosterSnapshot = {
