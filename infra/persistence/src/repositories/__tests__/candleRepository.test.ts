@@ -37,7 +37,10 @@ describe("Drizzle candle repositories (pglite)", () => {
             un: dailyBar("339000"),
         };
         await daily.saveDailyCandles([c]);
-        expect(await daily.getDailyCandle("005930", "2026-06-26")).toEqual(c);
+        expect(await daily.getEarliestDailyCandle("005930", "2026-06-26")).toEqual(c);
+        // onOrAfter 이후 첫 저장봉 — 앞선 날짜를 줘도 그 뒤 첫 겹침을 찾는다, 뒤면 없음
+        expect(await daily.getEarliestDailyCandle("005930", "2026-06-01")).toEqual(c);
+        expect(await daily.getEarliestDailyCandle("005930", "2026-06-27")).toBeNull();
 
         // 같은 자연키 재저장 = 덮어쓰기(중복행 X)
         const c2: DailyCandle = { ...c, krx: dailyBar("340000"), un: dailyBar("339800") };
@@ -47,14 +50,14 @@ describe("Drizzle candle repositories (pglite)", () => {
         expect(range[0].krx.close).toBe("340000");
     });
 
-    it("getEarliestDailyDate = 가장 과거 저장일(없으면 null)", async () => {
-        expect(await daily.getEarliestDailyDate("000660")).toBeNull();
+    it("getDailyDateBounds = 저장 거래일 양끝(없으면 null)", async () => {
+        expect(await daily.getDailyDateBounds("000660")).toBeNull();
         await daily.saveDailyCandles([
             { stockCode: "000660", date: "2026-06-26", krx: dailyBar("100"), un: dailyBar("100") },
             { stockCode: "000660", date: "2024-12-30", krx: dailyBar("90"), un: dailyBar("90") },
             { stockCode: "000660", date: "2025-03-15", krx: dailyBar("95"), un: dailyBar("95") },
         ]);
-        expect(await daily.getEarliestDailyDate("000660")).toBe("2024-12-30");
+        expect(await daily.getDailyDateBounds("000660")).toEqual({ earliest: "2024-12-30", latest: "2026-06-26" });
     });
 
     it("스캔: listDailyCandlesByDate(전종목) + getPreviousTradingDate(직전 거래일)", async () => {

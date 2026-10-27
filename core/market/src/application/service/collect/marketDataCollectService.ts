@@ -38,9 +38,8 @@ export class MarketDataCollectService implements MarketDataCollector {
     }
 
     async backfillDaily(range: DateRange, options: CollectOptions = {}): Promise<DailyBackfillResult> {
-        // 일봉만(분봉 없이) — 차트용 딥 히스토리 시딩. stockMaster 갱신은 DailyCollector 내부에서 선행.
-        const daily = await this.deps.dailyCollector.collect(range, {
-            overwrite: options.overwrite,
+        // 일봉만(분봉 없이) — 받은 구간 그대로 시딩(런웨이·커버리지 검사 없음). stockMaster 갱신은 DailyCollector 내부에서 선행.
+        const daily = await this.deps.dailyCollector.seed(range, {
             concurrency: options.concurrency,
             onFetch: (done, total) => options.onProgress?.({ phase: "daily", done, total }),
         });

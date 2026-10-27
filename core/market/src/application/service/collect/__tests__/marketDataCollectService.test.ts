@@ -38,7 +38,9 @@ class NoopStockMasterRepo implements StockMasterStore {
     }
 }
 class FakeDailyProvider implements DailyCandleProvider {
-    async getDailyCandles(): Promise<DailyCandle[]> {
+    calls: DateRange[] = [];
+    async getDailyCandles(_stockCode: string, range: DateRange): Promise<DailyCandle[]> {
+        this.calls.push(range);
         return [];
     }
 }
@@ -96,9 +98,10 @@ function makeCollector(opts: {
     const scanRepo = new FakeScanRepo(opts.byDate, opts.latest);
     const minuteRepo = new FakeMinuteRepo();
     const universe = new StockMasterIngestService({ provider: new FakeStockMasterProvider(opts.codes), repository: new NoopStockMasterRepo() });
+    const dailyProvider = new FakeDailyProvider();
     const dailyIngest = new DailyIngestService({
-        dailyProvider: new FakeDailyProvider(),
-        dailyRepo: { saveDailyCandles: async () => {}, getDailyCandle: async () => null, getEarliestDailyDate: async () => null },
+        dailyProvider,
+        dailyRepo: { saveDailyCandles: async () => {}, getEarliestDailyCandle: async () => null, getDailyDateBounds: async () => null },
         today: () => "2026-06-28",
     });
     const rawDailyIngest = new RawDailyIngestService({
@@ -112,7 +115,7 @@ function makeCollector(opts: {
     const dailyCollector = new DailyCollector({ universe, dailySweep, scanRepo });
     const minuteCollector = new MinuteCollector({ scanRepo, minuteSweep, minuteRepo });
     const collector = new MarketDataCollectService({ dailyCollector, minuteCollector });
-    return { collector, minuteRepo };
+    return { collector, minuteRepo, dailyProvider };
 }
 
 describe("backfill", () => {
@@ -189,8 +192,14 @@ describe("backfillDaily", () => {
             latest: "2026-06-20",
         });
         const r = await collector.backfillDaily({ from: "2026-06-26", to: "2026-06-26" });
-        expect(r).toEqual({ range: { from: "2026-06-26", to: "2026-06-26" }, universeCount: 1, dailyRefreshed: true });
+        expect(r).toEqual({ range: { from: "2026-06-26", to: "2026-06-26" }, universeCount: 1 });
         expect(minuteRepo.saves).toBe(0);
         expect(minuteRepo.deletes).toEqual([]);
+    });
+
+    it("받은 구간 그대로(런웨이 없음) — 커버리지가 충분해도 받는다, 받기 기준일은 오늘", async () => {
+        const { collector, dailyProvider } = makeCollector({ codes: ["A"], byDate: {}, latest: "2026-06-27" });
+        await collector.backfillDaily({ from: "2021-01-01", to: "2022-12-31" });
+        expect(dailyProvider.calls).toEqual([{ from: "2021-01-01", to: "2026-06-28" }]);
     });
 });

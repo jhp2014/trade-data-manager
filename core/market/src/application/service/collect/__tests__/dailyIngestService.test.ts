@@ -34,15 +34,18 @@ class FakeDailyRepo implements DailyCandleStore {
             .filter((c) => c.stockCode === stockCode && c.date >= range.from && c.date <= range.to)
             .sort((a, b) => a.date.localeCompare(b.date));
     }
-    async getDailyCandle(stockCode: string, date: string): Promise<DailyCandle | null> {
-        return this.rows.get(`${stockCode}|${date}`) ?? null;
+    async getEarliestDailyCandle(stockCode: string, onOrAfter: string): Promise<DailyCandle | null> {
+        const hits = [...this.rows.values()]
+            .filter((c) => c.stockCode === stockCode && c.date >= onOrAfter)
+            .sort((a, b) => a.date.localeCompare(b.date));
+        return hits[0] ?? null;
     }
-    async getEarliestDailyDate(stockCode: string): Promise<string | null> {
+    async getDailyDateBounds(stockCode: string): Promise<{ earliest: string; latest: string } | null> {
         const dates = [...this.rows.values()]
             .filter((c) => c.stockCode === stockCode)
             .map((c) => c.date)
             .sort();
-        return dates[0] ?? null;
+        return dates.length ? { earliest: dates[0], latest: dates[dates.length - 1] } : null;
     }
 }
 
@@ -165,5 +168,92 @@ describe("ingestDailyCandles", () => {
         });
         const r = await service.ingestDailyCandles("005930", { from: "2026-06-25", to: "2026-06-28" });
         expect(r.healed).toBe(true);
+    });
+    // ── as-of 함정: 키움 수정주가는 요청 to 시점 기준 → 받기는 항상 오늘까지, 저장만 요청 구간 ──
+    it("과거 to 여도 받기 기준일은 오늘, 저장은 to 까지만", async () => {
+        const { service, dailyProvider, dailyRepo } = makeService({
+            daily: [candle("2023-01-02", "100"), candle("2023-01-03", "101"), candle("2026-06-26", "200")],
+            today: "2026-06-28",
+        });
+        const r = await service.ingestDailyCandles("005930", { from: "2023-01-01", to: "2023-01-31" });
+        expect(dailyProvider.calls[0]).toEqual({ from: "2023-01-01", to: "2026-06-28" });
+        expect(r.saved).toBe(2);
+        expect(dailyRepo.rows.has("005930|2026-06-26")).toBe(false);
+    });
+
+    it("받은 첫 날짜가 DB 에 없어도 다음 겹침 날짜로 소급조정 감지", async () => {
+        const repo = new FakeDailyRepo();
+        // 2026-06-24(정지일 등)는 DB 에 없고 06-25 만 옛 기준으로 저장
+        await repo.saveDailyCandles([candle("2026-06-25", "70000")]);
+        repo.saved = [];
+        const { service } = makeService({
+            repo,
+            daily: [candle("2026-06-24", "34000"), candle("2026-06-25", "35000"), candle("2026-06-26", "35500")],
+        });
+        const r = await service.ingestDailyCandles("005930", { from: "2026-06-24", to: "2026-06-28" });
+        expect(r.healed).toBe(true);
+        expect(repo.rows.get("005930|2026-06-25")?.krx.close).toBe("35000");
+    });
+
+    it("저장분보다 과거로 넓힌 백필 — 구간 뒤 겹침으로 감지하고 저장분까지 오늘 기준으로 덮음", async () => {
+        const repo = new FakeDailyRepo();
+        // DB 는 2024-07 부터, 옛 기준(그 뒤 액분 2:1)
+        await repo.saveDailyCandles([candle("2024-07-03", "60000"), candle("2026-06-25", "70000")]);
+        repo.saved = [];
+        const current = [
+            candle("2021-01-04", "20000"),
+            candle("2024-07-03", "30000"),
+            candle("2026-06-25", "35000"),
+        ];
+        const { service, dailyProvider } = makeService({ repo, daily: current, today: "2026-06-28" });
+        const r = await service.ingestDailyCandles("005930", { from: "2021-01-01", to: "2022-12-31" });
+        expect(r.healed).toBe(true);
+        expect(dailyProvider.calls[1]).toEqual({ from: "2021-01-01", to: "2026-06-28" });
+        expect(repo.rows.get("005930|2021-01-04")?.krx.close).toBe("20000");
+        expect(repo.rows.get("005930|2024-07-03")?.krx.close).toBe("30000");
+        expect(repo.rows.get("005930|2026-06-25")?.krx.close).toBe("35000");
+    });
+
+    it("저장분보다 과거로 넓힌 백필 — 이벤트 없으면 요청 구간만 저장", async () => {
+        const repo = new FakeDailyRepo();
+        await repo.saveDailyCandles([candle("2024-07-03", "30000")]);
+        repo.saved = [];
+        const { service, dailyProvider } = makeService({
+            repo,
+            daily: [candle("2021-01-04", "20000"), candle("2024-07-03", "30000")],
+            today: "2026-06-28",
+        });
+        const r = await service.ingestDailyCandles("005930", { from: "2021-01-01", to: "2022-12-31" });
+        expect(r).toEqual({ stockCode: "005930", healed: false, saved: 1 });
+        expect(dailyProvider.calls).toHaveLength(1);
+    });
+    it("치유는 요청 구간 뒤에 새 날짜를 만들지 않는다(저장분 latest 까지만 덮음)", async () => {
+        const repo = new FakeDailyRepo();
+        await repo.saveDailyCandles([candle("2026-06-20", "70000"), candle("2026-06-24", "70000")]);
+        repo.saved = [];
+        const { service } = makeService({
+            repo,
+            daily: [candle("2026-06-20", "35000"), candle("2026-06-24", "35000"), candle("2026-06-26", "35500"), candle("2026-06-28", "36000")],
+            today: "2026-06-28",
+        });
+        // 일상 수집처럼 to=어제보다 이른 구간 — 오늘(06-28) 봉은 새로 생기면 안 된다
+        const r = await service.ingestDailyCandles("005930", { from: "2026-06-20", to: "2026-06-22" });
+        expect(r.healed).toBe(true);
+        expect(repo.rows.get("005930|2026-06-24")?.krx.close).toBe("35000"); // 구간 뒤 기존 행은 덮음
+        expect(repo.rows.has("005930|2026-06-26")).toBe(false);
+        expect(repo.rows.has("005930|2026-06-28")).toBe(false);
+    });
+
+    it("첫 겹침 날짜가 새 시리즈에 없으면 비교 없이 일반 저장", async () => {
+        const repo = new FakeDailyRepo();
+        await repo.saveDailyCandles([candle("2026-06-25", "70000")]);
+        repo.saved = [];
+        const { service, dailyProvider } = makeService({
+            repo,
+            daily: [candle("2026-06-24", "34000"), candle("2026-06-26", "35500")],
+        });
+        const r = await service.ingestDailyCandles("005930", { from: "2026-06-24", to: "2026-06-28" });
+        expect(r.healed).toBe(false);
+        expect(dailyProvider.calls).toHaveLength(1);
     });
 });

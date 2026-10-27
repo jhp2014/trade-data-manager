@@ -2,7 +2,7 @@
 //
 //   backfill [일수=5] [--overwrite]              일상 한방: 어제까지 N일 캔들·뉴스·일별속성 + 공모가 (오늘 제외·영역별 격리)
 //   backfill-candles <from> [to] [--overwrite]   일봉+분봉 (과거 시딩은 --overwrite)
-//   backfill-daily <from> [to] [--overwrite]     일봉만(차트용 딥 히스토리)
+//   backfill-daily <from> [to]                   일봉만(딥 히스토리) — 받은 구간 그대로, to 생략=어제
 //   daily-stats <from> [to]                      일별 종목 속성(KRX): 시총·상장주식수·소속부
 //   backfill-news <from> [to]                    시황 뉴스 헤드라인
 //   backfill-ipo                                 최근 1년 상장 공모가 enrichment
@@ -142,11 +142,11 @@ async function runBackfillCandles(rt: IngestRuntime, range: DateRange, overwrite
     printCollectResult(await rt.collector.backfill(range, collectOptions(overwrite)));
 }
 
-/** 일봉만 백필(분봉 없이) — 차트용 딥 히스토리 시딩. stockMaster 갱신 포함. */
-async function runBackfillDaily(rt: IngestRuntime, range: DateRange, overwrite: boolean): Promise<void> {
-    console.log(`▶ 일봉 백필: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
-    const r = await rt.collector.backfillDaily(range, collectOptions(overwrite));
-    console.log(`  ✓ 유니버스 ${r.universeCount} · 일봉 ${r.dailyRefreshed ? "수집" : "생략"}`);
+/** 일봉만 백필(분봉 없이) — [from,to] 그대로 전 종목 시딩. stockMaster 갱신 포함. 항상 받는다(덮어써도 해가 없다). */
+async function runBackfillDaily(rt: IngestRuntime, range: DateRange): Promise<void> {
+    console.log(`▶ 일봉 백필: ${range.from} ~ ${range.to}`);
+    const r = await rt.collector.backfillDaily(range, collectOptions(false));
+    console.log(`  ✓ 유니버스 ${r.universeCount} · 일봉 수집`);
 }
 
 /** 일별 종목 속성 수집(KRX) — 시총·상장주식수·소속부. 백필과 당일이 같은 진입점(범위 길이만 다름). */
@@ -276,7 +276,7 @@ const USAGE =
     "사용법:\n" +
     "  backfill [일수=5] [--overwrite]              일상 한방: 어제까지 N일 캔들·뉴스·일별속성 + 공모가 (오늘 제외, skip-if-present)\n" +
     "  backfill-candles <from> [to] [--overwrite]   일봉+분봉 (to 생략=하루, 과거 시딩은 --overwrite)\n" +
-    "  backfill-daily <from> [to] [--overwrite]     일봉만(분봉 없이) — 차트용 딥 히스토리\n" +
+    "  backfill-daily <from> [to]                   일봉만(분봉 없이) — 받은 구간 그대로 전 종목, to 생략=어제\n" +
     "  daily-stats <from> [to]                      일별 종목 속성(KRX) — 시총·상장주식수·소속부(to 생략=하루)\n" +
     "  backfill-news <from> [to]                     시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
     "  backfill-ipo                                  최근 1년 상장 종목 공모가 enrichment(null만)\n" +
@@ -317,11 +317,14 @@ async function main(): Promise<void> {
                 break;
             }
             case "backfill-daily": {
-                if (!a1) throw new Error("사용법: backfill-daily <from> [to] [--overwrite]");
+                if (!a1) throw new Error("사용법: backfill-daily <from> [to]");
                 assertDate(a1, "from");
-                const to = a2 ?? a1;
+                // to 생략 = 어제(오늘 미완성 제외 — runDaily 와 같은 경계). 수정주가 받기 기준일은 to 와 무관하게 늘 오늘.
+                const to = a2 ?? minusDays(seoulToday(), 1);
                 assertDate(to, "to");
-                await runBackfillDaily(rt, { from: a1, to }, overwrite);
+                if (a1 > to) throw new Error(`from(${a1}) 이 to(${to}) 보다 뒤 — 오늘 봉은 다음 일상 수집이 받는다`);
+                if (overwrite) console.log("  (backfill-daily 는 항상 받는다 — --overwrite 무시)");
+                await runBackfillDaily(rt, { from: a1, to });
                 break;
             }
             case "daily-stats": {

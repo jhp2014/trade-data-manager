@@ -35,7 +35,7 @@ const DAILY_RUNWAY_MONTHS = 24;
 /**
  * 일봉 수집 범위 = [range.from−24개월, range.to]. inclusive.
  * range.from 기준 차트 런웨이 — 수집 구간의 모든 거래일이 ≥24개월 일봉 히스토리를 갖는다.
- * self-heal 경계 비교는 range.from−24개월 봉이 기존 저장분과 겹치면 성립(치유는 earliest 부터 전체 재수집).
+ * self-heal 경계 비교는 받은 구간과 기존 저장분의 첫 겹침 날짜에서 성립(치유는 earliest 부터 전체 재수집).
  */
 export function backfillDailyRange(range: DateRange): DateRange {
     return { from: subtractMonths(range.from, DAILY_RUNWAY_MONTHS), to: range.to };

@@ -34,10 +34,10 @@ class CountingDailyRepo implements DailyCandleStore {
     async getDailyCandles(): Promise<DailyCandle[]> {
         return [];
     }
-    async getDailyCandle(): Promise<DailyCandle | null> {
+    async getEarliestDailyCandle(): Promise<DailyCandle | null> {
         return null; // 자가치유 경계비교 미발동(=healed 없음)
     }
-    async getEarliestDailyDate(): Promise<string | null> {
+    async getDailyDateBounds(): Promise<{ earliest: string; latest: string } | null> {
         return null;
     }
 }

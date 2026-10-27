@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, lt, lte } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte, max, min } from "drizzle-orm";
 import type {
     DailyCandle,
     DailyCandleStore,
@@ -47,23 +47,23 @@ export class DrizzleDailyCandleRepository
         return rows.map(rowToDailyCandle);
     }
 
-    async getDailyCandle(stockCode: string, date: string): Promise<DailyCandle | null> {
+    async getEarliestDailyCandle(stockCode: string, onOrAfter: string): Promise<DailyCandle | null> {
         const rows = await this.db
             .select()
             .from(dailyCandles)
-            .where(and(eq(dailyCandles.stockCode, stockCode), eq(dailyCandles.tradeDate, date)))
+            .where(and(eq(dailyCandles.stockCode, stockCode), gte(dailyCandles.tradeDate, onOrAfter)))
+            .orderBy(asc(dailyCandles.tradeDate))
             .limit(1);
         return rows[0] ? rowToDailyCandle(rows[0]) : null;
     }
 
-    async getEarliestDailyDate(stockCode: string): Promise<string | null> {
+    async getDailyDateBounds(stockCode: string): Promise<{ earliest: string; latest: string } | null> {
         const rows = await this.db
-            .select({ tradeDate: dailyCandles.tradeDate })
+            .select({ earliest: min(dailyCandles.tradeDate), latest: max(dailyCandles.tradeDate) })
             .from(dailyCandles)
-            .where(eq(dailyCandles.stockCode, stockCode))
-            .orderBy(asc(dailyCandles.tradeDate))
-            .limit(1);
-        return rows[0]?.tradeDate ?? null;
+            .where(eq(dailyCandles.stockCode, stockCode));
+        const r = rows[0];
+        return r?.earliest && r.latest ? { earliest: r.earliest, latest: r.latest } : null;
     }
 
     async getByDateAndCodes(date: string, codes: string[]): Promise<DailyCandle[]> {
