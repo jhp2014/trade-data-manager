@@ -9,6 +9,7 @@ function make(ports: Ports = {}) {
         listStockMeta: async () => [],
         telegramArchive: { searchPage: async () => ({ items: [] }), coverage: async () => null },
         chartByCode: () => Promise.reject(new Error("스텁 없음")),
+        dailyByCode: () => Promise.reject(new Error("스텁 없음")),
         stockNews: { getHeadlines: async () => [], feedHeadlines: async () => [] },
         dayFlowBody: async (date) => JSON.stringify({ date, stocks: [] }),
         theme: null,
@@ -74,6 +75,32 @@ describe("chart", () => {
         const badDate = await call("/chart?code=000001&date=2025-02-30");
         expect(badDate.status).toBe(400);
         expect(badDate.json).toEqual({ message: "date 가 유효한 날짜가 아님: 2025-02-30", error: "Bad Request", statusCode: 400 });
+    });
+});
+
+describe("daily", () => {
+    it("code·from·to 검증 통과 시 주입된 dailyByCode 결과를 그대로 — 기간은 그대로 넘긴다", async () => {
+        const seen: unknown[] = [];
+        const bar = { open: "1", high: "2", low: "1", close: "2", volume: "10", amount: "20" };
+        const rows = [{ stockCode: "000001", date: "2021-01-04", krx: bar, un: bar }];
+        const call = make({ dailyByCode: async (code, range) => (seen.push([code, range]), rows) });
+        const r = await call("/daily?code=000001&from=2021-01-01&to=2026-10-27");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual(rows);
+        expect(seen).toEqual([["000001", { from: "2021-01-01", to: "2026-10-27" }]]);
+        const oneDay = await call("/daily?code=000001&from=2025-01-02&to=2025-01-02"); // 하루짜리(from == to)도 정상
+        expect(oneDay.status).toBe(200);
+        expect(seen[1]).toEqual(["000001", { from: "2025-01-02", to: "2025-01-02" }]);
+    });
+    it("code·from·to 빠짐·불량·뒤집힘 = 400", async () => {
+        const call = make();
+        expect((await call("/daily?from=2021-01-01&to=2021-02-01")).json).toMatchObject({ message: "code 필수", statusCode: 400 });
+        expect((await call("/daily?code=000001&to=2021-02-01")).json).toMatchObject({ message: "from 필수(YYYY-MM-DD)" });
+        expect((await call("/daily?code=000001&from=2021-01-01")).json).toMatchObject({ message: "to 필수(YYYY-MM-DD)" });
+        expect((await call("/daily?code=000001&from=2021-01-01&to=2021-02-30")).json).toMatchObject({ message: "to 가 유효한 날짜가 아님: 2021-02-30" });
+        const flipped = await call("/daily?code=000001&from=2021-02-01&to=2021-01-01");
+        expect(flipped.status).toBe(400);
+        expect(flipped.json).toMatchObject({ message: "from(2021-02-01) 이 to(2021-01-01) 보다 뒤입니다" });
     });
 });
 

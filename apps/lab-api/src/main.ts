@@ -37,7 +37,7 @@ const port = Number(process.env.LAB_API_PORT ?? 3300);
 // market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — 요청마다 500 으로 원인을 말한다(기동 크래시보다 진단이 쉽다).
 type MarketPorts = Pick<
     Parameters<typeof createApp>[0],
-    "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "stockNews" | "dayFlowBody"
+    "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "dailyByCode" | "stockNews" | "dayFlowBody"
 >;
 function wireMarket(): MarketPorts & { closePool: () => void } {
     try {
@@ -66,6 +66,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
                 },
             },
             chartByCode: makeChartByCode({ dailyCandle: daily, minuteCandle: minutes, rawDailyCandle: rawDaily }),
+            dailyByCode: (code, range) => daily.getDailyCandles(code, range),
             stockNews: new DrizzleStockNewsRepository(db),
             // 과거 날짜 LRU(문자열 4벌) + 앞뒤 거래일 선계산 — 이웃 판정은 dates 물화 재사용.
             dayFlowBody: makeCachedDayFlowBody({
@@ -88,6 +89,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
             listStockMeta: reject,
             telegramArchive: { searchPage: reject, coverage: reject },
             chartByCode: reject,
+            dailyByCode: reject,
             stockNews: { getHeadlines: reject, feedHeadlines: reject },
             dayFlowBody: reject,
             closePool: () => undefined,
