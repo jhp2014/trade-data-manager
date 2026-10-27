@@ -66,6 +66,21 @@ function assertDate(d: string, label: string): void {
     if (d > seoulToday()) throw new Error(`미래 날짜는 수집 불가: ${d}`);
 }
 
+/** 하루가 끝나는 시각(KST) — 넥스트레이드 애프터마켓 마감 20:00. 그 전엔 오늘 봉이 미완성이다. */
+const DAY_CLOSE_HOUR_KST = 20;
+
+/**
+ * 캔들 수집 to 가 오늘이면 20:00(KST) 이후만 허용. 장중 오늘 봉은 미완성인데 원주가 일봉은 append-only 라
+ * 한 번 쓰면 그 값으로 굳는다(07-03 사건). 수정주가 일봉·분봉도 그날 하루 미완성으로 남는다.
+ */
+function assertDayClosed(to: string): void {
+    if (to !== seoulToday()) return;
+    const hourKst = new Date(Date.now() + 9 * 3_600_000).getUTCHours();
+    if (hourKst < DAY_CLOSE_HOUR_KST) {
+        throw new Error(`오늘(${to}) 봉은 ${DAY_CLOSE_HOUR_KST}:00(KST) 이후에만 수집 — 지금은 미완성. to 를 어제로 주거나 마감 후 실행`);
+    }
+}
+
 /** `--name value` 의 value 를 꺼낸다(없거나 다음이 또 플래그면 undefined). */
 function flagValue(raw: string[], name: string): string | undefined {
     const i = raw.indexOf(name);
@@ -313,6 +328,7 @@ async function main(): Promise<void> {
                 assertDate(a1, "from");
                 const to = a2 ?? a1;
                 assertDate(to, "to");
+                assertDayClosed(to);
                 await runBackfillCandles(rt, { from: a1, to }, overwrite);
                 break;
             }
@@ -322,6 +338,7 @@ async function main(): Promise<void> {
                 // to 생략 = 어제(오늘 미완성 제외 — runDaily 와 같은 경계). 수정주가 받기 기준일은 to 와 무관하게 늘 오늘.
                 const to = a2 ?? minusDays(seoulToday(), 1);
                 assertDate(to, "to");
+                assertDayClosed(to);
                 if (a1 > to) throw new Error(`from(${a1}) 이 to(${to}) 보다 뒤 — 오늘 봉은 다음 일상 수집이 받는다`);
                 if (overwrite) console.log("  (backfill-daily 는 항상 받는다 — --overwrite 무시)");
                 await runBackfillDaily(rt, { from: a1, to });
