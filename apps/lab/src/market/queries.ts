@@ -1,10 +1,22 @@
 // 시장 데이터 훅 — react-query 캐시 위에서 창구(ports)를 부른다. 패널은 이 훅만 안다.
 import { useEffect, useMemo } from "react";
-import { keepPreviousData, queryOptions, useQuery, useQueryClient, type QueryClient, type UseQueryResult } from "@tanstack/react-query";
+import {
+    keepPreviousData,
+    queryOptions,
+    useInfiniteQuery,
+    useQueries,
+    useQuery,
+    useQueryClient,
+    type InfiniteData,
+    type QueryClient,
+    type UseInfiniteQueryResult,
+    type UseQueryResult,
+} from "@tanstack/react-query";
 import { kstToday } from "./domain.js";
+import { addDays, shiftYears } from "../lib/date.js";
 import { ApiError } from "./http.js";
 import { useCalendarData, useChartData, useStockData, useThemeData } from "./MarketProvider.js";
-import type { ChartBundle, DayFlow, StockMoves } from "./types.js";
+import type { DayFlow, LabDailyCandle, LabMinuteDay, StockMoves } from "./types.js";
 import type { ChartData } from "./ports.js";
 
 const TODAY_STALE = 60_000; // 오늘 시세는 수집이 채우는 중일 수 있다 — 1분 뒤 재조회 허용
@@ -13,18 +25,65 @@ const META_STALE = 30 * 60_000; // 종목 마스터 — 새 종목이 세션 내
 /** 과거 날짜 시세는 바뀌지 않는다. */
 const histStale = (date: string): number => (date < kstToday() ? Infinity : TODAY_STALE);
 
-/**
- * 일봉 2년 + 그 날 분봉. 종목·날짜가 다 있어야 부른다. 같은 (종목, 날짜)는 패널이 여럿이어도 요청 한 번.
- * 키가 바뀌면 새 데이터가 올 때까지 직전 데이터를 준다(isPlaceholderData) — 차트가 로딩으로 언마운트되지 않게.
- */
-export function useChartBundle(code: string, date: string): UseQueryResult<ChartBundle, Error> {
-    const port = useChartData();
-    return useQuery({ ...chartBundleQuery(port, code, date), enabled: code !== "" && date !== "", placeholderData: keepPreviousData });
+/** 일봉 한 덩이(년) — 처음엔 경로 날짜에서 이만큼, 왼쪽으로 끌 때마다 이만큼씩 더 받는다. */
+export const DAILY_CHUNK_YEARS = 2;
+
+/** 일봉 한 덩이 — [from, to] 양 끝 포함. rows 가 비면 그 앞으로는 더 없다(상장 전). */
+export interface DailyPage {
+    from: string;
+    to: string;
+    rows: LabDailyCandle[];
 }
 
-/** (종목, 날짜) 번들 조회 정의 — 차트 패널과 차트 단축키(패널이 없어도 받는다)가 같은 캐시를 쓴다. */
-export const chartBundleQuery = (port: ChartData, code: string, date: string) =>
-    queryOptions({ queryKey: ["chart", code, date], queryFn: ({ signal }) => port.chart(code, date, signal), staleTime: histStale(date) });
+/**
+ * 일봉 — 경로 날짜(to)에서 끝나고, fetchNextPage 마다 그 앞 DAILY_CHUNK_YEARS 년을 더 받는다(차트를 왼쪽으로 끌 때).
+ * 키가 바뀌면 새 데이터가 올 때까지 직전 데이터를 준다(isPlaceholderData) — 차트가 로딩으로 언마운트되지 않게.
+ * 이어 붙인 오름차순 봉은 dailyRowsOf 로.
+ */
+export function useDailyCandles(code: string, date: string): UseInfiniteQueryResult<InfiniteData<DailyPage, string>, Error> {
+    const port = useChartData();
+    return useInfiniteQuery({
+        queryKey: ["daily", code, date],
+        initialPageParam: date,
+        queryFn: async ({ pageParam: to, signal }) => {
+            const from = shiftYears(to, -DAILY_CHUNK_YEARS);
+            return { from, to, rows: await port.daily(code, from, to, signal) };
+        },
+        getNextPageParam: (last) => (last.rows.length === 0 ? undefined : addDays(last.from, -1)),
+        enabled: code !== "" && date !== "",
+        staleTime: histStale(date),
+        placeholderData: keepPreviousData,
+    });
+}
+
+/** 받은 덩이들 → 날짜 오름차순 봉 하나로(덩이는 최근부터 쌓인다). */
+export const dailyRowsOf = (data: InfiniteData<DailyPage, string> | undefined): LabDailyCandle[] =>
+    data ? data.pages.slice().reverse().flatMap((p) => p.rows) : [];
+
+/** (종목, 날짜) 분봉 조회 정의 — 차트 패널과 차트 단축키(패널이 없어도 받는다)가 같은 캐시를 쓴다. */
+export const minuteDayQuery = (port: ChartData, code: string, date: string) =>
+    queryOptions({ queryKey: ["minutes", code, date], queryFn: ({ signal }) => port.minutes(code, date, signal), staleTime: histStale(date) });
+
+/** 경로 날짜의 분봉 — 키가 바뀌면 새 데이터가 올 때까지 직전 데이터를 준다(isPlaceholderData). */
+export function useMinuteDay(code: string, date: string): UseQueryResult<LabMinuteDay, Error> {
+    const port = useChartData();
+    return useQuery({ ...minuteDayQuery(port, code, date), enabled: code !== "" && date !== "", placeholderData: keepPreviousData });
+}
+
+/** 여러 날 분봉의 한 날 — 아직 안 왔으면 data·failed 둘 다 비어 있다. */
+export interface MinuteDayResult {
+    data: LabMinuteDay | undefined;
+    failed: boolean;
+}
+
+/** 여러 날 분봉(이어 보기 — 「가격」 모드). dates 순서 그대로 돌려준다. */
+export function useMinuteDays(code: string, dates: readonly string[]): MinuteDayResult[] {
+    const port = useChartData();
+    return useQueries({
+        queries: dates.map((d) => ({ ...minuteDayQuery(port, code, d), enabled: code !== "" })),
+        combine: (rs) => rs.map((r) => ({ data: r.data, failed: r.isError })),
+    });
+}
 
 /** 종목명 찾기 — 코드 → 이름. 모르는 코드거나 마스터를 아직 못 받았으면 null. 목록처럼 여러 코드를 볼 때. */
 export function useStockNameOf(): (code: string) => string | null {

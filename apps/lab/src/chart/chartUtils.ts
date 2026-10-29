@@ -13,6 +13,12 @@ export function kstHHmm(unixSec: number): string {
     return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
 }
 
+/** unix 초 → KST "M/D"(분봉을 여러 날 이어 볼 때 날짜 눈금). */
+export function kstMd(unixSec: number): string {
+    const d = new Date((unixSec + KST_OFFSET_SEC) * 1000);
+    return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
+}
+
 // ── 축 숫자 표기 ──────────────────────────────────────────────────────────
 /** 일봉 가격 축 — 원, 천 단위 쉼표(12,345). */
 export function fmtPriceAxis(price: number): string {

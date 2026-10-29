@@ -56,11 +56,14 @@ export function useMinuteVisibleRange(
             chart.timeScale().setVisibleLogicalRange(zoomRange(anchorTime === null ? points.length - 1 : markerIndex(points, anchorTime), zoomBars));
             return;
         }
-        const firstMin = minutesOfDay(points[0].tradeTime);
+        // 마지막 날(= 경로 날짜)의 장을 잡는다 — 가격 축은 앞 날이 붙어 있을 수 있다(봉은 날짜·시각 오름차순).
+        const lastDate = points[points.length - 1].date;
+        const start = points.findIndex((p) => p.date === lastDate);
+        const firstMin = minutesOfDay(points[start].tradeTime);
         const openMin = firstMin < REGULAR_OPEN_MIN ? PREMARKET_OPEN_MIN : REGULAR_OPEN_MIN;
-        const from = Math.min(0, openMin - LEFT_MARGIN_BARS - firstMin);
+        const from = start + Math.min(0, openMin - LEFT_MARGIN_BARS - firstMin);
         let to = points.length - 1;
-        for (let i = 0; i < points.length; i++) {
+        for (let i = start; i < points.length; i++) {
             if (points[i].tradeTime <= SESSION_CLOSE) to = i;
             else break;
         }

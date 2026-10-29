@@ -1,5 +1,6 @@
 // 순수 계산 — tdm-work core/market/domain(price.ts · kst.ts)에서 차트가 쓰는 것만 옮겨 왔다.
 // 가격은 무손실 string 입력, 정밀도가 필요한 곳은 BigInt.
+import type { DailyBar, DailyUnFix } from "./types.js";
 
 /** 등락률(%) — 소수 4자리 문자열. 기준가가 없거나 0이면 null. */
 export function computeChangeRate(price: string, basePrice: string | null): string | null {
@@ -32,4 +33,17 @@ export function kstToUnix(date: string, time: string): number {
 /** 오늘(KST) YYYY-MM-DD. */
 export function kstToday(): string {
     return new Date(Date.now() + 9 * 3_600_000).toISOString().slice(0, 10);
+}
+
+/** 일봉 보기 시장 — KRX · 통합(UN 원본) · 통합 보정(UN*: 유령 체결을 걷은 값, 기본). */
+export type DailyMode = "unfix" | "un" | "krx";
+
+/** UN* 바 — un 에 unFix(걷힌 칸만)를 덮은 것. 보정이 없는 날은 un 그대로. */
+export function unFixedBar(c: { un: DailyBar; unFix?: DailyUnFix }): DailyBar {
+    return c.unFix ? { ...c.un, ...c.unFix } : c.un;
+}
+
+/** 일봉 한 줄의 그 모드 바. */
+export function dailyBarOf(c: { krx: DailyBar; un: DailyBar; unFix?: DailyUnFix }, mode: DailyMode): DailyBar {
+    return mode === "krx" ? c.krx : mode === "un" ? c.un : unFixedBar(c);
 }

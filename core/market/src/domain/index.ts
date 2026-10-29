@@ -9,6 +9,7 @@ export * from "./candle/model.js";
 export * from "./candle/price.js";
 export * from "./candle/pruning.js";
 export * from "./candle/minuteBackfill.js";
+export * from "./candle/ghostTrade.js";
 
 // equity — 종목 자체 속성(이름·상장일·공모가·시총·발행)
 export * from "./equity/stockMaster.js";

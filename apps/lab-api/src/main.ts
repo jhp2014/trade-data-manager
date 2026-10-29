@@ -23,7 +23,7 @@ import {
 // 상수(채널 레지스트리)만 필요하므로 파일 직접 경로로 피한다(exports 는 패키지 지정자에만 적용).
 import { NEWS_CHANNELS } from "../../../infra/telegram/src/channels.js";
 import { createApp } from "./app.js";
-import { makeChartByCode } from "./market/chart.js";
+import { makeLabChart } from "./market/labChart.js";
 import { MaterializedDataDates } from "./market/dataDates.js";
 import { makeDayFlowByDate } from "./market/dayFlow.js";
 import { makeCachedDayFlowBody } from "./market/dayFlowCache.js";
@@ -37,7 +37,7 @@ const port = Number(process.env.LAB_API_PORT ?? 3300);
 // market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — 요청마다 500 으로 원인을 말한다(기동 크래시보다 진단이 쉽다).
 type MarketPorts = Pick<
     Parameters<typeof createApp>[0],
-    "listDates" | "listStockMeta" | "telegramArchive" | "chartByCode" | "dailyByCode" | "stockNews" | "dayFlowBody"
+    "listDates" | "listStockMeta" | "telegramArchive" | "dailyByCode" | "minutesByDate" | "stockNews" | "dayFlowBody"
 >;
 function wireMarket(): MarketPorts & { closePool: () => void } {
     try {
@@ -48,6 +48,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
         const rawDaily = new DrizzleRawDailyCandleRepository(db);
         const master = new DrizzleStockMasterRepository(db);
         const telegram = new DrizzleTelegramMessageRepository(db);
+        const labChart = makeLabChart({ dailyCandle: daily, rawDailyCandle: rawDaily, minuteCandle: minutes });
         const dates = new MaterializedDataDates(minutes); // /dates 파일 물화(.cache) — 풀스캔 6~20s 를 첫 생성 1회로
 
         const labels = new Map(NEWS_CHANNELS.map((c) => [c.peer, c.label]));
@@ -65,8 +66,8 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
                     return { from: c.from, to: c.to, channels };
                 },
             },
-            chartByCode: makeChartByCode({ dailyCandle: daily, minuteCandle: minutes, rawDailyCandle: rawDaily }),
-            dailyByCode: (code, range) => daily.getDailyCandles(code, range),
+            dailyByCode: labChart.dailyWithFix,
+            minutesByDate: labChart.minutesByDate,
             stockNews: new DrizzleStockNewsRepository(db),
             // 과거 날짜 LRU(문자열 4벌) + 앞뒤 거래일 선계산 — 이웃 판정은 dates 물화 재사용.
             dayFlowBody: makeCachedDayFlowBody({
@@ -88,8 +89,8 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
             listDates: reject,
             listStockMeta: reject,
             telegramArchive: { searchPage: reject, coverage: reject },
-            chartByCode: reject,
             dailyByCode: reject,
+            minutesByDate: reject,
             stockNews: { getHeadlines: reject, feedHeadlines: reject },
             dayFlowBody: reject,
             closePool: () => undefined,

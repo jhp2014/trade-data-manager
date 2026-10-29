@@ -4,6 +4,7 @@ import { RISE_COLOR, FALL_COLOR } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
 import { useDailySeries, useDailySeriesData, useDailyVisibleRange } from "./dailyChartHooks.js";
 import { useCandlePrimaryClick, useCandleShiftClick } from "./candleInteraction.js";
+import { useLoadOlderAtLeftEdge } from "./olderData.js";
 import { FloatingTooltip } from "./tooltip.js";
 import type { DailyPoint } from "./derive.js";
 import { fmtRate, fmtEok } from "../lib/format.js";
@@ -27,6 +28,7 @@ const LINE_COLOR = "#7c3aed";
 
 // 일봉 차트 — 캔들(원화) + 거래대금 pane + 고가 등락률(전일비) 마커 + 크로스헤어 툴팁 + 일봉 선.
 // 봉 ctrl(⌘)+클릭 또는 더블클릭 = 그 날짜 선택(맨 좌클릭은 팬) · shift+클릭 = 그 봉에 선(onShiftPick).
+// 첫 봉을 넘어 왼쪽으로 끌면 onNeedOlder — 앞 덩이가 붙어도 화면은 제자리(lightweight-charts 몫).
 export function DailyChart({
     points,
     frameKey,
@@ -34,6 +36,7 @@ export function DailyChart({
     onPickDate,
     lines = [],
     onShiftPick,
+    onNeedOlder,
 }: {
     points: DailyPoint[];
     /** 데이터셋 정체성 — 바뀔 때만 표시범위를 다시 잡는다. */
@@ -44,6 +47,8 @@ export function DailyChart({
     lines?: readonly ChartLine[];
     /** shift+클릭한 봉의 날짜와 클릭 높이의 가격(캔들 pane 일 때만). */
     onShiftPick?: (date: string, price: number) => void;
+    /** 왼쪽 끝에 닿았다 — 더 앞 일봉을 받을 때(받는 중 중복은 호출자가 막는다). */
+    onNeedOlder?: () => void;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -62,6 +67,7 @@ export function DailyChart({
     const series = useDailySeries(chartRef);
     const mapRef = useDailySeriesData(series, points);
     useDailyVisibleRange(chartRef, points, frameKey, visibleBars);
+    useLoadOlderAtLeftEdge(chartRef, onNeedOlder);
     useCandlePrimaryClick<string>({
         chartRef,
         resolveTime: (t) => (typeof t === "string" ? t : null),

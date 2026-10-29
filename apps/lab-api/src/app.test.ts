@@ -8,8 +8,8 @@ function make(ports: Ports = {}) {
         listDates: async () => [],
         listStockMeta: async () => [],
         telegramArchive: { searchPage: async () => ({ items: [] }), coverage: async () => null },
-        chartByCode: () => Promise.reject(new Error("스텁 없음")),
         dailyByCode: () => Promise.reject(new Error("스텁 없음")),
+        minutesByDate: () => Promise.reject(new Error("스텁 없음")),
         stockNews: { getHeadlines: async () => [], feedHeadlines: async () => [] },
         dayFlowBody: async (date) => JSON.stringify({ date, stocks: [] }),
         theme: null,
@@ -59,20 +59,21 @@ describe("stocks/master", () => {
     });
 });
 
-describe("chart", () => {
-    it("code·date 검증 통과 시 주입된 chartByCode 결과를 그대로", async () => {
-        const bundle = { stockCode: "000001", daily: [], minutes: [], basePrice: null };
-        const call = make({ chartByCode: async (code, date) => ({ ...bundle, stockCode: `${code}@${date}` }) });
-        const r = await call("/chart?code=000001&date=2025-01-02");
+describe("minutes", () => {
+    it("code·date 검증 통과 시 주입된 minutesByDate 결과를 그대로", async () => {
+        const day = { stockCode: "000001", date: "", minutes: [], basePrice: null, rawScale: 1 };
+        const call = make({ minutesByDate: async (code, date) => ({ ...day, date: `${code}@${date}` }) });
+        const r = await call("/minutes?code=000001&date=2025-01-02");
         expect(r.status).toBe(200);
-        expect(r.json).toEqual({ ...bundle, stockCode: "000001@2025-01-02" });
+        expect(r.json).toEqual({ ...day, date: "000001@2025-01-02" });
+        expect((await call("/chart?code=000001&date=2025-01-02")).status).toBe(404); // 옛 묶음은 은퇴
     });
     it("code 없음·date 불량 = 400, NestJS 와 같은 body", async () => {
         const call = make();
-        const noCode = await call("/chart?date=2025-01-02");
+        const noCode = await call("/minutes?date=2025-01-02");
         expect(noCode.status).toBe(400);
         expect(noCode.json).toEqual({ message: "code 필수", error: "Bad Request", statusCode: 400 });
-        const badDate = await call("/chart?code=000001&date=2025-02-30");
+        const badDate = await call("/minutes?code=000001&date=2025-02-30");
         expect(badDate.status).toBe(400);
         expect(badDate.json).toEqual({ message: "date 가 유효한 날짜가 아님: 2025-02-30", error: "Bad Request", statusCode: 400 });
     });

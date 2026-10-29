@@ -24,3 +24,15 @@ export const kstDateOfIso = (iso: string): string => kstIso(iso).slice(0, 10);
 
 /** ISO 절대시각 → KST HH:MM(읽을 수 없으면 ""). */
 export const kstHmOfIso = (iso: string): string => kstIso(iso).slice(11, 16);
+
+/** YYYY-MM-DD 에 n 일 더하기(달력 — 휴장 무관, 음수 = 앞). */
+export function addDays(date: string, n: number): string {
+    return new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** YYYY-MM-DD 에서 n 년 뒤(음수 = 앞). 2/29 는 그 해에 없으면 3/1 로 넘어간다(Date 규칙). */
+export function shiftYears(date: string, n: number): string {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCFullYear(d.getUTCFullYear() + n);
+    return d.toISOString().slice(0, 10);
+}

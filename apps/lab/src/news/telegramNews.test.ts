@@ -1,7 +1,8 @@
 // 텔레그램 결과 다루기(순수) — 합치기 · 구간 걷기 · 수집 범위 · 경로 시각 이후.
 import { describe, expect, it } from "vitest";
 import type { TelegramNewsItem } from "../market/types.js";
-import { addDays, coverageLabel, coverageOf, earliestDate, nextWindow, type CoverageState, previewHits, telegramItems, telegramLaterCount } from "./telegramNews.js";
+import { addDays } from "../lib/date.js";
+import { coverageLabel, coverageOf, earliestDate, nextWindow, type CoverageState, previewHits, telegramItems, telegramLaterCount } from "./telegramNews.js";
 
 const at = (date: string, hm: string): string => new Date(`${date}T${hm}:00+09:00`).toISOString();
 const item = (ref: string, date: string, hm: string): TelegramNewsItem => ({ channel: "방", at: at(date, hm), text: ref, ref });

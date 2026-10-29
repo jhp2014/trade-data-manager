@@ -1,6 +1,6 @@
 // 텔레그램 결과 다루기(순수) — 페이지 합치기 · 더보기(구간 걷기) · 수집 범위 · 경로 시각 이후 판정.
 import type { TelegramArchivePage, TelegramNewsItem } from "../market/types.js";
-import { kstDateOfIso, kstHmOfIso } from "../lib/date.js";
+import { addDays, kstDateOfIso, kstHmOfIso } from "../lib/date.js";
 import { isAfterPath } from "../lib/pathTime.js";
 
 /**
@@ -34,11 +34,6 @@ export interface TgWindow {
 
 /** 더보기 한 번에 거슬러 가는 날 수 — 주말 뉴스도 들어가게 달력 기준 한 주. */
 export const MORE_DAYS = 7;
-
-/** YYYY-MM-DD 에 n 일 더하기(달력). */
-export function addDays(date: string, n: number): string {
-    return new Date(Date.parse(`${date}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-}
 
 /**
  * 다음 더보기 구간 — 이 구간이 limit 에 걸렸으면 같은 구간을 이어 받고(before), 아니면 바로 앞 한 주.

@@ -4,20 +4,24 @@ import { kstHHmm } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
 import { FloatingTooltip } from "./tooltip.js";
 import { OhlcTooltip } from "./MinuteChartTooltips.js";
-import { useMinuteSeries, useMinuteSeriesData, useTimeLine } from "./minuteSeries.js";
+import { useMinuteAxis, useMinuteSeries, useMinuteSeriesData, useTimeLine, type MinuteAxis } from "./minuteSeries.js";
+import { useLoadOlderAtLeftEdge } from "./olderData.js";
 import { useFollowMarker, useMinuteVisibleRange } from "./minuteFraming.js";
 import { useCandlePrimaryClick } from "./candleInteraction.js";
 import type { MinutePoint } from "./derive.js";
 
-// 분봉 차트 — 캔들(등락률 %) pane + 거래대금(억) pane + 시각 세로선 + 크로스헤어 OHLC 툴팁.
-// 봉 ctrl(⌘)+클릭 또는 더블클릭 = 그 시각 선택(맨 좌클릭은 팬). 명령형 배선은 minuteSeries·minuteFraming.
+// 분봉 차트 — 캔들(당일 % 또는 수정주가 원) pane + 거래대금(억) pane + 시각 세로선 + 크로스헤어 OHLC 툴팁.
+// 봉 ctrl(⌘)+클릭 또는 더블클릭 = 그 봉 선택(날짜·시각 — 가격 축은 여러 날이라 다른 날일 수 있다, 맨 좌클릭은 팬).
+// 가격 축에서 첫 봉을 넘어 왼쪽으로 끌면 onNeedOlder — 앞 날이 붙어도 화면은 제자리(lightweight-charts 몫). 명령형 배선은 minuteSeries·minuteFraming.
 export function MinuteChart({
     points,
     frameKey,
     markerTime = null,
     zoom = null,
     showAmountMarkers = true,
+    axis = "pct",
     onPickTime,
+    onNeedOlder,
 }: {
     points: MinutePoint[];
     /** 데이터셋 정체성(code:date) — 바뀔 때만 표시범위를 다시 잡는다. */
@@ -27,8 +31,11 @@ export function MinuteChart({
     /** f 줌 — 켜면 anchorTime(unix초, null = 마지막 봉)을 가운데로 bars 봉. null = 세션 기본 뷰. */
     zoom?: { bars: number; anchorTime: number | null } | null;
     showAmountMarkers?: boolean;
-    /** 봉 선택 — 그 봉의 시각(HH:MM:SS). */
-    onPickTime: (time: string) => void;
+    axis?: MinuteAxis;
+    /** 봉 선택 — 그 봉의 날짜(YYYY-MM-DD)·시각(HH:MM:SS). */
+    onPickTime: (date: string, time: string) => void;
+    /** 왼쪽 끝에 닿았다 — 앞 거래일 분봉을 받을 때(가격 축). */
+    onNeedOlder?: () => void;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -50,16 +57,18 @@ export function MinuteChart({
 
     const series = useMinuteSeries(chartRef);
     const pointMapRef = useMinuteSeriesData(series, points, showAmountMarkers);
+    useMinuteAxis(chartRef, series, axis);
     useTimeLine(series, points, markerTime);
     useMinuteVisibleRange(chartRef, points, frameKey, zoom?.bars ?? null, zoom?.anchorTime ?? null);
     useFollowMarker(chartRef, points, markerTime, frameKey, zoom?.bars ?? null);
+    useLoadOlderAtLeftEdge(chartRef, onNeedOlder);
     useCandlePrimaryClick<number>({
         chartRef,
         resolveTime: (t) => (typeof t === "number" ? t : null),
         // 실제 봉일 때만(조회 맵이 검증).
         onPrimaryAction: (t) => {
             const p = pointMapRef.current.get(t);
-            if (p) onPickTime(p.tradeTime);
+            if (p) onPickTime(p.date, p.tradeTime);
         },
     });
 
@@ -73,7 +82,7 @@ export function MinuteChart({
             if (t === undefined) return null;
             const p = pointMapRef.current.get(t);
             if (!p) return null;
-            return <OhlcTooltip time={t} open={p.open} high={p.high} low={p.low} close={p.close} amount={p.amount} cumAmount={p.cumAmount} />;
+            return <OhlcTooltip axis={axis} time={t} open={p.open} high={p.high} low={p.low} close={p.close} amount={p.amount} cumAmount={p.cumAmount} />;
         },
     });
 

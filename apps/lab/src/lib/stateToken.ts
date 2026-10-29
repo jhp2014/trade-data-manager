@@ -1,6 +1,7 @@
 // 일봉 상태 토큰 — `종목@YYYY-MM-DD` + 선 0~2개(`@yymmdd` + O|H|L|C + [:KRX] + ▲|▼).
 // 문법 정본은 tdm-ai daily/FORMAT.md — 이 파일은 같은 문법을 읽고(붙여넣기) 쓴다(복사). 순수 함수만.
-import type { DailyCandle, PriceMode } from "../market/types.js";
+import { unFixedBar } from "../market/domain.js";
+import type { DailyBar, LabDailyCandle, PriceMode } from "../market/types.js";
 
 export type LineField = "O" | "H" | "L" | "C";
 export type Side = "▲" | "▼";
@@ -22,18 +23,22 @@ export function lineRef(l: DailyLine): string {
     return `${l.date.slice(2).replaceAll("-", "")}${l.field}${l.venue === "krx" ? ":KRX" : ""}`;
 }
 
-/** 그 선의 가격 — 그 날 봉이 일봉에 없으면(2년 창 밖·휴장) null. */
-export function linePrice(daily: readonly DailyCandle[], l: DailyLine): number | null {
+/** 선이 읽는 바 — 통합 선은 늘 UN*(유령 체결을 걷은 값)이다(tdm-ai daily/FORMAT.md). UN 원본은 보기 전용. */
+const lineBar = (c: LabDailyCandle, venue: PriceMode): DailyBar => (venue === "krx" ? c.krx : unFixedBar(c));
+
+/** 그 선의 가격 — 그 날 봉이 받은 일봉에 없으면(더 앞 덩이·휴장) null. */
+export function linePrice(daily: readonly LabDailyCandle[], l: DailyLine): number | null {
     const c = daily.find((d) => d.date === l.date);
-    return c ? Number(c[l.venue][BAR_FIELD[l.field]]) : null;
+    return c ? Number(lineBar(c, l.venue)[BAR_FIELD[l.field]]) : null;
 }
 
 /** 봉의 O/H/L/C 중 price 에 가장 가까운 값 — 차트 클릭 높이를 선으로 붙인다. */
-export function nearestField(c: DailyCandle, venue: PriceMode, price: number): LineField {
+export function nearestField(c: LabDailyCandle, venue: PriceMode, price: number): LineField {
+    const bar = lineBar(c, venue);
     let best: LineField = "H";
     let gap = Infinity;
     for (const f of FIELDS) {
-        const g = Math.abs(Number(c[venue][BAR_FIELD[f]]) - price);
+        const g = Math.abs(Number(bar[BAR_FIELD[f]]) - price);
         if (g < gap) {
             best = f;
             gap = g;

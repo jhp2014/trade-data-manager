@@ -1,12 +1,13 @@
-// 차트 파생 — ChartBundle(무손실 string) → 차트 포인트(일봉 원화 · 분봉 등락률 %·거래대금).
+// 차트 파생 — /daily · /minutes(무손실 string) → 차트 포인트(일봉 원화 · 분봉 등락률 % 또는 수정주가 원화 · 거래대금).
 // tdm-work workbench lib/derive.ts 에서 옮겨 왔다(순수 함수).
-import { computeAccumulatedAmounts, computeChangeRate, computeMinuteTradingAmount, kstToUnix } from "../market/domain.js";
-import type { ChartBundle, PriceMode } from "../market/types.js";
+import { computeAccumulatedAmounts, computeChangeRate, computeMinuteTradingAmount, dailyBarOf, kstToUnix, type DailyMode } from "../market/domain.js";
+import type { LabDailyCandle, LabMinuteDay, PriceMode } from "../market/types.js";
 
 export interface MinutePoint {
     time: number; // unix seconds — lightweight-charts 입력
+    date: string; // YYYY-MM-DD — 여러 날을 이어 볼 때 봉이 어느 날인가
     tradeTime: string; // HH:MM:SS
-    open: number; // 등락률 %
+    open: number; // 등락률 %(당일 %) 또는 수정주가 원(가격)
     high: number;
     low: number;
     close: number;
@@ -30,14 +31,15 @@ export interface DailyPoint {
     prevClose: number | null; // 직전 거래일 종가
     /** 고가의 전일비(%) — 마커·툴팁이 같이 읽는다. 전일 종가가 없으면 null. */
     highPct: number | null;
+    /** UN* 로 보는데 이 봉이 유령 체결 보정을 받았다 — 봉 위 작은 표식. */
+    fixed: boolean;
 }
 
-/** 일봉 — mode 시장의 바. prevClose = 직전 거래일 종가. */
-export function deriveDailyView(bundle: ChartBundle, mode: PriceMode): DailyPoint[] {
-    const daily = bundle.daily;
+/** 일봉 — mode 의 바(UN* = un 에 unFix 를 덮은 것). prevClose = 직전 거래일 종가(같은 모드). */
+export function deriveDailyView(daily: readonly LabDailyCandle[], mode: DailyMode): DailyPoint[] {
     return daily.map((c, i) => {
-        const bar = c[mode];
-        const prev = i > 0 ? daily[i - 1][mode] : null;
+        const bar = dailyBarOf(c, mode);
+        const prev = i > 0 ? dailyBarOf(daily[i - 1], mode) : null;
         const prevClose = prev ? Number(prev.close) : null;
         const high = Number(bar.high);
         return {
@@ -49,22 +51,23 @@ export function deriveDailyView(bundle: ChartBundle, mode: PriceMode): DailyPoin
             amount: Number(bar.amount),
             prevClose,
             highPct: prevClose && prevClose > 0 ? ((high - prevClose) / prevClose) * 100 : null,
+            fixed: mode === "unfix" && c.unFix !== undefined,
         };
     });
 }
 
 /**
- * 분봉 — 봉 모양은 늘 통합(UN) 바(KRX 는 프리마켓·시간외에 없다). mode 는 % 기준가만 바꾼다.
+ * 분봉(당일 %) — 봉 모양은 늘 통합(UN) 바(KRX 는 프리마켓·시간외에 없다). mode 는 % 기준가만 바꾼다.
  * 기준가가 없으면(상장일) 당일 첫 UN 시가로 대신한다.
  */
-export function deriveMinuteView(bundle: ChartBundle, mode: PriceMode): MinuteView {
-    const minutes = bundle.minutes;
+export function deriveMinuteView(day: LabMinuteDay, mode: PriceMode): MinuteView {
+    const minutes = day.minutes;
     if (minutes.length === 0) return { points: [], baseFallback: false };
 
     const amounts = minutes.map((c) => computeMinuteTradingAmount(c.un));
     const cums = computeAccumulatedAmounts(amounts);
 
-    const sel = bundle.basePrice ? bundle.basePrice[mode] : null;
+    const sel = day.basePrice ? day.basePrice[mode] : null;
     const baseFallback = sel === null;
     const base = sel !== null ? String(sel) : minutes[0].un.open;
 
@@ -78,6 +81,7 @@ export function deriveMinuteView(bundle: ChartBundle, mode: PriceMode): MinuteVi
         if (o === null || h === null || l === null || cl === null) return;
         points.push({
             time: kstToUnix(c.date, c.time),
+            date: c.date,
             tradeTime: c.time,
             open: Number(o),
             high: Number(h),
@@ -88,4 +92,31 @@ export function deriveMinuteView(bundle: ChartBundle, mode: PriceMode): MinuteVi
         });
     });
     return { points, baseFallback };
+}
+
+/**
+ * 분봉(가격) — 여러 날을 이어 수정주가 원화로(일봉과 같은 스케일 — 액분·감자가 낀 날도 끊기지 않는다).
+ * 원주가 ÷ 그 날 rawScale. 거래대금은 체결 금액이라 환산하지 않고, 누적은 날마다 0 에서 다시 센다.
+ */
+export function deriveMinutePriceView(days: readonly LabMinuteDay[]): MinutePoint[] {
+    const points: MinutePoint[] = [];
+    for (const day of days) {
+        const amounts = day.minutes.map((c) => computeMinuteTradingAmount(c.un));
+        const cums = computeAccumulatedAmounts(amounts);
+        const k = day.rawScale > 0 ? day.rawScale : 1;
+        day.minutes.forEach((c, i) => {
+            points.push({
+                time: kstToUnix(c.date, c.time),
+                date: c.date,
+                tradeTime: c.time,
+                open: Number(c.un.open) / k,
+                high: Number(c.un.high) / k,
+                low: Number(c.un.low) / k,
+                close: Number(c.un.close) / k,
+                amount: Number(amounts[i]),
+                cumAmount: Number(cums[i]),
+            });
+        });
+    }
+    return points;
 }

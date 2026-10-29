@@ -5,6 +5,7 @@
 // 규칙: 와이어를 그대로 타는 도메인 값타입(캔들·타점·차트 앵커 등)은 core/market 를 **재노출**(단일 출처),
 //       화면 전용 read model 봉투(api 소유)는 여기서 **정의**한다. 런타임 코드 0 — 전부 타입.
 export type * from "./chart.js";
+export type * from "./labChart.js";
 export type * from "./daySummary.js";
 export type * from "./dayReplay.js";
 export type * from "./dayFlow.js";

@@ -8,6 +8,7 @@ import type { DailyPoint } from "./derive.js";
 
 const LEFT_MARGIN_BARS = 3; // 좌측 여백(빈 논리 인덱스)
 const RIGHT_MARGIN_BARS = 10; // 우측 여백 — 마지막 봉이 축에 붙지 않게
+const FIXED_MARK_COLOR = "#9ca3af"; // 유령 체결 보정 표식(회색 점)
 
 export interface DailySeries {
     candleRef: RefObject<ISeriesApi<"Candlestick"> | null>;
@@ -48,7 +49,7 @@ export function useDailySeries(chartRef: RefObject<IChartApi | null>): DailySeri
     return { candleRef, amountRef, markersRef, gen };
 }
 
-/** 데이터(캔들·거래대금) + 고가 등락률 마커(전일비 10% 이상) + 날짜→봉 조회 맵(툴팁용). */
+/** 데이터(캔들·거래대금) + 고가 등락률 마커(전일비 10% 이상) + 보정 표식(UN*) + 날짜→봉 조회 맵(툴팁용). */
 export function useDailySeriesData(series: DailySeries, points: DailyPoint[]): { readonly current: Map<string, DailyPoint> } {
     const mapRef = useRef<Map<string, DailyPoint>>(new Map());
     useEffect(() => {
@@ -61,6 +62,8 @@ export function useDailySeriesData(series: DailySeries, points: DailyPoint[]): {
 
         const markers = [];
         for (const p of points) {
+            // 유령 체결 보정(UN*) — 글자 없는 작은 표식 하나. 고가 등락 마커와 같은 자리에 쌓인다.
+            if (p.fixed) markers.push({ time: p.time as Time, position: "aboveBar" as const, color: FIXED_MARK_COLOR, shape: "circle" as const, size: 0.4 });
             const color = p.highPct === null ? null : highMarkerColor(p.highPct);
             if (p.highPct === null || color === null) continue;
             markers.push({ time: p.time as Time, position: "aboveBar" as const, color, shape: "circle" as const, size: 1, text: p.highPct.toFixed(1) });

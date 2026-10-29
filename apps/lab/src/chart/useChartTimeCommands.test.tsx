@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { MarketProvider } from "../market/MarketProvider.js";
 import { fakeMarket } from "../market/testing.js";
-import type { ChartBundle } from "../market/types.js";
+import type { LabMinuteDay } from "../market/types.js";
 import { usePaths } from "../store/paths.js";
 import { useChartSettings } from "../store/chartSettings.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
@@ -22,10 +22,10 @@ let hold: Promise<void> | null = null;
 function wrapper({ children }: { children: ReactNode }): JSX.Element {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const m = fakeMarket({
-        chart: async (code: string, date: string): Promise<ChartBundle> => {
+        minutes: async (code: string, date: string): Promise<LabMinuteDay> => {
             calls.push(`${code}@${date}`);
             if (hold) await hold;
-            return { stockCode: code, daily: [], minutes: TIMES.map((time) => ({ stockCode: code, date, time, krx: null, un: bar })), basePrice: { krx: 1000, un: 1000 } };
+            return { stockCode: code, date, minutes: TIMES.map((time) => ({ stockCode: code, date, time, krx: null, un: bar })), basePrice: { krx: 1000, un: 1000 }, rawScale: 1 };
         },
     });
     return (

@@ -4,7 +4,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useChartData } from "../market/MarketProvider.js";
-import { chartBundleQuery } from "../market/queries.js";
+import { minuteDayQuery } from "../market/queries.js";
 import { CLOSE_TIME, usePaths } from "../store/paths.js";
 import { useChartSettings } from "../store/chartSettings.js";
 import { useKeymapDynamic } from "../keymap/dynamic.js";
@@ -20,14 +20,14 @@ export function useChartTimeCommands(): void {
             const p = paths.find((x) => x.id === active);
             if (!p || !p.s.code || !p.s.date) return;
             const { code, date } = p.s;
-            const bundle = await qc.ensureQueryData(chartBundleQuery(port, code, date)).catch(() => null);
-            if (!bundle) return;
+            const day = await qc.ensureQueryData(minuteDayQuery(port, code, date)).catch(() => null);
+            if (!day) return;
             // 기다리는 사이 활성 경로가 바뀌었거나 그 경로가 다른 종목·날짜로 갔으면 버린다 — 쓰기는 활성을 옮기므로
             // 그대로 쓰면 사용자가 고른 활성을 되돌린다. 시각은 지금 값에서 출발(연타가 차례로 쌓이게).
             const st = usePaths.getState();
             const now = st.paths.find((x) => x.id === p.id)?.s;
             if (st.active !== p.id || !now || now.code !== code || now.date !== date) return;
-            const next = stepMinute(deriveMinuteView(bundle, "un").points, now.time, bars, CLOSE_TIME);
+            const next = stepMinute(deriveMinuteView(day, "un").points, now.time, bars, CLOSE_TIME);
             if (next !== null && next !== now.time) usePaths.getState().write(p.id, { time: next });
         };
         const jump = (): number => useChartSettings.getState().settings.jumpBars;

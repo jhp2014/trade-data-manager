@@ -6,7 +6,8 @@ const notStubbed = (name: string) => () => Promise.reject(new Error(`가짜 시�
 
 export function fakeMarket<T extends Partial<Market>>(stubs: T): Market & T {
     return {
-        chart: notStubbed("chart"),
+        daily: notStubbed("daily"),
+        minutes: notStubbed("minutes"),
         stockMaster: notStubbed("stockMaster"),
         tradingDays: notStubbed("tradingDays"),
         dayFlow: notStubbed("dayFlow"),

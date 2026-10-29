@@ -1,7 +1,7 @@
 // 상태 토큰 복사 — 경로의 (종목, 날짜, 일봉 선)에서 구간을 골라 토큰을 클립보드로(DESIGN 9절 「일봉 선」).
 // 선 n 개가 나눈 구간 n+1 개를 가격이 높은 쪽부터 늘어놓는다. 선이 없으면 고를 것이 없다(`종목@날짜`).
 import { formatState, lineRef, linePrice, sortLines, type DailyLine } from "../lib/stateToken.js";
-import type { DailyCandle } from "../market/types.js";
+import type { LabDailyCandle } from "../market/types.js";
 import { MENU_PAD, MenuItem } from "../ui/popover/menu.js";
 
 export interface PricedLine {
@@ -11,7 +11,7 @@ export interface PricedLine {
 }
 
 /** 경로의 선 → 이름·가격(낮은 선부터). 가격을 모르는 선(그 날 봉이 일봉에 없음)은 맨 뒤·null. */
-export function priceLines(daily: readonly DailyCandle[], lines: readonly DailyLine[]): PricedLine[] {
+export function priceLines(daily: readonly LabDailyCandle[], lines: readonly DailyLine[]): PricedLine[] {
     return sortLines(lines.map((line) => ({ line, ref: lineRef(line), price: linePrice(daily, line) })));
 }
 

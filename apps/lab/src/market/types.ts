@@ -46,16 +46,10 @@ export interface MinuteCandle {
 }
 
 /**
- * GET /chart?code&date — 일봉 2년(수정주가, 오름차순) + 그 날 dense 분봉(원주가) + 분봉 % 기준가.
- * 일봉 범위는 서버가 정한다(date−24개월 … date).
+ * GET /daily · GET /minutes — lab 차트 계약(lab-api, contracts/wire 정의를 그대로 쓴다).
+ * 일봉 = 수정주가 + 유령 보정 unFix(보정된 날만) · 분봉 = 그 날 원주가 + % 기준가 + 수정주가 환산비(rawScale).
  */
-export interface ChartBundle {
-    stockCode: string;
-    daily: DailyCandle[];
-    minutes: MinuteCandle[];
-    /** 분봉 % 기준가(직전 거래일 종가, 당일 원주가 스케일). 상장 첫날 등은 null. */
-    basePrice: ByMarket<number | null> | null;
-}
+export type { DailyUnFix, LabDailyCandle, LabMinuteDay } from "@trade-data-manager/wire";
 
 /** GET /stocks/master 한 줄. */
 export interface StockMeta {

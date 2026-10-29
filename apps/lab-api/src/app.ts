@@ -3,17 +3,17 @@
 //   GET /dates                                        → string[](YYYY-MM-DD 오름차순) · tdm api GET /dates 와 같은 경로·꼴(lab 프록시가 /api 만 떼고 넘긴다)
 //   GET /stocks/master                                → StockMeta[](코드 오름차순 전량) · tdm api 와 같은 꼴, 캐시 없이 직쿼리
 //   GET /news/telegram/archive?date=|from=&to=[&q=…]  → TelegramArchivePage · 조립은 market/telegramArchive.ts, 400 은 NestJS 와 같은 body
-//   GET /chart?code=&date=                            → ChartBundle(일봉 2년+dense 분봉+basePrice·rawScale) · 조립은 market/chart.ts
-//   GET /daily?code=&from=&to=                        → DailyCandle[](수정주가 일봉, 날짜 오름차순) · 기간 전체 한 번에(주목일 계산 등 일봉만 필요한 소비자 — /chart 의 2년 창·분봉 없이)
+//   GET /daily?code=&from=&to=                        → LabDailyCandle[](수정주가 일봉 + 유령 보정 unFix, 날짜 오름차순) · 기간 그대로 · 조립은 market/labChart.ts
+//   GET /minutes?code=&date=                          → LabMinuteDay(그 날 dense 분봉 원주가 + % 기준가 + 수정주가 환산비) · 조립은 market/labChart.ts
 //   GET /news/hts?date=[&code=&q=&before…]            → HtsNewsItem[](최신순) · 조립은 market/htsNews.ts
 //   GET /day-flow?date=                               → DayFlow(그날 universe 전부의 분당 원값 — 표현(%·누적)은 클라) · lab 전용 계약, 조립은 market/dayFlow.ts
 //   GET /theme/registry                               → ThemeKeyword[](tdm-ai 등록부 그대로) · 계약은 wire/labTheme.ts
 //   GET /theme/stocks/:code?asOf=                     → StockMoves(움직인 날) · asOf 있으면 date <= asOf 만(사후정보 차단은 서버 몫), 없는 종목 404
 import { Hono } from "hono";
-import type { DailyCandle, DataDate, StockMeta } from "@trade-data-manager/wire";
+import type { DataDate, StockMeta } from "@trade-data-manager/wire";
 import type { StockNewsReader } from "@trade-data-manager/market";
 import type { ThemeStore } from "./theme/store.js";
-import type { ChartByCode } from "./market/chart.js";
+import type { DailyWithFix, MinutesByDate } from "./market/labChart.js";
 import type { DayFlowBody } from "./market/dayFlowCache.js";
 import { htsNews } from "./market/htsNews.js";
 import { telegramArchivePage, type TelegramArchivePorts } from "./market/telegramArchive.js";
@@ -26,10 +26,10 @@ export interface AppOptions {
     listStockMeta: () => Promise<StockMeta[]>;
     /** GET /news/telegram/archive 의 데이터 — 아카이브 검색·coverage(market/telegramArchive.ts). */
     telegramArchive: TelegramArchivePorts;
-    /** GET /chart 의 데이터 — ChartBundle 조립(market/chart.ts 의 makeChartByCode). */
-    chartByCode: ChartByCode;
-    /** GET /daily 의 데이터 — 수정주가 일봉 [from, to] 그대로(core AdjustedDailyReader). */
-    dailyByCode: (stockCode: string, range: { from: string; to: string }) => Promise<DailyCandle[]>;
+    /** GET /daily 의 데이터 — 수정주가 일봉 [from, to] + 유령 보정(market/labChart.ts). */
+    dailyByCode: DailyWithFix;
+    /** GET /minutes 의 데이터 — 그 날 분봉 + % 기준가 + 수정주가 환산비(market/labChart.ts). */
+    minutesByDate: MinutesByDate;
     /** GET /news/hts 의 데이터 — core StockNewsReader(읽기 2개) 그대로(market/htsNews.ts 가 소비). */
     stockNews: StockNewsReader;
     /** GET /day-flow 의 데이터 — JSON **문자열**(캐시 히트 때 재직렬화를 피한다, market/dayFlowCache.ts). */
@@ -44,8 +44,8 @@ export function createApp({
     listDates,
     listStockMeta,
     telegramArchive,
-    chartByCode,
     dailyByCode,
+    minutesByDate,
     stockNews,
     dayFlowBody,
     theme,
@@ -61,8 +61,8 @@ export function createApp({
 
     app.get("/dates", async (c) => c.json(await listDates()));
     app.get("/stocks/master", async (c) => c.json(await listStockMeta()));
-    app.get("/chart", async (c) =>
-        c.json(await chartByCode(assertStockCode(c.req.query("code")), assertYmd(c.req.query("date")))),
+    app.get("/minutes", async (c) =>
+        c.json(await minutesByDate(assertStockCode(c.req.query("code")), assertYmd(c.req.query("date")))),
     );
     app.get("/daily", async (c) => {
         const code = assertStockCode(c.req.query("code"));

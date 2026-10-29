@@ -77,3 +77,12 @@ describe("토큰 읽기", () => {
         expect(parseStateToken(z.token)).toMatchObject({ lines: [H0701, H0715], zone: z.k });
     });
 });
+
+describe("통합 선은 UN* 값", () => {
+    it("unFix 가 있으면 통합 선 가격·붙이기는 보정값, KRX 선은 그대로", () => {
+        const fixed = [{ ...daily[1], unFix: { high: "145" } }];
+        expect(priceLines(fixed, [H0715])[0].price).toBe(145);
+        expect(priceLines(fixed, [{ ...H0715, venue: "krx" }])[0].price).toBe(148);
+        expect(nearestField(fixed[0], "un", 146)).toBe("H"); // 원본 고가 150 이 아니라 보정 145 에 붙는다
+    });
+});

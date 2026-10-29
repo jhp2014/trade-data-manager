@@ -1,10 +1,12 @@
 // 시장 데이터 창구 — 패널·훅은 이 인터페이스만 안다(fetch·URL 은 구현 몫).
 // 쓰는 쪽이 필요한 것만 의존하도록 종류별로 나눈다. 구현(tdm.ts / 테스트 가짜)은 여럿을 한 번에 구현해도 된다.
-import type { ChartBundle, DayFlow, HtsCursor, HtsNewsItem, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
+import type { DayFlow, HtsCursor, HtsNewsItem, LabDailyCandle, LabMinuteDay, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
 
 export interface ChartData {
-    /** 일봉 2년 + 그 날 분봉 + 분봉 % 기준가. */
-    chart(code: string, date: string, signal?: AbortSignal): Promise<ChartBundle>;
+    /** 수정주가 일봉 [from, to](날짜 오름차순) + 유령 보정(unFix, 보정된 날만). */
+    daily(code: string, from: string, to: string, signal?: AbortSignal): Promise<LabDailyCandle[]>;
+    /** 그 날 분봉(원주가 dense) + % 기준가 + 수정주가 환산비. 분봉이 없는 날은 minutes 가 빈 배열. */
+    minutes(code: string, date: string, signal?: AbortSignal): Promise<LabMinuteDay>;
 }
 
 export interface StockData {

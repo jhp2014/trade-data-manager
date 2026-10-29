@@ -6,44 +6,47 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MarketProvider } from "../market/MarketProvider.js";
 import type { Market } from "../market/ports.js";
 import { fakeMarket as stubMarket } from "../market/testing.js";
-import type { ChartBundle } from "../market/types.js";
+import type { LabDailyCandle, LabMinuteDay } from "../market/types.js";
 import { usePaths } from "../store/paths.js";
 import { usePanelUiStore } from "../store/panelUi.js";
 import { Framed, headerLine, openControls, pinToLine, resetHeaderLedger } from "../test/framed.js";
 import { ChartPanel } from "./ChartPanel.js";
 
-const seen = vi.hoisted(() => ({ daily: [] as { onPickDate: (d: string) => void; frameKey: string }[], minute: [] as { onPickTime: (t: string) => void; markerTime: number | null }[] }));
+const seen = vi.hoisted(() => ({ daily: [] as { onPickDate: (d: string) => void; frameKey: string; onNeedOlder?: () => void }[], minute: [] as { onPickTime: (d: string, t: string) => void; markerTime: number | null }[] }));
 vi.mock("../chart/DailyChart.js", () => ({
-    DailyChart: (p: { onPickDate: (d: string) => void; frameKey: string }) => {
+    DailyChart: (p: { onPickDate: (d: string) => void; frameKey: string; onNeedOlder?: () => void }) => {
         seen.daily.push(p);
         return <div data-testid="daily" />;
     },
 }));
 vi.mock("../chart/MinuteChart.js", () => ({
-    MinuteChart: (p: { onPickTime: (t: string) => void; markerTime: number | null }) => {
+    MinuteChart: (p: { onPickTime: (d: string, t: string) => void; markerTime: number | null }) => {
         seen.minute.push(p);
         return <div data-testid="minute" />;
     },
 }));
 
 const bar = { open: "1000", high: "1000", low: "1000", close: "1000", volume: "1" };
-/** hold 를 켜면 응답을 붙잡아 두었다가 release() 로 내보낸다(로딩 중 화면을 보려고). */
-function fakeMarket(): Market & { calls: string[]; hold: boolean; release: () => void } {
+/** hold 를 켜면 응답을 붙잡아 두었다가 release() 로 내보낸다(로딩 중 화면을 보려고). calls = 분봉 요청(종목@날짜). */
+function fakeMarket(): Market & { calls: string[]; dailyCalls: string[]; hold: boolean; release: () => void } {
     const calls: string[] = [];
+    const dailyCalls: string[] = [];
     const held: (() => void)[] = [];
     const m = stubMarket({
         calls,
+        dailyCalls,
         hold: false,
         release: () => held.splice(0).forEach((go) => go()),
-        chart: async (code: string, date: string): Promise<ChartBundle> => {
+        // 일봉은 경로 날짜 덩이에만 한 줄 — 그 앞 덩이(to 가 7월 말 이전)는 비어 있어 더 받지 않는다.
+        daily: async (code: string, from: string, to: string): Promise<LabDailyCandle[]> => {
+            dailyCalls.push(`${code}:${from}~${to}`);
+            if (m.hold) await new Promise<void>((go) => held.push(go));
+            return to >= "2026-07-01" ? [{ stockCode: code, date: to, krx: { ...bar, amount: "1" }, un: { ...bar, amount: "1" } }] : [];
+        },
+        minutes: async (code: string, date: string): Promise<LabMinuteDay> => {
             calls.push(`${code}@${date}`);
             if (m.hold) await new Promise<void>((go) => held.push(go));
-            return {
-                stockCode: code,
-                daily: [{ stockCode: code, date, krx: { ...bar, amount: "1" }, un: { ...bar, amount: "1" } }],
-                minutes: [{ stockCode: code, date, time: "09:00:00", krx: null, un: bar }],
-                basePrice: { krx: 1000, un: 1000 },
-            };
+            return { stockCode: code, date, minutes: [{ stockCode: code, date, time: "09:00:00", krx: null, un: bar }], basePrice: { krx: 1000, un: 1000 }, rawScale: 1 };
         },
         stockMaster: async () => [
             { stockCode: "402340", name: "SK스퀘어", market: "KOSPI" },
@@ -111,11 +114,26 @@ describe("ChartPanel", () => {
         const m = fakeMarket();
         renderPanels(m);
         await screen.findByTestId("minute");
-        act(() => seen.minute.at(-1)!.onPickTime("09:44:00"));
-        expect(usePaths.getState().paths.find((p) => p.id === "B")?.s.time).toBe("09:44");
+        act(() => seen.minute.at(-1)!.onPickTime("2026-07-31", "09:44:00"));
+        expect(usePaths.getState().paths.find((p) => p.id === "B")?.s).toMatchObject({ date: "2026-07-31", time: "09:44" });
         expect(usePaths.getState().active).toBe("B");
+        // 이어 보기(가격 축)에서 다른 날 봉을 고르면 날짜도 옮긴다
+        act(() => seen.minute.at(-1)!.onPickTime("2026-07-30", "10:00:00"));
+        expect(usePaths.getState().paths.find((p) => p.id === "B")?.s).toMatchObject({ date: "2026-07-30", time: "10:00" });
         act(() => seen.daily.at(-1)!.onPickDate("2026-07-15"));
         await waitFor(() => expect(m.calls).toContain("402340@2026-07-15"));
+    });
+
+    it("일봉 시장 기본은 UN*, 분봉 축 기본은 당일 % — 컨트롤 판에서 바꾼다", async () => {
+        usePaths.getState().write("A", { code: "402340", date: "2026-07-31" });
+        renderPanels(fakeMarket());
+        await screen.findByTestId("minute");
+        openControls("chart-1");
+        expect(screen.getByRole("button", { name: "UN*" }).getAttribute("aria-pressed")).toBe("true");
+        expect(screen.getByRole("button", { name: "당일 %" }).getAttribute("aria-pressed")).toBe("true");
+        fireEvent.click(screen.getByRole("button", { name: "KRX" }));
+        fireEvent.click(screen.getByRole("button", { name: "가격" }));
+        expect(usePanelUiStore.getState().ui["chart-1"]).toMatchObject({ dailyMode: "krx", minuteAxis: "price" });
     });
 
     it("경로 시각이 분봉 세로선(unix초)으로 간다", async () => {
@@ -178,5 +196,22 @@ describe("ChartPanel", () => {
         expect(usePanelUiStore.getState().ui["chart-2"]).toMatchObject({ view: "daily" });
         expect(usePanelUiStore.getState().ui["chart-1"]?.view).toBeUndefined(); // 값은 패널마다 따로
         expect(within(headerLine("chart-1")!).getByTitle(/클릭 = 일봉/)).toBeTruthy();
+    });
+});
+
+describe("ChartPanel — 일봉 더 받기", () => {
+    afterEach(cleanup);
+    it("왼쪽 끝에 닿으면 바로 앞 2년을 받고, 빈 덩이를 받으면 멈춘다", async () => {
+        usePaths.getState().write("A", { code: "402340", date: "2026-07-31" });
+        const m = fakeMarket();
+        renderPanels(m);
+        await screen.findByTestId("daily");
+        expect(m.dailyCalls).toEqual(["402340:2024-07-31~2026-07-31"]);
+        act(() => seen.daily.at(-1)!.onNeedOlder!());
+        await waitFor(() => expect(m.dailyCalls).toEqual(["402340:2024-07-31~2026-07-31", "402340:2022-07-30~2024-07-30"]));
+        await new Promise((r) => setTimeout(r, 20));
+        act(() => seen.daily.at(-1)!.onNeedOlder!()); // 앞 덩이가 비었다 — 더 없다
+        await new Promise((r) => setTimeout(r, 20));
+        expect(m.dailyCalls).toHaveLength(2);
     });
 });
