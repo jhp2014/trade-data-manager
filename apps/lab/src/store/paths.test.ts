@@ -113,8 +113,8 @@ describe("저장본 이전", () => {
         await usePaths.persist.rehydrate();
         expect(st().paths.map((p) => p.open)).toEqual([false, true]); // v3: 그전엔 활성만 펼쳐 보였다
         expect(st().paths.map((p) => p.s)).toEqual([
-            { code: "402340", date: "2026-07-31", time: "10:00" },
-            { code: "009150", date: "2026-07-30", time: "" },
+            { code: "402340", date: "2026-07-31", time: "10:00", lines: [], zone: null },
+            { code: "009150", date: "2026-07-30", time: "", lines: [], zone: null },
         ]);
         expect(st().active).toBe("C");
         expect(st().bindings).toEqual({ "chart-1": "A" });
@@ -130,14 +130,38 @@ describe("저장본 이전", () => {
         };
         localStorage.setItem("trade-lab.paths", JSON.stringify({ state: v2, version: 2 }));
         await usePaths.persist.rehydrate();
-        expect(st().paths).toEqual([{ ...v2.paths[0], open: false }, { ...v2.paths[1], open: true }]);
+        const v4s = (p: (typeof v2.paths)[number]) => ({ ...p.s, lines: [], zone: null });
+        expect(st().paths).toEqual([{ ...v2.paths[0], s: v4s(v2.paths[0]), open: false }, { ...v2.paths[1], s: v4s(v2.paths[1]), open: true }]);
         expect(st().active).toBe("B");
     });
 
-    it("v3 저장본은 그대로", async () => {
+    it("v3 저장본 — 선 없이 옮긴다", async () => {
         const v3 = { paths: [{ id: "B", color: "#e0592a", s: { code: "009150", date: "2026-07-30", time: "09:44" }, open: false }], active: "B", bindings: {} };
         localStorage.setItem("trade-lab.paths", JSON.stringify({ state: v3, version: 3 }));
         await usePaths.persist.rehydrate();
-        expect(st().paths).toEqual(v3.paths);
+        expect(st().paths).toEqual([{ ...v3.paths[0], s: { ...v3.paths[0].s, lines: [], zone: null } }]);
+    });
+});
+
+describe("일봉 선은 종목에 딸린다", () => {
+    const L = (date: string) => ({ date, field: "H" as const, venue: "un" as const });
+    it("종목이 바뀌면 선과 기억한 구간이 지워진다", () => {
+        st().write("A", { code: "402340", date: "2026-07-31", lines: [L("2026-07-15")], zone: 1 });
+        st().write("A", { code: "005930" });
+        expect(st().paths[0].s).toMatchObject({ lines: [], zone: null });
+    });
+    it("날짜가 바뀌면 그 날짜와 같거나 뒤인 봉의 선만 걷힌다", () => {
+        st().write("A", { code: "402340", date: "2026-07-31", lines: [L("2026-07-01"), L("2026-07-15")], zone: 1 });
+        st().write("A", { date: "2026-07-20" });
+        expect(st().paths[0].s).toMatchObject({ lines: [L("2026-07-01"), L("2026-07-15")], zone: 1 });
+        st().write("A", { date: "2026-07-15" });
+        expect(st().paths[0].s).toMatchObject({ lines: [L("2026-07-01")], zone: null });
+    });
+    it("선을 바꾸면 구간은 버리고, 같이 주면 그대로", () => {
+        st().write("A", { code: "402340", date: "2026-07-31", lines: [L("2026-07-15")], zone: 0 });
+        st().write("A", { lines: [L("2026-07-01")] });
+        expect(st().paths[0].s.zone).toBeNull();
+        st().write("A", { lines: [L("2026-07-01")], zone: 1 }); // 복사 판이 고른 구간을 기억하는 길
+        expect(st().paths[0].s).toMatchObject({ lines: [L("2026-07-01")], zone: 1 });
     });
 });

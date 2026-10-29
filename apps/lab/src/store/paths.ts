@@ -1,15 +1,20 @@
-// 경로 — 상황 하나 = { 종목, 날짜, 시각 } (DESIGN 9절 「화면 틀」).
+// 경로 — 상황 하나 = { 종목, 날짜, 시각, 일봉 선 } (DESIGN 9절 「화면 틀」).
 // 사용자가 A, B, C … 로 늘리고 줄인다. 패널은 경로 하나를 구독하거나 `활성`(마지막으로 조작한 경로)을 따라간다.
 // 경로 목록·활성·패널 구독은 localStorage 에 남는다(배치와 함께 복원).
 import { useCallback } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import type { DailyLine } from "../lib/stateToken.js";
 
 /** 상황 — 빈 문자열 = 미정. date `YYYY-MM-DD` · time `HH:MM`(미정 = 장 마감) · code 6자리. */
 export interface Situation {
     code: string;
     date: string;
     time: string;
+    /** 일봉 선 0~2개 — 상태 토큰의 손잡이(DESIGN 9절 「일봉 선」). 선 봉은 date 보다 앞선 날. */
+    lines: DailyLine[];
+    /** 복사 판이 미리 골라 둘 구간(낮은 선부터 몇 개 위인가) — 토큰을 붙여넣었을 때만. 선이 바뀌면 null. */
+    zone: number | null;
 }
 
 /** 시각 미정 = 장 마감 — 화면은 이 시각으로 보이고 이 시각의 값을 쓴다. */
@@ -29,7 +34,22 @@ export interface Path {
 }
 
 const COLORS = ["#2f6fde", "#e0592a", "#1f9d6b", "#9b51e0", "#c99400", "#d6336c", "#0e9fb3", "#6b7280"];
-const EMPTY: Situation = { code: "", date: "", time: "" };
+const EMPTY: Situation = { code: "", date: "", time: "", lines: [], zone: null };
+
+/**
+ * 상황에 patch 를 얹는다 — 선은 종목에 딸린다: 종목이 바뀌면(선을 같이 주지 않는 한) 지우고,
+ * 날짜가 바뀌면 그 날짜와 같거나 뒤인 봉의 선만 걷는다. 선이 바뀌면 기억한 구간도 버린다.
+ */
+export function applySituation(s: Situation, patch: Partial<Situation>): Situation {
+    const next = { ...s, ...patch };
+    if (patch.lines !== undefined) return patch.zone === undefined ? { ...next, zone: null } : next;
+    if (patch.code !== undefined && patch.code !== s.code) return { ...next, lines: [], zone: null };
+    if (patch.date !== undefined && patch.date !== s.date) {
+        const lines = s.lines.filter((l) => l.date < next.date);
+        if (lines.length !== s.lines.length) return { ...next, lines, zone: null };
+    }
+    return next;
+}
 
 interface PathsState {
     paths: Path[];
@@ -93,7 +113,7 @@ export const usePaths = create<PathsState>()(
             setActive: (id) => set((st) => (st.paths.some((p) => p.id === id) ? { active: id } : st)),
             write: (id, patch) =>
                 set((st) => ({
-                    paths: st.paths.map((p) => (p.id === id ? { ...p, s: { ...p.s, ...patch } } : p)),
+                    paths: st.paths.map((p) => (p.id === id ? { ...p, s: applySituation(p.s, patch) } : p)),
                     active: st.paths.some((p) => p.id === id) ? id : st.active,
                 })),
             bind: (panelId, ref) => set((st) => ({ bindings: { ...st.bindings, [panelId]: ref } })),
@@ -111,13 +131,15 @@ export const usePaths = create<PathsState>()(
         }),
         {
             name: "trade-lab.paths",
-            version: 3,
+            version: 4,
             // v1 → v2: 상황에서 테마를 뺐다(테마는 테마 패널 안에서만 다룬다).
             // v2 → v3: 펼침(open)을 사용자가 정한다 — 그전엔 활성 경로만 펼쳐 보였으니 그대로 옮긴다.
+            // v3 → v4: 일봉 선(lines)·기억한 구간(zone)이 생겼다 — 빈 채로.
             migrate: (persisted, version) => {
                 const st = persisted as { active?: string; paths?: { id: string; open?: boolean; s: Partial<Situation> & { theme?: string } }[] };
                 if (version < 2) for (const p of st.paths ?? []) delete p.s.theme;
                 if (version < 3) for (const p of st.paths ?? []) p.open = p.id === st.active;
+                if (version < 4) for (const p of st.paths ?? []) Object.assign(p.s, { lines: [], zone: null });
                 return st as never;
             },
             storage: createJSONStorage(() => localStorage),

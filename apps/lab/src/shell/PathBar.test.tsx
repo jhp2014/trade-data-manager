@@ -145,14 +145,14 @@ describe("PathBar", () => {
         expect(rows).toHaveLength(2);
         expect(rows[1].hasAttribute("data-selected")).toBe(true); // 지금 B 가 보는 종목·날짜
         fireEvent.click(rows[0]);
-        expect(s("B")).toEqual({ code: "009150", date: "2026-07-30", time: "09:44" });
+        expect(s("B")).toMatchObject({ code: "009150", date: "2026-07-30", time: "09:44" });
         expect(usePaths.getState().active).toBe("B");
         expect(useHistory.getState().visits.map((v) => v.code)).toEqual(["009150", "402340"]);
         // × — 그 줄만 지우고, 줄 누르기(되돌리기)로 새지 않는다(판도 그대로)
         fireEvent.contextMenu(document.querySelector('[data-path-card="B"]')!);
         fireEvent.click((await screen.findAllByTitle("이 기록 지우기"))[1]);
         expect(useHistory.getState().visits.map((v) => v.code)).toEqual(["009150"]);
-        expect(s("B")).toEqual({ code: "009150", date: "2026-07-30", time: "09:44" });
+        expect(s("B")).toMatchObject({ code: "009150", date: "2026-07-30", time: "09:44" });
         expect(screen.getByText("다른 경로 가져오기")).toBeTruthy();
     });
 

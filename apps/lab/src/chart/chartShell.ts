@@ -34,7 +34,7 @@ export function baseChartOptions(): DeepPartial<ChartOptions> {
 /** 차트 클릭 파라미터 — MouseEventParams 중 이 앱이 실제로 읽는 필드만. */
 export type ChartClickParam = {
     time?: unknown;
-    sourceEvent?: { ctrlKey: boolean; metaKey: boolean };
+    sourceEvent?: { ctrlKey: boolean; metaKey: boolean; shiftKey?: boolean };
 };
 
 /**

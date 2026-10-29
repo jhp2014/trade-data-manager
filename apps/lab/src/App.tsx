@@ -10,6 +10,7 @@ import { SettingsModal } from "./shell/SettingsModal.js";
 import { useScreenCommands } from "./shell/useScreenCommands.js";
 import { useKeymap } from "./keymap/useKeymap.js";
 import { useChartTimeCommands } from "./chart/useChartTimeCommands.js";
+import { usePasteState } from "./shell/usePasteState.js";
 
 const queryClient = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } });
 
@@ -30,10 +31,11 @@ export function App(): JSX.Element {
     );
 }
 
-/** 단축키 — 디스패처 하나 + 소유 훅들이 레지스트리에 얹는다. 시장 데이터를 쓰는 훅이 있어 공급자 안에 둔다. */
+/** 단축키 — 디스패처 하나 + 소유 훅들이 레지스트리에 얹는다(+ 토큰 붙여넣기). 시장 데이터를 쓰는 훅이 있어 공급자 안에 둔다. */
 function Hotkeys({ api }: { api: DockviewApi | null }): null {
     useKeymap();
     useScreenCommands(api);
     useChartTimeCommands();
+    usePasteState();
     return null;
 }
