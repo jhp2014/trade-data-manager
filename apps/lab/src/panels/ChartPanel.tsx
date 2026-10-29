@@ -11,6 +11,7 @@ import { dailyRowsOf, useDailyCandles, useMinuteDay, useMinuteDays, useStockName
 import { kstToUnix, type DailyMode } from "../market/domain.js";
 import type { LabMinuteDay, PriceMode } from "../market/types.js";
 import { deriveDailyView, deriveMinutePriceView, deriveMinuteView } from "../chart/derive.js";
+import { lineLevelPct, type PriceLevel } from "../chart/priceLevels.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import type { MinuteAxis } from "../chart/minuteSeries.js";
@@ -133,6 +134,16 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 선이 있는데 일봉이 지금 경로의 것이 아니면(불러오는 중·오류) 구간을 못 만든다 — 열린 판이 「선 없음」으로 바뀌어 선을 뺀 토큰이 복사되지 않게 비운다
     const zones = useMemo(() => (code && date && (dailyCurrent || lines.length === 0) ? zonesOf(code, date, priced) : []), [code, date, dailyCurrent, lines.length, priced]);
     const missingLines = priced.filter((l) => l.price == null).map((l) => l.ref);
+    // 분봉에도 같은 선 — 당일 % 면 그 날 원주가 스케일로 되돌려 % 기준가 대비(분봉과 같은 기준·같은 대체), 가격이면 수정주가 그대로.
+    const minuteLevels = useMemo((): PriceLevel[] => {
+        const day = mq.data;
+        if (!minuteCurrent || !day) return [];
+        const ok = priced.filter((l): l is typeof l & { price: number } => l.price != null);
+        if (axis === "price") return ok.map((l) => ({ key: l.ref, value: l.price }));
+        const base = day.basePrice?.[venue] ?? (day.minutes[0] ? Number(day.minutes[0].un.open) : null);
+        if (!base) return [];
+        return ok.map((l) => ({ key: l.ref, value: lineLevelPct(l.price, day.rawScale, base) }));
+    }, [mq.data, minuteCurrent, priced, axis, venue]);
     // 우클릭 = 그 봉의 「우클릭 선」 값(시가·고가·저가·종가 — 컨트롤 판 설정)에 선. 같은 선을 다시 누르면 지운다.
     const pickLine = (d: string): void => {
         if (!dailyCurrent || d >= date) return; // 선 봉은 경로 날짜보다 앞선 날만
@@ -234,6 +245,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                 markerTime={markerTime}
                                 zoom={minuteZoom}
                                 axis={axis}
+                                levels={minuteLevels}
                                 onPickTime={(d, t) => write(d === date ? { time: t.slice(0, 5) } : { date: d, time: t.slice(0, 5) })}
                                 onNeedOlder={needOlderMinutes}
                             />

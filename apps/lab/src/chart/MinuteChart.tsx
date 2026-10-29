@@ -6,6 +6,7 @@ import { FloatingTooltip } from "./tooltip.js";
 import { OhlcTooltip } from "./MinuteChartTooltips.js";
 import { useMinuteAxis, useMinuteSeries, useMinuteSeriesData, useTimeLine, type MinuteAxis } from "./minuteSeries.js";
 import { useLoadOlderAtLeftEdge } from "./olderData.js";
+import { usePriceLevels, type PriceLevel } from "./priceLevels.js";
 import { useFollowMarker, useMinuteVisibleRange } from "./minuteFraming.js";
 import { useCandlePrimaryClick } from "./candleInteraction.js";
 import type { MinutePoint } from "./derive.js";
@@ -20,6 +21,7 @@ export function MinuteChart({
     zoom = null,
     showAmountMarkers = true,
     axis = "pct",
+    levels = [],
     onPickTime,
     onNeedOlder,
 }: {
@@ -32,6 +34,8 @@ export function MinuteChart({
     zoom?: { bars: number; anchorTime: number | null } | null;
     showAmountMarkers?: boolean;
     axis?: MinuteAxis;
+    /** 일봉 선 — 이 차트 축 단위(당일 % 또는 수정주가 원)로 환산된 값. 점선 가로선. */
+    levels?: readonly PriceLevel[];
     /** 봉 선택 — 그 봉의 날짜(YYYY-MM-DD)·시각(HH:MM:SS). */
     onPickTime: (date: string, time: string) => void;
     /** 왼쪽 끝에 닿았다 — 앞 거래일 분봉을 받을 때(가격 축). */
@@ -58,6 +62,7 @@ export function MinuteChart({
     const series = useMinuteSeries(chartRef);
     const pointMapRef = useMinuteSeriesData(series, points, showAmountMarkers);
     useMinuteAxis(chartRef, series, axis);
+    usePriceLevels(series.candleRef, series.gen, levels);
     useTimeLine(series, points, markerTime);
     useMinuteVisibleRange(chartRef, points, frameKey, zoom?.bars ?? null, zoom?.anchorTime ?? null);
     useFollowMarker(chartRef, points, markerTime, frameKey, zoom?.bars ?? null);

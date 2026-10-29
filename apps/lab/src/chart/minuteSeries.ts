@@ -45,7 +45,7 @@ export interface MinuteSeries {
     markersRef: MutableRefObject<ISeriesMarkersPluginApi<Time> | null>;
     candleVertsRef: MutableRefObject<VertLines | null>;
     amountVertsRef: MutableRefObject<VertLines | null>;
-    /** % 축의 0% 점선 — 가격 축에선 숨긴다. */
+    /** % 축의 0% 점선 — useMinuteAxis 가 % 축에서만 긋는다. */
     zeroLineRef: MutableRefObject<IPriceLine | null>;
     /**
      * 시리즈 세대 — 다시 만들어질 때마다 오른다(StrictMode 이중 effect·Fast Refresh). 시리즈는 ref 라 교체가
@@ -71,7 +71,6 @@ export function useMinuteSeries(chartRef: RefObject<IChartApi | null>): MinuteSe
             candleOptions: { priceFormat: PCT_FORMAT, autoscaleInfoProvider: pctAutoscale },
             verts: true, // 시각선이 거래대금 pane 까지 이어진다
         });
-        zeroLineRef.current = s.candle.createPriceLine({ price: 0, color: "rgba(150,150,150,0.5)", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false, title: "" });
         candleRef.current = s.candle;
         amountRef.current = s.amount;
         markersRef.current = s.markers;
@@ -145,7 +144,15 @@ export function useMinuteAxis(chartRef: RefObject<IChartApi | null>, series: Min
         if (!chart || !candle) return;
         const pct = axis === "pct";
         candle.applyOptions({ priceFormat: pct ? PCT_FORMAT : PRICE_FORMAT, autoscaleInfoProvider: pct ? pctAutoscale : priceAutoscale });
-        series.zeroLineRef.current?.applyOptions({ lineVisible: pct });
+        // 손으로 끌어 둔 세로 범위는 단위가 바뀌면 의미가 없다(% 범위로 원화 봉이 화면 밖) — 자동 맞춤으로 되돌린다
+        candle.priceScale().applyOptions({ autoScale: true });
+        // 0% 점선은 % 축에만 — 가격 축에선 걷는다(lineVisible 로 숨기면 실측에서 남았다)
+        if (pct && !series.zeroLineRef.current) {
+            series.zeroLineRef.current = candle.createPriceLine({ price: 0, color: "rgba(150,150,150,0.5)", lineStyle: LineStyle.Dashed, lineWidth: 1, axisLabelVisible: false, title: "" });
+        } else if (!pct && series.zeroLineRef.current) {
+            candle.removePriceLine(series.zeroLineRef.current);
+            series.zeroLineRef.current = null;
+        }
         chart.applyOptions({
             // timeVisible — 꺼져 있으면 lightweight-charts 가 모든 눈금을 날짜 급으로 넘겨 가격 축 눈금이 전부 M/D 가 된다(실측)
             timeScale: { timeVisible: true, tickMarkFormatter: (t: number, type: TickMarkType) => (!pct && type <= TickMarkType.DayOfMonth ? kstMd(t) : kstHHmm(t)) },

@@ -190,7 +190,8 @@ function PickControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
                 <WidthLock max={TRIGGER_MAX_W} alts={spec.values.map((o) => <span key={o.v} style={face}>{o.label} ▾</span>)}>
                     <button
                         onClick={toggle} title={spec.help ?? spec.name}
-                        style={{ ...faceButton, ...face, color: open ? "var(--accent-primary)" : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", display: "block", width: "100%" }}
+                        // inline-block — 블록이면 혼자 상자 가운데에 서서 이웃(순환 ⇄ — 글자 기준선)보다 떠 보인다
+                        style={{ ...faceButton, ...face, color: open ? "var(--accent-primary)" : "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", display: "inline-block", maxWidth: "100%", verticalAlign: "baseline" }}
                     >
                         {cur?.label ?? "—"} <span style={{ color: "var(--text-tertiary)", fontWeight: 400 }}>▾</span>
                     </button>

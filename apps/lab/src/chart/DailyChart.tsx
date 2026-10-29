@@ -1,10 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useMemo, useRef } from "react";
 import { CrosshairMode, LineStyle, type Time } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR } from "./chartUtils.js";
 import { baseChartOptions, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
 import { useDailySeries, useDailySeriesData, useDailyVisibleRange } from "./dailyChartHooks.js";
 import { useCandlePrimaryClick } from "./candleInteraction.js";
 import { LineMarkLayer, type LineMark } from "./lineMarks.js";
+import { STATE_LINE_COLOR, usePriceLevels } from "./priceLevels.js";
 import { useLoadOlderAtLeftEdge } from "./olderData.js";
 import { FloatingTooltip } from "./tooltip.js";
 import type { DailyPoint } from "./derive.js";
@@ -21,8 +22,6 @@ function fmtDailyCrosshair(time: Time): string {
 
 /** 차트에 그을 일봉 선 — 점선 가격선(축 라벨은 가격만) + 상단 표식 칩. 위/아래는 그리지 않는다(DESIGN 9절 「일봉 선」). */
 export type ChartLine = LineMark;
-
-const LINE_COLOR = "#7c3aed";
 
 // 일봉 차트 — 캔들(원화) + 거래대금 pane + 고가 등락률(전일비) 마커 + 크로스헤어 툴팁 + 일봉 선.
 // 봉 ctrl(⌘)+클릭 또는 더블클릭 = 그 날짜 선택(맨 좌클릭은 팬) · 우클릭 = 그 봉에 선(onLinePick — 어느 값인지는 호출자 설정).
@@ -75,7 +74,7 @@ export function DailyChart({
         onPrimaryAction: onPickDate,
     });
 
-    useDailyLines(series, lines);
+    usePriceLevels(series.candleRef, series.gen, useMemo(() => lines.map((l) => ({ key: l.key, value: l.price })), [lines]));
     // 우클릭 = 커서 아래 봉 — 논리 인덱스로 고른다(그림 상자 밖 = 가격 축 위·빈칸·여백이면 무시).
     const onContextMenu = (e: React.MouseEvent<HTMLDivElement>): void => {
         if (!onLinePick) return;
@@ -125,25 +124,8 @@ export function DailyChart({
 
     return (
         <div ref={containerRef} onMouseMove={onCursorMove} onContextMenu={onContextMenu} style={{ position: "relative", width: "100%", height: "100%" }}>
-            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={lines} gen={series.gen} dataKey={points} color={LINE_COLOR} onGoTo={goTo} onRemove={(k) => onLineRemove?.(k)} />
+            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={lines} gen={series.gen} dataKey={points} color={STATE_LINE_COLOR} onGoTo={goTo} onRemove={(k) => onLineRemove?.(k)} />
             {tip.visible && <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>{tip.content}</FloatingTooltip>}
         </div>
     );
-}
-
-/** 일봉 선 — 캔들 시리즈의 점선 가격선(축 라벨은 가격만 — 정체는 상단 칩이 말한다). 선 목록이 바뀔 때만 다시 긋는다. */
-function useDailyLines(series: ReturnType<typeof useDailySeries>, lines: readonly ChartLine[]): void {
-    const key = lines.map((l) => `${l.key}=${l.price}`).join("|");
-    useEffect(() => {
-        const candle = series.candleRef.current;
-        if (!candle) return;
-        const made = lines.map((l) =>
-            candle.createPriceLine({ price: l.price, color: LINE_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "" }),
-        );
-        return () => {
-            // 시리즈가 먼저 죽었으면(차트 정리) 걷을 것이 없다
-            if (series.candleRef.current === candle) for (const pl of made) candle.removePriceLine(pl);
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [key, series.gen]);
 }
