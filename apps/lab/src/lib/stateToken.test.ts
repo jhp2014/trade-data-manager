@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatState, lineRef, nearestField, parseStateToken, toggleLine, type DailyLine } from "./stateToken.js";
+import { formatState, lineRef, parseStateToken, toggleLine, type DailyLine } from "./stateToken.js";
 import { priceLines, zonesOf } from "../chart/stateCopy.js";
 import type { DailyCandle } from "../market/types.js";
 
@@ -13,11 +13,6 @@ describe("선 이름", () => {
     it("yymmdd + OHLC, KRX 만 표시", () => {
         expect(lineRef(H0715)).toBe("260715H");
         expect(lineRef({ ...H0715, venue: "krx" })).toBe("260715H:KRX");
-    });
-    it("클릭 높이에 가장 가까운 OHLC 에 붙는다", () => {
-        expect(nearestField(daily[1], "un", 149)).toBe("H");
-        expect(nearestField(daily[1], "un", 112)).toBe("L");
-        expect(nearestField(daily[1], "un", 136)).toBe("C");
     });
     it("같은 선은 지우고, 셋째는 먼저 그은 것을 밀어낸다", () => {
         expect(toggleLine([H0701, H0715], H0715)).toEqual([H0701]);
@@ -79,10 +74,9 @@ describe("토큰 읽기", () => {
 });
 
 describe("통합 선은 UN* 값", () => {
-    it("unFix 가 있으면 통합 선 가격·붙이기는 보정값, KRX 선은 그대로", () => {
+    it("unFix 가 있으면 통합 선 가격은 보정값, KRX 선은 그대로", () => {
         const fixed = [{ ...daily[1], unFix: { high: "145" } }];
         expect(priceLines(fixed, [H0715])[0].price).toBe(145);
         expect(priceLines(fixed, [{ ...H0715, venue: "krx" }])[0].price).toBe(148);
-        expect(nearestField(fixed[0], "un", 146)).toBe("H"); // 원본 고가 150 이 아니라 보정 145 에 붙는다
     });
 });

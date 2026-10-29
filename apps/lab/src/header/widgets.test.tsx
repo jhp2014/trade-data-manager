@@ -51,13 +51,26 @@ describe("액션 — disabled 는 사라지는 대신 흐려진다", () => {
     it("줄·판 둘 다", () => {
         for (const draw of [line, board]) {
             const run = vi.fn();
-            const c = draw({ kind: "action", id: "clear", name: "해제", run, disabled: true });
+            const c = draw({ kind: "action", id: "clear", name: "해제", button: "풀기", run, disabled: true });
             const btn = c.querySelector("button")!;
-            expect(btn.textContent).toBe("해제");
+            expect(btn.textContent).toBe(draw === line ? "해제" : "풀기"); // 줄 = 이름, 판 = 이름 옆 버튼의 동사
             fireEvent.click(btn);
             expect(run).not.toHaveBeenCalled();
             cleanup();
         }
+    });
+});
+
+describe("판의 버튼 글자 — 이름을 되풀이하지 않는다", () => {
+    it("액션 = button, 없으면 「실행」 · 판형 = button → label(요약) → 「열기」", () => {
+        expect(board({ kind: "action", id: "a", name: "이름", run: () => {} }).textContent).toBe("실행");
+        cleanup();
+        const pop = (extra: object) => board({ kind: "popover", id: "p", name: "이름", renderPopover: () => null, ...extra }).querySelector("button")!.textContent;
+        expect(pop({ button: "복사", label: "300 ∪ 100" })).toContain("복사");
+        cleanup();
+        expect(pop({ label: "300 ∪ 100" })).toContain("300 ∪ 100");
+        cleanup();
+        expect(pop({})).toContain("열기");
     });
 });
 

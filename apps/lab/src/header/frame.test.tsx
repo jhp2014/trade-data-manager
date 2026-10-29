@@ -68,7 +68,7 @@ describe("컨트롤 — 기본 판 안, 핀으로 꺼낸다", () => {
     const set = vi.fn();
     const controls: ControlSpec[] = [
         { kind: "choice", id: "view", name: "보기", values: [{ v: "a", label: "가" }, { v: "b", label: "나" }], value: "a", set },
-        { kind: "action", id: "fill", name: "채우기", run: () => {}, renderLine: () => <b data-testid="custom">줄 모양</b> },
+        { kind: "action", id: "fill", name: "채우기", button: "채우기", run: () => {}, renderLine: () => <b data-testid="custom">줄 모양</b> },
     ];
 
     it("컨트롤만 있는 패널은 꺼내기 전엔 라인이 없다", () => {
@@ -90,7 +90,7 @@ describe("컨트롤 — 기본 판 안, 핀으로 꺼낸다", () => {
     it("줄 모양 선언(renderLine)이 있으면 꺼냈을 때 그것이 선다 — 판 안은 kind 판 위젯 그대로", () => {
         draw({ info: [], controls });
         fireEvent.click(screen.getByTitle(/^컨트롤/));
-        expect(screen.getByRole("button", { name: "채우기" })).toBeTruthy(); // 판: 테두리 버튼
+        expect(screen.getByRole("button", { name: "채우기" })).toBeTruthy(); // 판: 이름 옆 테두리 버튼(글자 = button)
         fireEvent.click(document.querySelector<HTMLElement>('[data-board-row="fill"] [aria-label="헤더 줄로 꺼내기"]')!);
         const l = document.querySelector<HTMLElement>('[data-header-line="line"]')!;
         expect(within(l).getByTestId("custom").textContent).toBe("줄 모양");

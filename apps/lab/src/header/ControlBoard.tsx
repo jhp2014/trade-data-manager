@@ -4,7 +4,7 @@
 // 설명을 늘 펼쳐 적으면 판이 난잡해져서 ⓘ hover 뒤로 접는다.
 import { controlPlaceOf, typeKeyOf, useHeaderLedger } from "./ledger.js";
 import { useHeaderDecl } from "./registry.js";
-import { BoardActionButton, BoardControlValue } from "./widgets.js";
+import { BoardControlValue } from "./widgets.js";
 import type { ControlSpec } from "./spec.js";
 
 export function ControlBoard({ panelId }: { panelId: string }): JSX.Element {
@@ -26,20 +26,12 @@ export function ControlBoard({ panelId }: { panelId: string }): JSX.Element {
 function BoardRow({ spec, typeKey }: { spec: ControlSpec; typeKey: string }): JSX.Element {
     return (
         <div data-board-row={spec.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px" }}>
-            {spec.kind === "action" ? (
-                // 액션은 이름 자리가 곧 버튼 — 이름 옆에 같은 글자의 버튼을 또 세우면 판이 말을 두 번 한다.
-                <span style={{ flex: 1, minWidth: 0 }}>
-                    <BoardActionButton spec={spec} />
-                </span>
-            ) : (
-                <>
-                    {/* 검색칸은 남는 폭을 다 쓰므로 이름이 자기 폭만 갖는다. */}
-                    <span style={{ ...(spec.kind === "search" ? { flexShrink: 0 } : { flex: 1, minWidth: 0 }), color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {spec.name}
-                    </span>
-                    <BoardControlValue spec={spec} />
-                </>
-            )}
+            {/* 모든 종류가 같은 꼴 — 이름 · 오른쪽 손잡이. 액션·판형의 버튼 글자는 동사라 이름을 되풀이하지 않는다.
+                검색칸은 남는 폭을 다 쓰므로 이름이 자기 폭만 갖는다. */}
+            <span style={{ ...(spec.kind === "search" ? { flexShrink: 0 } : { flex: 1, minWidth: 0 }), color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {spec.name}
+            </span>
+            <BoardControlValue spec={spec} />
             <PlacePin spec={spec} typeKey={typeKey} />
             <HelpDot help={spec.help} />
         </div>

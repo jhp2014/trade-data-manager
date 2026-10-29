@@ -16,7 +16,6 @@ export interface DailyLine {
 export const MAX_LINES = 2;
 
 const BAR_FIELD = { O: "open", H: "high", L: "low", C: "close" } as const;
-const FIELDS: readonly LineField[] = ["O", "H", "L", "C"];
 
 /** "260715H" · "260715H:KRX" — 토큰 속 선의 이름(▲▼ 없이). 같은 선인지도 이것으로 가린다. */
 export function lineRef(l: DailyLine): string {
@@ -30,21 +29,6 @@ const lineBar = (c: LabDailyCandle, venue: PriceMode): DailyBar => (venue === "k
 export function linePrice(daily: readonly LabDailyCandle[], l: DailyLine): number | null {
     const c = daily.find((d) => d.date === l.date);
     return c ? Number(lineBar(c, l.venue)[BAR_FIELD[l.field]]) : null;
-}
-
-/** 봉의 O/H/L/C 중 price 에 가장 가까운 값 — 차트 클릭 높이를 선으로 붙인다. */
-export function nearestField(c: LabDailyCandle, venue: PriceMode, price: number): LineField {
-    const bar = lineBar(c, venue);
-    let best: LineField = "H";
-    let gap = Infinity;
-    for (const f of FIELDS) {
-        const g = Math.abs(Number(bar[BAR_FIELD[f]]) - price);
-        if (g < gap) {
-            best = f;
-            gap = g;
-        }
-    }
-    return best;
 }
 
 /** 선 하나를 더하거나(이미 있으면) 뺀다. 넘치면 먼저 그은 것을 밀어낸다. */

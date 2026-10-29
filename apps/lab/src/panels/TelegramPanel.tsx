@@ -63,7 +63,7 @@ export function TelegramPanel({ panelId }: { panelId: string }): JSX.Element {
                 submit: (v) => setQ(v.trim()),
             },
             {
-                kind: "action", id: "fillName", name: "종목명으로", disabled: !name,
+                kind: "action", id: "fillName", name: "종목명으로", button: "거르기", disabled: !name,
                 help: name ? `"${name}" 으로 걸러 보기` : "경로에 종목이 없습니다",
                 run: () => {
                     if (!name) return;

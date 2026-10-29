@@ -82,7 +82,10 @@ export interface ChoiceSpec extends ControlBase {
 /** 누르면 **일이 일어나는** 것(해제·채우기). 상태가 없으니 켜짐도 없다. */
 export interface ActionSpec extends ControlBase {
     kind: "action";
+    /** 헤더 줄 손잡이 글자 — 생략하면 name. */
     label?: string;
+    /** 판에서 이름 오른쪽 버튼의 글자(동사 하나 — "복사"·"지우기"). 생략 = "실행". 이름을 되풀이하지 않는다. */
+    button?: string;
     run: () => void;
     disabled?: boolean;
 }
@@ -94,6 +97,8 @@ export interface PopoverSpec extends ControlBase {
     label?: string;
     /** 판 폭(px). 생략 = 내용 폭. */
     width?: number;
+    /** 판에서 이름 오른쪽 트리거의 글자 — 생략하면 label, 그것도 없으면 "열기"(이름을 되풀이하지 않는다). */
+    button?: string;
     /** 판의 속. ⚠ hook 금지(패널 트리 밖에서 호출) — 살아 있는 값은 컴포넌트 요소로 감싸라. */
     renderPopover: (close: () => void) => ReactNode;
     disabled?: boolean;

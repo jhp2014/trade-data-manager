@@ -1,6 +1,6 @@
 // 차트 패널 — 경로의 (종목, 날짜) 일봉·분봉, 경로의 시각에 분봉 세로선.
 // 일봉 봉 선택 = 경로의 날짜를 바꾼다 · 분봉 봉 선택 = 경로의 시각을 바꾼다(둘 다 ctrl+클릭 또는 더블클릭 — 가격 축에서
-// 다른 날 봉을 고르면 날짜도). 일봉 shift+클릭 = 경로의 일봉 선(최대 2개) · 「토큰 복사」 = 구간을 골라 상태 토큰을
+// 다른 날 봉을 고르면 날짜도). 일봉 우클릭 = 경로의 일봉 선(최대 2개, 값은 「우클릭 선」 설정) · 「토큰 복사」 = 구간을 골라 상태 토큰을
 // 클립보드로(DESIGN 9절 「일봉 선」). 일봉은 왼쪽으로 끌면 과거를 더, 분봉은 「가격」 축에서 끌면 앞 거래일을 이어 받는다 —
 // 끌어서 다른 날을 보는 것은 경로를 바꾸지 않는다(일봉은 늘 경로 날짜에서 끝난다).
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -15,7 +15,7 @@ import { DailyChart } from "../chart/DailyChart.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import type { MinuteAxis } from "../chart/minuteSeries.js";
 import { Center } from "../ui/chrome.js";
-import { lineRef, nearestField, toggleLine } from "../lib/stateToken.js";
+import { lineRef, toggleLine, type LineField } from "../lib/stateToken.js";
 import { priceLines, StateCopyMenu, zonesOf, type Zone } from "../chart/stateCopy.js";
 import { usePanelHeader } from "../header/registry.js";
 
@@ -37,6 +37,14 @@ const AXIS_VALUES: readonly { v: MinuteAxis; label: string }[] = [
     { v: "price", label: "가격" },
 ];
 const AXES = AXIS_VALUES.map((o) => o.v);
+const LINE_FIELD_VALUES: readonly { v: LineField; label: string }[] = [
+    { v: "O", label: "시가" },
+    { v: "H", label: "고가" },
+    { v: "L", label: "저가" },
+    { v: "C", label: "종가" },
+];
+const LINE_FIELDS = LINE_FIELD_VALUES.map((o) => o.v);
+const FIELD_NAME = Object.fromEntries(LINE_FIELD_VALUES.map((o) => [o.v, o.label])) as Record<LineField, string>;
 /** 「가격」 축에서 왼쪽 끝에 닿을 때마다 더 받는 앞 거래일 수 · 이어 볼 수 있는 앞 거래일 상한(봉이 수만 개 쌓이지 않게). */
 const OLDER_DAYS_STEP = 2;
 const OLDER_DAYS_MAX = 30;
@@ -50,6 +58,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [view, setView] = usePanelUi(panelId, "view", VIEWS, "both");
     const [mode, setMode] = usePanelUi(panelId, "dailyMode", DAILY_MODES, "unfix");
     const [axis, setAxis] = usePanelUi(panelId, "minuteAxis", AXES, "pct");
+    const [lineField, setLineField] = usePanelUi(panelId, "lineField", LINE_FIELDS, "H");
     const venue = venueOf(mode);
     const name = useStockName(code);
 
@@ -108,15 +117,26 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
 
     // 일봉 선 — 가격은 지금 경로의 일봉에서만 읽는다(직전 종목 봉으로 긋지 않게). 통합 선은 늘 UN* 값이다.
     const priced = useMemo(() => (dailyCurrent ? priceLines(rows, lines) : []), [dailyCurrent, rows, lines]);
-    const chartLines = useMemo(() => priced.flatMap((l) => (l.price == null ? [] : [{ ref: l.ref, price: l.price }])), [priced]);
+    const chartLines = useMemo(
+        () =>
+            priced.flatMap((l) =>
+                l.price == null
+                    ? []
+                    : [{
+                          key: l.ref, date: l.line.date, price: l.price,
+                          short: `${l.line.field}${l.line.venue === "krx" ? "·K" : ""}`,
+                          tip: `${l.ref} — ${l.line.date} ${FIELD_NAME[l.line.field]}${l.line.venue === "krx" ? "(KRX)" : ""} ${l.price.toLocaleString()} · 우클릭 = 지우기`,
+                      }],
+            ),
+        [priced],
+    );
     // 선이 있는데 일봉이 지금 경로의 것이 아니면(불러오는 중·오류) 구간을 못 만든다 — 열린 판이 「선 없음」으로 바뀌어 선을 뺀 토큰이 복사되지 않게 비운다
     const zones = useMemo(() => (code && date && (dailyCurrent || lines.length === 0) ? zonesOf(code, date, priced) : []), [code, date, dailyCurrent, lines.length, priced]);
     const missingLines = priced.filter((l) => l.price == null).map((l) => l.ref);
-    const pickLine = (d: string, price: number): void => {
+    // 우클릭 = 그 봉의 「우클릭 선」 값(시가·고가·저가·종가 — 컨트롤 판 설정)에 선. 같은 선을 다시 누르면 지운다.
+    const pickLine = (d: string): void => {
         if (!dailyCurrent || d >= date) return; // 선 봉은 경로 날짜보다 앞선 날만
-        const c = rows.find((x) => x.date === d);
-        if (!c) return;
-        write({ lines: toggleLine(lines, { date: d, field: nearestField(c, venue, price), venue }) });
+        write({ lines: toggleLine(lines, { date: d, field: lineField, venue }) });
     };
     const [copied, setCopied] = useState<string | null>(null);
     useEffect(() => {
@@ -148,7 +168,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
             },
             // 경로가 바뀌어 새 데이터를 기다리는 동안 — 차트는 직전 것을 그대로 두므로 알림만.
             { id: "loading", name: "불러오는 중", transient: true, tone: "accent", text: () => (loading ? "불러오는 중…" : null) },
-            { id: "lines", name: "일봉 선", help: "shift+클릭으로 그은 선(토큰 표기) — 위/아래는 복사할 때 고른다", tabular: true, text: () => (lines.length ? `선 ${lines.map(lineRef).join(" · ")}` : null) },
+            { id: "lines", name: "일봉 선", help: "우클릭으로 그은 선(토큰 표기) — 위/아래는 복사할 때 고른다", tabular: true, text: () => (lines.length ? `선 ${lines.map(lineRef).join(" · ")}` : null) },
             { id: "linesMissing", name: "선 봉 없음", tone: "warn", help: "선 봉이 받은 일봉에 없어 긋지 못했다 — 일봉을 왼쪽으로 끌어 더 받으면 그어진다", text: () => (missingLines.length ? `선 봉 없음 ${missingLines.join(" · ")}` : null) },
             { id: "copied", name: "복사", transient: true, tone: "accent", text: () => copied },
             { id: "olderFailed", name: "앞 데이터 받기 실패", tone: "warn", help: "왼쪽으로 끌어 더 받던 앞 일봉·분봉 요청이 실패했다 — 경로를 다시 열면 다시 받는다", text: () => (dq.isFetchNextPageError ? "앞 일봉 받기 실패" : olderFailed && axis === "price" ? "앞 분봉 받기 실패" : null) },
@@ -159,15 +179,19 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 kind: "choice", id: "dailyMode", name: "일봉 시장", help: "UN* = 통합에서 NXT 유령 체결을 걷은 값(표식 = 보정된 봉) · UN = 통합 원본 · KRX. 새로 긋는 선의 시장·분봉 % 기준도",
                 values: DAILY_MODE_VALUES, value: mode, set: (v) => setMode(v as DailyMode),
             },
+            {
+                kind: "choice", id: "lineField", name: "우클릭 선", help: "일봉 봉을 우클릭하면 그 봉의 이 값에 선을 긋는다(같은 선을 다시 우클릭하면 지운다, 최대 2개). 시장은 「일봉 시장」을 따른다",
+                values: LINE_FIELD_VALUES, value: lineField, set: (v) => setLineField(v as LineField),
+            },
             { kind: "choice", id: "minuteAxis", name: "분봉 축", help: "당일 % = 그 날 하루 · 가격 = 수정주가 원화, 왼쪽으로 끌면 앞 거래일을 이어 본다", values: AXIS_VALUES, value: axis, set: (v) => setAxis(v as MinuteAxis) },
             lines.length === 0
-                ? { kind: "action", id: "copyState", name: "토큰 복사", help: "종목@날짜(선이 없는 상태)를 클립보드로", defaultPlace: "line", disabled: !code || !date, run: () => zones[0] && copyZone(zones[0]) }
+                ? { kind: "action", id: "copyState", name: "토큰 복사", button: "복사", help: "종목@날짜(선이 없는 상태)를 클립보드로", defaultPlace: "line", disabled: !code || !date, run: () => zones[0] && copyZone(zones[0]) }
                 : {
-                      kind: "popover", id: "copyState", name: "토큰 복사", help: "선이 나눈 구간을 골라 상태 토큰을 클립보드로", defaultPlace: "line",
+                      kind: "popover", id: "copyState", name: "토큰 복사", button: "복사", help: "선이 나눈 구간을 골라 상태 토큰을 클립보드로", defaultPlace: "line",
                       disabled: !dailyCurrent, // 선 가격은 지금 경로의 일봉에서만 — 불러오는 중·오류엔 구간을 못 만든다
                       renderPopover: (close) => <StateCopyMenu zones={zones} selected={zone} onPick={(z) => { copyZone(z); close(); }} />,
                   },
-            { kind: "action", id: "clearLines", name: "선 지우기", disabled: lines.length === 0, run: () => write({ lines: [] }) },
+            { kind: "action", id: "clearLines", name: "선 지우기", button: "지우기", disabled: lines.length === 0, run: () => write({ lines: [] }) },
         ],
     });
 
@@ -190,7 +214,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                 visibleBars={zoomOn ? zs.dailyZoomBars : zs.dailyZoomOutBars}
                                 onPickDate={(d) => write({ date: d })}
                                 lines={chartLines}
-                                onShiftPick={pickLine}
+                                onLinePick={pickLine}
+                                onLineRemove={(key) => write({ lines: lines.filter((l) => lineRef(l) !== key) })}
                                 onNeedOlder={needOlderDaily}
                             />
                         ) : (

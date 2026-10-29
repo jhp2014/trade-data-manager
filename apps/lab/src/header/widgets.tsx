@@ -98,8 +98,8 @@ function SegmentControl({ spec }: { spec: ChoiceSpec }): JSX.Element {
     );
 }
 
-/** 판의 액션 — 테두리 버튼(누르면 일이 일어난다는 얼굴). 이름 자리가 곧 버튼이다(판이 같은 말을 두 번 하지 않게). */
-export function BoardActionButton({ spec }: { spec: ActionSpec }): JSX.Element {
+/** 판의 액션 — 이름 오른쪽의 테두리 버튼(누르면 일이 일어난다는 얼굴). 글자는 동사 하나(button) — 이름을 되풀이하지 않는다. */
+function BoardActionButton({ spec }: { spec: ActionSpec }): JSX.Element {
     return (
         <button
             onClick={() => spec.run()} disabled={spec.disabled} title={spec.help ?? spec.name}
@@ -109,7 +109,7 @@ export function BoardActionButton({ spec }: { spec: ActionSpec }): JSX.Element {
                 cursor: spec.disabled ? "default" : "pointer", opacity: spec.disabled ? 0.4 : 1,
             }}
         >
-            {spec.label ?? spec.name}
+            {spec.button ?? "실행"}
         </button>
     );
 }
@@ -128,7 +128,7 @@ function BoardPopoverOpener({ spec }: { spec: PopoverSpec }): JSX.Element {
                         cursor: spec.disabled ? "default" : "pointer", opacity: spec.disabled ? 0.4 : 1,
                     }}
                 >
-                    <span className="tabular">{spec.label ?? spec.name}</span> <span style={{ color: "var(--text-tertiary)" }}>▾</span>
+                    <span className="tabular">{spec.button ?? spec.label ?? "열기"}</span> <span style={{ color: "var(--text-tertiary)" }}>▾</span>
                 </button>
             )}
         >
