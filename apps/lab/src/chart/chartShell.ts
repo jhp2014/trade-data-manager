@@ -195,3 +195,25 @@ export function useCrosshairTooltip(params: {
 
     return { state };
 }
+
+/**
+ * 컨테이너 좌표 x 아래 봉의 인덱스 — 그림 상자 밖(가격 축 위·빈칸)이면 null. 일봉·분봉 우클릭(선 긋기)이 같이 쓴다.
+ * 봉 배열과 시리즈 데이터가 1:1(논리 인덱스 = 배열 인덱스)이라는 전제.
+ */
+export function barIndexAt(chart: IChartApi | null, x: number, count: number): number | null {
+    const ts = chart?.timeScale();
+    if (!ts || x < 0 || x > ts.width()) return null;
+    const logical = ts.coordinateToLogical(x);
+    if (logical == null) return null;
+    const i = Math.round(logical);
+    return i >= 0 && i < count ? i : null;
+}
+
+/** 봉 idx 를 화면 가운데로 — 보이는 폭은 그대로(◀▶ 칩). */
+export function centerOnIndex(chart: IChartApi | null, idx: number): void {
+    const ts = chart?.timeScale();
+    const r = ts?.getVisibleLogicalRange();
+    if (!ts || !r || idx < 0) return;
+    const half = (r.to - r.from) / 2;
+    ts.setVisibleLogicalRange({ from: idx - half, to: idx + half });
+}

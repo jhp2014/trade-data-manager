@@ -1,5 +1,5 @@
-// tdm api 읽기 transport — fetch + 비2xx 던지기 + JSON 파싱. /api 는 Vite 프록시가 tdm api(:3001)로 넘긴다.
-// trade-lab 은 tdm 에 쓰지 않는다 — GET 만 둔다(workbench http.ts 의 읽기 쪽만 옮김).
+// api transport — fetch + 비2xx 던지기 + JSON 파싱. /api 는 Vite 프록시가 lab-api(시장 읽기·lab 저장 선) 또는 tdm api 로 넘긴다.
+// trade-lab 은 tdm 에 쓰지 않는다 — 쓰기(apiSend)는 lab 저장 선(/chart-lines, lab-api 의 파일)뿐이다.
 
 type Query = Record<string, string>;
 
@@ -33,6 +33,17 @@ function serverMessage(body: string): string | null {
 export async function apiGet<T>(path: string, query?: Query, signal?: AbortSignal): Promise<T> {
     const where = `GET /api/${path}`;
     const res = await fetch(`/api/${path}${query ? `?${new URLSearchParams(query)}` : ""}`, { signal });
+    return parseResponse<T>(res, where);
+}
+
+/** JSON body 로 쓰기(POST/DELETE) — lab 저장 선만 쓴다. */
+export async function apiSend<T>(method: "POST" | "DELETE", path: string, body: unknown): Promise<T> {
+    const where = `${method} /api/${path}`;
+    const res = await fetch(`/api/${path}`, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    return parseResponse<T>(res, where);
+}
+
+async function parseResponse<T>(res: Response, where: string): Promise<T> {
     const text = await res.text();
     if (!res.ok) throw new ApiError(serverMessage(text) ?? (text ? `${where} ${res.status}: ${text}` : `${where} ${res.status}`), res.status, text);
     try {

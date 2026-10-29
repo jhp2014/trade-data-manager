@@ -1,11 +1,11 @@
 import { useMemo, useRef } from "react";
 import { CrosshairMode, LineStyle, type Time } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR } from "./chartUtils.js";
-import { baseChartOptions, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
+import { barIndexAt, baseChartOptions, centerOnIndex, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
 import { useDailySeries, useDailySeriesData, useDailyVisibleRange } from "./dailyChartHooks.js";
 import { useCandlePrimaryClick } from "./candleInteraction.js";
 import { LineMarkLayer, type LineMark } from "./lineMarks.js";
-import { STATE_LINE_COLOR, usePriceLevels } from "./priceLevels.js";
+import { lineColorOf, usePriceLevels } from "./priceLevels.js";
 import { useLoadOlderAtLeftEdge } from "./olderData.js";
 import { FloatingTooltip } from "./tooltip.js";
 import type { DailyPoint } from "./derive.js";
@@ -20,7 +20,7 @@ function fmtDailyCrosshair(time: Time): string {
     return `${String(y).slice(-2)}년 ${mo}월 ${d}일 (${weekdayKo(time)})`;
 }
 
-/** 차트에 그을 일봉 선 — 점선 가격선(축 라벨은 가격만) + 상단 표식 칩. 위/아래는 그리지 않는다(DESIGN 9절 「일봉 선」). */
+/** 차트에 그을 일봉 선(임시·저장) — 점선 가격선(축 라벨은 가격만) + 상단 표식 칩. 위/아래는 그리지 않는다(DESIGN 9절 「일봉 선」). */
 export type ChartLine = LineMark;
 
 // 일봉 차트 — 캔들(원화) + 거래대금 pane + 고가 등락률(전일비) 마커 + 크로스헤어 툴팁 + 일봉 선.
@@ -33,7 +33,8 @@ export function DailyChart({
     onPickDate,
     lines = [],
     onLinePick,
-    onLineRemove,
+    onChipClick,
+    onChipRemove,
     onNeedOlder,
 }: {
     points: DailyPoint[];
@@ -45,8 +46,10 @@ export function DailyChart({
     lines?: readonly ChartLine[];
     /** 우클릭한 봉의 날짜(브라우저 메뉴는 막는다). */
     onLinePick?: (date: string) => void;
-    /** 상단 칩 위 우클릭 — 그 선(key)을 지운다. */
-    onLineRemove?: (key: string) => void;
+    /** 상단 칩 클릭 — 임시만 = 저장 · 저장만 = 임시로 가져옴. */
+    onChipClick?: (mark: ChartLine) => void;
+    /** 상단 칩 위 우클릭 — 한 겹 걷기(임시만 = 임시 지움 · 저장된 것 = 저장에서 지움). */
+    onChipRemove?: (mark: ChartLine) => void;
     /** 왼쪽 끝에 닿았다 — 더 앞 일봉을 받을 때(받는 중 중복은 호출자가 막는다). */
     onNeedOlder?: () => void;
 }): JSX.Element {
@@ -74,27 +77,16 @@ export function DailyChart({
         onPrimaryAction: onPickDate,
     });
 
-    usePriceLevels(series.candleRef, series.gen, useMemo(() => lines.map((l) => ({ key: l.key, value: l.price })), [lines]));
+    usePriceLevels(series.candleRef, series.gen, useMemo(() => lines.map((l) => ({ key: l.key, value: l.price, color: lineColorOf(l.kind) })), [lines]));
     // 우클릭 = 커서 아래 봉 — 논리 인덱스로 고른다(그림 상자 밖 = 가격 축 위·빈칸·여백이면 무시).
     const onContextMenu = (e: React.MouseEvent<HTMLDivElement>): void => {
         if (!onLinePick) return;
         e.preventDefault();
-        const ts = chartRef.current?.timeScale();
-        const x = e.clientX - e.currentTarget.getBoundingClientRect().left;
-        if (!ts || x < 0 || x > ts.width()) return;
-        const logical = ts.coordinateToLogical(x);
-        const p = logical == null ? undefined : points[Math.round(logical)];
-        if (p) onLinePick(p.time);
+        const i = barIndexAt(chartRef.current, e.clientX - e.currentTarget.getBoundingClientRect().left, points.length);
+        if (i !== null) onLinePick(points[i].time);
     };
     // ◀▶ 칩 — 그 봉을 가운데로(보이는 폭은 그대로).
-    const goTo = (date: string): void => {
-        const ts = chartRef.current?.timeScale();
-        const r = ts?.getVisibleLogicalRange();
-        const idx = points.findIndex((p) => p.time === date);
-        if (!ts || !r || idx < 0) return;
-        const half = (r.to - r.from) / 2;
-        ts.setVisibleLogicalRange({ from: idx - half, to: idx + half });
-    };
+    const goTo = (time: string | number): void => centerOnIndex(chartRef.current, points.findIndex((p) => p.time === time));
 
     const { cursor, onCursorMove } = useRafCursor();
     const { state: tip } = useCrosshairTooltip({
@@ -124,7 +116,7 @@ export function DailyChart({
 
     return (
         <div ref={containerRef} onMouseMove={onCursorMove} onContextMenu={onContextMenu} style={{ position: "relative", width: "100%", height: "100%" }}>
-            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={lines} gen={series.gen} dataKey={points} color={STATE_LINE_COLOR} onGoTo={goTo} onRemove={(k) => onLineRemove?.(k)} />
+            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={lines} gen={series.gen} dataKey={points} onGoTo={goTo} onClick={(m) => onChipClick?.(m)} onRemove={(m) => onChipRemove?.(m)} />
             {tip.visible && <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>{tip.content}</FloatingTooltip>}
         </div>
     );

@@ -28,6 +28,7 @@ import { MaterializedDataDates } from "./market/dataDates.js";
 import { makeDayFlowByDate } from "./market/dayFlow.js";
 import { makeCachedDayFlowBody } from "./market/dayFlowCache.js";
 import { loadThemeStore, type ThemeStore } from "./theme/store.js";
+import { makeChartLineStore } from "./lines/chartLines.js";
 
 // 자급 .env 1회 로드(없으면 조용히 넘어간다) — 이미 있는 process.env 는 덮지 않는다(dotenv 기본).
 config({ path: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.env") });
@@ -119,7 +120,13 @@ async function wireTheme(): Promise<ThemeStore | null> {
 }
 const themeStore = await wireTheme();
 
-const app = createApp({ ...market, theme: themeStore, onError: (e) => console.error("[lab-api]", e) });
+// lab 저장 선 폴더(CHART_LINES_DIR — 사용 TradingData/chart-lines, 개발 chart-lines-dev). 미설정이면 /chart-lines 만 500.
+const linesDir = process.env.CHART_LINES_DIR;
+if (linesDir) console.log(`[lab-api] lab 저장 선 폴더 — ${linesDir}`);
+else console.warn("[lab-api] CHART_LINES_DIR 미설정 — /chart-lines 는 500");
+const chartLines = linesDir ? makeChartLineStore(linesDir) : null;
+
+const app = createApp({ ...market, chartLines, theme: themeStore, onError: (e) => console.error("[lab-api]", e) });
 
 // loopback 에만 붙는다 — 소비자가 같은 기기의 Vite 프록시뿐이다.
 const server = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, (info) => {

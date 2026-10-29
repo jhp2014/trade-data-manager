@@ -12,11 +12,12 @@ function make(ports: Ports = {}) {
         minutesByDate: () => Promise.reject(new Error("스텁 없음")),
         stockNews: { getHeadlines: async () => [], feedHeadlines: async () => [] },
         dayFlowBody: async (date) => JSON.stringify({ date, stocks: [] }),
+        chartLines: null,
         theme: null,
         ...ports,
     });
-    return async (path: string, method = "GET") => {
-        const res = await app.request(path, { method });
+    return async (path: string, method = "GET", body?: unknown) => {
+        const res = await app.request(path, body === undefined ? { method } : { method, body: JSON.stringify(body), headers: { "content-type": "application/json" } });
         return { status: res.status, headers: res.headers, json: (await res.json()) as unknown };
     };
 }
@@ -28,7 +29,7 @@ it("없는 경로는 404 · GET 외는 405(읽기 전용)", async () => {
     expect(r.json).toEqual({ error: "없는 경로: /judgment/history/themes" });
     const post = await call("/dates", "POST"); // 있는 경로여도 쓰기는 막는다 — lab-api 는 읽기만
     expect(post.status).toBe(405);
-    expect(post.json).toEqual({ error: "GET 만 받는다" });
+    expect(post.json).toEqual({ error: "GET 만 받는다(쓰기는 /chart-lines 만)" });
 });
 
 describe("dates", () => {
@@ -102,6 +103,34 @@ describe("daily", () => {
         const flipped = await call("/daily?code=000001&from=2021-02-01&to=2021-01-01");
         expect(flipped.status).toBe(400);
         expect(flipped.json).toMatchObject({ message: "from(2021-02-01) 이 to(2021-01-01) 보다 뒤입니다" });
+    });
+});
+
+describe("chart-lines", () => {
+    const line = { chartDate: "2026-07-28", anchorDate: "2026-06-26", anchorTime: null, field: "H", market: "un" };
+    it("쓰기는 이 경로만 열린다 — POST/DELETE body {code, line}, 저장소 결과를 그대로", async () => {
+        const seen: unknown[] = [];
+        const store = {
+            list: async (code: string, date?: string) => (seen.push(["list", code, date]), []),
+            add: async (code: string, l: unknown) => (seen.push(["add", code, l]), [l]),
+            remove: async (code: string, l: unknown) => (seen.push(["remove", code, l]), []),
+        };
+        const call = make({ chartLines: store as never });
+        expect((await call("/chart-lines?code=000660&date=2026-07-28")).json).toEqual([]);
+        expect((await call("/chart-lines", "POST", { code: "000660", line })).json).toEqual([line]);
+        expect((await call("/chart-lines", "DELETE", { code: "000660", line })).status).toBe(200);
+        expect(seen).toEqual([["list", "000660", "2026-07-28"], ["add", "000660", line], ["remove", "000660", line]]);
+        expect((await call("/chart-lines", "PUT", { code: "000660", line })).status).toBe(405);
+    });
+    it("틀린 body 는 400, 폴더 미설정은 500", async () => {
+        const call = make({ chartLines: { list: async () => [], add: async () => [], remove: async () => [] } });
+        expect((await call("/chart-lines", "POST", { code: "000660", line: { ...line, field: "X" } })).status).toBe(400);
+        expect((await call("/chart-lines", "POST", { line })).json).toMatchObject({ message: "code 필수" });
+        expect((await make()("/chart-lines?code=000660")).status).toBe(500);
+        expect((await call("/chart-lines?date=2026-07-28")).status).toBe(400); // code 없음
+        expect((await call("/chart-lines?code=000660&date=2026-02-30")).status).toBe(400);
+        const notJson = await make({ chartLines: { list: async () => [], add: async () => [], remove: async () => [] } });
+        expect((await notJson("/chart-lines", "DELETE", "{깨짐")).status).toBe(400);
     });
 });
 

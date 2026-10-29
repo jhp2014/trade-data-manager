@@ -1,12 +1,13 @@
 import { useRef } from "react";
 import { CrosshairMode, LineStyle } from "lightweight-charts";
 import { kstHHmm } from "./chartUtils.js";
-import { baseChartOptions, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
+import { barIndexAt, baseChartOptions, centerOnIndex, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
 import { FloatingTooltip } from "./tooltip.js";
 import { OhlcTooltip } from "./MinuteChartTooltips.js";
 import { useMinuteAxis, useMinuteSeries, useMinuteSeriesData, useTimeLine, type MinuteAxis } from "./minuteSeries.js";
 import { useLoadOlderAtLeftEdge } from "./olderData.js";
 import { usePriceLevels, type PriceLevel } from "./priceLevels.js";
+import { LineMarkLayer, type LineMark } from "./lineMarks.js";
 import { useFollowMarker, useMinuteVisibleRange } from "./minuteFraming.js";
 import { useCandlePrimaryClick } from "./candleInteraction.js";
 import type { MinutePoint } from "./derive.js";
@@ -22,7 +23,11 @@ export function MinuteChart({
     showAmountMarkers = true,
     axis = "pct",
     levels = [],
+    marks = [],
     onPickTime,
+    onLinePick,
+    onChipClick,
+    onChipRemove,
     onNeedOlder,
 }: {
     points: MinutePoint[];
@@ -34,10 +39,16 @@ export function MinuteChart({
     zoom?: { bars: number; anchorTime: number | null } | null;
     showAmountMarkers?: boolean;
     axis?: MinuteAxis;
-    /** 일봉 선 — 이 차트 축 단위(당일 % 또는 수정주가 원)로 환산된 값. 점선 가로선. */
+    /** 가로선 — 일봉 선·분봉 선을 이 차트 축 단위(당일 % 또는 수정주가 원)로 환산한 값. 점선. */
     levels?: readonly PriceLevel[];
+    /** 분봉 선의 상단 칩(time = unix 초). 가로선은 levels 가 긋는다. */
+    marks?: readonly LineMark[];
     /** 봉 선택 — 그 봉의 날짜(YYYY-MM-DD)·시각(HH:MM:SS). */
     onPickTime: (date: string, time: string) => void;
+    /** 우클릭한 봉의 날짜·시각(브라우저 메뉴는 막는다) — 분봉 선 긋기. */
+    onLinePick?: (date: string, time: string) => void;
+    onChipClick?: (mark: LineMark) => void;
+    onChipRemove?: (mark: LineMark) => void;
     /** 왼쪽 끝에 닿았다 — 앞 거래일 분봉을 받을 때(가격 축). */
     onNeedOlder?: () => void;
 }): JSX.Element {
@@ -77,6 +88,15 @@ export function MinuteChart({
         },
     });
 
+    // 우클릭 = 커서 아래 봉(그림 상자 밖 = 가격 축 위·빈칸이면 무시) — 일봉과 같은 손짓.
+    const onContextMenu = (e: React.MouseEvent<HTMLDivElement>): void => {
+        if (!onLinePick) return;
+        e.preventDefault();
+        const i = barIndexAt(chartRef.current, e.clientX - e.currentTarget.getBoundingClientRect().left, points.length);
+        if (i !== null) onLinePick(points[i].date, points[i].tradeTime);
+    };
+    const goTo = (time: string | number): void => centerOnIndex(chartRef.current, points.findIndex((p) => p.time === time));
+
     // 툴팁 위치는 크로스헤어 좌표(pane 마다 기준이 다르다) 대신 실제 커서 위치(rAF 스로틀).
     const { cursor, onCursorMove } = useRafCursor();
     const { state: tip } = useCrosshairTooltip({
@@ -92,7 +112,8 @@ export function MinuteChart({
     });
 
     return (
-        <div ref={containerRef} onMouseMove={onCursorMove} style={{ position: "relative", width: "100%", height: "100%" }}>
+        <div ref={containerRef} onMouseMove={onCursorMove} onContextMenu={onContextMenu} style={{ position: "relative", width: "100%", height: "100%" }}>
+            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={marks} gen={series.gen} dataKey={points} onGoTo={goTo} onClick={(m) => onChipClick?.(m)} onRemove={(m) => onChipRemove?.(m)} />
             {tip.visible && (
                 <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>
                     {tip.content}

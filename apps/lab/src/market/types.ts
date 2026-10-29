@@ -49,7 +49,7 @@ export interface MinuteCandle {
  * GET /daily · GET /minutes — lab 차트 계약(lab-api, contracts/wire 정의를 그대로 쓴다).
  * 일봉 = 수정주가 + 유령 보정 unFix(보정된 날만) · 분봉 = 그 날 원주가 + % 기준가 + 수정주가 환산비(rawScale).
  */
-export type { DailyUnFix, LabDailyCandle, LabMinuteDay } from "@trade-data-manager/wire";
+export type { DailyUnFix, LabChartLine, LabDailyCandle, LabMinuteDay } from "@trade-data-manager/wire";
 
 /** GET /stocks/master 한 줄. */
 export interface StockMeta {

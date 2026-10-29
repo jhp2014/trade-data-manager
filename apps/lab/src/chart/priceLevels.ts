@@ -3,23 +3,31 @@
 import { useEffect, type RefObject } from "react";
 import { LineStyle, type ISeriesApi } from "lightweight-charts";
 
-/** 일봉 선의 색 — 가로선·상단 칩·분봉의 같은 선이 한 색이라 눈이 잇는다. */
+/** 임시 선(경로 — 토큰의 손잡이)의 색 — 가로선·상단 칩·분봉의 같은 선이 한 색이라 눈이 잇는다. */
 export const STATE_LINE_COLOR = "#7c3aed";
+/** 저장만 된 선(lab 저장소 — 임시엔 없음)의 색. */
+export const SAVED_LINE_COLOR = "#0d9488";
+
+/** 선의 종류 — 임시만 · 저장만 · 둘 다(임시 선을 저장한 것). 같은 선은 칩 하나로 합친다. */
+export type LineKind = "temp" | "saved" | "both";
+export const lineColorOf = (kind: LineKind): string => (kind === "saved" ? SAVED_LINE_COLOR : STATE_LINE_COLOR);
 
 export interface PriceLevel {
     key: string;
     /** 그 차트 축 단위의 값. */
     value: number;
+    /** 생략 = 임시 선 색. */
+    color?: string;
 }
 
 /** levels 가 바뀔 때만 다시 긋는다. 시리즈가 먼저 죽었으면(차트 정리) 걷을 것이 없다. */
 export function usePriceLevels(candleRef: RefObject<ISeriesApi<"Candlestick"> | null>, gen: number, levels: readonly PriceLevel[]): void {
-    const key = levels.map((l) => `${l.key}=${l.value}`).join("|");
+    const key = levels.map((l) => `${l.key}=${l.value}=${l.color ?? ""}`).join("|");
     useEffect(() => {
         const candle = candleRef.current;
         if (!candle) return;
         const made = levels.map((l) =>
-            candle.createPriceLine({ price: l.value, color: STATE_LINE_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "" }),
+            candle.createPriceLine({ price: l.value, color: l.color ?? STATE_LINE_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "" }),
         );
         return () => {
             if (candleRef.current === candle) for (const pl of made) candle.removePriceLine(pl);

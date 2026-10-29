@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CHIP_ROW_H, CHIP_W, edgeTarget, layoutLineMarks, type LineMark } from "./lineMarks.js";
 
-const mark = (key: string, date: string): LineMark => ({ key, date, price: 100, short: key, tip: key });
+const mark = (key: string, time: string): LineMark => ({ key, time, price: 100, short: key, tip: key, kind: "temp" });
 
 describe("layoutLineMarks", () => {
     it("상자 안은 칩, 밖은 ◀▶ 묶음, 시리즈에 없는 봉은 버린다", () => {
@@ -25,5 +25,13 @@ describe("edgeTarget", () => {
         const items = [mark("a", "2026-06-01"), mark("b", "2026-06-20"), mark("c", "2026-06-10")];
         expect(edgeTarget("left", items)).toBe("2026-06-20");
         expect(edgeTarget("right", items)).toBe("2026-06-01");
+    });
+});
+
+describe("edgeTarget — 분봉(unix 초)", () => {
+    it("숫자 시각도 같은 규칙", () => {
+        const at = (key: string, time: number): LineMark => ({ key, time, price: 1, short: key, tip: key, kind: "saved" });
+        expect(edgeTarget("left", [at("a", 100), at("b", 300)])).toBe(300);
+        expect(edgeTarget("right", [at("a", 100), at("b", 300)])).toBe(100);
     });
 });

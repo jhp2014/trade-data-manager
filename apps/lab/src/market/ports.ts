@@ -1,12 +1,19 @@
 // 시장 데이터 창구 — 패널·훅은 이 인터페이스만 안다(fetch·URL 은 구현 몫).
 // 쓰는 쪽이 필요한 것만 의존하도록 종류별로 나눈다. 구현(tdm.ts / 테스트 가짜)은 여럿을 한 번에 구현해도 된다.
-import type { DayFlow, HtsCursor, HtsNewsItem, LabDailyCandle, LabMinuteDay, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
+import type { DayFlow, HtsCursor, HtsNewsItem, LabChartLine, LabDailyCandle, LabMinuteDay, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
 
 export interface ChartData {
     /** 수정주가 일봉 [from, to](날짜 오름차순) + 유령 보정(unFix, 보정된 날만). */
     daily(code: string, from: string, to: string, signal?: AbortSignal): Promise<LabDailyCandle[]>;
     /** 그 날 분봉(원주가 dense) + % 기준가 + 수정주가 환산비. 분봉이 없는 날은 minutes 가 빈 배열. */
     minutes(code: string, date: string, signal?: AbortSignal): Promise<LabMinuteDay>;
+}
+
+/** lab 저장 선(lab-api /chart-lines — 파일 정본). 쓰기는 이것뿐이다. 돌려받는 것은 그 차트의 선 목록. */
+export interface LineData {
+    chartLines(code: string, date: string, signal?: AbortSignal): Promise<LabChartLine[]>;
+    saveChartLine(code: string, line: LabChartLine): Promise<LabChartLine[]>;
+    deleteChartLine(code: string, line: LabChartLine): Promise<LabChartLine[]>;
 }
 
 export interface StockData {
@@ -45,4 +52,4 @@ export interface TelegramData {
 }
 
 /** 앱이 주입받는 전체 — 새 종류는 여기 교집합으로 늘린다. */
-export type Market = ChartData & StockData & CalendarData & ThemeData & NewsData & TelegramData;
+export type Market = ChartData & LineData & StockData & CalendarData & ThemeData & NewsData & TelegramData;

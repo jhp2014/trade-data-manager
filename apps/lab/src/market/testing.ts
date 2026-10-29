@@ -8,6 +8,10 @@ export function fakeMarket<T extends Partial<Market>>(stubs: T): Market & T {
     return {
         daily: notStubbed("daily"),
         minutes: notStubbed("minutes"),
+        // 저장 선은 차트 패널이 늘 묻는다 — 기본은 빈 목록(저장 선을 보는 테스트만 덮어쓴다)
+        chartLines: async () => [],
+        saveChartLine: notStubbed("saveChartLine"),
+        deleteChartLine: notStubbed("deleteChartLine"),
         stockMaster: notStubbed("stockMaster"),
         tradingDays: notStubbed("tradingDays"),
         dayFlow: notStubbed("dayFlow"),

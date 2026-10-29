@@ -1,15 +1,19 @@
-// 일봉 선의 상단 표식 — 선을 만든 봉 위(차트 꼭대기)에 작은 칩, 칩에서 선 가격까지 점선 드롭선(workbench 앵커 표식의 결).
+// 선의 상단 표식 — 선을 만든 봉 위(차트 꼭대기)에 작은 칩, 칩에서 선 가격까지 점선 드롭선(workbench 앵커 표식의 결). 일봉·분봉 공용.
 // 가격선의 축 라벨은 가격만 보이고, "어느 봉의 무엇인가"는 이 칩이 말한다(라벨 옆 글자는 가격 라벨을 가려 보기 안 좋다).
-// 그림 상자 밖 봉의 표식은 가장자리 ◀▶ 칩 — 누르면 그 봉으로 간다. 칩 위 우클릭 = 그 선을 지운다.
+// 칩 모양 = 선의 종류: 임시만 = 빈 보라 칩(누르면 저장) · 둘 다 = 채운 보라 칩(저장됨) · 저장만 = 채운 청록 칩(누르면 임시로 가져옴).
+// 칩 위 우클릭 = 한 겹 걷기(임시만 → 임시 지움, 저장된 것 → 저장에서 지움). 그림 상자 밖 봉은 가장자리 ◀▶ 칩 — 누르면 그 봉으로.
 // SVG 오버레이: 상자는 pointerEvents none, 칩만 all — 팬·크로스헤어·봉 우클릭 같은 차트 손짓을 가리지 않는다.
 import { useEffect, useState, type RefObject } from "react";
 import type { IChartApi, ISeriesApi, Time } from "lightweight-charts";
+import { lineColorOf, STATE_LINE_COLOR, type LineKind } from "./priceLevels.js";
 
 export interface LineMark {
     key: string;
-    /** 선 봉의 날짜(일봉 time). */
-    date: string;
+    /** 선 봉의 차트 시각 — 일봉 = 날짜 문자열, 분봉 = unix 초(같은 차트 안에선 한 가지라 크기 비교가 된다). */
+    time: string | number;
+    /** 그 차트 축 단위의 값. */
     price: number;
+    kind: LineKind;
     /** 칩 글자(짧게 — "H", "L·K"). */
     short: string;
     /** 칩 툴팁. */
@@ -68,9 +72,9 @@ export function layoutLineMarks(
     return out;
 }
 
-/** ◀ 칩이 데려갈 봉 = 왼쪽 밖에서 가장 가까운(가장 늦은) 날 · ▶ = 오른쪽 밖에서 가장 이른 날. */
-export function edgeTarget(side: "left" | "right", items: readonly LineMark[]): string {
-    return items.reduce((a, m) => (side === "left" ? (m.date > a ? m.date : a) : m.date < a ? m.date : a), items[0].date);
+/** ◀ 칩이 데려갈 봉 = 왼쪽 밖에서 가장 가까운(가장 늦은) 봉 · ▶ = 오른쪽 밖에서 가장 이른 봉. */
+export function edgeTarget(side: "left" | "right", items: readonly LineMark[]): string | number {
+    return items.reduce<string | number>((a, m) => (side === "left" ? (m.time > a ? m.time : a) : m.time < a ? m.time : a), items[0].time);
 }
 
 /**
@@ -97,7 +101,7 @@ function useLineMarkLayout(
             setLayout(
                 layoutLineMarks(
                     marks,
-                    (m) => ts.timeToCoordinate(m.date as Time), // 데이터에 있는 봉이면 화면 밖이어도 좌표(음수·폭 넘김)가 온다
+                    (m) => ts.timeToCoordinate(m.time as Time), // 데이터에 있는 봉이면 화면 밖이어도 좌표(음수·폭 넘김)가 온다
                     (m) => {
                         const y = candle.priceToCoordinate(m.price);
                         return y !== null && y >= 0 && y <= paneH ? y : null;
@@ -130,8 +134,8 @@ export function LineMarkLayer({
     marks,
     gen,
     dataKey,
-    color,
     onGoTo,
+    onClick,
     onRemove,
 }: {
     chartRef: RefObject<IChartApi | null>;
@@ -141,14 +145,16 @@ export function LineMarkLayer({
     gen: number;
     /** 시리즈 데이터 정체(바뀌면 세로 스케일도 바뀐다 — 다시 잰다). */
     dataKey: unknown;
-    color: string;
     /** ◀▶ 칩 — 그 방향 첫 표식의 봉으로 간다. */
-    onGoTo: (date: string) => void;
-    /** 칩 위 우클릭 — 그 선을 지운다(봉 우클릭과 달리 「우클릭 선」 설정과 상관없이 그 선). */
-    onRemove: (key: string) => void;
+    onGoTo: (time: string | number) => void;
+    /** 칩 클릭 — 임시만 = 저장 · 저장만 = 임시로 가져옴(둘 다면 할 일 없음). */
+    onClick: (mark: LineMark) => void;
+    /** 칩 위 우클릭 — 한 겹 걷기(봉 우클릭과 달리 「우클릭 선」 설정과 상관없이 그 선). */
+    onRemove: (mark: LineMark) => void;
 }): JSX.Element | null {
     const { width, inView, offLeft, offRight } = useLineMarkLayout(chartRef, candleRef, marks, gen, dataKey);
     if (inView.length === 0 && offLeft.length === 0 && offRight.length === 0) return null;
+    const color = STATE_LINE_COLOR;
     const edge = (side: "left" | "right", items: LineMark[]) => {
         const x = side === "left" ? 2 + CHIP_W / 2 : width - 2 - CHIP_W / 2;
         return (
@@ -163,25 +169,30 @@ export function LineMarkLayer({
     };
     return (
         <svg data-layer="line-marks" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 4, pointerEvents: "none", overflow: "visible" }}>
-            {inView.map(({ mark, x, y, chipY }) => (
-                <g key={mark.key}>
-                    {y !== null && y > chipY + CHIP_H && <line x1={x} x2={x} y1={chipY + CHIP_H} y2={y} stroke={color} strokeWidth={1} strokeDasharray="2 3" opacity={0.7} />}
-                    <g
-                        style={{ pointerEvents: "all" }}
-                        onContextMenu={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation(); // 봉 우클릭(선 긋기)으로 새지 않게
-                            onRemove(mark.key);
-                        }}
-                    >
-                        <title>{mark.tip}</title>
-                        <rect x={x - CHIP_W / 2} y={chipY} width={CHIP_W} height={CHIP_H} rx={3} fill={color} />
-                        <text x={x} y={chipY + 9.5} textAnchor="middle" style={{ fontSize: 8, fill: "#fff", fontWeight: 700 }}>
-                            {mark.short}
-                        </text>
+            {inView.map(({ mark, x, y, chipY }) => {
+                const c = lineColorOf(mark.kind);
+                const hollow = mark.kind === "temp";
+                return (
+                    <g key={mark.key}>
+                        {y !== null && y > chipY + CHIP_H && <line x1={x} x2={x} y1={chipY + CHIP_H} y2={y} stroke={c} strokeWidth={1} strokeDasharray="2 3" opacity={0.7} />}
+                        <g
+                            style={{ pointerEvents: "all", cursor: mark.kind === "both" ? "default" : "pointer" }}
+                            onClick={() => onClick(mark)}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation(); // 봉 우클릭(선 긋기)으로 새지 않게
+                                onRemove(mark);
+                            }}
+                        >
+                            <title>{mark.tip}</title>
+                            <rect x={x - CHIP_W / 2} y={chipY} width={CHIP_W} height={CHIP_H} rx={3} fill={hollow ? "var(--surface)" : c} stroke={c} strokeWidth={hollow ? 1 : 0} />
+                            <text x={x} y={chipY + 9.5} textAnchor="middle" style={{ fontSize: 8, fill: hollow ? c : "#fff", fontWeight: 700 }}>
+                                {mark.short}
+                            </text>
+                        </g>
                     </g>
-                </g>
-            ))}
+                );
+            })}
             {offLeft.length > 0 && edge("left", offLeft)}
             {offRight.length > 0 && edge("right", offRight)}
         </svg>

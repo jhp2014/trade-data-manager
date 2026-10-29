@@ -8,6 +8,8 @@
     telegram: pnpm --filter @trade-data-manager/ingest start telegram-sync
               (텔레그램 뉴스 방 9개 아카이브 — 신규 + 48h 수정 재훑기. 별도 스텝이라 로그가 갈리고
                텔레그램 실패가 시장 데이터 수집 결과와 섞이지 않는다. 여기서 받은 "어제"가 다음 날 DB 읽기 coverage 가 된다)
+    lines   : git commit — TradingData\chart-lines(lab 저장 선, 그 폴더만의 로컬 git)
+              (lab-api 가 쓸 때마다 커밋하면 무거워 하루치를 한 번에 — 이력·되돌리기용, 바뀐 게 없으면 넘어간다)
     backup  : pnpm --filter @trade-data-manager/db-ops backup
               (curation 미러 Supabase→로컬 내장 + 로컬 전체 덤프 + 복원검증 + Drive 업로드)
 
@@ -56,15 +58,36 @@ function Invoke-Step([string]$label, [string[]]$pnpmArgs) {
     return $code
 }
 
-Write-Log '===== 야간 작업 시작 (collect → telegram → backup) ====='
+Write-Log '===== 야간 작업 시작 (collect → telegram → lines → backup) ====='
 
 $collect = Invoke-Step 'collect (ingest backfill)' @('--filter', '@trade-data-manager/ingest', 'start', 'backfill')
 $telegram = Invoke-Step 'telegram (ingest telegram-sync)' @('--filter', '@trade-data-manager/ingest', 'start', 'telegram-sync')
+
+# lab 저장 선 하루치 커밋 — 폴더가 git 이 아니면(옮기기 전) 넘어간다. 바뀐 게 없으면 커밋하지 않는다.
+$LinesDir = Join-Path $HOME 'TradingData\chart-lines'
+function Invoke-LinesCommit {
+    if (-not (Test-Path (Join-Path $LinesDir '.git'))) { Write-Log "- lines: $LinesDir 가 git 이 아니다 — 넘어감"; return 0 }
+    Write-Log '▶ lines (chart-lines 커밋) 시작'
+    # git 을 못 찾으면 실패로 — 못 찾은 채 넘어가면 직전 스텝의 $LASTEXITCODE 를 읽어 "바뀐 것 없음"으로 묻힌다
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if (-not $git) { Write-Log '✗ lines: git 을 찾지 못했다(PATH)'; return 1 }
+    & $git.Source -C $LinesDir add -A *>&1 | Out-File -FilePath $Log -Append -Encoding utf8
+    # add 실패(남은 index.lock 등)는 실패로 — 아니면 스테이징이 비어 아래 diff 가 "바뀐 것 없음"이라 말한다
+    if ($LASTEXITCODE -ne 0) { Write-Log "✗ lines: git add 실패 (exit $LASTEXITCODE)"; return $LASTEXITCODE }
+    & $git.Source -C $LinesDir diff --cached --quiet
+    if ($LASTEXITCODE -eq 0) { Write-Log '✓ lines 바뀐 것 없음'; return 0 }
+    & $git.Source -C $LinesDir commit -q -m ('chart-lines ' + (Get-Date -Format 'yyyy-MM-dd')) *>&1 | Out-File -FilePath $Log -Append -Encoding utf8
+    $code = $LASTEXITCODE
+    if ($code -eq 0) { Write-Log '✓ lines 커밋' } else { Write-Log "✗ lines 커밋 실패 (exit $code)" }
+    return $code
+}
+$lines = Invoke-LinesCommit
+
 # collect/telegram 실패해도 backup 은 반드시 실행(어제까지 상태라도 떠둔다).
 $backup = Invoke-Step 'backup (db-ops)' @('--filter', '@trade-data-manager/db-ops', 'backup')
 
-if ($collect -ne 0 -or $telegram -ne 0 -or $backup -ne 0) {
-    Write-Log "===== 종료: 실패 (collect=$collect, telegram=$telegram, backup=$backup) ====="
+if ($collect -ne 0 -or $telegram -ne 0 -or $lines -ne 0 -or $backup -ne 0) {
+    Write-Log "===== 종료: 실패 (collect=$collect, telegram=$telegram, lines=$lines, backup=$backup) ====="
     exit 1
 }
 Write-Log '===== 종료: 성공 ====='

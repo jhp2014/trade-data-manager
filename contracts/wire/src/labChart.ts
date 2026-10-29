@@ -31,3 +31,20 @@ export interface LabMinuteDay {
     /** 수정주가 → 그 날 원주가 환산비(core rawScaleOf, 평상 1). */
     rawScale: number;
 }
+
+/**
+ * lab 저장 선 — 사용자가 차트(종목, 날짜)에서 저장한 선 하나(lab-api `/chart-lines`, 파일 정본 — workbench 기준선의 후계).
+ * **가격이 아니라 좌표**: 값은 보일 때 그 봉에서 읽는다(수정계수·UN* 보정이 바뀌어도 따라간다).
+ * anchorTime 이 null 이면 일봉 선, 값이면 분봉 선(market 은 un 고정 — 분봉 KRX 는 NXT 단독 시간에 없다).
+ * 정체 = (chartDate, anchorDate, anchorTime, field, market) — 같은 좌표는 하나뿐.
+ */
+export interface LabChartLine {
+    /** 주인 차트의 날짜(그 날짜 차트에서만 보인다). */
+    chartDate: string;
+    /** 선을 만든 봉의 날짜. chartDate 이하. */
+    anchorDate: string;
+    /** 분봉 선이면 그 봉의 시각(HH:MM:SS), 일봉 선이면 null. */
+    anchorTime: string | null;
+    field: "O" | "H" | "L" | "C";
+    market: "un" | "krx";
+}

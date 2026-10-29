@@ -1,9 +1,10 @@
 // 시장 데이터 훅 — react-query 캐시 위에서 창구(ports)를 부른다. 패널은 이 훅만 안다.
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
     keepPreviousData,
     queryOptions,
     useInfiniteQuery,
+    useMutation,
     useQueries,
     useQuery,
     useQueryClient,
@@ -15,8 +16,8 @@ import {
 import { kstToday } from "./domain.js";
 import { addDays, shiftYears } from "../lib/date.js";
 import { ApiError } from "./http.js";
-import { useCalendarData, useChartData, useStockData, useThemeData } from "./MarketProvider.js";
-import type { DayFlow, LabDailyCandle, LabMinuteDay, StockMoves } from "./types.js";
+import { useCalendarData, useChartData, useLineData, useStockData, useThemeData } from "./MarketProvider.js";
+import type { DayFlow, LabChartLine, LabDailyCandle, LabMinuteDay, StockMoves } from "./types.js";
 import type { ChartData } from "./ports.js";
 
 const TODAY_STALE = 60_000; // 오늘 시세는 수집이 채우는 중일 수 있다 — 1분 뒤 재조회 허용
@@ -83,6 +84,41 @@ export function useMinuteDays(code: string, dates: readonly string[]): MinuteDay
         queries: dates.map((d) => ({ ...minuteDayQuery(port, code, d), enabled: code !== "" })),
         combine: (rs) => rs.map((r) => ({ data: r.data, failed: r.isError })),
     });
+}
+
+/**
+ * lab 저장 선 — 그 차트(종목, 날짜)의 선 + 저장·지우기. 쓰기는 서버가 돌려준 **그 쓰기의 차트** 목록으로 캐시를 바로 갈아 끼운다
+ * (다시 묻지 않는다 — 저장소는 이 서버 하나만 쓴다). 응답을 기다리는 사이 경로가 바뀌어도 새 차트 캐시를 덮지 않게 키는 쓰기 변수에서 만든다.
+ * 쓰는 중엔 current 가 false — 옛 종류로 판단한 칩 조작이 겹치지 않게. 실패는 error 로(차트 정보에 알림, 경로가 바뀌면 걷힌다).
+ */
+export function useChartLines(code: string, date: string): {
+    lines: LabChartLine[];
+    /** 지금 경로의 선인가(경로가 바뀌어 기다리는 동안은 false — 그동안 칩 조작을 막는다). */
+    current: boolean;
+    save: (line: LabChartLine) => void;
+    remove: (line: LabChartLine) => void;
+    error: Error | null;
+} {
+    const port = useLineData();
+    const qc = useQueryClient();
+    const q = useQuery({ queryKey: ["chart-lines", code, date], queryFn: ({ signal }) => port.chartLines(code, date, signal), enabled: code !== "" && date !== "", staleTime: Infinity });
+    type Write = { code: string; line: LabChartLine };
+    const onSuccess = (lines: LabChartLine[], v: Write) => qc.setQueryData(["chart-lines", v.code, v.line.chartDate], lines);
+    const save = useMutation({ mutationFn: (v: Write) => port.saveChartLine(v.code, v.line), onSuccess });
+    const remove = useMutation({ mutationFn: (v: Write) => port.deleteChartLine(v.code, v.line), onSuccess });
+    // 경로가 바뀌면 지난 오류만 걷는다 — 진행 중인 쓰기는 두어야 isPending 막음이 산다(되돌아와도 칩이 먼저 열리지 않게)
+    const resets = useRef({ save, remove });
+    resets.current = { save, remove };
+    useEffect(() => {
+        for (const m of [resets.current.save, resets.current.remove]) if (!m.isPending) m.reset();
+    }, [code, date]);
+    return {
+        lines: q.data ?? [],
+        current: q.data !== undefined && !q.isPlaceholderData && !save.isPending && !remove.isPending,
+        save: (line) => save.mutate({ code, line }),
+        remove: (line) => remove.mutate({ code, line }),
+        error: q.error ?? save.error ?? remove.error ?? null,
+    };
 }
 
 /** 종목명 찾기 — 코드 → 이름. 모르는 코드거나 마스터를 아직 못 받았으면 null. 목록처럼 여러 코드를 볼 때. */
