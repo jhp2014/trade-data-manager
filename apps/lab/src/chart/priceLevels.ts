@@ -3,14 +3,18 @@
 import { useEffect, type RefObject } from "react";
 import { LineStyle, type ISeriesApi } from "lightweight-charts";
 
-/** 임시 선(경로 — 토큰의 손잡이)의 색 — 가로선·상단 칩·분봉의 같은 선이 한 색이라 눈이 잇는다. */
-export const STATE_LINE_COLOR = "#7c3aed";
-/** 저장만 된 선(lab 저장소 — 임시엔 없음)의 색. */
-export const SAVED_LINE_COLOR = "#0d9488";
+// 선의 두 색 — 차트의 다른 색(봉 빨강·파랑, 시각선 파랑, 고가 % 마커 노랑→주황→빨강→보라, 거래대금 마커 노랑→빨강→분홍)과
+// 겹치지 않고 둘끼리도 멀리 떨어진 두 가지: 임시 = 초록, 저장 = 검정에 가까운 먹색.
+// 칩은 두 채널로 가른다 — **채움 = 저장, 테두리 = 임시**: 임시만 = 빈 칩 + 초록 테두리 · 저장만 = 먹색 채움 · 둘 다 = 먹색 채움 + 굵은 초록 고리.
+/** 임시 선(경로 — 토큰의 손잡이) — 칩 테두리·임시만인 선의 가로선. */
+export const TEMP_LINE_COLOR = "#16a34a";
+/** 저장된 선(lab 저장소) — 칩 채움·저장된 선의 가로선. */
+export const SAVED_LINE_COLOR = "#1f2937";
 
 /** 선의 종류 — 임시만 · 저장만 · 둘 다(임시 선을 저장한 것). 같은 선은 칩 하나로 합친다. */
 export type LineKind = "temp" | "saved" | "both";
-export const lineColorOf = (kind: LineKind): string => (kind === "saved" ? SAVED_LINE_COLOR : STATE_LINE_COLOR);
+/** 가로선·드롭선 색 — 저장돼 있으면 저장 색(채움 채널과 같은 뜻). */
+export const lineColorOf = (kind: LineKind): string => (kind === "temp" ? TEMP_LINE_COLOR : SAVED_LINE_COLOR);
 
 export interface PriceLevel {
     key: string;
@@ -27,7 +31,7 @@ export function usePriceLevels(candleRef: RefObject<ISeriesApi<"Candlestick"> | 
         const candle = candleRef.current;
         if (!candle) return;
         const made = levels.map((l) =>
-            candle.createPriceLine({ price: l.value, color: l.color ?? STATE_LINE_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "" }),
+            candle.createPriceLine({ price: l.value, color: l.color ?? TEMP_LINE_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "" }),
         );
         return () => {
             if (candleRef.current === candle) for (const pl of made) candle.removePriceLine(pl);

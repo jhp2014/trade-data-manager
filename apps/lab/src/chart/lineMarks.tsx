@@ -1,11 +1,12 @@
 // 선의 상단 표식 — 선을 만든 봉 위(차트 꼭대기)에 작은 칩, 칩에서 선 가격까지 점선 드롭선(workbench 앵커 표식의 결). 일봉·분봉 공용.
 // 가격선의 축 라벨은 가격만 보이고, "어느 봉의 무엇인가"는 이 칩이 말한다(라벨 옆 글자는 가격 라벨을 가려 보기 안 좋다).
-// 칩 모양 = 선의 종류: 임시만 = 빈 보라 칩(누르면 저장) · 둘 다 = 채운 보라 칩(저장됨) · 저장만 = 채운 청록 칩(누르면 임시로 가져옴).
+// 칩 모양 = 선의 종류, 두 채널로(priceLevels 머리 주석) — 채움 = 저장, 테두리 = 임시:
+// 임시만 = 빈 칩 + 초록 테두리(누르면 저장) · 저장만 = 먹색 채움(누르면 임시로 가져옴) · 둘 다 = 먹색 채움 + 굵은 초록 고리.
 // 칩 위 우클릭 = 한 겹 걷기(임시만 → 임시 지움, 저장된 것 → 저장에서 지움). 그림 상자 밖 봉은 가장자리 ◀▶ 칩 — 누르면 그 봉으로.
 // SVG 오버레이: 상자는 pointerEvents none, 칩만 all — 팬·크로스헤어·봉 우클릭 같은 차트 손짓을 가리지 않는다.
 import { useEffect, useState, type RefObject } from "react";
 import type { IChartApi, ISeriesApi, Time } from "lightweight-charts";
-import { lineColorOf, STATE_LINE_COLOR, type LineKind } from "./priceLevels.js";
+import { lineColorOf, SAVED_LINE_COLOR, TEMP_LINE_COLOR, type LineKind } from "./priceLevels.js";
 
 export interface LineMark {
     key: string;
@@ -154,7 +155,7 @@ export function LineMarkLayer({
 }): JSX.Element | null {
     const { width, inView, offLeft, offRight } = useLineMarkLayout(chartRef, candleRef, marks, gen, dataKey);
     if (inView.length === 0 && offLeft.length === 0 && offRight.length === 0) return null;
-    const color = STATE_LINE_COLOR;
+    const color = SAVED_LINE_COLOR; // ◀▶ 은 어느 종류든 묶음이라 중립(먹색)
     const edge = (side: "left" | "right", items: LineMark[]) => {
         const x = side === "left" ? 2 + CHIP_W / 2 : width - 2 - CHIP_W / 2;
         return (
@@ -171,7 +172,8 @@ export function LineMarkLayer({
         <svg data-layer="line-marks" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 4, pointerEvents: "none", overflow: "visible" }}>
             {inView.map(({ mark, x, y, chipY }) => {
                 const c = lineColorOf(mark.kind);
-                const hollow = mark.kind === "temp";
+                const saved = mark.kind !== "temp"; // 채움
+                const temp = mark.kind !== "saved"; // 테두리
                 return (
                     <g key={mark.key}>
                         {y !== null && y > chipY + CHIP_H && <line x1={x} x2={x} y1={chipY + CHIP_H} y2={y} stroke={c} strokeWidth={1} strokeDasharray="2 3" opacity={0.7} />}
@@ -185,8 +187,12 @@ export function LineMarkLayer({
                             }}
                         >
                             <title>{mark.tip}</title>
-                            <rect x={x - CHIP_W / 2} y={chipY} width={CHIP_W} height={CHIP_H} rx={3} fill={hollow ? "var(--surface)" : c} stroke={c} strokeWidth={hollow ? 1 : 0} />
-                            <text x={x} y={chipY + 9.5} textAnchor="middle" style={{ fontSize: 8, fill: hollow ? c : "#fff", fontWeight: 700 }}>
+                            <rect
+                                x={x - CHIP_W / 2} y={chipY} width={CHIP_W} height={CHIP_H} rx={3}
+                                fill={saved ? SAVED_LINE_COLOR : "var(--surface)"}
+                                stroke={temp ? TEMP_LINE_COLOR : "none"} strokeWidth={saved ? 2 : 1.2}
+                            />
+                            <text x={x} y={chipY + 9.5} textAnchor="middle" style={{ fontSize: 8, fill: saved ? "#fff" : TEMP_LINE_COLOR, fontWeight: 700 }}>
                                 {mark.short}
                             </text>
                         </g>
