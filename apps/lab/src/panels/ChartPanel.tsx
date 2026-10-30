@@ -1,6 +1,6 @@
 // 차트 패널 — 경로의 (종목, 날짜) 일봉·분봉, 경로의 시각에 분봉 세로선.
 // 일봉 봉 선택 = 경로의 날짜를 바꾼다 · 분봉 봉 선택 = 경로의 시각을 바꾼다(둘 다 ctrl+클릭 또는 더블클릭 — 가격 축에서
-// 다른 날 봉을 고르면 날짜도). 우클릭 = 그 봉에 임시 선(값은 「우클릭 선」 설정 — 일봉은 경로의 선 최대 2개, 분봉은 이 패널의 잠깐 선).
+// 다른 날 봉을 고르면 날짜도). 우클릭 = 그 봉에 임시 선(값은 「우클릭 선」 설정 — 일봉은 경로의 선 최대 3개, 분봉은 이 패널의 잠깐 선).
 // 선 칩: 임시만 클릭 = 저장 · 저장만 클릭 = 임시로 가져옴 · 우클릭 = 한 겹 걷기(DESIGN 9절 「선 — 임시 선과 저장 선」). 「토큰 복사」 = 구간을 골라 상태 토큰을
 // 클립보드로(DESIGN 9절 「일봉 선」). 일봉은 왼쪽으로 끌면 과거를 더, 분봉은 「가격」 축에서 끌면 앞 거래일을 이어 받는다 —
 // 끌어서 다른 날을 보는 것은 경로를 바꾸지 않는다(일봉은 늘 경로 날짜에서 끝난다).
@@ -263,7 +263,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 values: DAILY_MODE_VALUES, value: mode, set: (v) => setMode(v as DailyMode),
             },
             {
-                kind: "choice", id: "lineField", name: "우클릭 선", help: "봉을 우클릭하면 그 봉의 이 값에 임시 선을 긋는다(같은 선을 다시 우클릭하면 지운다). 일봉은 경로의 선(최대 2개, 시장은 「일봉 시장」), 분봉은 이 패널의 잠깐 선(통합). 칩을 누르면 저장",
+                kind: "choice", id: "lineField", name: "우클릭 선", help: "봉을 우클릭하면 그 봉의 이 값에 임시 선을 긋는다(같은 선을 다시 우클릭하면 지운다). 일봉은 경로의 선(최대 3개, 시장은 「일봉 시장」), 분봉은 이 패널의 잠깐 선(통합). 칩을 누르면 저장",
                 values: LINE_FIELD_VALUES, value: lineField, set: (v) => setLineField(v as LineField),
             },
             { kind: "choice", id: "minuteAxis", name: "분봉 축", help: "당일 % = 그 날 하루 · 가격 = 수정주가 원화, 왼쪽으로 끌면 앞 거래일을 이어 본다", values: AXIS_VALUES, value: axis, set: (v) => setAxis(v as MinuteAxis) },

@@ -1,4 +1,5 @@
-// 일봉 상태 토큰 — `종목@YYYY-MM-DD` + 선 0~2개(`@yymmdd` + O|H|L|C + [:KRX] + ▲|▼).
+// 일봉 상태 토큰 — `종목@YYYY-MM-DD` + 선 0~3개(`@yymmdd` + O|H|L|C + [:KRX] + ▲|▼).
+// 구간 = 맞닿은 두 선(가장 높은 ▲ · 가장 낮은 ▼), 나머지는 곁 선(구간을 좁히지 않는 지도).
 // 문법 정본은 tdm-ai daily/FORMAT.md — 이 파일은 같은 문법을 읽고(붙여넣기) 쓴다(복사). 순수 함수만.
 import { unFixedBar } from "../market/domain.js";
 import type { DailyBar, LabDailyCandle, PriceMode } from "../market/types.js";
@@ -13,7 +14,7 @@ export interface DailyLine {
     venue: PriceMode;
 }
 
-export const MAX_LINES = 2;
+export const MAX_LINES = 3;
 
 const BAR_FIELD = { O: "open", H: "high", L: "low", C: "close" } as const;
 
@@ -62,7 +63,7 @@ export interface ParsedState {
 }
 
 const LINE = /(\d{2})(\d{2})(\d{2})([OHLC])(:KRX)?([▲▼])/g;
-// 선 칸은 꼴 그대로 좁게 잡는다(글 속 괄호·굵게·조사에 붙어도 읽히게). 선 뒤에 또 `@` 가 이어지면(셋째 선·틀린 선) 토큰째 거절 —
+// 선 칸은 꼴 그대로 좁게 잡는다(글 속 괄호·굵게·조사에 붙어도 읽히게). 선 뒤에 또 `@` 가 이어지면(틀린 선) 토큰째 거절 —
 // 틀린 선을 조용히 버리지 않는다.
 const TOKEN = /(\d{6})@(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2})|((?:@\d{6}[OHLC](?::KRX)?[▲▼])*))(@?)/;
 
@@ -80,6 +81,7 @@ export function parseStateToken(text: string): ParsedState | null {
         if (d >= date) return null;
         // 토큰은 낮은 선부터 적으니 ▲ 가 앞에 몰린다 — ▼ 다음 ▲ 는 가격 축 위의 한 구간이 아니다
         if (side === "▲" && zone < lines.length) return null;
+        if (lines.some((x) => x.date === d && x.field === f && (x.venue === "krx") === !!krx)) return null; // 같은 선 두 번
         lines.push({ date: d, field: f as LineField, venue: krx ? "krx" : "un" });
         if (side === "▲") zone++;
     }

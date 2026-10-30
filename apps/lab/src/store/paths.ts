@@ -11,7 +11,7 @@ export interface Situation {
     code: string;
     date: string;
     time: string;
-    /** 일봉 선 0~2개 — 상태 토큰의 손잡이(DESIGN 9절 「일봉 선」). 선 봉은 date 보다 앞선 날. */
+    /** 일봉 선 0~3개 — 상태 토큰의 손잡이(DESIGN 9절 「일봉 선」). 선 봉은 date 보다 앞선 날. */
     lines: DailyLine[];
     /** 복사 판이 미리 골라 둘 구간(낮은 선부터 몇 개 위인가) — 토큰을 붙여넣었을 때만. 선이 바뀌면 null. */
     zone: number | null;
