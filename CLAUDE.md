@@ -28,7 +28,7 @@ infra/      broker · google · kis · kiwoom · persistence · telegram    (어
 
 - `apps/api` — NestJS 백엔드 (workbench가 대면하는 REST)
 - `apps/workbench` — Vite+React 작업대, dockview 기반 패널 셸
-- `apps/lab` — 판단 학습 실험실 화면(옛 독립 저장소 trade-lab, 2026-10-16 편입). tdm 데이터는 읽기(GET)만, 판단은 별도 저장소 `C:\Users\whdgn\Dev\trade-judgment` 파일로. 장기적으로 workbench 를 대체해 간다(설계: `apps/lab/DESIGN.md`)
+- `apps/lab` — 판단 학습 실험실 화면(옛 독립 저장소 trade-lab, 2026-10-16 편입). tdm 데이터는 읽기(GET)만(쓰기는 lab 저장 선 파일뿐 — lab-api `/chart-lines`), 판단·AI 가공은 별도 작업장 `C:\Users\whdgn\Dev\tdm-ai`(옛 trade-judgment 는 보관소). 장기적으로 workbench 를 대체해 간다(설계: `apps/lab/DESIGN.md`)
 - `apps/lab-api` — lab 이 대면하는 백엔드(Hono), 시장 읽기 전용 + lab 저장 선(`/chart-lines`, 파일 — 결정 로그 「일봉 판단 학습」)만 쓰기. api 의 lab 읽기 경로를 잠식해 api 를 은퇴시킨다(결정 로그 「trade-lab 편입」). 옛 /judgment 읽기는 2026-10-17 은퇴 — 판단·AI 가공은 tdm-ai 작업장(「판단·AI 가공의 작업장」)
 - `apps/live` — 실시간 모니터/알람/트레이더, iwinv VPS 상주
 - `apps/db-ops` — 백업 (market + curation 미러)
