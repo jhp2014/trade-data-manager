@@ -187,7 +187,7 @@ export function LineMarkLayer({
                 key={side}
                 style={{ pointerEvents: "all", cursor: "pointer" }}
                 onClick={() => onGoTo(edgeTarget(side, items))}
-                {...hoverOn(x, CHIP_Y + CHIP_H, { head: `창 밖 선 ${items.length}개`, list: items.map((m) => m.info.head), hint: "클릭 그리로 이동" })}
+                {...hoverOn(x, CHIP_Y, { head: `창 밖 선 ${items.length}개`, list: items.map((m) => m.info.head), hint: "클릭 그리로 이동" })}
             >
                 <rect x={x - CHIP_W / 2} y={CHIP_Y} width={CHIP_W} height={CHIP_H} fill="transparent" />
                 <text x={x} y={CHIP_Y + 12} textAnchor="middle" style={{ fontSize: 12, fontWeight: 600, fill: color, ...HALO }}>
@@ -210,7 +210,7 @@ export function LineMarkLayer({
                         <g
                             style={{ pointerEvents: "all", cursor: mark.kind === "both" ? "default" : "pointer" }}
                             onClick={() => onClick(mark)}
-                            {...hoverOn(x, chipY + CHIP_H, mark.info)}
+                            {...hoverOn(x, chipY, mark.info)}
                             onContextMenu={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation(); // 봉 우클릭(선 긋기)으로 새지 않게
@@ -240,19 +240,23 @@ export function LineMarkLayer({
 
 const CARD_MUTED: CSSProperties = { color: "var(--text-3)", fontSize: 11 };
 
-/** 칩 카드 — 칩 바로 아래(가운데 맞춤 — 폭은 글 길이대로, 차트 밖으로는 안 나가게). 손짓을 가리지 않게 pointerEvents none. */
+/**
+ * 칩 카드 — 칩 옆(같은 높이), 차트에서 남은 공간이 넓은 쪽(칩이 오른쪽 반이면 왼쪽에) — 아래에 두면 커서에 가린다.
+ * 폭은 글 길이대로. y = 칩 윗변. 손짓을 가리지 않게 pointerEvents none.
+ */
 function ChipCard({ x, y, info, width }: { x: number; y: number; info: LineInfo; width: number }): JSX.Element {
     const ref = useRef<HTMLDivElement>(null);
     const [w, setW] = useState(0);
     useLayoutEffect(() => setW(ref.current?.offsetWidth ?? 0), [info]);
-    const left = Math.max(4, Math.min(x - w / 2, width - w - 4));
+    const gap = CHIP_W / 2 + 4;
+    const left = x > width / 2 ? Math.max(4, x - gap - w) : Math.min(width - w - 4, x + gap);
     return (
         <div
             ref={ref}
             data-layer="chip-card"
             className="tabular"
             style={{
-                position: "absolute", left, top: y + 4, zIndex: 6, pointerEvents: "none", boxSizing: "border-box",
+                position: "absolute", left, top: y - 3, zIndex: 6, pointerEvents: "none", boxSizing: "border-box",
                 padding: "3px 8px", fontSize: 12, lineHeight: 1.45, background: "var(--surface)", color: "var(--text)", whiteSpace: "nowrap",
                 border: "1px solid var(--border)", borderRadius: 5, boxShadow: "0 3px 10px rgba(0,0,0,0.14)", visibility: w ? "visible" : "hidden",
             }}
