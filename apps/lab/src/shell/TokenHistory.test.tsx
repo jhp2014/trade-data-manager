@@ -41,7 +41,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("토큰 기록 판", () => {
-    it("줄 = 종목 이름·코드·날짜 + 구간·곁 선", async () => {
+    it("줄 = 종목 이름·코드·날짜 + 선 날짜(먼 것부터 — 구간은 안 보인다)", async () => {
         pasteState(`${T1} ${T3}`);
         renderButton();
         // 실제 브라우저는 누른 버튼에 포커스를 준다 — jsdom 의 click 은 안 주므로 먼저 준다
@@ -50,7 +50,7 @@ describe("토큰 기록 판", () => {
         expect(document.activeElement).toBe(button);
         fireEvent.click(button);
         expect(await screen.findByText("SK스퀘어")).toBeTruthy();
-        expect(screen.getByText("7/1 고가 ~ 7/15 고가 사이")).toBeTruthy();
+        expect(screen.getByText("26/07/01 · 26/07/15")).toBeTruthy(); // 거래일 달력이 없으면 거래일 수는 빠진다
         expect(screen.getByText("선 없음")).toBeTruthy();
         expect(selected()).toBe(T1); // 열리면 맨 위
         expect(document.activeElement?.tagName).not.toBe("BUTTON"); // 연 버튼의 포커스를 놓는다 — Space 가 버튼을 다시 누르지 않게
@@ -93,5 +93,26 @@ describe("토큰 기록 판", () => {
         expect(selected()).toBe(T3);
         act(() => void pasteState(T2));
         expect(selected()).toBe(T2);
+    });
+    it("판을 열면 커서는 지금 열린 토큰(●)에서 — 없으면 맨 위", () => {
+        pasteState(`${T2} ${T1} ${T3}`); // 맨 위 T2 를 열고 쌓인다
+        act(() => void pasteState(T1)); // T1 을 다시 열면 맨 위로
+        act(() => void pasteState(T3)); // T3 가 맨 위, 열린 것은 T3
+        act(() => useTokenHistory.getState().push([T2])); // 기록만 바꿔 맨 위 = T2(열린 것은 그대로 T3)
+        renderButton();
+        act(() => useUi.getState().toggleTokenHistory());
+        expect(selected()).toBe(T3);
+    });
+    it("전체 지우기 — 확인 줄을 거쳐 지운다, 취소하면 그대로", () => {
+        pasteState(`${T1} ${T2}`);
+        renderButton();
+        act(() => useUi.getState().toggleTokenHistory());
+        fireEvent.click(screen.getByRole("button", { name: "전체 지우기" }));
+        fireEvent.click(screen.getByRole("button", { name: "취소" }));
+        expect(useTokenHistory.getState().entries).toHaveLength(2);
+        fireEvent.click(screen.getByRole("button", { name: "전체 지우기" }));
+        const dialog = screen.getByRole("alertdialog");
+        fireEvent.click(dialog.querySelector("button")!);
+        expect(useTokenHistory.getState().entries).toHaveLength(0);
     });
 });

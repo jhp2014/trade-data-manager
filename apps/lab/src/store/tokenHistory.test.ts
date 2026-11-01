@@ -33,4 +33,9 @@ describe("토큰 기록 store", () => {
         expect(list()).toEqual(["B@2"]);
         expect(JSON.parse(localStorage.getItem("trade-lab.token-history")!).state.entries.map((e: { token: string }) => e.token)).toEqual(["B@2"]);
     });
+    it("전체 지우기", () => {
+        h().push(["A@1", "B@2"]);
+        h().clear();
+        expect(list()).toEqual([]);
+    });
 });

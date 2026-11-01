@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeState, findStateTokens, formatState, lineRef, parseStateToken, toggleLine, type DailyLine } from "./stateToken.js";
+import { findStateTokens, lineDates, linePcts, formatState, lineRef, parseStateToken, toggleLine, type DailyLine } from "./stateToken.js";
 import { priceLines, zonesOf } from "../chart/stateCopy.js";
 import type { DailyCandle } from "../market/types.js";
 
@@ -126,16 +126,27 @@ describe("글 속 토큰 전부", () => {
     });
 });
 
-describe("상태를 말로", () => {
-    const say = (t: string) => describeState(parseStateToken(t)!);
-    it("구간 = 맞닿은 두 선, 나머지는 곁 선 — 「토큰 복사」 판 말투", () => {
-        expect(say("402340@2026-07-31@260701H▲@260710H▲@260715H▼")).toEqual({ zone: "7/10 고가 ~ 7/15 고가 사이", side: ["7/1 고가"] });
-        expect(say("402340@2026-07-31@260701H▼@260715L:KRX▼")).toEqual({ zone: "7/1 고가 아래", side: ["7/15 저가(KRX)"] });
-        expect(say("402340@2026-07-31@260701H▲@260715C▲")).toEqual({ zone: "7/15 종가 위", side: ["7/1 고가"] });
+describe("선을 날짜로", () => {
+    const say = (t: string, days?: string[]) => lineDates(parseStateToken(t)!, days && new Map(days.map((d, i) => [d, i])));
+    const days = ["2026-07-01", "2026-07-02", "2026-07-10", "2026-07-15", "2026-07-30", "2026-07-31"];
+    it("먼 것부터 날짜(거래일 수) — 구간은 말하지 않는다", () => {
+        expect(say("402340@2026-07-31@260701H▲@260715H▲@260710H▼", days)).toBe("26/07/01(5) · 26/07/10(3) · 26/07/15(2)");
     });
-    it("해가 다르면 연도를 붙인다 · 선 없음 · 시각 꼴", () => {
-        expect(say("402340@2026-01-05@251203O▼")).toEqual({ zone: "25/12/3 시가 아래", side: [] });
-        expect(say("402340@2026-07-31")).toEqual({ zone: "선 없음", side: [] });
-        expect(say("402340@2026-07-31 09:44")).toEqual({ zone: "09:44", side: [] });
+    it("고가·통합이 아니면 값·시장을 덧붙이고, 달력에 없으면 거래일 수를 뺀다", () => {
+        expect(say("402340@2026-07-31@260701H▼@260715L:KRX▼", days)).toBe("26/07/01(5) · 26/07/15(2) 저가 KRX");
+        expect(say("402340@2026-07-31@251203H▼", days)).toBe("25/12/03");
+        expect(say("402340@2026-07-31@260715H▼")).toBe("26/07/15");
+    });
+    it("% 는 늘 UN* 전날 종가 기준 — KRX 선도 그 가격을 UN 기준에 댄다, 받은 일봉에 없는 선은 빠진다", () => {
+        const t = parseStateToken("402340@2026-07-31@260701H▼@260715H:KRX▼@250101H▼")!; // 전날 = 7/15 종가 140
+        const pcts = linePcts(daily, t);
+        expect(lineDates(t, undefined, pcts)).toBe("25/01/01 · 26/07/01(-7.1%) · 26/07/15(+5.7%) KRX"); // 130 · KRX 148
+        expect(lineDates(t, new Map(["2026-07-01", "2026-07-15", "2026-07-31"].map((d, i) => [d, i])), pcts)).toBe("25/01/01 · 26/07/01(2, -7.1%) · 26/07/15(1, +5.7%) KRX");
+        const fixed = [daily[0], daily[1], { ...daily[2], unFix: { high: "145" } }];
+        expect(linePcts(fixed, parseStateToken("402340@2026-07-31@260715H▼")!).get("260715H")?.toFixed(1)).toBe("3.6"); // UN* 고가 145
+    });
+    it("선 없음 · 시각 꼴", () => {
+        expect(say("402340@2026-07-31")).toBe("선 없음");
+        expect(say("402340@2026-07-31 09:44")).toBe("09:44");
     });
 });

@@ -3,15 +3,19 @@
 // 열린 동안 w/s(고르기)·Space(다시 열기)는 **판의 것** — 판 안 키 처리라 커맨드 목록에 없고, 창(window) 캡처 단계에서 받아
 // 전역 디스패처보다 먼저 먹는다(같은 키가 나중에 전역 커맨드가 돼도 판이 열린 동안은 판이 이긴다). 입력칸 포커스면 쉰다.
 // 다시 열기는 붙여넣기와 같은 쓰기(활성 경로에 종목·날짜·선·구간)이고 판은 열린 채, 기록 순서도 그대로 — 차례로 훑게.
-// 가격은 넣지 않는다 — 줄마다 일봉을 받아야 해서. 선은 날짜·값(「5/27 고가」)으로, 구간은 「토큰 복사」 판 말투로.
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+// 판은 화면 가운데. 선은 날짜만 먼 것부터 + 상태 날짜까지 거래일 수(거래일 달력 — 종목 데이터 없이). 구간(▲▼)은 안 보인다.
+// % 위치(전날 종가 대비 — linePcts)는 고른 줄에만: 커서가 0.3초 머물면 그 종목 일봉을 차트와 같은 캐시로 받는다
+// (Space 로 열면 차트가 기다리지 않는다 — 미리 받기 겸). 판을 열면 커서는 지금 열린 토큰(●)에서, 없으면 맨 위.
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { chordOf, isEditable } from "../keymap/keys.js";
-import { describeState, lineRef, parseStateToken, type DailyLine, type ParsedState } from "../lib/stateToken.js";
+import { lineDates, linePcts, lineRef, parseStateToken, type DailyLine, type ParsedState } from "../lib/stateToken.js";
 import { useLatest } from "../lib/useLatest.js";
 import { dateLabel } from "../lib/date.js";
-import { useStockNameOf } from "../market/queries.js";
+import { dailyRowsOf, useDailyCandles, useStockNameOf, useTradingDays } from "../market/queries.js";
 import { usePaths, type Situation } from "../store/paths.js";
 import { useTokenHistory } from "../store/tokenHistory.js";
+import { useConfirm } from "../ui/ConfirmBar.js";
+import { smallButton } from "../ui/chrome.js";
 import { useUi } from "../store/ui.js";
 import { FloatingSurface } from "../ui/popover/FloatingSurface.js";
 import { MENU_PAD } from "../ui/popover/menu.js";
@@ -36,7 +40,7 @@ export function TokenHistoryButton(): JSX.Element {
                 토큰
             </button>
             {open && (
-                <FloatingSurface anchorRef={anchorRef} place={{ side: "below", align: "end", gap: 6 }} onClose={close} layout="column" width={400} padding={0}>
+                <FloatingSurface anchorRef={anchorRef} place={{ side: "below", align: "end", gap: 6 }} center onClose={close} layout="column" width={400} padding={0}>
                     <TokenHistoryMenu />
                 </FloatingSurface>
             )}
@@ -59,10 +63,20 @@ function isHere(s: Situation | undefined, t: ParsedState): boolean {
 function TokenHistoryMenu(): JSX.Element {
     const entries = useTokenHistory((st) => st.entries);
     const remove = useTokenHistory((st) => st.remove);
+    const clear = useTokenHistory((st) => st.clear);
+    const confirm = useConfirm();
     const nameOf = useStockNameOf();
+    const tradingDays = useTradingDays().data;
+    const dayIndex = useMemo(() => new Map((tradingDays ?? []).map((d, i) => [d, i])), [tradingDays]);
     const activeS = usePaths((st) => st.paths.find((p) => p.id === st.active)?.s);
-    // 고른 줄은 자리가 아니라 토큰 글자로 쥔다 — 위 줄을 지워도 고른 토큰이 그대로다. 없으면(처음·지움) 맨 위.
-    const [picked, setPicked] = useState<string | null>(null);
+    // 고른 줄은 자리가 아니라 토큰 글자로 쥔다 — 위 줄을 지워도 고른 토큰이 그대로다. 처음엔 지금 열린 토큰(●), 없으면(·지움) 맨 위.
+    const [picked, setPicked] = useState<string | null>(() => {
+        const s = usePaths.getState().paths.find((p) => p.id === usePaths.getState().active)?.s;
+        return useTokenHistory.getState().entries.find((e) => {
+            const t = parseStateToken(e.token);
+            return !!t && isHere(s, t);
+        })?.token ?? null;
+    });
     // 판이 열린 채 붙여넣으면(같은 글을 다시 붙여도) 맨 위(방금 연 토큰)로. 붙여넣기 = 맨 위 줄이 전에 없던 객체
     // (push 는 늘 새 객체를 쓰고, 지우기는 남은 객체를 그대로 둔다 — 맨 위 줄을 지워도 고른 줄은 그대로).
     const prevEntries = useRef(entries);
@@ -72,6 +86,17 @@ function TokenHistoryMenu(): JSX.Element {
     }, [entries]);
     const cur = Math.max(0, entries.findIndex((e) => e.token === picked));
     const rows = useRef<(HTMLDivElement | null)[]>([]);
+
+    // 고른 줄의 % — 커서가 0.3초 머문 줄만 받는다(w/s 연타로 지나가는 줄마다 받지 않게). 처음 줄은 바로.
+    const sel = entries[cur]?.token ?? null;
+    const [settled, setSettled] = useState(sel);
+    useEffect(() => {
+        const id = setTimeout(() => setSettled(sel), 300);
+        return () => clearTimeout(id);
+    }, [sel]);
+    const st = useMemo(() => (settled ? parseStateToken(settled) : null), [settled]);
+    const dq = useDailyCandles(st && !st.time && st.lines.length > 0 ? st.code : "", st?.date ?? "");
+    const pcts = useMemo(() => (st && dq.data && !dq.isPlaceholderData ? linePcts(dailyRowsOf(dq.data), st) : undefined), [st, dq.data, dq.isPlaceholderData]);
     // 본문을 중괄호로 — scrollIntoView 가 Promise 를 돌려주는 브라우저가 있어, 그대로 돌려주면 React 가 정리 함수로 부르다 죽는다.
     useEffect(() => {
         rows.current[cur]?.scrollIntoView({ block: "nearest" });
@@ -109,7 +134,6 @@ function TokenHistoryMenu(): JSX.Element {
                 <div style={{ overflowY: "auto", minHeight: 0, maxHeight: 420 }}>
                     {entries.map((e, i) => {
                         const t = parseStateToken(e.token);
-                        const desc = t && describeState(t);
                         const here = !!t && isHere(activeS, t);
                         return (
                             <div
@@ -150,10 +174,9 @@ function TokenHistoryMenu(): JSX.Element {
                                         ×
                                     </button>
                                 </div>
-                                {desc && (
+                                {t && (
                                     <div className="tabular" style={{ paddingLeft: 14, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                        {desc.zone}
-                                        {desc.side.length > 0 && <span style={MUTED}> · 곁 {desc.side.join(" · ")}</span>}
+                                        {lineDates(t, dayIndex, e.token === settled ? pcts : undefined)}
                                     </div>
                                 )}
                             </div>
@@ -161,7 +184,18 @@ function TokenHistoryMenu(): JSX.Element {
                     })}
                 </div>
             )}
-            <Note style={{ borderTop: "1px solid var(--border)", marginTop: 4, padding: "4px 12px 2px", fontSize: 10.5 }}>w/s 고르기 · Space 다시 열기 · Esc·Tab 닫기</Note>
+            <div style={{ display: "flex", alignItems: "center", borderTop: "1px solid var(--border)", marginTop: 4, padding: "4px 8px 2px 12px", minHeight: 24 }}>
+                {confirm.bar("clear") ?? (
+                    <>
+                        <Note style={{ flex: 1, fontSize: 10.5 }}>w/s 고르기 · Space 다시 열기 · Esc·Tab 닫기</Note>
+                        {entries.length > 0 && (
+                            <button style={{ ...smallButton, fontSize: 10.5 }} onClick={() => confirm.ask("clear", `토큰 기록 ${entries.length}줄을 전부 지울까?`, "전체 지우기", clear)}>
+                                전체 지우기
+                            </button>
+                        )}
+                    </>
+                )}
+            </div>
         </div>
     );
 }

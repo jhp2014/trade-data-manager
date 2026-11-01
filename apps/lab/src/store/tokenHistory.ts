@@ -19,6 +19,8 @@ interface TokenHistoryState {
     /** 붙여넣은 토큰들 — 글 속 순서대로 맨 위부터. 이미 있던 글자는 그 줄이 맨 위로 온다. */
     push: (tokens: readonly string[]) => void;
     remove: (token: string) => void;
+    /** 전부 지운다(판의 「전체 지우기」 — 확인 줄을 거친다). */
+    clear: () => void;
 }
 
 export const useTokenHistory = create<TokenHistoryState>()(
@@ -34,6 +36,7 @@ export const useTokenHistory = create<TokenHistoryState>()(
                     return { entries: [...fresh.map((token) => ({ token, at })), ...rest].slice(0, MAX_TOKENS) };
                 }),
             remove: (token) => set((st) => ({ entries: st.entries.filter((e) => e.token !== token) })),
+            clear: () => set({ entries: [] }),
         }),
         {
             name: "trade-lab.token-history",

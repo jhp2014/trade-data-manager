@@ -107,30 +107,46 @@ export function findStateTokens(text: string): { token: string; state: ParsedSta
 
 export const FIELD_LABEL: Record<LineField, string> = { O: "시가", H: "고가", L: "저가", C: "종가" };
 
-/** 선의 읽히는 이름 — "5/27 고가" · "5/27 고가(KRX)". 상태 날짜와 해가 다르면 "25/12/3 고가". */
-export function lineText(l: DailyLine, stateDate: string): string {
-    const [y, m, d] = l.date.split("-");
-    const md = `${Number(m)}/${Number(d)}`;
-    return `${y === stateDate.slice(0, 4) ? md : `${y.slice(2)}/${md}`} ${FIELD_LABEL[l.field]}${l.venue === "krx" ? "(KRX)" : ""}`;
-}
-
 /** 구간 이름 — 아래 경계·위 경계(없으면 null)로. 「토큰 복사」 판과 같은 말투: "A ~ B 사이" · "A 위" · "B 아래". */
 export function zoneText(below: string | null, above: string | null): string {
     return below && above ? `${below} ~ ${above} 사이` : below ? `${below} 위` : `${above ?? ""} 아래`;
 }
 
 /**
- * 읽은 상태의 구간과 곁 선을 말로 — 선은 토큰 순서(낮은 것부터)를 믿는다(가격 없이 읽으니까).
- * 선이 없으면 zone = "선 없음", 시각 붙은 꼴이면 zone = "HH:MM".
+ * 선마다 전날 종가 대비 %(lineRef → %) — 기준은 늘 UN*(유령 보정) 전날 종가다. KRX 선도 그 KRX 가격을 이 기준에 댄다
+ * (한 줄의 % 가 다 같은 기준이라 서로 견줄 수 있게). 받은 일봉에 선 봉·전날 봉이 없으면 그 선은 빠진다.
  */
-export function describeState(s: ParsedState): { zone: string; side: string[] } {
-    if (s.time) return { zone: s.time, side: [] };
-    if (s.lines.length === 0) return { zone: "선 없음", side: [] };
-    const names = s.lines.map((l) => lineText(l, s.date));
-    const below = s.zone > 0 ? s.zone - 1 : null;
-    const above = s.zone < names.length ? s.zone : null;
-    return {
-        zone: zoneText(below === null ? null : names[below], above === null ? null : names[above]),
-        side: names.filter((_, i) => i !== below && i !== above),
-    };
+export function linePcts(daily: readonly LabDailyCandle[], s: ParsedState): Map<string, number> {
+    const out = new Map<string, number>();
+    const prev = daily.filter((d) => d.date < s.date).at(-1);
+    const base = prev ? Number(unFixedBar(prev).close) : 0;
+    if (!base) return out;
+    for (const l of s.lines) {
+        const p = linePrice(daily, l);
+        if (p !== null) out.set(lineRef(l), ((p - base) / base) * 100);
+    }
+    return out;
+}
+
+/**
+ * 선을 날짜로 — 먼 것(옛 날)부터 "25/11/06(76)". 괄호 = 상태 날짜까지 거래일 수(전날 = 1 — dayIndex 에 두 날짜가 다 있을 때만)
+ * 와, pcts 를 주면 전날 종가 대비 %("25/11/06(76, +20.2%)" — linePcts).
+ * 구간(▲▼)은 말하지 않는다(고르기는 판단이 아니다). 고가·통합이 아닌 선만 값·시장을 덧붙인다("25/11/06(76) 저가 KRX").
+ * 선이 없으면 "선 없음", 시각 꼴이면 그 시각.
+ */
+export function lineDates(s: ParsedState, dayIndex?: ReadonlyMap<string, number>, pcts?: ReadonlyMap<string, number>): string {
+    if (s.time) return s.time;
+    if (s.lines.length === 0) return "선 없음";
+    const at = dayIndex?.get(s.date);
+    return [...s.lines]
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map((l) => {
+            const i = dayIndex?.get(l.date);
+            const pct = pcts?.get(lineRef(l));
+            const parts = [at !== undefined && i !== undefined ? String(at - i) : "", pct === undefined ? "" : `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`].filter(Boolean);
+            const dist = parts.length ? `(${parts.join(", ")})` : "";
+            const extra = `${l.field === "H" ? "" : ` ${FIELD_LABEL[l.field]}`}${l.venue === "krx" ? " KRX" : ""}`;
+            return `${l.date.slice(2).replaceAll("-", "/")}${dist}${extra}`;
+        })
+        .join(" · ");
 }

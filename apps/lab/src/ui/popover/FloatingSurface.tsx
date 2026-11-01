@@ -13,9 +13,11 @@ import { useCloseOnDetach, useFitInViewport } from "./useFitInViewport.js";
 /** 판 표면 표식 — 테스트가 "떠 있는 판"을 찾는 이름. */
 export const LAYER_ATTR = "data-popover-layer";
 
-export function FloatingSurface({ anchorRef, place, onClose, layout, width, padding, children }: {
+export function FloatingSurface({ anchorRef, place, center, onClose, layout, width, padding, children }: {
     anchorRef: RefObject<HTMLElement | null>;
     place: PlaceOpts;
+    /** 화면 가운데(위에서 15vh) 고정 — 앵커는 바깥 클릭·탈착 판정에만 쓴다(place 는 무시). */
+    center?: boolean;
     onClose: () => void;
     /**
      * 몸의 배치 규약 둘:
@@ -41,7 +43,7 @@ export function FloatingSurface({ anchorRef, place, onClose, layout, width, padd
     useCloseOnDetach(anchorRef, close);
 
     const body: CSSProperties = {
-        ...posStyle,
+        ...(center ? { position: "fixed", left: "50%", top: "15vh", transform: "translateX(-50%)", maxHeight: "70vh" } : posStyle),
         zIndex: Z_POPOVER,
         boxSizing: "border-box",
         width,
