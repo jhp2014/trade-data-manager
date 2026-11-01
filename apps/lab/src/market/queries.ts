@@ -26,6 +26,16 @@ const META_STALE = 30 * 60_000; // 종목 마스터 — 새 종목이 세션 내
 /** 과거 날짜 시세는 바뀌지 않는다. */
 const histStale = (date: string): number => (date < kstToday() ? Infinity : TODAY_STALE);
 
+/**
+ * 차트 시세의 자리 채움 — 같은 종목(키의 둘째 칸)이면 새 데이터가 올 때까지 직전 데이터를 잇고, 종목이 바뀌면 비운다.
+ * 날짜만 바뀔 땐 차트를 언마운트하지 않아 줌이 안 깨지고, 종목이 바뀔 땐 옛 종목 차트를 새 종목으로 오독하지 않는다
+ * (토큰을 붙인 뒤 처음 보는 종목의 일봉이 오는 0.6~1초 동안 머리글만 새 종목이던 일).
+ */
+export const keepSameStock =
+    (code: string) =>
+    <T>(prev: T | undefined, prevQuery?: { queryKey: readonly unknown[] }): T | undefined =>
+        prevQuery?.queryKey[1] === code ? prev : undefined;
+
 /** 일봉 한 덩이(년) — 처음엔 경로 날짜에서 이만큼, 왼쪽으로 끌 때마다 이만큼씩 더 받는다. */
 export const DAILY_CHUNK_YEARS = 2;
 
@@ -38,7 +48,7 @@ export interface DailyPage {
 
 /**
  * 일봉 — 경로 날짜(to)에서 끝나고, fetchNextPage 마다 그 앞 DAILY_CHUNK_YEARS 년을 더 받는다(차트를 왼쪽으로 끌 때).
- * 키가 바뀌면 새 데이터가 올 때까지 직전 데이터를 준다(isPlaceholderData) — 차트가 로딩으로 언마운트되지 않게.
+ * 같은 종목에서 날짜가 바뀌면 새 데이터가 올 때까지 직전 데이터를 준다(isPlaceholderData — 차트가 로딩으로 언마운트되지 않게). 종목이 바뀌면 비운다(keepSameStock).
  * 이어 붙인 오름차순 봉은 dailyRowsOf 로.
  */
 export function useDailyCandles(code: string, date: string): UseInfiniteQueryResult<InfiniteData<DailyPage, string>, Error> {
@@ -53,7 +63,7 @@ export function useDailyCandles(code: string, date: string): UseInfiniteQueryRes
         getNextPageParam: (last) => (last.rows.length === 0 ? undefined : addDays(last.from, -1)),
         enabled: code !== "" && date !== "",
         staleTime: histStale(date),
-        placeholderData: keepPreviousData,
+        placeholderData: keepSameStock(code),
     });
 }
 
@@ -65,10 +75,10 @@ export const dailyRowsOf = (data: InfiniteData<DailyPage, string> | undefined): 
 export const minuteDayQuery = (port: ChartData, code: string, date: string) =>
     queryOptions({ queryKey: ["minutes", code, date], queryFn: ({ signal }) => port.minutes(code, date, signal), staleTime: histStale(date) });
 
-/** 경로 날짜의 분봉 — 키가 바뀌면 새 데이터가 올 때까지 직전 데이터를 준다(isPlaceholderData). */
+/** 경로 날짜의 분봉 — 같은 종목이면 새 데이터가 올 때까지 직전 데이터를 준다(isPlaceholderData), 종목이 바뀌면 비운다(keepSameStock). */
 export function useMinuteDay(code: string, date: string): UseQueryResult<LabMinuteDay, Error> {
     const port = useChartData();
-    return useQuery({ ...minuteDayQuery(port, code, date), enabled: code !== "" && date !== "", placeholderData: keepPreviousData });
+    return useQuery({ ...minuteDayQuery(port, code, date), enabled: code !== "" && date !== "", placeholderData: keepSameStock(code) });
 }
 
 /** 여러 날 분봉의 한 날 — 아직 안 왔으면 data·failed 둘 다 비어 있다. */

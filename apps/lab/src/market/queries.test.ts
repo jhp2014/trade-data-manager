@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
-import { pruneDayFlows } from "./queries.js";
+import { keepSameStock, pruneDayFlows } from "./queries.js";
 
 const dates = (qc: QueryClient) =>
     qc
@@ -42,5 +42,14 @@ describe("pruneDayFlows", () => {
         pruneDayFlows(qc, 1, new Map([["2026-07-02", 1]]));
         expect(qc.getQueryData(["chart", "402340", "2026-07-31"])).toBeDefined();
         expect(dates(qc)).toEqual(["2026-07-02"]);
+    });
+});
+
+describe("keepSameStock", () => {
+    it("같은 종목이면 직전 데이터를 잇고, 종목이 바뀌면 비운다", () => {
+        const prev = { rows: [1] };
+        expect(keepSameStock("005930")(prev, { queryKey: ["daily", "005930", "2026-05-28"] })).toBe(prev);
+        expect(keepSameStock("000660")(prev, { queryKey: ["daily", "005930", "2026-05-28"] })).toBeUndefined();
+        expect(keepSameStock("005930")(undefined, undefined)).toBeUndefined();
     });
 });
