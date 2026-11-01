@@ -50,7 +50,8 @@ describe("토큰 기록 판", () => {
         expect(document.activeElement).toBe(button);
         fireEvent.click(button);
         expect(await screen.findByText("SK스퀘어")).toBeTruthy();
-        expect(screen.getByText("26/07/01 · 26/07/15")).toBeTruthy(); // 거래일 달력이 없으면 거래일 수는 빠진다
+        expect(screen.getByText("26/07/01")).toBeTruthy(); // 선 칸 — 거래일 달력이 없으면 거래일 수는 빠진다
+        expect(screen.getByText("26/07/15")).toBeTruthy();
         expect(screen.getByText("선 없음")).toBeTruthy();
         expect(selected()).toBe(T1); // 열리면 맨 위
         expect(document.activeElement?.tagName).not.toBe("BUTTON"); // 연 버튼의 포커스를 놓는다 — Space 가 버튼을 다시 누르지 않게

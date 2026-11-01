@@ -3,12 +3,13 @@
 // 열린 동안 w/s(고르기)·Space(다시 열기)는 **판의 것** — 판 안 키 처리라 커맨드 목록에 없고, 창(window) 캡처 단계에서 받아
 // 전역 디스패처보다 먼저 먹는다(같은 키가 나중에 전역 커맨드가 돼도 판이 열린 동안은 판이 이긴다). 입력칸 포커스면 쉰다.
 // 다시 열기는 붙여넣기와 같은 쓰기(활성 경로에 종목·날짜·선·구간)이고 판은 열린 채, 기록 순서도 그대로 — 차례로 훑게.
-// 판은 화면 가운데. 선은 날짜만 먼 것부터 + 상태 날짜까지 거래일 수(거래일 달력 — 종목 데이터 없이). 구간(▲▼)은 안 보인다.
+// 판은 화면 가운데. 줄 높이는 다 같다: 이름 줄 + 선 칸 셋(고정 폭 — 위 날짜, 아래 「35일」과 % 자리). 선은 먼 것부터,
+// 거래일 수는 거래일 달력으로(종목 데이터 없이). % 자리는 늘 비워 둬 커서가 와서 채워도 칸이 출렁이지 않는다. 구간(▲▼)은 안 보인다.
 // % 위치(전날 종가 대비 — linePcts)는 고른 줄에만: 커서가 0.3초 머물면 그 종목 일봉을 차트와 같은 캐시로 받는다
 // (Space 로 열면 차트가 기다리지 않는다 — 미리 받기 겸). 판을 열면 커서는 지금 열린 토큰(●)에서, 없으면 맨 위.
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { chordOf, isEditable } from "../keymap/keys.js";
-import { lineDates, linePcts, lineRef, parseStateToken, type DailyLine, type ParsedState } from "../lib/stateToken.js";
+import { lineCells, linePcts, lineRef, parseStateToken, type DailyLine, type ParsedState } from "../lib/stateToken.js";
 import { useLatest } from "../lib/useLatest.js";
 import { dateLabel } from "../lib/date.js";
 import { dailyRowsOf, useDailyCandles, useStockNameOf, useTradingDays } from "../market/queries.js";
@@ -174,11 +175,7 @@ function TokenHistoryMenu(): JSX.Element {
                                         ×
                                     </button>
                                 </div>
-                                {t && (
-                                    <div className="tabular" style={{ paddingLeft: 14, color: "var(--text-2)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                        {lineDates(t, dayIndex, e.token === settled ? pcts : undefined)}
-                                    </div>
-                                )}
+                                <LineCells t={t} dayIndex={dayIndex} pcts={e.token === settled ? pcts : undefined} />
                             </div>
                         );
                     })}
@@ -201,6 +198,37 @@ function TokenHistoryMenu(): JSX.Element {
 }
 
 const MUTED: CSSProperties = { color: "var(--text-3)" };
+const CELL_LINE = 16;
+
+/** 선 칸 셋 — 칸 폭·줄 높이는 선이 몇 개든(없어도) 같다. 위 = 날짜(+덧말), 아래 = 「35일」 + % 자리(고른 줄만 채운다). */
+function LineCells({ t, dayIndex, pcts }: { t: ParsedState | null; dayIndex: ReadonlyMap<string, number>; pcts: ReadonlyMap<string, number> | undefined }): JSX.Element {
+    const cells = t ? lineCells(t, dayIndex, pcts) : [];
+    const empty = !t ? "" : t.time ? t.time : cells.length === 0 ? "선 없음" : null;
+    return (
+        <div className="tabular" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", columnGap: 8, paddingLeft: 14, lineHeight: `${CELL_LINE}px`, height: CELL_LINE * 2 }}>
+            {empty !== null ? (
+                <span style={{ ...MUTED, gridColumn: "1 / -1" }}>{empty}</span>
+            ) : (
+                cells.map((c) => (
+                    <div key={c.ref} style={{ display: "flex", flexDirection: "column", minWidth: 0, whiteSpace: "nowrap" }}>
+                        <span style={{ color: "var(--text-2)" }}>
+                            {c.date}
+                            {c.extra && <span style={{ ...MUTED, fontSize: 10.5 }}> {c.extra}</span>}
+                        </span>
+                        <span style={MUTED}>
+                            {c.days === null ? "" : `${c.days}일`}
+                            {c.pct !== null && (
+                                <span style={{ marginLeft: 6, color: c.pct > 0 ? "var(--rise)" : c.pct < 0 ? "var(--fall)" : "var(--text-2)" }}>
+                                    {`${c.pct > 0 ? "+" : ""}${c.pct.toFixed(1)}%`}
+                                </span>
+                            )}
+                        </span>
+                    </div>
+                ))
+            )}
+        </div>
+    );
+}
 
 function Note({ children, style }: { children: ReactNode; style: CSSProperties }): JSX.Element {
     return <div style={{ ...MUTED, fontSize: 11.5, ...style }}>{children}</div>;

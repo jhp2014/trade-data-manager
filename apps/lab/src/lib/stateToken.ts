@@ -128,25 +128,34 @@ export function linePcts(daily: readonly LabDailyCandle[], s: ParsedState): Map<
     return out;
 }
 
+/** 토큰 기록 판의 선 칸 하나 — 날짜("26/01/07") · 덧말(고가·통합이 아닐 때 "저가 KRX" 꼴) · 상태 날짜까지 거래일 수 · 전날 종가 대비 %. */
+export interface LineCell {
+    ref: string;
+    date: string;
+    extra: string;
+    /** 상태 날짜까지 거래일 수(전날 = 1) — dayIndex 에 두 날짜가 다 있을 때만. */
+    days: number | null;
+    /** 전날 종가 대비 %(linePcts) — pcts 를 줬고 그 선이 있을 때만. */
+    pct: number | null;
+}
+
 /**
- * 선을 날짜로 — 먼 것(옛 날)부터 "25/11/06(76)". 괄호 = 상태 날짜까지 거래일 수(전날 = 1 — dayIndex 에 두 날짜가 다 있을 때만)
- * 와, pcts 를 주면 전날 종가 대비 %("25/11/06(76, +20.2%)" — linePcts).
- * 구간(▲▼)은 말하지 않는다(고르기는 판단이 아니다). 고가·통합이 아닌 선만 값·시장을 덧붙인다("25/11/06(76) 저가 KRX").
- * 선이 없으면 "선 없음", 시각 꼴이면 그 시각.
+ * 선을 칸으로 — 먼 것(옛 날)부터. 구간(▲▼)은 말하지 않는다(고르기는 판단이 아니다).
+ * 시각 꼴·선 없는 토큰은 빈 배열(판이 「선 없음」·시각을 따로 쓴다).
  */
-export function lineDates(s: ParsedState, dayIndex?: ReadonlyMap<string, number>, pcts?: ReadonlyMap<string, number>): string {
-    if (s.time) return s.time;
-    if (s.lines.length === 0) return "선 없음";
+export function lineCells(s: ParsedState, dayIndex?: ReadonlyMap<string, number>, pcts?: ReadonlyMap<string, number>): LineCell[] {
+    if (s.time) return [];
     const at = dayIndex?.get(s.date);
     return [...s.lines]
         .sort((a, b) => a.date.localeCompare(b.date))
         .map((l) => {
             const i = dayIndex?.get(l.date);
-            const pct = pcts?.get(lineRef(l));
-            const parts = [at !== undefined && i !== undefined ? String(at - i) : "", pct === undefined ? "" : `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`].filter(Boolean);
-            const dist = parts.length ? `(${parts.join(", ")})` : "";
-            const extra = `${l.field === "H" ? "" : ` ${FIELD_LABEL[l.field]}`}${l.venue === "krx" ? " KRX" : ""}`;
-            return `${l.date.slice(2).replaceAll("-", "/")}${dist}${extra}`;
-        })
-        .join(" · ");
+            return {
+                ref: lineRef(l),
+                date: l.date.slice(2).replaceAll("-", "/"),
+                extra: [l.field === "H" ? "" : FIELD_LABEL[l.field], l.venue === "krx" ? "KRX" : ""].filter(Boolean).join(" "),
+                days: at !== undefined && i !== undefined ? at - i : null,
+                pct: pcts?.get(lineRef(l)) ?? null,
+            };
+        });
 }
