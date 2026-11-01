@@ -112,38 +112,21 @@ export function zoneText(below: string | null, above: string | null): string {
     return below && above ? `${below} ~ ${above} 사이` : below ? `${below} 위` : `${above ?? ""} 아래`;
 }
 
-/**
- * 선마다 전날 종가 대비 %(lineRef → %) — 기준은 늘 UN*(유령 보정) 전날 종가다. KRX 선도 그 KRX 가격을 이 기준에 댄다
- * (한 줄의 % 가 다 같은 기준이라 서로 견줄 수 있게). 받은 일봉에 선 봉·전날 봉이 없으면 그 선은 빠진다.
- */
-export function linePcts(daily: readonly LabDailyCandle[], s: ParsedState): Map<string, number> {
-    const out = new Map<string, number>();
-    const prev = daily.filter((d) => d.date < s.date).at(-1);
-    const base = prev ? Number(unFixedBar(prev).close) : 0;
-    if (!base) return out;
-    for (const l of s.lines) {
-        const p = linePrice(daily, l);
-        if (p !== null) out.set(lineRef(l), ((p - base) / base) * 100);
-    }
-    return out;
-}
 
-/** 토큰 기록 판의 선 칸 하나 — 날짜("26/01/07") · 덧말(고가·통합이 아닐 때 "저가 KRX" 꼴) · 상태 날짜까지 거래일 수 · 전날 종가 대비 %. */
+/** 토큰 기록 판의 선 칸 하나 — 날짜("26/01/07") · 덧말(고가·통합이 아닐 때 "저가 KRX" 꼴) · 상태 날짜까지 거래일 수. */
 export interface LineCell {
     ref: string;
     date: string;
     extra: string;
     /** 상태 날짜까지 거래일 수(전날 = 1) — dayIndex 에 두 날짜가 다 있을 때만. */
     days: number | null;
-    /** 전날 종가 대비 %(linePcts) — pcts 를 줬고 그 선이 있을 때만. */
-    pct: number | null;
 }
 
 /**
  * 선을 칸으로 — 먼 것(옛 날)부터. 구간(▲▼)은 말하지 않는다(고르기는 판단이 아니다).
  * 시각 꼴·선 없는 토큰은 빈 배열(판이 「선 없음」·시각을 따로 쓴다).
  */
-export function lineCells(s: ParsedState, dayIndex?: ReadonlyMap<string, number>, pcts?: ReadonlyMap<string, number>): LineCell[] {
+export function lineCells(s: ParsedState, dayIndex?: ReadonlyMap<string, number>): LineCell[] {
     if (s.time) return [];
     const at = dayIndex?.get(s.date);
     return [...s.lines]
@@ -155,7 +138,6 @@ export function lineCells(s: ParsedState, dayIndex?: ReadonlyMap<string, number>
                 date: l.date.slice(2).replaceAll("-", "/"),
                 extra: [l.field === "H" ? "" : FIELD_LABEL[l.field], l.venue === "krx" ? "KRX" : ""].filter(Boolean).join(" "),
                 days: at !== undefined && i !== undefined ? at - i : null,
-                pct: pcts?.get(lineRef(l)) ?? null,
             };
         });
 }

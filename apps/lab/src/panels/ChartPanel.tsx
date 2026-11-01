@@ -130,18 +130,30 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         () => (dailyCurrent ? dailyMerged.map(({ item, kind }) => ({ item, kind, ref: lineRef(item), price: linePrice(rows, item) })) : []),
         [dailyCurrent, dailyMerged, rows],
     );
+    // 칩 = 선 봉의 날짜, 가로선 위 = 전날 종가 대비 % — 기준은 차트 모드의 전날 종가(UN* · UN · KRX — 보이는 전날 봉과 같은 기준,
+    // 한 화면의 % 가 다 같은 기준). 값·시장·거리는 칩 카드에.
+    const prevClose = useMemo(() => daily.filter((p) => p.time < date).at(-1)?.close ?? null, [daily, date]);
+    const dayIndex = useMemo(() => new Map((tradingDays ?? []).map((d, i) => [d, i])), [tradingDays]);
     const chartLines = useMemo(
         (): LineMark[] =>
-            dailyPriced.flatMap((l) =>
-                l.price == null
-                    ? []
-                    : [{
-                          key: l.ref, time: l.item.date, price: l.price, kind: l.kind,
-                          short: `${l.item.field}${l.item.venue === "krx" ? "·K" : ""}`,
-                          tip: `${l.ref} — ${l.item.date} ${FIELD_LABEL[l.item.field]}${l.item.venue === "krx" ? "(KRX)" : ""} ${l.price.toLocaleString()}\n${KIND_TIP[l.kind]}${l.kind === "saved" && l.item.date >= date ? "\n(같은 날 봉 — 토큰에 못 넣어 가져오기 안 됨)" : ""}`,
-                      }],
-            ),
-        [dailyPriced],
+            dailyPriced.flatMap((l) => {
+                if (l.price == null) return [];
+                const pct = prevClose ? ((l.price - prevClose) / prevClose) * 100 : null;
+                const pctText = pct === null ? null : `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
+                const at = dayIndex.get(date);
+                const i = dayIndex.get(l.item.date);
+                const modeLabel = DAILY_MODE_VALUES.find((o) => o.v === mode)?.label ?? "";
+                const rows: [string, string][] = [["값", `${FIELD_LABEL[l.item.field]} · ${l.item.venue === "krx" ? "KRX" : "통합(UN*)"}`], ["가격", l.price.toLocaleString()]];
+                if (pctText && prevClose) rows.push(["전날 종가 대비", `${pctText} (${modeLabel} ${prevClose.toLocaleString()})`]);
+                if (at !== undefined && i !== undefined) rows.push(["거리", `${at - i}거래일 전`]);
+                return [{
+                    key: l.ref, time: l.item.date, price: l.price, kind: l.kind,
+                    short: l.item.date.slice(2).replaceAll("-", "/"),
+                    note: pctText ?? undefined,
+                    info: { title: `${l.item.date} 선`, rows, hint: `${KIND_TIP[l.kind]}${l.kind === "saved" && l.item.date >= date ? " · 같은 날 봉이라 토큰에 못 넣는다" : ""}` },
+                }];
+            }),
+        [dailyPriced, prevClose, dayIndex, date, mode],
     );
     // 선이 있는데 일봉이 지금 경로의 것이 아니면(불러오는 중·오류) 구간을 못 만든다 — 열린 판이 「선 없음」으로 바뀌어 선을 뺀 토큰이 복사되지 않게 비운다
     const zones = useMemo(() => (code && date && (dailyCurrent || lines.length === 0) ? zonesOf(code, date, priced) : []), [code, date, dailyCurrent, lines.length, priced]);
@@ -176,7 +188,11 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         return minuteMerged.flatMap(({ item, kind }) => {
             const p = byKey.get(`${item.date} ${item.time}`);
             if (!p) return []; // 그 날 분봉을 아직 안 받았다(가격 축의 앞 날) — 받으면 선다
-            return [{ key: minuteRef(item), time: p.time, price: p[BAR_KEY[item.field]], kind, short: item.field, tip: `${item.date} ${item.time.slice(0, 5)} ${FIELD_LABEL[item.field]}\n${KIND_TIP[kind]}` }];
+            return [{
+                key: minuteRef(item), time: p.time, price: p[BAR_KEY[item.field]], kind,
+                short: item.time.slice(0, 5),
+                info: { title: `${item.date} ${item.time.slice(0, 5)} 분봉 선`, rows: [["값", `${FIELD_LABEL[item.field]} · 통합`]], hint: KIND_TIP[kind] },
+            }];
         });
     }, [minute, minuteCurrent, minuteMerged]);
     const pickMinuteLine = (d: string, t: string): void => {

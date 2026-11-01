@@ -22,16 +22,18 @@ export interface PriceLevel {
     value: number;
     /** 생략 = 임시 선 색. */
     color?: string;
+    /** 가로선 위 축 옆 글자(일봉 선 = 전날 종가 대비 %). 생략 = 없음. */
+    title?: string;
 }
 
 /** levels 가 바뀔 때만 다시 긋는다. 시리즈가 먼저 죽었으면(차트 정리) 걷을 것이 없다. */
 export function usePriceLevels(candleRef: RefObject<ISeriesApi<"Candlestick"> | null>, gen: number, levels: readonly PriceLevel[]): void {
-    const key = levels.map((l) => `${l.key}=${l.value}=${l.color ?? ""}`).join("|");
+    const key = levels.map((l) => `${l.key}=${l.value}=${l.color ?? ""}=${l.title ?? ""}`).join("|");
     useEffect(() => {
         const candle = candleRef.current;
         if (!candle) return;
         const made = levels.map((l) =>
-            candle.createPriceLine({ price: l.value, color: l.color ?? TEMP_LINE_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: "" }),
+            candle.createPriceLine({ price: l.value, color: l.color ?? TEMP_LINE_COLOR, lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: l.title ?? "" }),
         );
         return () => {
             if (candleRef.current === candle) for (const pl of made) candle.removePriceLine(pl);

@@ -77,7 +77,7 @@ export function DailyChart({
         onPrimaryAction: onPickDate,
     });
 
-    usePriceLevels(series.candleRef, series.gen, useMemo(() => lines.map((l) => ({ key: l.key, value: l.price, color: lineColorOf(l.kind) })), [lines]));
+    usePriceLevels(series.candleRef, series.gen, useMemo(() => lines.map((l) => ({ key: l.key, value: l.price, color: lineColorOf(l.kind), title: l.note })), [lines]));
     // 우클릭 = 커서 아래 봉 — 논리 인덱스로 고른다(그림 상자 밖 = 가격 축 위·빈칸·여백이면 무시).
     const onContextMenu = (e: React.MouseEvent<HTMLDivElement>): void => {
         if (!onLinePick) return;
