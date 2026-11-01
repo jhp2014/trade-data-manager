@@ -1,5 +1,5 @@
-import { useMemo, useRef } from "react";
-import { CrosshairMode, LineStyle, type Time } from "lightweight-charts";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { CrosshairMode, LineStyle, type IChartApi, type ISeriesApi, type MouseEventParams, type Time } from "lightweight-charts";
 import { RISE_COLOR, FALL_COLOR } from "./chartUtils.js";
 import { barIndexAt, baseChartOptions, centerOnIndex, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
 import { useDailySeries, useDailySeriesData, useDailyVisibleRange } from "./dailyChartHooks.js";
@@ -36,6 +36,7 @@ export function DailyChart({
     onChipClick,
     onChipRemove,
     onNeedOlder,
+    pctBase = null,
 }: {
     points: DailyPoint[];
     /** 데이터셋 정체성 — 바뀔 때만 표시범위를 다시 잡는다. */
@@ -52,6 +53,8 @@ export function DailyChart({
     onChipRemove?: (mark: ChartLine) => void;
     /** 왼쪽 끝에 닿았다 — 더 앞 일봉을 받을 때(받는 중 중복은 호출자가 막는다). */
     onNeedOlder?: () => void;
+    /** 전날 종가(차트 모드) — 십자선 가격 라벨 옆에 이 값 대비 % 를 띄운다(선의 축 옆 % 와 같은 기준). 없으면 안 띄운다. */
+    pctBase?: number | null;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
     const chartRef = useChartShell(containerRef, () => ({
@@ -88,6 +91,8 @@ export function DailyChart({
     // ◀▶ 칩 — 그 봉을 가운데로(보이는 폭은 그대로).
     const goTo = (time: string | number): void => centerOnIndex(chartRef.current, points.findIndex((p) => p.time === time));
 
+    const crossPct = useCrossPct(chartRef, series.candleRef, series.gen, pctBase);
+
     const { cursor, onCursorMove } = useRafCursor();
     const { state: tip } = useCrosshairTooltip({
         chartRef,
@@ -118,6 +123,48 @@ export function DailyChart({
         <div ref={containerRef} onMouseMove={onCursorMove} onContextMenu={onContextMenu} style={{ position: "relative", width: "100%", height: "100%" }}>
             <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={lines} gen={series.gen} dataKey={points} onGoTo={goTo} onClick={(m) => onChipClick?.(m)} onRemove={(m) => onChipRemove?.(m)} />
             {tip.visible && <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>{tip.content}</FloatingTooltip>}
+            {crossPct && (
+                <div
+                    data-layer="cross-pct"
+                    className="tabular"
+                    style={{
+                        position: "absolute", right: crossPct.right + 3, top: crossPct.y - 8, height: 16, lineHeight: "16px", padding: "0 4px",
+                        fontSize: 11, fontWeight: 600, borderRadius: 2, pointerEvents: "none", zIndex: 5, whiteSpace: "nowrap",
+                        background: "rgba(60,60,60,0.85)", color: "#fff",
+                    }}
+                >
+                    {`${crossPct.pct > 0 ? "+" : ""}${crossPct.pct.toFixed(1)}%`}
+                </div>
+            )}
         </div>
     );
+}
+
+/**
+ * 십자선 가로선의 % — 커서 높이의 가격을 전날 종가 대비로. 가격 축 라벨 바로 왼쪽에 붙인다(선의 축 옆 % 와 같은 자리·같은 기준).
+ * 캔들 pane 밖(거래대금 pane)이거나 기준이 없으면 없다.
+ */
+function useCrossPct(
+    chartRef: RefObject<IChartApi | null>,
+    candleRef: RefObject<ISeriesApi<"Candlestick"> | null>,
+    gen: number,
+    base: number | null,
+): { y: number; right: number; pct: number } | null {
+    const [v, setV] = useState<{ y: number; right: number; pct: number } | null>(null);
+    useEffect(() => {
+        const chart = chartRef.current;
+        const candle = candleRef.current;
+        setV(null);
+        if (!chart || !candle || !base) return;
+        const on = (p: MouseEventParams): void => {
+            const paneH = chart.panes()[0]?.getHeight() ?? Infinity;
+            const price = p.point && p.point.y <= paneH ? candle.coordinateToPrice(p.point.y) : null;
+            if (!p.point || price === null) return setV(null);
+            setV({ y: p.point.y, right: chart.priceScale("right").width(), pct: ((price - base) / base) * 100 });
+        };
+        chart.subscribeCrosshairMove(on);
+        return () => chart.unsubscribeCrosshairMove(on);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [gen, base]);
+    return v;
 }

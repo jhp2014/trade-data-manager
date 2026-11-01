@@ -3,7 +3,8 @@
 // 칩 모양 = 선의 종류, 두 채널로(priceLevels 머리 주석) — 채움 = 저장, 테두리 = 임시:
 // 임시만 = 빈 칩 + 초록 테두리(누르면 저장) · 저장만 = 먹색 채움(누르면 임시로 가져옴) · 둘 다 = 먹색 채움 + 굵은 초록 고리.
 // 칩 위 우클릭 = 한 겹 걷기(임시만 → 임시 지움, 저장된 것 → 저장에서 지움). 그림 상자 밖 봉은 가장자리 ◀▶ 칩 — 누르면 그 봉으로.
-// 칩 글자는 날짜(일봉 선 「26/01/07」 · 분봉 선 「09:44」)뿐 — 값·시장·%·거리 같은 자세한 것은 칩에 올리면 뜨는 카드(브라우저 툴팁 말고 앱 안 카드).
+// 칩 글자는 날짜(일봉 선 「01/07」 — 해는 시간축에 보인다 · 분봉 선 「09:44」)뿐 — 값 이름·시장·거리는 칩에 올리면 뜨는 카드(브라우저 툴팁 말고 앱 안 카드).
+// % 는 카드에 없다 — 가로선 축 옆에 이미 있다.
 // SVG 오버레이: 상자는 pointerEvents none, 칩만 all — 팬·크로스헤어·봉 우클릭 같은 차트 손짓을 가리지 않는다.
 import { useEffect, useState, type CSSProperties, type RefObject } from "react";
 import type { IChartApi, ISeriesApi, Time } from "lightweight-charts";
@@ -16,7 +17,7 @@ export interface LineMark {
     /** 그 차트 축 단위의 값. */
     price: number;
     kind: LineKind;
-    /** 칩 글자 — 선 봉의 날짜("26/01/07")·분봉 선은 시각("09:44"). */
+    /** 칩 글자 — 선 봉의 날짜("01/07")·분봉 선은 시각("09:44"). */
     short: string;
     /** 칩에 올리면 뜨는 카드의 내용. */
     info: LineInfo;
@@ -24,14 +25,15 @@ export interface LineMark {
     note?: string;
 }
 
-/** 칩 카드 — 제목 한 줄 · 이름/값 줄들 · 손짓 안내. */
+/** 칩 카드 — 머리(「26/05/11 고가 · UN*」) · 아래 한 줄(「64거래일 전」) · 손짓 안내. 묶음 카드(◀▶)는 list 로 선들을 늘어놓는다. */
 export interface LineInfo {
-    title: string;
-    rows: readonly (readonly [string, string])[];
+    head: string;
+    sub?: string;
+    list?: readonly string[];
     hint: string;
 }
 
-export const CHIP_W = 42;
+export const CHIP_W = 32;
 const CHIP_H = 13;
 const CHIP_Y = 4;
 /** 칩 줄 간격 — 가까운 봉의 칩은 아랫줄로 비켜 선다. */
@@ -175,7 +177,7 @@ export function LineMarkLayer({
                 key={side}
                 style={{ pointerEvents: "all", cursor: "pointer" }}
                 onClick={() => onGoTo(edgeTarget(side, items))}
-                {...hoverOn(x, CHIP_Y + CHIP_H, { title: `창 밖 선 ${items.length}개`, rows: items.map((m) => [m.short, m.info.title] as const), hint: "누르면 그리로 이동" })}
+                {...hoverOn(x, CHIP_Y + CHIP_H, { head: `창 밖 선 ${items.length}개`, list: items.map((m) => m.info.head), hint: "클릭 그리로 이동" })}
             >
                 <rect x={x - CHIP_W / 2} y={CHIP_Y} width={CHIP_W} height={CHIP_H} rx={3} fill="var(--surface)" fillOpacity={0.92} stroke={color} strokeWidth={0.7} />
                 <text x={x} y={CHIP_Y + 9.5} textAnchor="middle" style={{ fontSize: 8, fill: color }}>
@@ -224,8 +226,8 @@ export function LineMarkLayer({
     );
 }
 
-const CARD_W = 210;
-const CARD_MUTED: CSSProperties = { color: "var(--text-3)" };
+const CARD_W = 170;
+const CARD_MUTED: CSSProperties = { color: "var(--text-3)", fontSize: 11 };
 
 /** 칩 카드 — 칩 바로 아래, 차트 폭 안으로 당겨 놓는다. 손짓을 가리지 않게 pointerEvents none. */
 function ChipCard({ x, y, info, width }: { x: number; y: number; info: LineInfo; width: number }): JSX.Element {
@@ -236,22 +238,16 @@ function ChipCard({ x, y, info, width }: { x: number; y: number; info: LineInfo;
             className="tabular"
             style={{
                 position: "absolute", left, top: y + 4, width: CARD_W, zIndex: 6, pointerEvents: "none", boxSizing: "border-box",
-                padding: "6px 9px", fontSize: 11.5, lineHeight: 1.45, background: "var(--surface)", color: "var(--text)",
+                padding: "6px 10px", fontSize: 12, lineHeight: 1.45, background: "var(--surface)", color: "var(--text)", whiteSpace: "nowrap",
                 border: "1px solid var(--border)", borderRadius: 6, boxShadow: "0 4px 14px rgba(0,0,0,0.14)",
             }}
         >
-            <div style={{ fontWeight: 700, marginBottom: info.rows.length ? 3 : 0 }}>{info.title}</div>
-            {info.rows.length > 0 && (
-                <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 10 }}>
-                    {info.rows.map(([k, v], i) => (
-                        <div key={i} style={{ display: "contents" }}>
-                            <span style={CARD_MUTED}>{k}</span>
-                            <span style={{ textAlign: "right" }}>{v}</span>
-                        </div>
-                    ))}
-                </div>
-            )}
-            <div style={{ ...CARD_MUTED, fontSize: 10.5, marginTop: 4, borderTop: "1px solid var(--border)", paddingTop: 3 }}>{info.hint}</div>
+            <div style={{ fontWeight: 700 }}>{info.head}</div>
+            {info.sub && <div style={{ color: "var(--text-2)" }}>{info.sub}</div>}
+            {info.list?.map((t, i) => (
+                <div key={i} style={{ fontSize: 11.5 }}>{t}</div>
+            ))}
+            <div style={{ ...CARD_MUTED, marginTop: 4, borderTop: "1px solid var(--border)", paddingTop: 3 }}>{info.hint}</div>
         </div>
     );
 }

@@ -45,9 +45,9 @@ const LINE_FIELDS: readonly LineField[] = ["O", "H", "L", "C"];
 const LINE_FIELD_VALUES = LINE_FIELDS.map((v) => ({ v, label: FIELD_LABEL[v] }));
 const BAR_KEY = { O: "open", H: "high", L: "low", C: "close" } as const;
 const KIND_TIP: Record<LineKind, string> = {
-    temp: "임시 선 · 클릭 = 저장 · 우클릭 = 지우기",
-    both: "저장됨(임시에도 있음) · 우클릭 = 저장에서 지우기",
-    saved: "저장된 선 · 클릭 = 임시로 가져오기(토큰) · 우클릭 = 저장에서 지우기",
+    temp: "클릭 저장 · 우클릭 지우기",
+    both: "저장됨 · 우클릭 저장에서 지우기",
+    saved: "클릭 임시로 가져오기 · 우클릭 저장에서 지우기",
 };
 const NO_MINUTE_LINES: MinuteLineCoord[] = [];
 /** 「가격」 축에서 왼쪽 끝에 닿을 때마다 더 받는 앞 거래일 수 · 이어 볼 수 있는 앞 거래일 상한(봉이 수만 개 쌓이지 않게). */
@@ -131,7 +131,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         [dailyCurrent, dailyMerged, rows],
     );
     // 칩 = 선 봉의 날짜, 가로선 위 = 전날 종가 대비 % — 기준은 차트 모드의 전날 종가(UN* · UN · KRX — 보이는 전날 봉과 같은 기준,
-    // 한 화면의 % 가 다 같은 기준). 값·시장·거리는 칩 카드에.
+    // 한 화면의 % 가 다 같은 기준 — 십자선 가격 라벨 옆 % 도 같은 기준). 값 이름·시장·거리는 칩 카드에.
     const prevClose = useMemo(() => daily.filter((p) => p.time < date).at(-1)?.close ?? null, [daily, date]);
     const dayIndex = useMemo(() => new Map((tradingDays ?? []).map((d, i) => [d, i])), [tradingDays]);
     const chartLines = useMemo(
@@ -142,18 +142,18 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 const pctText = pct === null ? null : `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
                 const at = dayIndex.get(date);
                 const i = dayIndex.get(l.item.date);
-                const modeLabel = DAILY_MODE_VALUES.find((o) => o.v === mode)?.label ?? "";
-                const rows: [string, string][] = [["값", `${FIELD_LABEL[l.item.field]} · ${l.item.venue === "krx" ? "KRX" : "통합(UN*)"}`], ["가격", l.price.toLocaleString()]];
-                if (pctText && prevClose) rows.push(["전날 종가 대비", `${pctText} (${modeLabel} ${prevClose.toLocaleString()})`]);
-                if (at !== undefined && i !== undefined) rows.push(["거리", `${at - i}거래일 전`]);
                 return [{
                     key: l.ref, time: l.item.date, price: l.price, kind: l.kind,
-                    short: l.item.date.slice(2).replaceAll("-", "/"),
+                    short: l.item.date.slice(5).replace("-", "/"),
                     note: pctText ?? undefined,
-                    info: { title: `${l.item.date} 선`, rows, hint: `${KIND_TIP[l.kind]}${l.kind === "saved" && l.item.date >= date ? " · 같은 날 봉이라 토큰에 못 넣는다" : ""}` },
+                    info: {
+                        head: `${l.item.date.slice(2).replaceAll("-", "/")} ${FIELD_LABEL[l.item.field]} · ${l.item.venue === "krx" ? "KRX" : "UN*"}`,
+                        sub: at !== undefined && i !== undefined ? `${at - i}거래일 전` : undefined,
+                        hint: `${KIND_TIP[l.kind]}${l.kind === "saved" && l.item.date >= date ? " · 같은 날 봉은 토큰에 못 넣음" : ""}`,
+                    },
                 }];
             }),
-        [dailyPriced, prevClose, dayIndex, date, mode],
+        [dailyPriced, prevClose, dayIndex, date],
     );
     // 선이 있는데 일봉이 지금 경로의 것이 아니면(불러오는 중·오류) 구간을 못 만든다 — 열린 판이 「선 없음」으로 바뀌어 선을 뺀 토큰이 복사되지 않게 비운다
     const zones = useMemo(() => (code && date && (dailyCurrent || lines.length === 0) ? zonesOf(code, date, priced) : []), [code, date, dailyCurrent, lines.length, priced]);
@@ -191,7 +191,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
             return [{
                 key: minuteRef(item), time: p.time, price: p[BAR_KEY[item.field]], kind,
                 short: item.time.slice(0, 5),
-                info: { title: `${item.date} ${item.time.slice(0, 5)} 분봉 선`, rows: [["값", `${FIELD_LABEL[item.field]} · 통합`]], hint: KIND_TIP[kind] },
+                info: { head: `${item.date.slice(2).replaceAll("-", "/")} ${item.time.slice(0, 5)} ${FIELD_LABEL[item.field]} · UN`, hint: KIND_TIP[kind] },
             }];
         });
     }, [minute, minuteCurrent, minuteMerged]);
@@ -311,6 +311,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                 onChipClick={(m) => onDailyChipAct(m, "click")}
                                 onChipRemove={(m) => onDailyChipAct(m, "context")}
                                 onNeedOlder={needOlderDaily}
+                                pctBase={prevClose}
                             />
                         ) : (
                             <Center>일봉 없음</Center>
