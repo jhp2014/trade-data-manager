@@ -1,7 +1,7 @@
 // 선의 상단 표식 — 선을 만든 봉 위(차트 꼭대기)에 작은 칩, 칩에서 선 가격까지 점선 드롭선(workbench 앵커 표식의 결). 일봉·분봉 공용.
 // 가격선의 축 라벨은 가격만 보이고, "어느 봉의 무엇인가"는 이 칩이 말한다(라벨 옆 글자는 가격 라벨을 가려 보기 안 좋다).
-// 칩 모양 = 선의 종류, 두 채널로(priceLevels 머리 주석) — 채움 = 저장, 테두리 = 임시:
-// 임시만 = 빈 칩 + 초록 테두리(누르면 저장) · 저장만 = 먹색 채움(누르면 임시로 가져옴) · 둘 다 = 먹색 채움 + 굵은 초록 고리.
+// 칩 = 상자 없는 글자(12px, 차트 위에서 읽히게 바탕색 테두리) — 종류는 두 채널로: **글자 색 = 임시인가**(초록 = 경로에 있다, 먹색 = 저장만),
+// **책갈피 = 저장인가**. 임시만 = 초록 글자(누르면 저장) · 저장만 = 책갈피 + 먹색 글자(누르면 임시로 가져옴) · 둘 다 = 책갈피 + 초록 글자.
 // 칩 위 우클릭 = 한 겹 걷기(임시만 → 임시 지움, 저장된 것 → 저장에서 지움). 그림 상자 밖 봉은 가장자리 ◀▶ 칩 — 누르면 그 봉으로.
 // 칩 글자는 날짜(일봉 선 「01/07」 — 해는 시간축에 보인다 · 분봉 선 「09:44」)뿐 — 값 이름·시장·거리는 칩에 올리면 뜨는 카드(브라우저 툴팁 말고 앱 안 카드).
 // % 는 카드에 없다 — 가로선 축 옆에 이미 있다.
@@ -33,11 +33,22 @@ export interface LineInfo {
     hint: string;
 }
 
-export const CHIP_W = 32;
-const CHIP_H = 13;
+export const CHIP_W = 46;
+const CHIP_H = 15;
 const CHIP_Y = 4;
+/** 칩 글자 폭(5글자 「05/11」·「09:44」, 12px 고정폭 숫자) · 책갈피 칸(아이콘 + 틈). */
+const TEXT_W = 32;
+const MARK_W = 11;
+/** 글자를 차트 위에서 읽히게 — 바탕색 테두리(halo)를 글자 뒤에. */
+const HALO = { paintOrder: "stroke", stroke: "var(--surface)", strokeWidth: 3, strokeLinejoin: "round" } as const;
+
+/** 책갈피 — 저장된 선의 표시(칩 글자 앞). (x, y) = 왼쪽 위. */
+function Bookmark({ x, y }: { x: number; y: number }): JSX.Element {
+    return <path d={`M${x} ${y} h8 v12 l-4 -3 l-4 3 z`} fill={SAVED_LINE_COLOR} stroke="var(--surface)" strokeWidth={1} strokeLinejoin="round" />;
+}
+
 /** 칩 줄 간격 — 가까운 봉의 칩은 아랫줄로 비켜 선다. */
-export const CHIP_ROW_H = 15;
+export const CHIP_ROW_H = 17;
 
 export interface PlacedMark {
     mark: LineMark;
@@ -179,8 +190,8 @@ export function LineMarkLayer({
                 onClick={() => onGoTo(edgeTarget(side, items))}
                 {...hoverOn(x, CHIP_Y + CHIP_H, { head: `창 밖 선 ${items.length}개`, list: items.map((m) => m.info.head), hint: "클릭 그리로 이동" })}
             >
-                <rect x={x - CHIP_W / 2} y={CHIP_Y} width={CHIP_W} height={CHIP_H} rx={3} fill="var(--surface)" fillOpacity={0.92} stroke={color} strokeWidth={0.7} />
-                <text x={x} y={CHIP_Y + 9.5} textAnchor="middle" style={{ fontSize: 8, fill: color }}>
+                <rect x={x - CHIP_W / 2} y={CHIP_Y} width={CHIP_W} height={CHIP_H} fill="transparent" />
+                <text x={x} y={CHIP_Y + 12} textAnchor="middle" style={{ fontSize: 12, fontWeight: 600, fill: color, ...HALO }}>
                     {side === "left" ? `◀${items.length > 1 ? items.length : ""}` : `${items.length > 1 ? items.length : ""}▶`}
                 </text>
             </g>
@@ -191,8 +202,9 @@ export function LineMarkLayer({
         <svg data-layer="line-marks" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", zIndex: 4, pointerEvents: "none", overflow: "visible" }}>
             {inView.map(({ mark, x, y, chipY }) => {
                 const c = lineColorOf(mark.kind);
-                const saved = mark.kind !== "temp"; // 채움
-                const temp = mark.kind !== "saved"; // 테두리
+                const saved = mark.kind !== "temp"; // 책갈피
+                const temp = mark.kind !== "saved"; // 초록 글자
+                const left = x - (TEXT_W + (saved ? MARK_W : 0)) / 2;
                 return (
                     <g key={mark.key}>
                         {y !== null && y > chipY + CHIP_H && <line x1={x} x2={x} y1={chipY + CHIP_H} y2={y} stroke={c} strokeWidth={1} strokeDasharray="2 3" opacity={0.7} />}
@@ -206,12 +218,13 @@ export function LineMarkLayer({
                                 onRemove(mark);
                             }}
                         >
-                            <rect
-                                x={x - CHIP_W / 2} y={chipY} width={CHIP_W} height={CHIP_H} rx={3}
-                                fill={saved ? SAVED_LINE_COLOR : "var(--surface)"}
-                                stroke={temp ? TEMP_LINE_COLOR : "none"} strokeWidth={saved ? 2 : 1.2}
-                            />
-                            <text x={x} y={chipY + 9.5} textAnchor="middle" style={{ fontSize: 8, fill: saved ? "#fff" : TEMP_LINE_COLOR, fontWeight: 700 }}>
+                            <rect x={x - CHIP_W / 2} y={chipY} width={CHIP_W} height={CHIP_H} fill="transparent" />
+                            {saved && <Bookmark x={left} y={chipY + 1.5} />}
+                            <text
+                                className="tabular"
+                                x={left + (saved ? MARK_W : 0)} y={chipY + 12}
+                                style={{ fontSize: 12, fontWeight: 600, fill: temp ? TEMP_LINE_COLOR : SAVED_LINE_COLOR, ...HALO }}
+                            >
                                 {mark.short}
                             </text>
                         </g>
