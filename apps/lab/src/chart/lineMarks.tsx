@@ -3,10 +3,10 @@
 // 칩 = 상자 없는 글자(12px, 차트 위에서 읽히게 바탕색 테두리) — 종류는 두 채널로: **글자 색 = 임시인가**(초록 = 경로에 있다, 먹색 = 저장만),
 // **책갈피 = 저장인가**. 임시만 = 초록 글자(누르면 저장) · 저장만 = 책갈피 + 먹색 글자(누르면 임시로 가져옴) · 둘 다 = 책갈피 + 초록 글자.
 // 칩 위 우클릭 = 한 겹 걷기(임시만 → 임시 지움, 저장된 것 → 저장에서 지움). 그림 상자 밖 봉은 가장자리 ◀▶ 칩 — 누르면 그 봉으로.
-// 칩 글자는 날짜(일봉 선 「01/07」 — 해는 시간축에 보인다 · 분봉 선 「09:44」)뿐 — 값 이름·시장·거리는 칩에 올리면 뜨는 카드(브라우저 툴팁 말고 앱 안 카드).
+// 칩 글자는 날짜(일봉 선 「01/07」 — 해는 시간축에 보인다 · 분봉 선 「09:44」)뿐 — 값(OHLC)·시장·거리는 칩에 올리면 뜨는 한 줄 카드(브라우저 툴팁 말고 앱 안 카드).
 // % 는 카드에 없다 — 가로선 축 옆에 이미 있다.
 // SVG 오버레이: 상자는 pointerEvents none, 칩만 all — 팬·크로스헤어·봉 우클릭 같은 차트 손짓을 가리지 않는다.
-import { useEffect, useState, type CSSProperties, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
 import type { IChartApi, ISeriesApi, Time } from "lightweight-charts";
 import { lineColorOf, SAVED_LINE_COLOR, TEMP_LINE_COLOR, type LineKind } from "./priceLevels.js";
 
@@ -25,12 +25,11 @@ export interface LineMark {
     note?: string;
 }
 
-/** 칩 카드 — 머리(「26/05/11 고가 · UN*」) · 아래 한 줄(「64거래일 전」) · 손짓 안내. 묶음 카드(◀▶)는 list 로 선들을 늘어놓는다. */
+/** 칩 카드 — 한 줄(「H · UN* · 1거래일 전」 — 날짜는 칩에 있다). 묶음 카드(◀▶)는 list 로 선들을 늘어놓고 hint 로 손짓을 단다. */
 export interface LineInfo {
     head: string;
-    sub?: string;
     list?: readonly string[];
-    hint: string;
+    hint?: string;
 }
 
 export const CHIP_W = 46;
@@ -239,28 +238,30 @@ export function LineMarkLayer({
     );
 }
 
-const CARD_W = 170;
 const CARD_MUTED: CSSProperties = { color: "var(--text-3)", fontSize: 11 };
 
-/** 칩 카드 — 칩 바로 아래, 차트 폭 안으로 당겨 놓는다. 손짓을 가리지 않게 pointerEvents none. */
+/** 칩 카드 — 칩 바로 아래(가운데 맞춤 — 폭은 글 길이대로, 차트 밖으로는 안 나가게). 손짓을 가리지 않게 pointerEvents none. */
 function ChipCard({ x, y, info, width }: { x: number; y: number; info: LineInfo; width: number }): JSX.Element {
-    const left = Math.max(4, Math.min(x - CARD_W / 2, width - CARD_W - 4));
+    const ref = useRef<HTMLDivElement>(null);
+    const [w, setW] = useState(0);
+    useLayoutEffect(() => setW(ref.current?.offsetWidth ?? 0), [info]);
+    const left = Math.max(4, Math.min(x - w / 2, width - w - 4));
     return (
         <div
+            ref={ref}
             data-layer="chip-card"
             className="tabular"
             style={{
-                position: "absolute", left, top: y + 4, width: CARD_W, zIndex: 6, pointerEvents: "none", boxSizing: "border-box",
-                padding: "6px 10px", fontSize: 12, lineHeight: 1.45, background: "var(--surface)", color: "var(--text)", whiteSpace: "nowrap",
-                border: "1px solid var(--border)", borderRadius: 6, boxShadow: "0 4px 14px rgba(0,0,0,0.14)",
+                position: "absolute", left, top: y + 4, zIndex: 6, pointerEvents: "none", boxSizing: "border-box",
+                padding: "3px 8px", fontSize: 12, lineHeight: 1.45, background: "var(--surface)", color: "var(--text)", whiteSpace: "nowrap",
+                border: "1px solid var(--border)", borderRadius: 5, boxShadow: "0 3px 10px rgba(0,0,0,0.14)", visibility: w ? "visible" : "hidden",
             }}
         >
-            <div style={{ fontWeight: 700 }}>{info.head}</div>
-            {info.sub && <div style={{ color: "var(--text-2)" }}>{info.sub}</div>}
+            <div style={{ fontWeight: 600 }}>{info.head}</div>
             {info.list?.map((t, i) => (
                 <div key={i} style={{ fontSize: 11.5 }}>{t}</div>
             ))}
-            <div style={{ ...CARD_MUTED, marginTop: 4, borderTop: "1px solid var(--border)", paddingTop: 3 }}>{info.hint}</div>
+            {info.hint && <div style={CARD_MUTED}>{info.hint}</div>}
         </div>
     );
 }

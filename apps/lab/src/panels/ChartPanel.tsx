@@ -12,7 +12,7 @@ import { dailyRowsOf, useChartLines, useDailyCandles, useMinuteDay, useMinuteDay
 import { kstToUnix, type DailyMode } from "../market/domain.js";
 import type { LabMinuteDay, PriceMode } from "../market/types.js";
 import { deriveDailyView, deriveMinutePriceView, deriveMinuteView } from "../chart/derive.js";
-import { lineColorOf, lineLevelPct, type LineKind, type PriceLevel } from "../chart/priceLevels.js";
+import { lineColorOf, lineLevelPct, type PriceLevel } from "../chart/priceLevels.js";
 import { chipAction, mergeDaily, mergeMinute, minuteRef, toLabDaily, toLabMinute, type MinuteLineCoord } from "../chart/lineSets.js";
 import type { LineMark } from "../chart/lineMarks.js";
 import { DailyChart } from "../chart/DailyChart.js";
@@ -44,11 +44,6 @@ const AXES = AXIS_VALUES.map((o) => o.v);
 const LINE_FIELDS: readonly LineField[] = ["O", "H", "L", "C"];
 const LINE_FIELD_VALUES = LINE_FIELDS.map((v) => ({ v, label: FIELD_LABEL[v] }));
 const BAR_KEY = { O: "open", H: "high", L: "low", C: "close" } as const;
-const KIND_TIP: Record<LineKind, string> = {
-    temp: "클릭 저장 · 우클릭 지우기",
-    both: "저장됨 · 우클릭 저장에서 지우기",
-    saved: "클릭 임시로 가져오기 · 우클릭 저장에서 지우기",
-};
 const NO_MINUTE_LINES: MinuteLineCoord[] = [];
 /** 「가격」 축에서 왼쪽 끝에 닿을 때마다 더 받는 앞 거래일 수 · 이어 볼 수 있는 앞 거래일 상한(봉이 수만 개 쌓이지 않게). */
 const OLDER_DAYS_STEP = 2;
@@ -131,7 +126,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         [dailyCurrent, dailyMerged, rows],
     );
     // 칩 = 선 봉의 날짜, 가로선 위 = 전날 종가 대비 % — 기준은 차트 모드의 전날 종가(UN* · UN · KRX — 보이는 전날 봉과 같은 기준,
-    // 한 화면의 % 가 다 같은 기준 — 십자선 가격 라벨 옆 % 도 같은 기준). 값 이름·시장·거리는 칩 카드에.
+    // 한 화면의 % 가 다 같은 기준 — 십자선 가격 라벨 옆 % 도 같은 기준). 값(OHLC)·시장·거리는 칩 카드 한 줄에.
     const prevClose = useMemo(() => daily.filter((p) => p.time < date).at(-1)?.close ?? null, [daily, date]);
     const dayIndex = useMemo(() => new Map((tradingDays ?? []).map((d, i) => [d, i])), [tradingDays]);
     const chartLines = useMemo(
@@ -146,11 +141,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     key: l.ref, time: l.item.date, price: l.price, kind: l.kind,
                     short: l.item.date.slice(5).replace("-", "/"),
                     note: pctText ?? undefined,
-                    info: {
-                        head: `${l.item.date.slice(2).replaceAll("-", "/")} ${FIELD_LABEL[l.item.field]} · ${l.item.venue === "krx" ? "KRX" : "UN*"}`,
-                        sub: at !== undefined && i !== undefined ? `${at - i}거래일 전` : undefined,
-                        hint: `${KIND_TIP[l.kind]}${l.kind === "saved" && l.item.date >= date ? " · 같은 날 봉은 토큰에 못 넣음" : ""}`,
-                    },
+                    info: { head: [l.item.field, l.item.venue === "krx" ? "KRX" : "UN*", at !== undefined && i !== undefined ? `${at - i}거래일 전` : ""].filter(Boolean).join(" · ") },
                 }];
             }),
         [dailyPriced, prevClose, dayIndex, date],
@@ -191,7 +182,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
             return [{
                 key: minuteRef(item), time: p.time, price: p[BAR_KEY[item.field]], kind,
                 short: item.time.slice(0, 5),
-                info: { head: `${item.date.slice(2).replaceAll("-", "/")} ${item.time.slice(0, 5)} ${FIELD_LABEL[item.field]} · UN`, hint: KIND_TIP[kind] },
+                info: { head: `${item.field} · UN` },
             }];
         });
     }, [minute, minuteCurrent, minuteMerged]);
