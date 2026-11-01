@@ -5,6 +5,7 @@ import { barIndexAt, baseChartOptions, centerOnIndex, useChartShell, useCrosshai
 import { useDailySeries, useDailySeriesData, useDailyVisibleRange } from "./dailyChartHooks.js";
 import { useCandlePrimaryClick } from "./candleInteraction.js";
 import { LineMarkLayer, type LineMark } from "./lineMarks.js";
+import type { ChipChannel } from "./lineSets.js";
 import { lineColorOf, usePriceLevels } from "./priceLevels.js";
 import { useLoadOlderAtLeftEdge } from "./olderData.js";
 import { FloatingTooltip } from "./tooltip.js";
@@ -33,8 +34,7 @@ export function DailyChart({
     onPickDate,
     lines = [],
     onLinePick,
-    onChipClick,
-    onChipRemove,
+    onChipToggle,
     onNeedOlder,
     pctBase = null,
 }: {
@@ -47,10 +47,8 @@ export function DailyChart({
     lines?: readonly ChartLine[];
     /** 우클릭한 봉의 날짜(브라우저 메뉴는 막는다). */
     onLinePick?: (date: string) => void;
-    /** 상단 칩 클릭 — 임시만 = 저장 · 저장만 = 임시로 가져옴. */
-    onChipClick?: (mark: ChartLine) => void;
-    /** 상단 칩 위 우클릭 — 한 겹 걷기(임시만 = 임시 지움 · 저장된 것 = 저장에서 지움). */
-    onChipRemove?: (mark: ChartLine) => void;
+    /** 칩 점 클릭 — 그 채널(토큰·저장)을 켜고 끈다. */
+    onChipToggle?: (mark: LineMark, channel: ChipChannel) => void;
     /** 왼쪽 끝에 닿았다 — 더 앞 일봉을 받을 때(받는 중 중복은 호출자가 막는다). */
     onNeedOlder?: () => void;
     /** 전날 종가(차트 모드) — 십자선 가격 라벨 옆에 이 값 대비 % 를 띄운다(선의 축 옆 % 와 같은 기준). 없으면 안 띄운다. */
@@ -121,7 +119,7 @@ export function DailyChart({
 
     return (
         <div ref={containerRef} onMouseMove={onCursorMove} onContextMenu={onContextMenu} style={{ position: "relative", width: "100%", height: "100%" }}>
-            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={lines} gen={series.gen} dataKey={points} onGoTo={goTo} onClick={(m) => onChipClick?.(m)} onRemove={(m) => onChipRemove?.(m)} />
+            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={lines} gen={series.gen} dataKey={points} onGoTo={goTo} onToggle={(m, ch) => onChipToggle?.(m, ch)} />
             {tip.visible && <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>{tip.content}</FloatingTooltip>}
             {crossPct && (
                 <div

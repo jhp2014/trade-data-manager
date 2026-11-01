@@ -8,6 +8,7 @@ import { useMinuteAxis, useMinuteSeries, useMinuteSeriesData, useTimeLine, type 
 import { useLoadOlderAtLeftEdge } from "./olderData.js";
 import { usePriceLevels, type PriceLevel } from "./priceLevels.js";
 import { LineMarkLayer, type LineMark } from "./lineMarks.js";
+import type { ChipChannel } from "./lineSets.js";
 import { useFollowMarker, useMinuteVisibleRange } from "./minuteFraming.js";
 import { useCandlePrimaryClick } from "./candleInteraction.js";
 import type { MinutePoint } from "./derive.js";
@@ -26,8 +27,7 @@ export function MinuteChart({
     marks = [],
     onPickTime,
     onLinePick,
-    onChipClick,
-    onChipRemove,
+    onChipToggle,
     onNeedOlder,
 }: {
     points: MinutePoint[];
@@ -47,8 +47,8 @@ export function MinuteChart({
     onPickTime: (date: string, time: string) => void;
     /** 우클릭한 봉의 날짜·시각(브라우저 메뉴는 막는다) — 분봉 선 긋기. */
     onLinePick?: (date: string, time: string) => void;
-    onChipClick?: (mark: LineMark) => void;
-    onChipRemove?: (mark: LineMark) => void;
+    /** 칩 점 클릭 — 그 채널(토큰·저장)을 켜고 끈다. */
+    onChipToggle?: (mark: LineMark, channel: ChipChannel) => void;
     /** 왼쪽 끝에 닿았다 — 앞 거래일 분봉을 받을 때(가격 축). */
     onNeedOlder?: () => void;
 }): JSX.Element {
@@ -113,7 +113,7 @@ export function MinuteChart({
 
     return (
         <div ref={containerRef} onMouseMove={onCursorMove} onContextMenu={onContextMenu} style={{ position: "relative", width: "100%", height: "100%" }}>
-            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={marks} gen={series.gen} dataKey={points} onGoTo={goTo} onClick={(m) => onChipClick?.(m)} onRemove={(m) => onChipRemove?.(m)} />
+            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={marks} gen={series.gen} dataKey={points} onGoTo={goTo} onToggle={(m, ch) => onChipToggle?.(m, ch)} />
             {tip.visible && (
                 <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>
                     {tip.content}

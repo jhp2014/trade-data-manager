@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chipAction, fromLabDaily, mergeDaily, mergeMinute, toLabDaily, toLabMinute } from "./lineSets.js";
+import { chipToggle, fromLabDaily, mergeDaily, mergeMinute, toLabDaily, toLabMinute } from "./lineSets.js";
 import type { DailyLine } from "../lib/stateToken.js";
 import type { LabChartLine } from "../market/types.js";
 
@@ -26,7 +26,7 @@ describe("가장자리", () => {
         expect(fromLabDaily(toLabDaily(L, "2026-07-28"))).toEqual(L);
     });
     it("칩 손짓 표 — 클릭: 임시만 저장·저장만 가져옴·둘 다 없음 / 우클릭: 임시만 임시 지움·나머지 저장에서 지움", () => {
-        expect([chipAction("temp", "click"), chipAction("saved", "click"), chipAction("both", "click")]).toEqual(["save", "import", null]);
-        expect([chipAction("temp", "context"), chipAction("saved", "context"), chipAction("both", "context")]).toEqual(["dropTemp", "dropSaved", "dropSaved"]);
+        expect([chipToggle("temp", "temp"), chipToggle("saved", "temp"), chipToggle("both", "temp")]).toEqual(["dropTemp", "addTemp", "dropTemp"]);
+        expect([chipToggle("temp", "saved"), chipToggle("saved", "saved"), chipToggle("both", "saved")]).toEqual(["save", "unsave", "unsave"]);
     });
 });

@@ -40,9 +40,11 @@ export function mergeMinute(temp: readonly MinuteLineCoord[], saved: readonly La
     return merge(temp, saved.filter((l) => l.anchorTime !== null).map(fromLabMinute), minuteRef);
 }
 
-/** 칩 손짓 → 할 일. 일봉·분봉이 같은 표를 쓴다. */
-export type ChipAct = "save" | "import" | "dropTemp" | "dropSaved" | null;
-export function chipAction(kind: LineKind, how: "click" | "context"): ChipAct {
-    if (how === "click") return kind === "temp" ? "save" : kind === "saved" ? "import" : null; // 둘 다 = 이미 저장·임시에도 있다
-    return kind === "temp" ? "dropTemp" : "dropSaved"; // 우클릭 = 한 겹 걷기
+/** 칩 점 두 칸 — 왼쪽 = 토큰(임시) · 오른쪽 = 저장. */
+export type ChipChannel = "temp" | "saved";
+/** 점 클릭 → 할 일 — 누른 채널만 켜고 끈다. 일봉·분봉이 같은 표를 쓴다. */
+export type ChipAct = "addTemp" | "dropTemp" | "save" | "unsave";
+export function chipToggle(kind: LineKind, channel: ChipChannel): ChipAct {
+    if (channel === "temp") return kind === "saved" ? "addTemp" : "dropTemp";
+    return kind === "temp" ? "save" : "unsave";
 }

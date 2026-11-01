@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHIP_ROW_H, CHIP_W, edgeTarget, layoutLineMarks, type LineMark } from "./lineMarks.js";
+import { CHIP_W, edgeTarget, frontKey, layoutLineMarks, type LineMark } from "./lineMarks.js";
 
 const mark = (key: string, time: string): LineMark => ({ key, time, price: 100, short: key, info: { head: key, hint: "" }, kind: "temp" });
 
@@ -11,12 +11,10 @@ describe("layoutLineMarks", () => {
         expect(l.offLeft.map((m) => m.key)).toEqual(["a"]);
         expect(l.offRight.map((m) => m.key)).toEqual(["c"]);
     });
-    it("칩 폭보다 가까운 칩은 아랫줄로 비켜 선다 — 같은 봉의 H·L 도 둘 다 보인다", () => {
+    it("한 줄 — 겹쳐도 비키지 않는다", () => {
         const xs: Record<string, number> = { h: 100, l: 100, far: 100 + CHIP_W + 2 };
         const l = layoutLineMarks([mark("h", "1"), mark("l", "1"), mark("far", "2")], (m) => xs[m.key], () => null, 400);
-        const y = Object.fromEntries(l.inView.map((p) => [p.mark.key, p.chipY]));
-        expect(y.l - y.h).toBe(CHIP_ROW_H);
-        expect(y.far).toBe(y.h); // 멀면 첫 줄
+        expect(new Set(l.inView.map((p) => p.chipY)).size).toBe(1);
     });
 });
 
@@ -33,5 +31,18 @@ describe("edgeTarget — 분봉(unix 초)", () => {
         const at = (key: string, time: number): LineMark => ({ key, time, price: 1, short: key, info: { head: key, hint: "" }, kind: "saved" });
         expect(edgeTarget("left", [at("a", 100), at("b", 300)])).toBe(300);
         expect(edgeTarget("right", [at("a", 100), at("b", 300)])).toBe(100);
+    });
+});
+
+describe("frontKey", () => {
+    const l = layoutLineMarks([mark("a", "1"), mark("b", "2"), mark("c", "3")], (m) => ({ a: 100, b: 110, c: 300 })[m.key]!, () => null, 400);
+    it("커서 x 에 가장 가까운 칩이 앞 — 커서를 아직 안 움직였으면 가장 오른쪽", () => {
+        expect(frontKey(l.inView, 103, null)).toBe("a");
+        expect(frontKey(l.inView, 108, null)).toBe("b");
+        expect(frontKey(l.inView, null, null)).toBe("c");
+    });
+    it("붙잡은 칩(커서가 올라가 있는 칩)이 커서 거리보다 먼저 — 사라진 칩이면 무시", () => {
+        expect(frontKey(l.inView, 108, "a")).toBe("a");
+        expect(frontKey(l.inView, 108, "gone")).toBe("b");
     });
 });

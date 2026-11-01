@@ -13,7 +13,7 @@ import { kstToUnix, type DailyMode } from "../market/domain.js";
 import type { LabMinuteDay, PriceMode } from "../market/types.js";
 import { deriveDailyView, deriveMinutePriceView, deriveMinuteView } from "../chart/derive.js";
 import { lineColorOf, lineLevelPct, type PriceLevel } from "../chart/priceLevels.js";
-import { chipAction, mergeDaily, mergeMinute, minuteRef, toLabDaily, toLabMinute, type MinuteLineCoord } from "../chart/lineSets.js";
+import { chipToggle, mergeDaily, mergeMinute, minuteRef, toLabDaily, toLabMinute, type ChipChannel, type MinuteLineCoord } from "../chart/lineSets.js";
 import type { LineMark } from "../chart/lineMarks.js";
 import { DailyChart } from "../chart/DailyChart.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
@@ -141,7 +141,10 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     key: l.ref, time: l.item.date, price: l.price, kind: l.kind,
                     short: l.item.date.slice(5).replace("-", "/"),
                     note: pctText ?? undefined,
-                    info: { head: [l.item.field, l.item.venue === "krx" ? "KRX" : "UN*", at !== undefined && i !== undefined ? `${at - i}거래일 전` : ""].filter(Boolean).join(" · ") },
+                    info: {
+                        head: [l.item.field, l.item.venue === "krx" ? "KRX" : "UN*", at !== undefined && i !== undefined ? `${at - i}거래일 전` : ""].filter(Boolean).join(" · "),
+                        hint: l.item.date >= date ? "같은 날 봉 — 토큰에 못 넣음" : undefined,
+                    },
                 }];
             }),
         [dailyPriced, prevClose, dayIndex, date],
@@ -154,17 +157,17 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         if (!dailyCurrent || d >= date) return; // 선 봉은 경로 날짜보다 앞선 날만
         write({ lines: toggleLine(lines, { date: d, field: lineField, venue }) });
     };
-    // 칩 클릭 — 임시만 = 저장 · 저장만 = 임시로 가져옴(토큰에 넣을 때). 칩 우클릭 — 한 겹 걷기.
+    // 칩 점 클릭 — 왼쪽 = 토큰(임시) 켜기/끄기, 오른쪽 = 저장 켜기/끄기.
     const dailyOf = (key: string) => dailyMerged.find((x) => lineRef(x.item) === key);
-    const onDailyChipAct = (m: LineMark, how: "click" | "context"): void => {
+    const onDailyChipAct = (m: LineMark, ch: ChipChannel): void => {
         const l = dailyOf(m.key);
         if (!linesReady || !l) return;
-        const act = chipAction(l.kind, how);
+        const act = chipToggle(l.kind, ch);
         if (act === "save") saved.save(toLabDaily(l.item, date));
         // 임시 선은 경로 날짜보다 앞선 봉만(토큰 불변식) — 옮겨 온 workbench 당일 앵커는 가져오지 않는다
-        else if (act === "import" && l.item.date < date) write({ lines: toggleLine(lines, l.item) });
+        else if (act === "addTemp" && l.item.date < date) write({ lines: toggleLine(lines, l.item) });
         else if (act === "dropTemp") write({ lines: lines.filter((x) => lineRef(x) !== m.key) });
-        else if (act === "dropSaved") saved.remove(toLabDaily(l.item, date));
+        else if (act === "unsave") saved.remove(toLabDaily(l.item, date));
     };
 
     // 분봉 선 = 잠깐 선(이 패널에서만 — 토큰에 없다, 경로가 바뀌면 사라진다) ∪ 저장 분봉 선. 값은 그 봉의 지금 축 단위.
@@ -193,14 +196,14 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         setMinuteTemp({ key: chartKey, lines: minuteTempLines.some((x) => minuteRef(x) === ref) ? minuteTempLines.filter((x) => minuteRef(x) !== ref) : [...minuteTempLines, c] });
     };
     const minuteOf = (key: string) => minuteMerged.find((x) => minuteRef(x.item) === key);
-    const onMinuteChipAct = (m: LineMark, how: "click" | "context"): void => {
+    const onMinuteChipAct = (m: LineMark, ch: ChipChannel): void => {
         const l = minuteOf(m.key);
         if (!saved.current || !l) return;
-        const act = chipAction(l.kind, how);
+        const act = chipToggle(l.kind, ch);
         if (act === "save") saved.save(toLabMinute(l.item, date));
-        else if (act === "import") setMinuteTemp({ key: chartKey, lines: [...minuteTempLines, l.item] });
+        else if (act === "addTemp") setMinuteTemp({ key: chartKey, lines: [...minuteTempLines, l.item] });
         else if (act === "dropTemp") setMinuteTemp({ key: chartKey, lines: minuteTempLines.filter((x) => minuteRef(x) !== m.key) });
-        else if (act === "dropSaved") saved.remove(toLabMinute(l.item, date));
+        else if (act === "unsave") saved.remove(toLabMinute(l.item, date));
     };
     // 그 봉을 지금 분봉에서 못 찾은 분봉 선(당일 % 는 그 날 하루만 — 가격 축의 앞 날 선은 안 보인다)
     const minuteHidden = minuteCurrent ? minuteMerged.length - minuteMarks.length : 0;
@@ -299,8 +302,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                 onPickDate={(d) => write({ date: d })}
                                 lines={chartLines}
                                 onLinePick={pickLine}
-                                onChipClick={(m) => onDailyChipAct(m, "click")}
-                                onChipRemove={(m) => onDailyChipAct(m, "context")}
+                                onChipToggle={onDailyChipAct}
                                 onNeedOlder={needOlderDaily}
                                 pctBase={prevClose}
                             />
@@ -323,8 +325,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                                 levels={minuteLevels}
                                 marks={minuteMarks}
                                 onLinePick={pickMinuteLine}
-                                onChipClick={(m) => onMinuteChipAct(m, "click")}
-                                onChipRemove={(m) => onMinuteChipAct(m, "context")}
+                                onChipToggle={onMinuteChipAct}
                                 onPickTime={(d, t) => write(d === date ? { time: t.slice(0, 5) } : { date: d, time: t.slice(0, 5) })}
                                 onNeedOlder={needOlderMinutes}
                             />
