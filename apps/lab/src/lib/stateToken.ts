@@ -67,10 +67,10 @@ const LINE = /(\d{2})(\d{2})(\d{2})([OHLC])(:KRX)?([▲▼])/g;
 // 틀린 선을 조용히 버리지 않는다.
 const TOKEN = /(\d{6})@(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2})|((?:@\d{6}[OHLC](?::KRX)?[▲▼])*))(@?)/;
 
-/** 글 속 첫 토큰을 읽는다(앞뒤 글·따옴표·백틱은 무시). 꼴이 틀리면 null. */
-export function parseStateToken(text: string): ParsedState | null {
-    const m = TOKEN.exec(text);
-    if (!m) return null;
+const TOKEN_ALL = new RegExp(TOKEN.source, "g");
+
+/** 맞은 토큰 하나를 읽는다 — 꼴이 틀리면 null. */
+function readToken(m: RegExpExecArray | RegExpMatchArray): ParsedState | null {
     const [, code, date, time, lineText = "", trailing] = m;
     if (trailing) return null;
     if (time) return { code, date, time, lines: [], zone: 0 };
@@ -87,4 +87,50 @@ export function parseStateToken(text: string): ParsedState | null {
     }
     if (lines.length > MAX_LINES) return null;
     return { code, date, time: null, lines, zone };
+}
+
+/** 글 속 첫 토큰을 읽는다(앞뒤 글·따옴표·백틱은 무시). 꼴이 틀리면 null. */
+export function parseStateToken(text: string): ParsedState | null {
+    const m = TOKEN.exec(text);
+    return m ? readToken(m) : null;
+}
+
+/** 글 속 토큰을 전부 — 글 속 순서대로, 틀린 꼴은 건너뛴다. token = 글에 적힌 토큰 글자 그대로(토큰 기록의 열쇠). */
+export function findStateTokens(text: string): { token: string; state: ParsedState }[] {
+    const out: { token: string; state: ParsedState }[] = [];
+    for (const m of text.matchAll(TOKEN_ALL)) {
+        const state = readToken(m);
+        if (state) out.push({ token: m[0], state });
+    }
+    return out;
+}
+
+export const FIELD_LABEL: Record<LineField, string> = { O: "시가", H: "고가", L: "저가", C: "종가" };
+
+/** 선의 읽히는 이름 — "5/27 고가" · "5/27 고가(KRX)". 상태 날짜와 해가 다르면 "25/12/3 고가". */
+export function lineText(l: DailyLine, stateDate: string): string {
+    const [y, m, d] = l.date.split("-");
+    const md = `${Number(m)}/${Number(d)}`;
+    return `${y === stateDate.slice(0, 4) ? md : `${y.slice(2)}/${md}`} ${FIELD_LABEL[l.field]}${l.venue === "krx" ? "(KRX)" : ""}`;
+}
+
+/** 구간 이름 — 아래 경계·위 경계(없으면 null)로. 「토큰 복사」 판과 같은 말투: "A ~ B 사이" · "A 위" · "B 아래". */
+export function zoneText(below: string | null, above: string | null): string {
+    return below && above ? `${below} ~ ${above} 사이` : below ? `${below} 위` : `${above ?? ""} 아래`;
+}
+
+/**
+ * 읽은 상태의 구간과 곁 선을 말로 — 선은 토큰 순서(낮은 것부터)를 믿는다(가격 없이 읽으니까).
+ * 선이 없으면 zone = "선 없음", 시각 붙은 꼴이면 zone = "HH:MM".
+ */
+export function describeState(s: ParsedState): { zone: string; side: string[] } {
+    if (s.time) return { zone: s.time, side: [] };
+    if (s.lines.length === 0) return { zone: "선 없음", side: [] };
+    const names = s.lines.map((l) => lineText(l, s.date));
+    const below = s.zone > 0 ? s.zone - 1 : null;
+    const above = s.zone < names.length ? s.zone : null;
+    return {
+        zone: zoneText(below === null ? null : names[below], above === null ? null : names[above]),
+        side: names.filter((_, i) => i !== below && i !== above),
+    };
 }

@@ -16,6 +16,7 @@ beforeEach(() => {
     register({ id: "t.step", title: "걷기", category: "t", keys: "d", repeat: true, run: () => ran.push("d") });
     register({ id: "t.zoom", title: "줌", category: "t", keys: "f", run: () => ran.push("f") });
     register({ id: "t.help", title: "도움말", category: "t", keys: "ctrl+k", inDialog: true, run: () => ran.push("ctrl+k") });
+    register({ id: "t.screen", title: "화면", category: "t", keys: "ctrl+1", run: () => ran.push("ctrl+1") });
     useUi.setState(useUi.getInitialState(), true);
 });
 afterEach(cleanup);
@@ -38,10 +39,15 @@ describe("useKeymap", () => {
         press("f");
         press("k", { ctrlKey: true });
         expect(ran).toEqual(["ctrl+k"]);
-        // 쉬는 키도 먹는다 — 창이 열린 동안 Ctrl+숫자 같은 등록 키가 브라우저(탭 전환)로 새지 않게
-        const ev = new KeyboardEvent("keydown", { key: "f", bubbles: true, cancelable: true });
-        act(() => void window.dispatchEvent(ev));
-        expect(ev.defaultPrevented).toBe(true);
+        // 수식키 붙은 쉬는 키는 먹는다 — 창이 열린 동안 Ctrl+숫자가 브라우저(탭 전환)로 새지 않게
+        const mod = new KeyboardEvent("keydown", { key: "1", ctrlKey: true, bubbles: true, cancelable: true });
+        act(() => void window.dispatchEvent(mod));
+        expect(mod.defaultPrevented).toBe(true);
+        // 수식키 없는 쉬는 키는 브라우저에 돌려준다 — Tab(토큰 기록)이 창 안의 포커스 이동을 막지 않게
+        const plain = new KeyboardEvent("keydown", { key: "f", bubbles: true, cancelable: true });
+        act(() => void window.dispatchEvent(plain));
+        expect(plain.defaultPrevented).toBe(false);
+        expect(ran).toEqual(["ctrl+k"]);
     });
 
     it("입력칸에선 수식키 없는 키가 쉰다", () => {

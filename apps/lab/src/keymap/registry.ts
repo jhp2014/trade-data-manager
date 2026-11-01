@@ -10,6 +10,8 @@ export const staticCommands: Command[] = (
     [
         { id: "app.settings", title: "설정 열기", category: "일반", keys: "ctrl+,", inDialog: true, run: () => useUi.getState().openSettings() },
         { id: "app.help", title: "단축키 도움말", category: "일반", keys: "?", inDialog: true, run: () => useUi.getState().openSettings("shortcuts") },
+        // 판이 열린 동안 w/s(위아래)·Space(다시 열기)는 판의 것 — 커맨드가 아니라 판 안 키 처리(shell/TokenHistory).
+        { id: "app.tokenHistory", title: "토큰 기록 열기/닫기 (판 안 w/s · Space)", category: "일반", keys: "tab", run: () => useUi.getState().toggleTokenHistory() },
     ] satisfies Command[]
 ).map((c) => ({ ...c, keys: canonicalChord(c.keys) }));
 

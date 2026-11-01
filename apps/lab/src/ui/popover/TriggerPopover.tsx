@@ -2,6 +2,7 @@
 // 열림 상태를 스스로 쥐고, 트리거 아래(side="below")나 위("above")에 열리며, 들어가지 않으면 반대편으로 한 번
 // 뒤집는다(그 뒤로는 안 뒤집고 내부 스크롤).
 // 닫기 = 바깥 클릭 · Esc · 트리거 재클릭 · children 의 close · 트리거가 DOM 에서 떨어짐(탭 전환).
+// 예외: 열림을 바깥 상태가 쥐어야 하는 판(단축키가 여는 토큰 기록 — shell/TokenHistory)은 FloatingSurface 를 직접 쓴다.
 import { useRef, useState, type ReactNode } from "react";
 import { FloatingSurface } from "./FloatingSurface.js";
 

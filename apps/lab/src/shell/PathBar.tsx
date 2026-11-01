@@ -1,4 +1,4 @@
-// 상단 줄 — 경로 카드들(가로 스크롤 — 넘쳐도 아래로 내려가지 않는다) + ⚙(설정 창: 경로 추가·삭제 · 패널 열기 · 화면 · 차트 · 단축키).
+// 상단 줄 — 경로 카드들(가로 스크롤 — 넘쳐도 아래로 내려가지 않는다) + 「토큰」(토큰 기록 판 · Tab) + ⚙(설정 창: 경로 추가·삭제 · 패널 열기 · 화면 · 차트 · 단축키).
 // 경로 카드에 입력칸은 없다. 날짜만 여기서 고르고(거래일 판), 시각·종목은 패널 클릭(분봉 차트·뉴스 줄)이 쓴다.
 // ⚠ 종목을 고르던 테마 판이 2026-10-17 은퇴해 지금은 종목 입구가 기록 복원(우클릭 판)뿐이다 — 등록부 기반 새 테마 패널이 입구를 되살린다.
 // 이름표(A·B) 클릭 = 그 경로를 활성으로. 펼침/접음은 카드에 마우스를 올리면 끝에 나오는 ▸/◂ 로(활성과 따로).
@@ -16,6 +16,7 @@ import { TriggerPopover } from "../ui/popover/TriggerPopover.js";
 import { closeAllPopovers } from "../ui/popover/stack.js";
 import { PathMenu } from "./PathMenu.js";
 import { ScrollRow } from "../ui/ScrollRow.js";
+import { TokenHistoryButton } from "./TokenHistory.js";
 
 export function PathBar(): JSX.Element {
     const paths = usePaths((st) => st.paths);
@@ -29,6 +30,7 @@ export function PathBar(): JSX.Element {
                 {/* 끝 여유 — 끝까지 스크롤한 채 마지막 카드에 올려 ▸/◂ 가 펴져도(약 20px) 영역 밖으로 잘리지 않게. */}
                 <span aria-hidden style={{ flexShrink: 0, width: 12 }} />
             </ScrollRow>
+            <TokenHistoryButton />
             <button
                 title="설정 (Ctrl+,) — 경로 추가·삭제 · 패널 열기 · 화면 · 차트 · 단축키"
                 aria-label="설정"

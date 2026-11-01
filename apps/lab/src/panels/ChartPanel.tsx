@@ -19,7 +19,7 @@ import { DailyChart } from "../chart/DailyChart.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import type { MinuteAxis } from "../chart/minuteSeries.js";
 import { Center } from "../ui/chrome.js";
-import { linePrice, lineRef, toggleLine, type LineField } from "../lib/stateToken.js";
+import { FIELD_LABEL, linePrice, lineRef, toggleLine, type LineField } from "../lib/stateToken.js";
 import { priceLines, StateCopyMenu, zonesOf, type Zone } from "../chart/stateCopy.js";
 import { usePanelHeader } from "../header/registry.js";
 
@@ -41,14 +41,8 @@ const AXIS_VALUES: readonly { v: MinuteAxis; label: string }[] = [
     { v: "price", label: "가격" },
 ];
 const AXES = AXIS_VALUES.map((o) => o.v);
-const LINE_FIELD_VALUES: readonly { v: LineField; label: string }[] = [
-    { v: "O", label: "시가" },
-    { v: "H", label: "고가" },
-    { v: "L", label: "저가" },
-    { v: "C", label: "종가" },
-];
-const LINE_FIELDS = LINE_FIELD_VALUES.map((o) => o.v);
-const FIELD_NAME = Object.fromEntries(LINE_FIELD_VALUES.map((o) => [o.v, o.label])) as Record<LineField, string>;
+const LINE_FIELDS: readonly LineField[] = ["O", "H", "L", "C"];
+const LINE_FIELD_VALUES = LINE_FIELDS.map((v) => ({ v, label: FIELD_LABEL[v] }));
 const BAR_KEY = { O: "open", H: "high", L: "low", C: "close" } as const;
 const KIND_TIP: Record<LineKind, string> = {
     temp: "임시 선 · 클릭 = 저장 · 우클릭 = 지우기",
@@ -144,7 +138,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     : [{
                           key: l.ref, time: l.item.date, price: l.price, kind: l.kind,
                           short: `${l.item.field}${l.item.venue === "krx" ? "·K" : ""}`,
-                          tip: `${l.ref} — ${l.item.date} ${FIELD_NAME[l.item.field]}${l.item.venue === "krx" ? "(KRX)" : ""} ${l.price.toLocaleString()}\n${KIND_TIP[l.kind]}${l.kind === "saved" && l.item.date >= date ? "\n(같은 날 봉 — 토큰에 못 넣어 가져오기 안 됨)" : ""}`,
+                          tip: `${l.ref} — ${l.item.date} ${FIELD_LABEL[l.item.field]}${l.item.venue === "krx" ? "(KRX)" : ""} ${l.price.toLocaleString()}\n${KIND_TIP[l.kind]}${l.kind === "saved" && l.item.date >= date ? "\n(같은 날 봉 — 토큰에 못 넣어 가져오기 안 됨)" : ""}`,
                       }],
             ),
         [dailyPriced],
@@ -182,7 +176,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         return minuteMerged.flatMap(({ item, kind }) => {
             const p = byKey.get(`${item.date} ${item.time}`);
             if (!p) return []; // 그 날 분봉을 아직 안 받았다(가격 축의 앞 날) — 받으면 선다
-            return [{ key: minuteRef(item), time: p.time, price: p[BAR_KEY[item.field]], kind, short: item.field, tip: `${item.date} ${item.time.slice(0, 5)} ${FIELD_NAME[item.field]}\n${KIND_TIP[kind]}` }];
+            return [{ key: minuteRef(item), time: p.time, price: p[BAR_KEY[item.field]], kind, short: item.field, tip: `${item.date} ${item.time.slice(0, 5)} ${FIELD_LABEL[item.field]}\n${KIND_TIP[kind]}` }];
         });
     }, [minute, minuteCurrent, minuteMerged]);
     const pickMinuteLine = (d: string, t: string): void => {

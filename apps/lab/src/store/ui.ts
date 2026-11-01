@@ -1,4 +1,4 @@
-// 앱 UI 상태(세션) — 설정 창 열림과 보이는 칸. workbench store/ui.ts.
+// 앱 UI 상태(세션) — 설정 창 열림과 보이는 칸 · 토큰 기록 판 열림(Tab 이 열고 닫는다). workbench store/ui.ts.
 import { create } from "zustand";
 
 export type SettingsSection = "paths" | "panels" | "screens" | "chart" | "shortcuts";
@@ -11,6 +11,9 @@ interface UiState {
     openSettings: (section?: SettingsSection) => void;
     setSettingsSection: (section: SettingsSection) => void;
     closeSettings: () => void;
+    tokenHistoryOpen: boolean;
+    toggleTokenHistory: () => void;
+    closeTokenHistory: () => void;
 }
 
 export const useUi = create<UiState>()((set) => ({
@@ -19,4 +22,7 @@ export const useUi = create<UiState>()((set) => ({
     openSettings: (section) => set((st) => ({ settingsOpen: true, settingsSection: section ?? st.settingsSection })),
     setSettingsSection: (section) => set({ settingsSection: section }),
     closeSettings: () => set({ settingsOpen: false }),
+    tokenHistoryOpen: false,
+    toggleTokenHistory: () => set((st) => ({ tokenHistoryOpen: !st.tokenHistoryOpen })),
+    closeTokenHistory: () => set({ tokenHistoryOpen: false }),
 }));

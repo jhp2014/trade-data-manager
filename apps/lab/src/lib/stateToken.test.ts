@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatState, lineRef, parseStateToken, toggleLine, type DailyLine } from "./stateToken.js";
+import { describeState, findStateTokens, formatState, lineRef, parseStateToken, toggleLine, type DailyLine } from "./stateToken.js";
 import { priceLines, zonesOf } from "../chart/stateCopy.js";
 import type { DailyCandle } from "../market/types.js";
 
@@ -100,5 +100,42 @@ describe("통합 선은 UN* 값", () => {
         const fixed = [{ ...daily[2], unFix: { high: "145" } }];
         expect(priceLines(fixed, [H0715])[0].price).toBe(145);
         expect(priceLines(fixed, [{ ...H0715, venue: "krx" }])[0].price).toBe(148);
+    });
+});
+
+describe("글 속 토큰 전부", () => {
+    it("글 속 순서대로, 적힌 글자 그대로 뽑는다 — 시각 꼴·선 없는 꼴도", () => {
+        const text = "초안: `402340@2026-07-31@260701H▲@260715H▼` 고친 것 **402340@2026-07-31@260701H▲@260715H▲** 그리고 009150@2026-07-31 09:44, 005930@2026-07-01.";
+        expect(findStateTokens(text).map((f) => f.token)).toEqual([
+            "402340@2026-07-31@260701H▲@260715H▼",
+            "402340@2026-07-31@260701H▲@260715H▲",
+            "009150@2026-07-31 09:44",
+            "005930@2026-07-01",
+        ]);
+        expect(findStateTokens(text)[0].state).toEqual(parseStateToken("402340@2026-07-31@260701H▲@260715H▼"));
+    });
+    it("틀린 꼴은 건너뛰고 나머지를 읽는다 — 선 넷 · ▼ 뒤 ▲ · 같은 선 두 번 · 표기 오류", () => {
+        const bad = [
+            "402340@2026-07-31@260701H▲@260705H▲@260710H▲@260715H▼",
+            "402340@2026-07-31@260701H▼@260715H▲",
+            "402340@2026-07-31@260701H▲@260701H▼",
+            "402340@2026-07-31@260715X▲",
+        ];
+        expect(findStateTokens([...bad, "009150@2026-07-31@260715L▼"].join("\n")).map((f) => f.token)).toEqual(["009150@2026-07-31@260715L▼"]);
+        expect(findStateTokens("아무 글")).toEqual([]);
+    });
+});
+
+describe("상태를 말로", () => {
+    const say = (t: string) => describeState(parseStateToken(t)!);
+    it("구간 = 맞닿은 두 선, 나머지는 곁 선 — 「토큰 복사」 판 말투", () => {
+        expect(say("402340@2026-07-31@260701H▲@260710H▲@260715H▼")).toEqual({ zone: "7/10 고가 ~ 7/15 고가 사이", side: ["7/1 고가"] });
+        expect(say("402340@2026-07-31@260701H▼@260715L:KRX▼")).toEqual({ zone: "7/1 고가 아래", side: ["7/15 저가(KRX)"] });
+        expect(say("402340@2026-07-31@260701H▲@260715C▲")).toEqual({ zone: "7/15 종가 위", side: ["7/1 고가"] });
+    });
+    it("해가 다르면 연도를 붙인다 · 선 없음 · 시각 꼴", () => {
+        expect(say("402340@2026-01-05@251203O▼")).toEqual({ zone: "25/12/3 시가 아래", side: [] });
+        expect(say("402340@2026-07-31")).toEqual({ zone: "선 없음", side: [] });
+        expect(say("402340@2026-07-31 09:44")).toEqual({ zone: "09:44", side: [] });
     });
 });

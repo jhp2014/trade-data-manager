@@ -15,9 +15,13 @@ export function useKeymap(): void {
             const hasMod = e.ctrlKey || e.metaKey || e.altKey;
             if (isEditable(e.target) && !hasMod) return;
             if (claimsActivation(e.target, chord)) return;
+            // 창이 열려 있으면 창의 것(설정·도움말)만. 쉬는 키 중 수식키 없는 것은 브라우저에 돌려준다 — Tab(토큰 기록)이 창 안의
+            // 포커스 이동을 막으면 안 된다. 수식키 붙은 것은 막은 채 쉰다(Ctrl+1~9 가 브라우저 탭을 넘기지 않게).
+            const resting = useUi.getState().settingsOpen && !cmd.inDialog;
+            if (resting && !hasMod) return;
             e.preventDefault();
             if (e.repeat && !cmd.repeat) return; // 누르고 있기 — 반복을 허용한 커맨드(a/d)만
-            if (useUi.getState().settingsOpen && !cmd.inDialog) return; // 창이 열려 있으면 창의 것(설정·도움말)만
+            if (resting) return;
             cmd.run(e);
         };
         window.addEventListener("keydown", onKey);
