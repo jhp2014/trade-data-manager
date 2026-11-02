@@ -60,7 +60,7 @@ export function MinuteChart({
             vertLine: { width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dashed, labelVisible: true },
             horzLine: { width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dashed, labelVisible: true },
         },
-        rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.04, bottom: 0.08 } },
+        rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.04, bottom: 0.08 } }, // top 은 LineMarkLayer 가 칩 띠(px)만큼 다시 건다
         leftPriceScale: { visible: false },
         timeScale: {
             borderVisible: false,

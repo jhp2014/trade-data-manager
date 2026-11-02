@@ -62,7 +62,7 @@ export function DailyChart({
             vertLine: { width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dotted, labelVisible: true },
             horzLine: { width: 1, color: "rgba(60,60,60,0.4)", style: LineStyle.Dotted, labelVisible: true },
         },
-        rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.06, bottom: 0.08 } },
+        rightPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.06, bottom: 0.08 } }, // top 은 LineMarkLayer 가 칩 띠(px)만큼 다시 건다
         leftPriceScale: { visible: false },
         timeScale: { borderVisible: false, barSpacing: 3, rightOffset: 6 },
         localization: { locale: "ko-KR", timeFormatter: fmtDailyCrosshair },

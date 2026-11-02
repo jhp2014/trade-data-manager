@@ -46,6 +46,49 @@ const HIT = 11;
 /** 글자를 차트 위에서 읽히게 — 바탕색 테두리(halo)를 글자 뒤에. */
 const HALO = { paintOrder: "stroke", stroke: "var(--surface)", strokeWidth: 3, strokeLinejoin: "round" } as const;
 
+/**
+ * 봉이 칩 밑으로만 오게 — 가격 축 위 여백을 비율이 아니라 **칩 띠 + 틈(픽셀)** 으로 잡아 pane 높이의 비율로 환산한다.
+ * 비율 고정(0.06)이면 pane 이 낮을 때 신고가 봉이 칩과 겹친다. 상한 0.4 — pane 이 아주 낮으면 봉 자리를 다 내주지 않는다.
+ */
+const HEADROOM_PX = CHIP_Y + CHIP_H + 6;
+export const HEADROOM_MAX = 0.4;
+export function chipHeadroom(paneH: number): number {
+    return paneH > 0 ? Math.min(HEADROOM_MAX, HEADROOM_PX / paneH) : HEADROOM_MAX;
+}
+
+/**
+ * 칩 띠만큼 가격 축 위 여백을 건다 — 캔들 pane 요소의 크기를 지켜보다(ResizeObserver — 창 크기 · pane 경계 끌기 둘 다 여기로 온다;
+ * 크로스헤어는 경계 손잡이 위에선 안 와서 못 쓴다) 값이 달라졌을 때만 applyOptions. 아래 여백은 차트가 정한 것을 그대로.
+ * 마커(봉 위 숫자 원)의 픽셀 여백은 lightweight-charts 가 이 비율 여백에 **더해** 두므로 마커도 칩 밑에 온다.
+ */
+function useChipHeadroom(chartRef: RefObject<IChartApi | null>, candleRef: RefObject<ISeriesApi<"Candlestick"> | null>, gen: number): void {
+    useEffect(() => {
+        const chart = chartRef.current;
+        const candle = candleRef.current;
+        if (!chart || !candle) return;
+        let applied = -1;
+        const measure = (): void => {
+            const h = chart.panes()[0]?.getHeight();
+            if (h === undefined) return;
+            const top = chipHeadroom(h);
+            if (Math.abs(top - applied) < 0.002) return;
+            applied = top;
+            const scale = candle.priceScale();
+            scale.applyOptions({ scaleMargins: { top, bottom: scale.options().scaleMargins.bottom } });
+        };
+        measure();
+        const el = chart.panes()[0]?.getHTMLElement();
+        const ro = el ? new ResizeObserver(measure) : null;
+        if (el) ro!.observe(el);
+        chart.timeScale().subscribeSizeChange(measure); // pane 요소를 못 잡았을 때의 뒷길(창 크기)
+        return () => {
+            ro?.disconnect();
+            chart.timeScale().unsubscribeSizeChange(measure);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [gen]);
+}
+
 export interface PlacedMark {
     mark: LineMark;
     x: number;
@@ -171,6 +214,7 @@ export function LineMarkLayer({
     /** 점 클릭 — 그 채널(왼쪽 = 토큰, 오른쪽 = 저장)을 켜고 끈다. */
     onToggle: (mark: LineMark, channel: ChipChannel) => void;
 }): JSX.Element | null {
+    useChipHeadroom(chartRef, candleRef, gen); // 칩이 없어도 늘 — 선을 그을 때마다 세로 스케일이 튀지 않게
     const { width, inView, offLeft, offRight } = useLineMarkLayout(chartRef, candleRef, marks, gen, dataKey);
     const [hover, setHover] = useState<{ key: string | null; x: number; y: number; info: LineInfo } | null>(null);
     // 선이 바뀌면(점으로 지움 등) 칩이 마우스를 떠나지 않고 사라질 수 있다 — 떠 있던 카드를 걷는다

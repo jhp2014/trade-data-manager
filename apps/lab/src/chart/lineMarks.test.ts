@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CHIP_W, edgeTarget, frontKey, layoutLineMarks, type LineMark } from "./lineMarks.js";
+import { CHIP_W, HEADROOM_MAX, chipHeadroom, edgeTarget, frontKey, layoutLineMarks, type LineMark } from "./lineMarks.js";
 
 const mark = (key: string, time: string): LineMark => ({ key, time, price: 100, short: key, info: { head: key, hint: "" }, kind: "temp" });
 
@@ -15,6 +15,18 @@ describe("layoutLineMarks", () => {
         const xs: Record<string, number> = { h: 100, l: 100, far: 100 + CHIP_W + 2 };
         const l = layoutLineMarks([mark("h", "1"), mark("l", "1"), mark("far", "2")], (m) => xs[m.key], () => null, 400);
         expect(new Set(l.inView.map((p) => p.chipY)).size).toBe(1);
+    });
+});
+
+describe("chipHeadroom — 가격 축 위 여백은 칩 띠(픽셀)를 pane 높이로 나눈 비율", () => {
+    it("pane 이 낮을수록 비율이 크고, 픽셀로는 늘 칩 띠(35px)", () => {
+        expect(chipHeadroom(700) * 700).toBeCloseTo(35);
+        expect(chipHeadroom(250) * 250).toBeCloseTo(35);
+        expect(chipHeadroom(250)).toBeGreaterThan(chipHeadroom(700));
+    });
+    it("아주 낮은 pane 은 상한 — 봉 자리를 다 내주지 않는다 · 높이를 모르면 상한", () => {
+        expect(chipHeadroom(50)).toBe(HEADROOM_MAX);
+        expect(chipHeadroom(0)).toBe(HEADROOM_MAX);
     });
 });
 
