@@ -1,4 +1,4 @@
-import type { DailyMarketCap } from "#domain";
+import type { DailyMarketCap, DateRange } from "#domain";
 
 /**
  * 날짜별 시총 조회(query) — 그 거래일 시총을 코드 배치로. 리뷰 리더가 universe 종목 시총 stitch 용.
@@ -16,4 +16,13 @@ export interface DailyMarketCapReader {
      * 직전 거래일은 종목마다 다를 수 있다(신규상장·거래정지) → 종목별 최신 1행.
      */
     getPreviousByDateAndCodes(date: string, codes: string[]): Promise<DailyMarketCap[]>;
+}
+
+/**
+ * 한 종목의 일별 시총 **시계열**(query) — 행 그대로(그 날 종가 × 그 날 상장주식수, 당일 기준), 날짜 오름차순.
+ * "차트 날짜 D 의 아침 시총"이 필요하면 소비자가 D 보다 앞선 마지막 행을 고른다(위 D-1 규칙 — 여기서 미리 밀지 않는다).
+ * 범위 양끝은 선택 — 빠진 쪽은 열린 끝(전 기간). ISP: 배치 리더(DailyMarketCapReader)와 따로 둔다 — 소비자가 다르다.
+ */
+export interface DailyMarketCapSeriesReader {
+    getMarketCapSeries(stockCode: string, range: Partial<DateRange>): Promise<DailyMarketCap[]>;
 }

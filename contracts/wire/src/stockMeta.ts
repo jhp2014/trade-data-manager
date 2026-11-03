@@ -10,3 +10,23 @@ export interface StockMeta {
     name: string;
     market: string; // "거래소"(코스피) | "코스닥"
 }
+
+/** GET /stocks/:code 의 시총 한 줄 — 그 행의 거래일과 시총(원, 무손실 정수 문자열). */
+export interface StockMarketCapPoint {
+    date: string;
+    /**
+     * **그 날** 종가 × **그 날** 상장주식수(KRX MKTCAP 그대로, 당일 기준).
+     * 차트 날짜 D 의 아침 시총(그날 등락이 안 섞인 값)은 date < D 인 마지막 줄이다 — 결정 로그 「시가총액·상장주식수 소스 (KRX)」.
+     */
+    cap: string;
+}
+
+/**
+ * lab-api `GET /stocks/:code?from=&to=` — 종목 이름표 + 상장일 + 일별 시총 시계열(날짜 오름차순).
+ * from/to 는 선택(빠진 쪽 = 전 기간). 마스터에 없는 코드는 404(빈 꼴을 지어내지 않는다 — /theme/stocks/:code 와 같은 결).
+ */
+export interface LabStockInfo extends StockMeta {
+    /** 상장일 YYYY-MM-DD, 미상이면 null. */
+    listedAt: string | null;
+    marketCap: StockMarketCapPoint[];
+}

@@ -1,7 +1,8 @@
-import { and, desc, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql } from "drizzle-orm";
 import type {
     DailyMarketCap,
     DailyMarketCapReader,
+    DailyMarketCapSeriesReader,
     DailyStockStat,
     DailyStockStatStore,
     DateRange,
@@ -16,7 +17,7 @@ import { buildConflictUpdateSet } from "./_helpers.js";
 const STAT_CONFLICT_SET = buildConflictUpdateSet(dailyMarketCap, ["stockCode", "tradeDate"]);
 
 /** Drizzle 구현 — (stockCode, tradeDate) upsert. 별 테이블이라 일봉 자가치유와 독립. */
-export class DrizzleDailyMarketCapRepository implements DailyMarketCapReader, DailyStockStatStore {
+export class DrizzleDailyMarketCapRepository implements DailyMarketCapReader, DailyMarketCapSeriesReader, DailyStockStatStore {
     constructor(private readonly db: Database) {}
 
     async saveDailyStats(rows: DailyStockStat[]): Promise<void> {
@@ -88,6 +89,22 @@ export class DrizzleDailyMarketCapRepository implements DailyMarketCapReader, Da
             .from(dailyMarketCap)
             .where(and(lt(dailyMarketCap.tradeDate, date), inArray(dailyMarketCap.stockCode, codes)))
             .orderBy(dailyMarketCap.stockCode, desc(dailyMarketCap.tradeDate));
+        return rows.map(rowToMarketCap);
+    }
+
+    /** 한 종목의 시총 시계열(날짜 오름차순) — 빠진 범위 끝은 열린 끝. PK prefix(stock_code) + trade_date 범위라 인덱스로 끝난다. */
+    async getMarketCapSeries(stockCode: string, range: Partial<DateRange>): Promise<DailyMarketCap[]> {
+        const rows = await this.db
+            .select()
+            .from(dailyMarketCap)
+            .where(
+                and(
+                    eq(dailyMarketCap.stockCode, stockCode),
+                    range.from === undefined ? undefined : gte(dailyMarketCap.tradeDate, range.from),
+                    range.to === undefined ? undefined : lte(dailyMarketCap.tradeDate, range.to),
+                ),
+            )
+            .orderBy(asc(dailyMarketCap.tradeDate));
         return rows.map(rowToMarketCap);
     }
 }

@@ -82,6 +82,22 @@ describe("DrizzleDailyMarketCapRepository (pglite)", () => {
         expect(await repo.getPreviousByDateAndCodes("2026-07-06", ["C"])).toEqual([]);
     });
 
+    it("getMarketCapSeries — 한 종목만, 날짜 오름차순, 범위 양끝 포함 · 빠진 끝은 열린 끝", async () => {
+        await repo.saveDailyStats([
+            stat("S", "2026-08-05", "500", "5"),
+            stat("S", "2026-08-03", "300", "3"),
+            stat("S", "2026-08-04", "400", "4"),
+            stat("T", "2026-08-04", "999", "9"), // 다른 종목은 안 섞인다
+        ]);
+        expect(await repo.getMarketCapSeries("S", { from: "2026-08-04", to: "2026-08-05" })).toEqual([
+            cap("S", "2026-08-04", "400"),
+            cap("S", "2026-08-05", "500"),
+        ]);
+        expect((await repo.getMarketCapSeries("S", {})).map((c) => c.date)).toEqual(["2026-08-03", "2026-08-04", "2026-08-05"]);
+        expect((await repo.getMarketCapSeries("S", { to: "2026-08-03" })).map((c) => c.date)).toEqual(["2026-08-03"]);
+        expect(await repo.getMarketCapSeries("ZZZZZZ", {})).toEqual([]);
+    });
+
     it("fillMissingTradedDays — 그 종목의 마지막 거래일 구멍만 채운다(직전 주식수 × 그날 종가)", async () => {
         // D: 7/01 행 있음(주식수 77) → 7/02 에 거래했지만 소스가 안 줌.
         // ① D 의 일봉은 7/02 가 끝 ② 시장 일봉은 7/03 에도 있다(장은 계속 돌았다) → 상장폐지 → 채운다.

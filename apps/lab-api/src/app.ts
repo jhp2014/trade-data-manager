@@ -2,6 +2,7 @@
 // 등록부 기반 새 조회가 후계(tdm-ai, 결정 로그 「판단·AI 가공의 작업장」).
 //   GET /dates                                        → string[](YYYY-MM-DD 오름차순) · tdm api GET /dates 와 같은 경로·꼴(lab 프록시가 /api 만 떼고 넘긴다)
 //   GET /stocks/master                                → StockMeta[](코드 오름차순 전량) · tdm api 와 같은 꼴, 캐시 없이 직쿼리
+//   GET /stocks/:code?from=&to=                       → LabStockInfo(이름표·상장일 + 일별 시총 원값, 날짜 오름차순) · from/to 선택(빠진 쪽 = 전 기간), 마스터에 없으면 404 · 조립은 market/stockInfo.ts
 //   GET /news/telegram/archive?date=|from=&to=[&q=…]  → TelegramArchivePage · 조립은 market/telegramArchive.ts, 400 은 NestJS 와 같은 body
 //   GET /daily?code=&from=&to=                        → LabDailyCandle[](수정주가 일봉 + 유령 보정 unFix, 날짜 오름차순) · 기간 그대로 · 조립은 market/labChart.ts
 //   GET /minutes?code=&date=                          → LabMinuteDay(그 날 dense 분봉 원주가 + % 기준가 + 수정주가 환산비) · 조립은 market/labChart.ts
@@ -17,6 +18,7 @@ import type { StockNewsReader } from "@trade-data-manager/market";
 import type { ThemeStore } from "./theme/store.js";
 import type { DailyWithFix, MinutesByDate } from "./market/labChart.js";
 import type { DayFlowBody } from "./market/dayFlowCache.js";
+import type { StockInfoByCode } from "./market/stockInfo.js";
 import { htsNews } from "./market/htsNews.js";
 import { telegramArchivePage, type TelegramArchivePorts } from "./market/telegramArchive.js";
 import { assertStockCode, assertYmd, BadRequest } from "./market/validation.js";
@@ -28,6 +30,8 @@ export interface AppOptions {
     listStockMeta: () => Promise<StockMeta[]>;
     /** GET /news/telegram/archive 의 데이터 — 아카이브 검색·coverage(market/telegramArchive.ts). */
     telegramArchive: TelegramArchivePorts;
+    /** GET /stocks/:code 의 데이터 — 마스터 + 시총 시계열(market/stockInfo.ts). null = 마스터에 없는 코드. */
+    stockInfo: StockInfoByCode;
     /** GET /daily 의 데이터 — 수정주가 일봉 [from, to] + 유령 보정(market/labChart.ts). */
     dailyByCode: DailyWithFix;
     /** GET /minutes 의 데이터 — 그 날 분봉 + % 기준가 + 수정주가 환산비(market/labChart.ts). */
@@ -47,6 +51,7 @@ export interface AppOptions {
 export function createApp({
     listDates,
     listStockMeta,
+    stockInfo,
     telegramArchive,
     dailyByCode,
     minutesByDate,
@@ -68,6 +73,19 @@ export function createApp({
 
     app.get("/dates", async (c) => c.json(await listDates()));
     app.get("/stocks/master", async (c) => c.json(await listStockMeta()));
+    // /stocks/master 뒤에 둔다(먼저 등록된 고정 경로가 이긴다 — "master" 는 소문자라 코드 검증도 어차피 400).
+    app.get("/stocks/:code", async (c) => {
+        const code = assertStockCode(c.req.param("code"));
+        const fromRaw = c.req.query("from");
+        const toRaw = c.req.query("to");
+        const from = fromRaw === undefined ? undefined : assertYmd(fromRaw, "from");
+        const to = toRaw === undefined ? undefined : assertYmd(toRaw, "to");
+        if (from !== undefined && to !== undefined && from > to) throw new BadRequest(`from(${from}) 이 to(${to}) 보다 뒤입니다`);
+        const info = await stockInfo(code, { from, to });
+        // 마스터에 없는 코드는 빈 꼴을 지어내지 않고 404 — /theme/stocks/:code 와 같은 결(이름 없는 종목 정보는 없다).
+        if (!info) return c.json({ error: `없는 종목: ${code}` }, 404);
+        return c.json(info);
+    });
     app.get("/minutes", async (c) =>
         c.json(await minutesByDate(assertStockCode(c.req.query("code")), assertYmd(c.req.query("date")))),
     );

@@ -7,6 +7,7 @@ function make(ports: Ports = {}) {
     const app = createApp({
         listDates: async () => [],
         listStockMeta: async () => [],
+        stockInfo: async () => null,
         telegramArchive: { searchPage: async () => ({ items: [] }), coverage: async () => null },
         dailyByCode: () => Promise.reject(new Error("스텁 없음")),
         minutesByDate: () => Promise.reject(new Error("스텁 없음")),
@@ -57,6 +58,45 @@ describe("stocks/master", () => {
         const r = await call("/stocks/master");
         expect(r.status).toBe(200);
         expect(r.json).toEqual(meta);
+    });
+});
+
+describe("stocks/:code", () => {
+    const info = { stockCode: "000001", name: "알파", market: "거래소", listedAt: null, marketCap: [{ date: "2025-01-02", cap: "1000" }] };
+    it("주입된 stockInfo 결과를 그대로 — from/to 는 선택, 있는 것만 넘긴다", async () => {
+        const seen: unknown[] = [];
+        const call = make({ stockInfo: async (code, range) => (seen.push([code, range]), info) });
+        const r = await call("/stocks/000001?from=2025-01-01&to=2025-12-31");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual(info);
+        expect((await call("/stocks/000001")).status).toBe(200);
+        expect((await call("/stocks/000001?to=2025-06-30")).status).toBe(200);
+        expect(seen).toEqual([
+            ["000001", { from: "2025-01-01", to: "2025-12-31" }],
+            ["000001", { from: undefined, to: undefined }],
+            ["000001", { from: undefined, to: "2025-06-30" }],
+        ]);
+    });
+    it("/stocks/master 는 여전히 마스터 전량(/:code 에 먹히지 않는다)", async () => {
+        const meta = [{ stockCode: "000001", name: "알파", market: "거래소" }];
+        const call = make({ listStockMeta: async () => meta, stockInfo: () => Promise.reject(new Error("불리면 안 됨")) });
+        const r = await call("/stocks/master");
+        expect(r.status).toBe(200);
+        expect(r.json).toEqual(meta);
+    });
+    it("마스터에 없는 코드 = 404 · code 형식·from/to 불량·뒤집힘 = 400", async () => {
+        const call = make();
+        const none = await call("/stocks/999999");
+        expect(none.status).toBe(404);
+        expect(none.json).toEqual({ error: "없는 종목: 999999" });
+        const badCode = await call("/stocks/5930");
+        expect(badCode.status).toBe(400);
+        expect(badCode.json).toEqual({ message: "code 형식(6자리 영숫자): 5930", error: "Bad Request", statusCode: 400 });
+        expect((await call("/stocks/000001?from=2025-02-30")).json).toMatchObject({ message: "from 가 유효한 날짜가 아님: 2025-02-30" });
+        expect((await call("/stocks/000001?to=")).json).toMatchObject({ message: "to 필수(YYYY-MM-DD)" });
+        const flipped = await call("/stocks/000001?from=2025-02-01&to=2025-01-01");
+        expect(flipped.status).toBe(400);
+        expect(flipped.json).toMatchObject({ message: "from(2025-02-01) 이 to(2025-01-01) 보다 뒤입니다" });
     });
 });
 

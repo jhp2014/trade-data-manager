@@ -26,6 +26,7 @@ import { createApp } from "./app.js";
 import { makeLabChart } from "./market/labChart.js";
 import { MaterializedDataDates } from "./market/dataDates.js";
 import { makeDayFlowByDate } from "./market/dayFlow.js";
+import { makeStockInfo } from "./market/stockInfo.js";
 import { makeCachedDayFlowBody } from "./market/dayFlowCache.js";
 import { loadThemeStore, type ThemeStore } from "./theme/store.js";
 import { makeChartLineStore } from "./lines/chartLines.js";
@@ -38,7 +39,7 @@ const port = Number(process.env.LAB_API_PORT ?? 3300);
 // market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — 요청마다 500 으로 원인을 말한다(기동 크래시보다 진단이 쉽다).
 type MarketPorts = Pick<
     Parameters<typeof createApp>[0],
-    "listDates" | "listStockMeta" | "telegramArchive" | "dailyByCode" | "minutesByDate" | "stockNews" | "dayFlowBody"
+    "listDates" | "listStockMeta" | "stockInfo" | "telegramArchive" | "dailyByCode" | "minutesByDate" | "stockNews" | "dayFlowBody"
 >;
 function wireMarket(): MarketPorts & { closePool: () => void } {
     try {
@@ -49,6 +50,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
         const rawDaily = new DrizzleRawDailyCandleRepository(db);
         const master = new DrizzleStockMasterRepository(db);
         const telegram = new DrizzleTelegramMessageRepository(db);
+        const marketCap = new DrizzleDailyMarketCapRepository(db);
         const labChart = makeLabChart({ dailyCandle: daily, rawDailyCandle: rawDaily, minuteCandle: minutes });
         const dates = new MaterializedDataDates(minutes); // /dates 파일 물화(.cache) — 풀스캔 6~20s 를 첫 생성 1회로
 
@@ -58,6 +60,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
         return {
             listDates: () => dates.list(),
             listStockMeta: () => master.listAllMeta(),
+            stockInfo: makeStockInfo({ master, marketCap }),
             telegramArchive: {
                 searchPage: (q, opts) => archive.searchPage(q, opts),
                 coverage: async () => {
@@ -77,7 +80,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
                     minute: minutes,
                     rawDaily,
                     adjDaily: daily,
-                    marketCap: new DrizzleDailyMarketCapRepository(db),
+                    marketCap,
                 }),
                 tradingDays: () => dates.list(),
             }),
@@ -89,6 +92,7 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
         return {
             listDates: reject,
             listStockMeta: reject,
+            stockInfo: reject,
             telegramArchive: { searchPage: reject, coverage: reject },
             dailyByCode: reject,
             minutesByDate: reject,
