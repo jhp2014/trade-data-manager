@@ -107,14 +107,14 @@ trade-judgment/   (별도 git, 로컬 전용) — trading-review 의 후속: 판
 ```
 
 ```
-화면 ──/api/(시장 읽기 6경로)─→ Vite 프록시 ──→ lab-api :3300(개발 3310) ──→ market DB(읽기)   day-flow·dates·chart·stocks/master·news/hts·news/telegram/archive
+화면 ──/api/(시장 읽기 6경로)─→ Vite 프록시 ──→ lab-api :3300(개발 3310) ──→ market DB(읽기)   day-flow·dates·chart·stocks·news/hts·news/telegram/archive
 화면 ──/api/*(그 밖 — 지금은 소비자 0)──→ Vite 프록시 ────→ tdm api :3001(개발 3011)           GET 만
 ```
 
 (옛 `/judgment/*` 길 — lab-api 가 trade-judgment 이력·사전을 읽던 것 — 은 2026-10-17 은퇴. 판단·AI 가공은
 `tdm-ai` 작업장으로 갔고, 등록부 기반 새 조회가 후계로 온다 — decisions.md 「판단·AI 가공의 작업장」.)
 
-- **시장 읽기는 lab-api 로 옮겨 왔다**(2026-10-16 strangler — 분봉 흐름 `/day-flow`(옛 `/day-replay` 대체, lab 전용 계약), 차트 `/daily`·`/minutes`(2026-10-29 옛 `/chart` 묶음을 나눔 — 일봉은 기간 마음대로, 분봉은 하루씩), 날짜 `/dates`, 종목명 `/stocks/master`, 뉴스 `/news/hts`·`/news/telegram/archive`). 이로써 **화면의 tdm api 의존 = 0** — `/api` 기본 프록시는 남겨 뒀고, 기준선 `/chart-anchors/all`·라벨 `/groups` 같은 큐레이션 계통을 나중에 붙이면 그 길로 간다(그때 lab-api 이식도 같이 판단).
+- **시장 읽기는 lab-api 로 옮겨 왔다**(2026-10-16 strangler — 분봉 흐름 `/day-flow`(옛 `/day-replay` 대체, lab 전용 계약), 차트 `/daily`·`/minutes`(2026-10-29 옛 `/chart` 묶음을 나눔 — 일봉은 기간 마음대로, 분봉은 하루씩), 날짜 `/dates`, 종목명 `/stocks`(2026-11-04 `/stocks/master` 에서 개명 — 상장일 listedAt 동봉), 뉴스 `/news/hts`·`/news/telegram/archive`). 이로써 **화면의 tdm api 의존 = 0** — `/api` 기본 프록시는 남겨 뒀고, 기준선 `/chart-anchors/all`·라벨 `/groups` 같은 큐레이션 계통을 나중에 붙이면 그 길로 간다(그때 lab-api 이식도 같이 판단).
   예외: **테마 단면 계산**(그 시각 전 종목 순위·테마 존 판정)은 tdm 에선 화면 쪽 계산이라 api 로 안 나온다 — trade-lab 이 직접 계산한다(trading-review `tools/cellset.mjs` 이식본 — tdm 앱 엔진과 결과 동일 확인됨).
 - **AI 는 시장 데이터를 직접 읽지 않는다.** 분봉 원본은 너무 커서 스크립트가 특징값으로 요약하고, AI 는 요약을 읽는다. 넓게 훑기는 스크립트, 좁혀진 자리의 미묘한 판단(차트 모양 등)은 AI 가 직접.
 - **캐시(`.data`)**: 한 번 받은 날은 다시 안 받는다. 1년치(거래일 250일)여도 압축 700~800MB 수준. 분석 스크립트는 하루씩 읽고 버린다. 원본이 바뀌면(수정주가 보정·늦은 수집) `--refresh`.

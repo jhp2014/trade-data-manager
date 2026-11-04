@@ -4,7 +4,7 @@
 // 그래서 %·누적 시계열이 아니라 **분당 원값**을 싣는다 — 가격과 %는 정보 동치인데 원값 쪽이 분당 고저가
 // 공짜로 생기고 반올림 손실이 없다. KRX/UN 토글 = 클라의 base 선택(일차변환이 아니라 원값이라 그냥 나눗셈).
 // basePrice 만은 서버 몫 — 감자·액분 이벤트 보정(원주가·수정주가 대조)은 일봉 2벌을 든 서버만 계산할 수 있다.
-// name·market 은 없다(lab 이 이미 든 /stocks/master 클라 조인) · themes 도 없다(소속은 판단 이력이 입힌다).
+// name·market 은 없다(lab 이 이미 든 /stocks 클라 조인) · themes 도 없다(소속은 판단 이력이 입힌다).
 import type { ByMarket } from "@trade-data-manager/market";
 
 /** 한 종목의 분당 사실 — dense 타임라인(무거래 분은 flat-fill, amount 0), times 는 unix 초. 가격·대금은 원. */

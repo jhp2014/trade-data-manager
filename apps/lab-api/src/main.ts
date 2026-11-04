@@ -26,7 +26,7 @@ import { createApp } from "./app.js";
 import { makeLabChart } from "./market/labChart.js";
 import { MaterializedDataDates } from "./market/dataDates.js";
 import { makeDayFlowByDate } from "./market/dayFlow.js";
-import { makeStockInfo } from "./market/stockInfo.js";
+import { makeListStocks, makeMarketCapSeries } from "./market/stocks.js";
 import { makeCachedDayFlowBody } from "./market/dayFlowCache.js";
 import { loadThemeStore, type ThemeStore } from "./theme/store.js";
 import { makeChartLineStore } from "./lines/chartLines.js";
@@ -39,7 +39,7 @@ const port = Number(process.env.LAB_API_PORT ?? 3300);
 // market DB 미설정(DATABASE_URL 없음)이어도 서버는 뜬다 — 요청마다 500 으로 원인을 말한다(기동 크래시보다 진단이 쉽다).
 type MarketPorts = Pick<
     Parameters<typeof createApp>[0],
-    "listDates" | "listStockMeta" | "stockInfo" | "telegramArchive" | "dailyByCode" | "minutesByDate" | "stockNews" | "dayFlowBody"
+    "listDates" | "listStocks" | "marketCapSeries" | "telegramArchive" | "dailyByCode" | "minutesByDate" | "stockNews" | "dayFlowBody"
 >;
 function wireMarket(): MarketPorts & { closePool: () => void } {
     try {
@@ -59,8 +59,8 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
         const peers = NEWS_CHANNELS.map((c) => c.peer);
         return {
             listDates: () => dates.list(),
-            listStockMeta: () => master.listAllMeta(),
-            stockInfo: makeStockInfo({ master, marketCap }),
+            listStocks: makeListStocks(master),
+            marketCapSeries: makeMarketCapSeries(marketCap),
             telegramArchive: {
                 searchPage: (q, opts) => archive.searchPage(q, opts),
                 coverage: async () => {
@@ -91,8 +91,8 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
         const reject = () => Promise.reject(new Error("market DB 미설정(DATABASE_URL)"));
         return {
             listDates: reject,
-            listStockMeta: reject,
-            stockInfo: reject,
+            listStocks: reject,
+            marketCapSeries: reject,
             telegramArchive: { searchPage: reject, coverage: reject },
             dailyByCode: reject,
             minutesByDate: reject,

@@ -51,7 +51,7 @@ export interface MinuteCandle {
  */
 export type { DailyUnFix, LabChartLine, LabDailyCandle, LabMinuteDay } from "@trade-data-manager/wire";
 
-/** GET /stocks/master 한 줄. */
+/** GET /stocks 한 줄 중 쓰는 필드(lab-api 는 상장일 listedAt 도 주지만 화면 소비자가 아직 없다 — wire LabStockRow). */
 export interface StockMeta {
     stockCode: string;
     name: string;

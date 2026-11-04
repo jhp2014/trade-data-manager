@@ -9,7 +9,7 @@ export const tdmMarket: Market = {
     chartLines: (code, date, signal) => apiGet<LabChartLine[]>("chart-lines", { code, date }, signal),
     saveChartLine: (code, line) => apiSend<LabChartLine[]>("POST", "chart-lines", { code, line }),
     deleteChartLine: (code, line) => apiSend<LabChartLine[]>("DELETE", "chart-lines", { code, line }),
-    stockMaster: (signal) => apiGet<StockMeta[]>("stocks/master", undefined, signal),
+    stockMaster: (signal) => apiGet<StockMeta[]>("stocks", undefined, signal),
     tradingDays: (signal) => apiGet<string[]>("dates", undefined, signal),
     // lab 전용 계약(/day-flow, lab-api) — 쓰는 필드만 와서 slimming 이 필요 없다(옛 /day-replay 는 받자마자 깎았다).
     dayFlow: (date, signal) => apiGet<DayFlow>("day-flow", { date }, signal),

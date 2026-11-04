@@ -60,4 +60,14 @@ describe("DrizzleStockMasterRepository (pglite)", () => {
     it("getByStockCodes — 빈 배열은 빈 결과", async () => {
         expect(await repo.getByStockCodes([])).toEqual([]);
     });
+
+    it("listAllListings — 이름표 + 상장일 전량, 코드 오름차순 · 상장일 미상은 null(공모가는 안 끈다)", async () => {
+        await repo.saveStockMasters([m("000100", { name: "상장일미상", listingDate: null })]);
+        const got = await repo.listAllListings();
+        expect(got.map((r) => r.stockCode)).toEqual([...got.map((r) => r.stockCode)].sort());
+        expect(got.find((r) => r.stockCode === "000100")).toEqual({ stockCode: "000100", name: "상장일미상", market: "거래소", listingDate: null });
+        const samsung = got.find((r) => r.stockCode === "005930");
+        expect(samsung).toMatchObject({ listingDate: "2010-01-01" });
+        expect(samsung).not.toHaveProperty("ipoPrice");
+    });
 });

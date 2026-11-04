@@ -1,5 +1,12 @@
 import { and, asc, eq, gte, inArray, isNull } from "drizzle-orm";
-import type { StockMaster, StockMasterMeta, StockMasterStore, StockMasterReader } from "@trade-data-manager/market";
+import type {
+    StockMaster,
+    StockMasterListing,
+    StockMasterListingReader,
+    StockMasterMeta,
+    StockMasterStore,
+    StockMasterReader,
+} from "@trade-data-manager/market";
 import type { Database } from "../db.js";
 import { stockMaster } from "../schema/market.js";
 import { stockMasterToRow, rowToStockMaster } from "../mappers/stockMaster.js";
@@ -9,7 +16,7 @@ import { buildConflictUpdateSet } from "./_helpers.js";
 const CONFLICT_SET = buildConflictUpdateSet(stockMaster, ["stockCode", "ipoPrice"]);
 
 /** Drizzle 구현 — stockCode PK upsert-accumulate(삭제 없음). 폐지종목 행 보존. */
-export class DrizzleStockMasterRepository implements StockMasterStore, StockMasterReader {
+export class DrizzleStockMasterRepository implements StockMasterStore, StockMasterReader, StockMasterListingReader {
     constructor(private readonly db: Database) {}
 
     async saveStockMasters(masters: StockMaster[]): Promise<void> {
@@ -41,6 +48,14 @@ export class DrizzleStockMasterRepository implements StockMasterStore, StockMast
     async listAllMeta(): Promise<StockMasterMeta[]> {
         return this.db
             .select({ stockCode: stockMaster.stockCode, name: stockMaster.name, market: stockMaster.market })
+            .from(stockMaster)
+            .orderBy(asc(stockMaster.stockCode));
+    }
+
+    /** 이름표 + 상장일 전량 — listAllMeta 에 상장일 한 열만 더한다(공모가는 안 끈다). */
+    async listAllListings(): Promise<StockMasterListing[]> {
+        return this.db
+            .select({ stockCode: stockMaster.stockCode, name: stockMaster.name, market: stockMaster.market, listingDate: stockMaster.listingDate })
             .from(stockMaster)
             .orderBy(asc(stockMaster.stockCode));
     }

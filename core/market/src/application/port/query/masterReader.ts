@@ -20,3 +20,16 @@ export interface StockMasterReader {
      */
     listAllMeta(): Promise<StockMasterMeta[]>;
 }
+
+/** 이름표 + 상장일 — 「누구냐」 명부 한 줄(lab-api `GET /stocks`). 상장일 미상이면 null. */
+export interface StockMasterListing extends StockMasterMeta {
+    listingDate: string | null;
+}
+
+/**
+ * 이름표 + 상장일 **전량**(코드 오름차순). ISP: StockMasterReader 와 따로 둔다 — 상장일까지 원하는 소비자(lab-api)만
+ * 이걸 받고, 이름표만 쓰는 자리(tdm api `/stocks/master`·MasterCache)는 그대로다.
+ */
+export interface StockMasterListingReader {
+    listAllListings(): Promise<StockMasterListing[]>;
+}
