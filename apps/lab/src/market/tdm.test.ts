@@ -13,6 +13,13 @@ afterEach(() => vi.unstubAllGlobals());
 
 const url = (i = 0): string => String(fetchMock.mock.calls[i][0]);
 
+describe("marketCaps", () => {
+    it("/marketcap 에 code·from·to 를 싣는다", async () => {
+        await tdmMarket.marketCaps("114630", "2026-01-14", "2026-02-02");
+        expect(url()).toBe("/api/marketcap?code=114630&from=2026-01-14&to=2026-02-02");
+    });
+});
+
 describe("telegramArchive", () => {
     it("하루면 date=, 구간이면 from=&to= — 검색어는 다듬어 싣고, 비면 뺀다", async () => {
         await tdmMarket.telegramArchive({ from: "2026-07-31", to: "2026-07-31", q: " SK스퀘어 " });

@@ -171,6 +171,41 @@ describe("ChartPanel", () => {
         await waitFor(() => expect(seen.minute.at(-1)!.markerTime).toBe(Date.parse("2026-07-15T09:44:00+09:00") / 1000));
     });
 
+    it("시총 — 헤더 줄에 D 아침 값(D 앞 줄)으로, 없으면 — 로, 요청은 D 앞까지만", async () => {
+        usePaths.getState().write("A", { code: "402340", date: "2026-07-31" });
+        const asked: string[] = [];
+        const m = fakeMarket();
+        m.marketCaps = async (code, from, to) => {
+            asked.push(`${code}:${from}~${to}`);
+            return code === "402340" && to === "2026-07-30" ? [{ date: "2026-07-29", cap: "1000000000000" }, { date: "2026-07-30", cap: "13800000000000" }] : [];
+        };
+        renderPanels(m);
+        expect(await within(headerLine("chart-1")!).findByText("시총 13.8조")).toBeTruthy();
+        expect(asked).toEqual(["402340:2026-07-11~2026-07-30"]);
+        act(() => usePaths.getState().write("A", { date: "2024-03-05" }));
+        expect(await within(headerLine("chart-1")!).findByText("시총 —")).toBeTruthy();
+    });
+
+    it("시총 — 종목이 바뀌어 기다리는 동안 옛 종목 값이 남지 않고, 실패해도 차트는 그대로다", async () => {
+        usePaths.getState().write("A", { code: "402340", date: "2026-07-31" });
+        const m = fakeMarket();
+        let answer: () => void = () => {};
+        m.marketCaps = async (code) => {
+            if (code === "402340") return [{ date: "2026-07-30", cap: "42300000000" }];
+            await new Promise<void>((go) => (answer = go));
+            throw new Error("시총 실패");
+        };
+        renderPanels(m);
+        await within(headerLine("chart-1")!).findByText("시총 423억");
+        act(() => usePaths.getState().write("A", { code: "009150" }));
+        expect(await within(headerLine("chart-1")!).findByText("시총 —")).toBeTruthy();
+        expect(within(headerLine("chart-1")!).queryByText("시총 423억")).toBeNull();
+        act(() => answer());
+        await new Promise((r) => setTimeout(r, 20));
+        expect(screen.getByTestId("daily")).toBeTruthy();
+        expect(within(headerLine("chart-1")!).getByText("시총 —")).toBeTruthy();
+    });
+
     it("보기는 컨트롤 판에서 바꾼다 — 기본은 판 안이라 헤더 줄에 컨트롤이 없다", async () => {
         usePaths.getState().write("A", { code: "402340", date: "2026-07-31" });
         renderPanels(fakeMarket());

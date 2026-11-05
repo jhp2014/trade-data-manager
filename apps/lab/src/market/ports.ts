@@ -1,6 +1,6 @@
 // 시장 데이터 창구 — 패널·훅은 이 인터페이스만 안다(fetch·URL 은 구현 몫).
 // 쓰는 쪽이 필요한 것만 의존하도록 종류별로 나눈다. 구현(tdm.ts / 테스트 가짜)은 여럿을 한 번에 구현해도 된다.
-import type { DayFlow, HtsCursor, HtsNewsItem, LabChartLine, LabDailyCandle, LabMinuteDay, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
+import type { DayFlow, HtsCursor, HtsNewsItem, LabChartLine, LabDailyCandle, LabMinuteDay, StockMarketCapPoint, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
 
 export interface ChartData {
     /** 수정주가 일봉 [from, to](날짜 오름차순) + 유령 보정(unFix, 보정된 날만). */
@@ -19,6 +19,8 @@ export interface LineData {
 export interface StockData {
     /** 종목 마스터 전량(코드·이름·시장). */
     stockMaster(signal?: AbortSignal): Promise<StockMeta[]>;
+    /** 일별 시총 [from, to](날짜 오름차순, KRX 원값). 2024-07-03 부터 — 범위에 행이 없으면 빈 배열. */
+    marketCaps(code: string, from: string, to: string, signal?: AbortSignal): Promise<StockMarketCapPoint[]>;
 }
 
 export interface CalendarData {

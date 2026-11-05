@@ -36,7 +36,7 @@
 ## apps/lab/src — 판단 학습 실험실 화면 (옛 독립 저장소 trade-lab, 2026-10-16 편입)
 
 - Vite+React+dockview — workbench 와 별개 셸: 전역 focus 대신 **경로** `{종목,날짜,시각}` 모델(`store/paths.ts` 의 `usePanelPath`). 포트 사용 3200 / 개발 3210
-- 서버는 Vite 프록시로 가른다: 시장 읽기(`/api/day-flow`·`dates`·`daily`·`minutes`·`stocks`·`chart-lines`·`theme/registry`·`theme/stocks/`·`news/hts`·`news/telegram/archive` — 정확 매칭 정규식)는 lab-api(사용 3300/개발 3310), 나머지 `/api/*` 기본 항목만 tdm api(**GET 만**, 사용 3001/개발 3011 — 지금 소비자 0, 장래 큐레이션 계통용). judgment 읽기(이력 기반 테마 판 htheme 포함)는 2026-10-17 은퇴 — 등록부 기반 새 조회·새 패널이 후계(결정 로그 「판단·AI 가공의 작업장」). workbench 부품은 복사해 온다(복사한 순간부터 lab 의 것 — 공용화하지 않는다, workbench 는 장기적으로 은퇴 예정). 규칙 전체는 `apps/lab/DESIGN.md`
+- 서버는 Vite 프록시로 가른다: 시장 읽기(`/api/day-flow`·`dates`·`daily`·`minutes`·`stocks`·`marketcap`·`chart-lines`·`theme/registry`·`theme/stocks/`·`news/hts`·`news/telegram/archive` — 정확 매칭 정규식)는 lab-api(사용 3300/개발 3310), 나머지 `/api/*` 기본 항목만 tdm api(**GET 만**, 사용 3001/개발 3011 — 지금 소비자 0, 장래 큐레이션 계통용). judgment 읽기(이력 기반 테마 판 htheme 포함)는 2026-10-17 은퇴 — 등록부 기반 새 조회·새 패널이 후계(결정 로그 「판단·AI 가공의 작업장」). workbench 부품은 복사해 온다(복사한 순간부터 lab 의 것 — 공용화하지 않는다, workbench 는 장기적으로 은퇴 예정). 규칙 전체는 `apps/lab/DESIGN.md`
 
 ## apps/lab-api/src — lab 이 대면하는 백엔드 (Hono, 2026-10-16 신설)
 

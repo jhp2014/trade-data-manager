@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
-import { keepSameStock, pruneDayFlows } from "./queries.js";
+import { keepSameStock, morningCapOf, pruneDayFlows } from "./queries.js";
 
 const dates = (qc: QueryClient) =>
     qc
@@ -42,6 +42,21 @@ describe("pruneDayFlows", () => {
         pruneDayFlows(qc, 1, new Map([["2026-07-02", 1]]));
         expect(qc.getQueryData(["chart", "402340", "2026-07-31"])).toBeDefined();
         expect(dates(qc)).toEqual(["2026-07-02"]);
+    });
+});
+
+describe("morningCapOf", () => {
+    const rows = [
+        { date: "2026-02-02", cap: "100" },
+        { date: "2026-02-03", cap: "200" },
+    ];
+    it("date < D 인 마지막 줄 — D 자신의 줄(그날 종가)은 안 본다", () => {
+        expect(morningCapOf(rows, "2026-02-03")).toBe("100");
+        expect(morningCapOf(rows, "2026-02-04")).toBe("200");
+    });
+    it("앞선 줄이 없으면 null", () => {
+        expect(morningCapOf(rows, "2026-02-02")).toBeNull();
+        expect(morningCapOf([], "2026-02-03")).toBeNull();
     });
 });
 

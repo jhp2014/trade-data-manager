@@ -19,3 +19,13 @@ export function fmtEokValue(eok: number): string {
 
 /** 거래대금(원) → 억/조(fmtEokValue). */
 export const fmtEok = (krw: number): string => fmtEokValue(krw / 1e8);
+
+/**
+ * 시가총액(원, KRX 원값 문자열) → 반올림해 1조 이상 = 조(소수 한 자리 고정 — 값을 읽는 자리라 자릿수가 안 흔들리게, 거래대금과 달리 .0 을 안 뗀다), 아래 = 억(쉼표).
+ */
+export function fmtMarketCap(cap: string): string {
+    const krw = Number(cap);
+    const eok = Math.round(krw / 1e8);
+    if (eok < 10000) return `${eok.toLocaleString("ko-KR")}억`;
+    return `${(krw / 1e12).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}조`;
+}

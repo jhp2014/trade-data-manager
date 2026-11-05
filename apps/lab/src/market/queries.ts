@@ -17,7 +17,7 @@ import { kstToday } from "./domain.js";
 import { addDays, shiftYears } from "../lib/date.js";
 import { ApiError } from "./http.js";
 import { useCalendarData, useChartData, useLineData, useStockData, useThemeData } from "./MarketProvider.js";
-import type { DayFlow, LabChartLine, LabDailyCandle, LabMinuteDay, StockMoves } from "./types.js";
+import type { DayFlow, LabChartLine, LabDailyCandle, LabMinuteDay, StockMarketCapPoint, StockMoves } from "./types.js";
 import type { ChartData } from "./ports.js";
 
 const TODAY_STALE = 60_000; // 오늘 시세는 수집이 채우는 중일 수 있다 — 1분 뒤 재조회 허용
@@ -154,6 +154,28 @@ export function useTradingDays(): UseQueryResult<string[], Error> {
 /** 종목명 하나. */
 export function useStockName(code: string): string | null {
     return useStockNameOf()(code);
+}
+
+/** 그날 아침 시총을 찾아볼 달력 일수 — 휴장·늦은 수집 대비. */
+const MORNING_CAP_LOOKBACK_DAYS = 20;
+
+/** D 의 아침 시총 — date < D 인 마지막 줄(D 줄은 그날 종가라 그날 등락이 섞인다 — 결정 로그 「시가총액·상장주식수 소스 (KRX)」). 없으면 null. */
+export const morningCapOf = (rows: readonly StockMarketCapPoint[], date: string): string | null => rows.filter((r) => r.date < date).at(-1)?.cap ?? null;
+
+/**
+ * 그 종목의 D 아침 시총(원, KRX 원값 문자열). 모르면 null — 불러오는 중·실패·값 없음(2024-07 전 등)을 가르지 않는다(차트 옆 정보일 뿐).
+ * 같은 종목이면 새 값이 올 때까지 직전 값을 잇고(자리가 깜박이지 않게), 종목이 바뀌면 비운다(옛 종목 시총을 새 종목으로 오독하지 않게).
+ */
+export function useMorningCap(code: string, date: string): string | null {
+    const port = useStockData();
+    const q = useQuery({
+        queryKey: ["marketcap", code, date],
+        queryFn: ({ signal }) => port.marketCaps(code, addDays(date, -MORNING_CAP_LOOKBACK_DAYS), addDays(date, -1), signal),
+        enabled: code !== "" && date !== "",
+        staleTime: histStale(date),
+        placeholderData: keepSameStock(code),
+    });
+    return morningCapOf(q.data ?? [], date);
 }
 
 /**

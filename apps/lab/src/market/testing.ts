@@ -13,6 +13,8 @@ export function fakeMarket<T extends Partial<Market>>(stubs: T): Market & T {
         saveChartLine: notStubbed("saveChartLine"),
         deleteChartLine: notStubbed("deleteChartLine"),
         stockMaster: notStubbed("stockMaster"),
+        // 시총도 차트 패널이 늘 묻는다 — 기본은 값 없음
+        marketCaps: async () => [],
         tradingDays: notStubbed("tradingDays"),
         dayFlow: notStubbed("dayFlow"),
         stockMoves: notStubbed("stockMoves"),

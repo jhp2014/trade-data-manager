@@ -8,7 +8,8 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { CLOSE_TIME, usePanelPath } from "../store/paths.js";
 import { useChartSettings } from "../store/chartSettings.js";
 import { usePanelUi } from "../store/panelUi.js";
-import { dailyRowsOf, useChartLines, useDailyCandles, useMinuteDay, useMinuteDays, useStockName, useTradingDays } from "../market/queries.js";
+import { dailyRowsOf, useChartLines, useDailyCandles, useMinuteDay, useMinuteDays, useMorningCap, useStockName, useTradingDays } from "../market/queries.js";
+import { fmtMarketCap } from "../lib/format.js";
 import { kstToUnix, type DailyMode } from "../market/domain.js";
 import type { LabMinuteDay, PriceMode } from "../market/types.js";
 import { deriveDailyView, deriveMinutePriceView, deriveMinuteView } from "../chart/derive.js";
@@ -61,6 +62,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const [lineField, setLineField] = usePanelUi(panelId, "lineField", LINE_FIELDS, "H");
     const venue = venueOf(mode);
     const name = useStockName(code);
+    const morningCap = useMorningCap(code, date);
 
     // 경로가 바뀌면 새 데이터가 올 때까지 직전 데이터를 그대로 그린다(차트를 언마운트하지 않아 줌이 안 깨진다).
     // 그래서 "이 데이터가 지금 경로의 것인가"를 가려야 한다 — 표시범위 기준(frameKey)은 도착한 데이터에서 만들고,
@@ -244,6 +246,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         info: [
             { id: "stock", name: "종목", text: () => (name ? `${name} ${code}` : code || null) },
             { id: "when", name: "날짜·시각", tabular: true, text: () => (date ? `${date}${time ? ` ${time}` : ""}` : null) },
+            // 값이 없어도(2024-07 전 · 불러오는 중 · 실패) 칸은 — 로 둔다 — 뒤 정보가 들락거리며 밀리지 않게.
+            { id: "marketCap", name: "시가총액", help: "그날 아침 시총 — 전 거래일 종가 × 전 거래일 상장주식수(KRX). 2024-07 전은 데이터 없음", tabular: true, text: () => (code && date ? `시총 ${morningCap === null ? "—" : fmtMarketCap(morningCap)}` : null) },
             {
                 id: "baseFallback", name: "분봉 % 기준", tone: "warn", help: "전일 종가가 없어 분봉 % 를 그 날 첫 시가 기준으로 그렸다",
                 text: () => (minute?.baseFallback && view !== "daily" ? "분봉 % = 첫 시가 기준(전일 종가 없음)" : null),

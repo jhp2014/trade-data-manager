@@ -1,7 +1,7 @@
 // 시장 데이터 창구의 api 구현 — 시장은 전부 읽기(GET), 쓰기는 lab 저장 선(/chart-lines POST·DELETE — lab-api 의 파일)뿐.
 import { apiGet, apiSend } from "./http.js";
 import type { Market } from "./ports.js";
-import type { DayFlow, HtsNewsItem, LabChartLine, LabDailyCandle, LabMinuteDay, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
+import type { DayFlow, HtsNewsItem, LabChartLine, LabDailyCandle, LabMinuteDay, StockMarketCapPoint, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
 
 export const tdmMarket: Market = {
     daily: (code, from, to, signal) => apiGet<LabDailyCandle[]>("daily", { code, from, to }, signal),
@@ -10,6 +10,7 @@ export const tdmMarket: Market = {
     saveChartLine: (code, line) => apiSend<LabChartLine[]>("POST", "chart-lines", { code, line }),
     deleteChartLine: (code, line) => apiSend<LabChartLine[]>("DELETE", "chart-lines", { code, line }),
     stockMaster: (signal) => apiGet<StockMeta[]>("stocks", undefined, signal),
+    marketCaps: (code, from, to, signal) => apiGet<StockMarketCapPoint[]>("marketcap", { code, from, to }, signal),
     tradingDays: (signal) => apiGet<string[]>("dates", undefined, signal),
     // lab 전용 계약(/day-flow, lab-api) — 쓰는 필드만 와서 slimming 이 필요 없다(옛 /day-replay 는 받자마자 깎았다).
     dayFlow: (date, signal) => apiGet<DayFlow>("day-flow", { date }, signal),

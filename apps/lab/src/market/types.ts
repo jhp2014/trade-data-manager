@@ -58,6 +58,9 @@ export interface StockMeta {
     market: string;
 }
 
+/** GET /marketcap?code&from&to 한 줄 — 그 날 종가 × 그 날 상장주식수(KRX 원값 문자열, contracts/wire 정의를 그대로 쓴다). */
+export type { StockMarketCapPoint } from "@trade-data-manager/wire";
+
 /**
  * GET /day-flow?date — 그날 수집 종목 전부의 **분당 원값**(lab 전용 계약, lab-api 서빙 — contracts/wire 정의를
  * 그대로 쓴다). 표현(%·누적·기준 전환)은 전부 클라 몫 — 받은 뒤 flowDerive.ts 가 % 공간으로 파생한다.

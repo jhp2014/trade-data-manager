@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
-// 화면은 src/. 시장 읽기 경로(/api/day-flow·dates·stocks·daily·minutes·chart-lines(lab 저장 선)·news/hts·news/telegram/archive·theme/registry·theme/stocks)는
+// 화면은 src/. 시장 읽기 경로(/api/day-flow·dates·stocks·marketcap·daily·minutes·chart-lines(lab 저장 선)·news/hts·news/telegram/archive·theme/registry·theme/stocks)는
 // lab-api 로, 나머지 /api 기본 항목만 tdm api(지금 소비자 0 — 장래 큐레이션 계통용). 이식 경로는 /api 보다
 // 먼저 선언한다(선언 순서 매칭) — strangler. 키는 정확 매칭 정규식(^…(\?|$)): 맨 prefix 로 두면 /api/theme 이
 // /api/theme/members 같은 api 잔류 경로까지 삼킨다. (옛 /judgment 프록시는 2026-10-17 judgment 읽기 은퇴로 제거.)
@@ -45,8 +45,12 @@ export default defineConfig(({ mode }) => {
                     changeOrigin: true,
                     rewrite: stripApi,
                 },
-                // /stocks(이름표 + 상장일)만 — /marketcap(시총 시계열)은 화면 소비자가 생길 때 줄을 더한다(안 쓰는 길은 열어 두지 않는다).
                 "^/api/stocks(\\?|$)": {
+                    target: labApiTarget,
+                    changeOrigin: true,
+                    rewrite: stripApi,
+                },
+                "^/api/marketcap(\\?|$)": {
                     target: labApiTarget,
                     changeOrigin: true,
                     rewrite: stripApi,
