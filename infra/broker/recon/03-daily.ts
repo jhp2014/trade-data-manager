@@ -53,7 +53,7 @@ async function main() {
 
     // 로그: 양시장 일치 여부는 raw 로 떠서 사람이 본다(어댑터 머지가 이미 skip 처리하므로,
     // skip 된 날짜를 직접 보려면 양쪽 raw 날짜집합을 비교).
-    const krxRaw = await kw.rest.getDailyChartsForRange(stockCode, from.replace(/-/g, ""), to.replace(/-/g, ""));
+    const krxRaw = await kw.rest.getRegularDailyChartsForRange(stockCode, from.replace(/-/g, ""), to.replace(/-/g, ""));
     const unRaw = await kw.rest.getDailyChartsForRange(`${stockCode}_AL`, from.replace(/-/g, ""), to.replace(/-/g, ""));
     const inWin = (dt: string) => dt >= from.replace(/-/g, "") && dt <= to.replace(/-/g, "");
     const krxDates = new Set(krxRaw.map((r) => r.dt).filter(inWin));

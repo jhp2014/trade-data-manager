@@ -1,5 +1,6 @@
 // infra/broker/daily/kiwoomDailyAdapter — 키움 단독 DailyCandleProvider.
-// KRX(평문코드) + UN(코드_AL) 두 슬라이스를 기간 수집해 날짜로 머지. KIS 는 일봉 제공분이 없어 일봉은 키움 단독.
+// KRX(평문코드, 정규장 TR ka11081) + UN(코드_AL, 08:00~20:00 전체 ka10081) 두 슬라이스를 기간 수집해 날짜로 머지.
+// KRX 칸 = 정규장이라 종가가 곧 공식 종가·다음 날 기준가다(결정 로그 「일봉 KRX = 정규장」). KIS 는 일봉 제공분이 없어 일봉은 키움 단독.
 import type {
     DailyCandle,
     DailyCandleProvider,
@@ -11,6 +12,12 @@ import { mergeDailyMarkets, type DateBar } from "./merge.js";
 /** 어댑터가 키움에서 필요로 하는 최소 표면(테스트 시 스텁 주입 가능). 날짜는 compact "YYYYMMDD". */
 export interface KiwoomDailySource {
     getDailyChartsForRange(
+        stockCode: string,
+        fromDate: string,
+        toDate: string,
+        maxPages?: number,
+    ): Promise<KiwoomDailyCandle[]>;
+    getRegularDailyChartsForRange(
         stockCode: string,
         fromDate: string,
         toDate: string,
@@ -61,7 +68,7 @@ export class KiwoomDailyAdapter implements DailyCandleProvider {
         const fromC = compact(range.from);
         const toC = compact(range.to);
         const [krxRows, unRows] = await Promise.all([
-            this.source.getDailyChartsForRange(stockCode, fromC, toC, MAX_PAGES),
+            this.source.getRegularDailyChartsForRange(stockCode, fromC, toC, MAX_PAGES),
             this.source.getDailyChartsForRange(`${stockCode}_AL`, fromC, toC, MAX_PAGES),
         ]);
         return mergeDailyMarkets(

@@ -1,6 +1,6 @@
 // infra/broker/daily/kiwoomRawDailyCandleAdapter — 키움 단독 RawDailyCandleProvider(원주가 미수정).
-// KiwoomDailyAdapter(수정주가)의 원주가판: 소스만 getRawDailyChartsForRange(upd_stkpc_tp:"0")로 다르고
-// KRX(평문코드)+UN(코드_AL) 머지 로직은 동일. 전체 OHLCV 캔들이며, 시총 백필도 이 테이블의 krx.close 를 읽는다.
+// KiwoomDailyAdapter(수정주가)의 원주가판: 소스만 upd_stkpc_tp:"0" 으로 다르고 머지 로직은 동일 —
+// KRX(평문코드, 정규장 TR ka11081) + UN(코드_AL, ka10081). 전체 OHLCV 캔들이며, 시총 백필도 이 테이블의 krx.close 를 읽는다.
 import type {
     DailyCandle,
     DateRange,
@@ -12,6 +12,12 @@ import { mergeDailyMarkets, type DateBar } from "./merge.js";
 /** 어댑터가 키움에서 필요로 하는 최소 표면(원주가 기간수집). 날짜는 compact "YYYYMMDD". */
 export interface KiwoomRawDailyCandleSource {
     getRawDailyChartsForRange(
+        stockCode: string,
+        fromDate: string,
+        toDate: string,
+        maxPages?: number,
+    ): Promise<KiwoomDailyCandle[]>;
+    getRawRegularDailyChartsForRange(
         stockCode: string,
         fromDate: string,
         toDate: string,
@@ -62,7 +68,7 @@ export class KiwoomRawDailyCandleAdapter implements RawDailyCandleProvider {
         const fromC = compact(range.from);
         const toC = compact(range.to);
         const [krxRows, unRows] = await Promise.all([
-            this.source.getRawDailyChartsForRange(stockCode, fromC, toC, MAX_PAGES),
+            this.source.getRawRegularDailyChartsForRange(stockCode, fromC, toC, MAX_PAGES),
             this.source.getRawDailyChartsForRange(`${stockCode}_AL`, fromC, toC, MAX_PAGES),
         ]);
         return mergeDailyMarkets(

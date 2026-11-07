@@ -100,6 +100,15 @@ export interface KiwoomKa10081Response {
     }>;
 }
 
+/**
+ * [ka11081] 주식일봉차트정규장조회 — 줄 필드는 ka10081 과 같고 배열 키만 다르다(실측 2026-11-08).
+ * 평문 코드 = KRX 09:00~15:30. `_AL` 은 통합 09:00~15:30 + 종가는 KRX 종가라 ka10081 `_AL`(UN)과 다른 값이다.
+ */
+export interface KiwoomKa11081Response {
+    stk_cd: string;
+    result_list: KiwoomKa10081Response["stk_dt_pole_chart_qry"];
+}
+
 /** 연속조회 메타를 포함한 공통 응답 래퍼. */
 export interface KiwoomApiResponse<T> {
     data: T;

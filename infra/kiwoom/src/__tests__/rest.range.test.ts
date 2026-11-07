@@ -68,6 +68,38 @@ describe("KiwoomRest — getDailyChartsForRange (수정주가, 연속조회)", (
     });
 });
 
+describe("KiwoomRest — 정규장 일봉(ka11081, 연속조회)", () => {
+    const twoPages = () => {
+        const pages = [
+            { qry: mkPage(["20260110", "20260109"]), contYn: "Y", nextKey: "k1" },
+            { qry: mkPage(["20260108", "20251231"]), contYn: "Y", nextKey: "k2" },
+        ];
+        let i = 0;
+        return () => {
+            const p = pages[i++];
+            return { status: 200, data: { result_list: p.qry }, headers: { "cont-yn": p.contYn, "next-key": p.nextKey } };
+        };
+    };
+
+    it("수정주가판 — result_list 를 읽고 날짜경계로 종료, 한 키 핀 고정, next-key 이어받기, upd_stkpc_tp=1", async () => {
+        const { kiwoom, calls } = kiwoomWith(["A", "B"], twoPages());
+        const out = await kiwoom.rest.getRegularDailyChartsForRange("005930", "20260101", "20260110");
+        expect(out.map((c) => c.dt)).toEqual(["20260110", "20260109", "20260108", "20251231"]);
+
+        const chartCalls = dataCalls(calls).filter((c) => c.headers["api-id"] === "ka11081");
+        expect(chartCalls).toHaveLength(2);
+        expect(chartCalls[0].headers.authorization).toBe(chartCalls[1].headers.authorization);
+        expect(chartCalls[1].headers["next-key"]).toBe("k1");
+        expect(chartCalls[0].body).toEqual({ stk_cd: "005930", upd_stkpc_tp: "1", base_dt: "20260110" });
+    });
+
+    it("원주가판 — upd_stkpc_tp=0", async () => {
+        const { kiwoom, calls } = kiwoomWith(["A"], twoPages());
+        await kiwoom.rest.getRawRegularDailyChartsForRange("005930", "20260101", "20260110");
+        expect(dataCalls(calls).find((c) => c.headers["api-id"] === "ka11081")?.body.upd_stkpc_tp).toBe("0");
+    });
+});
+
 describe("KiwoomRest — getRawDailyChartsForRange (원주가, 연속조회)", () => {
     it("range 페이징 동작은 동일하되 upd_stkpc_tp=0(원주가)", async () => {
         const pages = [

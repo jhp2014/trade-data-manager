@@ -18,20 +18,22 @@ const dRow = (dt: string, cur: string, vol: string, prica: string): KiwoomDailyC
 });
 
 describe("KiwoomRawDailyCandleAdapter", () => {
-    it("원주가 소스(getRawDailyChartsForRange) 로 KRX·UN(_AL) 머지 + '+/-' 제거 + 거래대금 백만→원 + 절단", async () => {
+    it("KRX=정규장 원주가(평문), UN=전체 원주가(_AL) 머지 + '+/-' 제거 + 거래대금 백만→원 + 절단", async () => {
         const source: KiwoomRawDailyCandleSource = {
-            async getRawDailyChartsForRange(stockCode, fromDate, toDate) {
+            async getRawRegularDailyChartsForRange(stockCode, fromDate, toDate) {
+                expect(stockCode).toBe("005930");
                 expect(fromDate).toBe("20260701");
                 expect(toDate).toBe("20260703");
-                if (stockCode === "005930") {
-                    return [
-                        dRow("20260703", "-1000", "10", "5"),
-                        dRow("20260701", "990", "8", "4"),
-                        dRow("20260630", "980", "7", "3"), // 경계 밖 → 절단
-                    ];
-                }
-                // _AL = UN
+                return [
+                    dRow("20260703", "-1000", "10", "5"),
+                    dRow("20260701", "990", "8", "4"),
+                    dRow("20260630", "980", "7", "3"), // 경계 밖 → 절단
+                ];
+            },
+            async getRawDailyChartsForRange(stockCode, fromDate, toDate) {
                 expect(stockCode).toBe("005930_AL");
+                expect(fromDate).toBe("20260701");
+                expect(toDate).toBe("20260703");
                 return [dRow("20260703", "+1001", "12", "6"), dRow("20260701", "991", "9", "5")];
             },
         };

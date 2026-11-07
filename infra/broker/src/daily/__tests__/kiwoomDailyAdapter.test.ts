@@ -20,19 +20,23 @@ const dRow = (
 });
 
 describe("KiwoomDailyAdapter", () => {
-    it("KRX(평문)·UN(코드_AL) 머지 + '+/-' 제거 + 거래대금 백만원→원 + [from,to] 절단", async () => {
+    it("KRX=정규장(평문)·UN=전체(코드_AL) 머지 + '+/-' 제거 + 거래대금 백만원→원 + [from,to] 절단", async () => {
         const source: KiwoomDailySource = {
-            async getDailyChartsForRange(stockCode, fromDate, toDate) {
+            async getRegularDailyChartsForRange(stockCode, fromDate, toDate) {
+                expect(stockCode).toBe("005930");
                 expect(fromDate).toBe("20260624");
                 expect(toDate).toBe("20260626");
                 // 경계 밖(20260623) 한 건 섞어 보냄 → 어댑터가 절단해야 함.
-                if (stockCode === "005930") {
-                    return [
-                        dRow("20260626", "-1000", "10", "5"),
-                        dRow("20260624", "990", "8", "4"),
-                        dRow("20260623", "980", "7", "3"),
-                    ];
-                }
+                return [
+                    dRow("20260626", "-1000", "10", "5"),
+                    dRow("20260624", "990", "8", "4"),
+                    dRow("20260623", "980", "7", "3"),
+                ];
+            },
+            async getDailyChartsForRange(stockCode, fromDate, toDate) {
+                expect(stockCode).toBe("005930_AL");
+                expect(fromDate).toBe("20260624");
+                expect(toDate).toBe("20260626");
                 // 코드_AL = UN: KRX 와 같은 날짜 집합(통합값은 다를 수 있으나 여기선 거래대금만 키움)
                 return [
                     dRow("20260626", "+1001", "12", "6"),
@@ -54,8 +58,10 @@ describe("KiwoomDailyAdapter", () => {
 
     it("UN 날짜에 KRX 바가 없으면 건너뛴다(데이터 이상 방어)", async () => {
         const source: KiwoomDailySource = {
-            async getDailyChartsForRange(stockCode) {
-                if (stockCode === "005930") return [dRow("20260626", "1000", "10", "5")];
+            async getRegularDailyChartsForRange() {
+                return [dRow("20260626", "1000", "10", "5")];
+            },
+            async getDailyChartsForRange() {
                 // UN 에만 있는 날짜(20260625) — KRX 부재
                 return [
                     dRow("20260626", "1001", "12", "6"),

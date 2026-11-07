@@ -1,13 +1,14 @@
-// core/market/domain/ghostTrade — NXT 단독 시간의 유령 체결을 걷은 UN 시가·고가·저가(순수 함수, 외부 import 0).
+// core/market/domain/ghostTrade — 프리장(09:00 전) 유령 체결을 걷은 UN 시가·고가·저가(순수 함수, 외부 import 0).
 //
 // NXT 장 시작(대개 08:00 첫 체결)에 거래 없이 동떨어진 값이 한두 건 찍혀 UN 일봉의 고가·저가·시가를 오염시킨다.
 // 판정은 가격만 본다(2026-10-29 실데이터 — 걸린 쪽 거래량은 다음 10분 중앙값의 3%, 안 걸린 쪽 229% 로 저절로 갈렸다):
-//   · 그날 최고가 분봉이 NXT 단독 시간이고, 그 분의 종가가 **다음 분봉 시가보다 3% 이상 높으면** 유령 → 그 분을 걷는다.
+//   · 그날 최고가 분봉이 프리장이고, 그 분의 종가가 **다음 분봉 시가보다 3% 이상 높으면** 유령 → 그 분을 걷는다.
 //   · 걷은 뒤 남은 분으로 되풀이 — 연속으로 튄 분(08:02·08:04 …)은 "다음 분"이 차례로 뒤로 밀려 함께 걷힌다.
 //     극값이 여러 분에 같은 값으로 있으면 그중 걸리는 분부터 걷는다(남은 분이 같은 값이면 극값은 그대로).
 //   · 저가는 거꾸로(종가가 다음 시가보다 3% 이상 낮으면).
-//   · NXT 단독 = 정규장 밖(09:00 전·15:30 뒤)이고 그 분에 KRX 체결이 없다. 장중에 KRX 체결 없이 NXT 만 찍힌 분은 진짜
-//     체결이라 보지 않는다(거래 드문 종목은 장중 분 사이 3% 도 흔하다). VI 뒤 단일가 체결도 장중이라 자연히 빠진다.
+//   · 프리장만 본다. 장중 분은 3% 벌어져도 진짜 체결이다(거래 드문 종목은 분 사이 3% 도 흔하고, VI 뒤 단일가도 장중이다).
+//   · 저녁(15:30 뒤) 체결도 튀어 보여도 진짜 체결로 둔다(사용자 결정 2026-11-08). KRX 애프터마켓(2026-09-14~)의 저녁 튐은
+//     거래 적은 종목의 드문 체결이고 거래 많은 종목에는 없다. 결정 로그 「일봉 KRX = 정규장」.
 //   · 같은 분 안에서 튀고 내려온 꼴(시가=고가, 종가는 정상)은 걷지 않는다 — 종가 vs 다음 시가만 본다(사용자 결정).
 //   · 그날 마지막 분이 극값이면 비교할 다음 분이 없어 걷지 않는다.
 // 값은 분봉 그대로(원주가 스케일) — 일봉(수정주가)에 얹는 환산·범위 맞춤은 호출자 몫.
@@ -25,8 +26,8 @@ export interface GhostFix {
     removed: string[];
 }
 
-/** 정규장 밖이고 KRX 체결이 없는 분. */
-const nxtOnly = (c: MinuteCandle): boolean => c.krx === null && (c.time < "09:00:00" || c.time > "15:30:00");
+/** 유령을 찾는 시간대 — 09:00 전. KRX 프리장이 열리면(보도상 2027 말) 이 판정을 다시 볼 것. */
+const preMarket = (c: MinuteCandle): boolean => c.time < "09:00:00";
 
 /**
  * 그날 분봉(시간 오름차순, 채움 전 원본) → 유령을 걷은 UN 시가·고가·저가. 걷을 것이 없으면 null.
@@ -44,7 +45,7 @@ export function ghostFixOf(minutes: readonly MinuteCandle[], gapPct: number = GH
         const vals = m.map((c) => Number(c.un[side]));
         const ext = side === "high" ? Math.max(...vals) : Math.min(...vals);
         for (let i = 0; i < m.length - 1; i++) {
-            if (vals[i] !== ext || !nxtOnly(m[i])) continue;
+            if (vals[i] !== ext || !preMarket(m[i])) continue;
             const close = Number(m[i].un.close);
             const nextOpen = Number(m[i + 1].un.open);
             if (!(nextOpen > 0)) continue;

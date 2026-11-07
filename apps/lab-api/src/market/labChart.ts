@@ -28,7 +28,10 @@ export interface LabChartDeps {
 export type DailyWithFix = (stockCode: string, range: { from: string; to: string }) => Promise<LabDailyCandle[]>;
 export type MinutesByDate = (stockCode: string, date: string) => Promise<LabMinuteDay>;
 
-/** 후보 — UN 극값이 KRX 밖에 있는 날(고가가 더 높거나 저가가 더 낮다 = 그 값이 NXT 단독 시간에 찍혔다). */
+/**
+ * 후보 — UN 극값이 KRX 정규장 범위 밖인 날(고가가 더 높거나 저가가 더 낮다). 분봉을 읽을지 고르는 값싼 거름망일 뿐이다.
+ * 프리장 유령은 늘 여기 걸린다. 저녁 극값이나 NXT 장중 극값인 날도 걸리지만 ghostFixOf 가 걷지 않는다.
+ */
 const isCandidate = (c: DailyCandle): boolean =>
     Number(c.un.high) > Number(c.krx.high) || Number(c.un.low) < Number(c.krx.low);
 

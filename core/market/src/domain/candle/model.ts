@@ -43,8 +43,9 @@ export interface DailyCandle {
 
 /**
  * 한 종목·한 거래일·한 시각의 분봉. UN(통합) 바는 항상 존재(UN ⊇ KRX).
- * krx 는 null 가능 — NXT 단독 거래시간(정규장 전 프리마켓 08:00~09:00, 정규장 후 시간외)엔
- * KRX 세션이 없어 KRX 바가 구조적으로 부재한다. 소비자는 krx===null 이면 KRX 계산을 건너뛴다.
+ * krx 는 null 가능 — NXT 단독 거래시간(프리마켓 08:00~09:00, 15:40~16:00)엔 KRX 세션이 없어 KRX 바가
+ * 구조적으로 부재한다. 2026-09-14 부터 16:00~20:00 은 KRX 애프터마켓이라 그 뒤 날짜엔 저녁 KRX 바가 있다.
+ * 소비자는 krx===null 이면 KRX 계산을 건너뛴다.
  */
 export interface MinuteCandle {
     stockCode: string;

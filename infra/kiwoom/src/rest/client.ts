@@ -11,6 +11,7 @@ import type {
     KiwoomKa10001Response,
     KiwoomKa10080Response,
     KiwoomKa10081Response,
+    KiwoomKa11081Response,
     KiwoomKa10095Response,
     KiwoomDailyCandle,
     KiwoomMinuteCandle,
@@ -193,6 +194,20 @@ export class KiwoomRest {
         );
     }
 
+    /**
+     * [ka11081] 주식일봉차트정규장조회 — 평문 코드 = KRX 정규장(애프터마켓 제외). adjusted: true=수정주가, false=원주가.
+     * ka10081 평문은 2026-09-14 부터 저녁 체결을 포함한다 — KRX 종가·기준가는 이쪽을 쓴다(결정 로그 「일봉 KRX = 정규장」).
+     */
+    getRegularDailyChart(stockCode: string, adjusted: boolean, params: { baseDate: string } & RequestOptions) {
+        const { baseDate, ...opts } = params;
+        return this.request<KiwoomKa11081Response>(
+            "ka11081",
+            "/api/dostk/chart",
+            { stk_cd: stockCode, upd_stkpc_tp: adjusted ? "1" : "0", base_dt: baseDate },
+            opts,
+        );
+    }
+
     // ── 고수준 (연속조회, 한 키에 핀 고정) ───────────────────────────
 
     /**
@@ -251,20 +266,58 @@ export class KiwoomRest {
      * NXT 통합은 stockCode 를 'XXXXXX_AL' 로 넘기면 됨(그대로 전달).
      */
     getDailyChartsForRange(stockCode: string, fromDate: string, toDate: string, maxPages = 20): Promise<KiwoomDailyCandle[]> {
-        return this.collectDailyRange((p) => this.getDailyChart(stockCode, p), fromDate, toDate, maxPages);
+        return this.collectDailyRange(
+            async (p) => {
+                const r = await this.getDailyChart(stockCode, p);
+                return { rows: r.data.stk_dt_pole_chart_qry ?? [], contYn: r.contYn, nextKey: r.nextKey };
+            },
+            fromDate,
+            toDate,
+            maxPages,
+        );
     }
 
     /** 기간[from,to] 원주가(미수정) 일봉을 연속조회로 수집. getDailyChartsForRange 의 원주가판(시총 백필 전용). */
     getRawDailyChartsForRange(stockCode: string, fromDate: string, toDate: string, maxPages = 20): Promise<KiwoomDailyCandle[]> {
-        return this.collectDailyRange((p) => this.getRawDailyChart(stockCode, p), fromDate, toDate, maxPages);
+        return this.collectDailyRange(
+            async (p) => {
+                const r = await this.getRawDailyChart(stockCode, p);
+                return { rows: r.data.stk_dt_pole_chart_qry ?? [], contYn: r.contYn, nextKey: r.nextKey };
+            },
+            fromDate,
+            toDate,
+            maxPages,
+        );
+    }
+
+    /** 기간[from,to] 수정주가 정규장 일봉(ka11081) 연속조회. */
+    getRegularDailyChartsForRange(stockCode: string, fromDate: string, toDate: string, maxPages = 20): Promise<KiwoomDailyCandle[]> {
+        return this.collectRegularDailyRange(stockCode, true, fromDate, toDate, maxPages);
+    }
+
+    /** 기간[from,to] 원주가 정규장 일봉(ka11081) 연속조회. */
+    getRawRegularDailyChartsForRange(stockCode: string, fromDate: string, toDate: string, maxPages = 20): Promise<KiwoomDailyCandle[]> {
+        return this.collectRegularDailyRange(stockCode, false, fromDate, toDate, maxPages);
+    }
+
+    private collectRegularDailyRange(stockCode: string, adjusted: boolean, fromDate: string, toDate: string, maxPages: number): Promise<KiwoomDailyCandle[]> {
+        return this.collectDailyRange(
+            async (p) => {
+                const r = await this.getRegularDailyChart(stockCode, adjusted, p);
+                return { rows: r.data.result_list ?? [], contYn: r.contYn, nextKey: r.nextKey };
+            },
+            fromDate,
+            toDate,
+            maxPages,
+        );
     }
 
     /**
-     * 일봉 기간 연속조회 공용 루프 — 수정/원주가는 fetchPage 차이뿐이라 페이징 로직을 공유.
+     * 일봉 기간 연속조회 공용 루프 — TR·수정 여부는 fetchPage 차이뿐이라 페이징 로직을 공유.
      * baseDate=to 에서 역방향(최신→과거), 가장 오래된 dt 가 from 이전이면 종료. 시퀀스 전체를 한 키에 핀 고정.
      */
     private async collectDailyRange(
-        fetchPage: (params: { baseDate: string } & RequestOptions) => Promise<KiwoomApiResponse<KiwoomKa10081Response>>,
+        fetchPage: (params: { baseDate: string } & RequestOptions) => Promise<{ rows: KiwoomDailyCandle[]; contYn: string; nextKey: string }>,
         fromDate: string,
         toDate: string,
         maxPages: number,
@@ -276,7 +329,7 @@ export class KiwoomRest {
         let pages = 0;
         do {
             const res = await fetchPage({ baseDate: toDate, contYn, nextKey, lease });
-            const page = res.data.stk_dt_pole_chart_qry ?? [];
+            const page = res.rows;
             if (page.length === 0) break;
             collected = collected.concat(page);
             const oldest = page[page.length - 1];
