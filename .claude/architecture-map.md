@@ -15,6 +15,7 @@
 - **infra/google/src** — Google API 얇은 IO(도메인 미인지): `auth`, `drive`(`DriveClient`), `sheets`(`SheetsClient`+순수 `matrix` 헬퍼)
 - **infra/kis/src**, **infra/kiwoom/src** — 각 증권사 REST SDK 원시 클라이언트(포트 모름): `createKis`/`createKiwoom`, `KisRest`/`KiwoomRest`, `Credential`/`CredentialPool`/`CredentialLease`, `KisError`/`KiwoomError`, 토큰스토어/트랜스포트. kiwoom은 `ws/`(웹소켓) 추가
 - **infra/krx/src** — KRX 정보데이터시스템 OPEN API 원시 클라이언트(포트 모름): `createKrx`, `KrxRest.getByddTrd`(일별매매정보 `stk`/`ksq`/`knx`), `KrxError`. 토큰·자격증명 풀 없음(요청마다 헤더 `AUTH_KEY` 하나) → kis/kiwoom 보다 훨씬 얇다. 시총·상장주식수·소속부의 소스
+- **infra/dart/src** — OpenDART 원시 클라이언트(포트 모름): `createDart`, `DartRest`(`getCorpCodes`·`getCompany`·`searchDisclosures`·`getDocumentFiles`), `DartError`. **아직 소비자 없음**(필요할 때 배선). 사양 밖 실측은 `infra/dart/recon` 머리말·주석
 - **infra/persistence/src** — Drizzle 기반 core 리포지토리 포트 구현(전용 `market` 스키마): `Drizzle*Repository`(DailyCandle/RawDailyCandle/MinuteCandle/StockMaster/DailyMarketCap/StockNews/TelegramMessage(Store+Reader, 0015 손 마이그·pg_trgm)/DailyComment/ChartAnchor/Group) + `DrizzleDailyUniverseProvider`, `createDb`, `syncCurationMirror`, `mappers/*`
 - **infra/telegram/src** — MTProto(GramJS) 공통 레이어: `createTelegram`(방 검색/게시/히스토리 페이지 `historyPage`·`resolveChannel`), `NEWS_CHANNELS`, 재접속 자가치유 + 히스토리 경로 FLOOD 대기(`resilient.ts`), 원본 직렬화(`serialize.toPlain`)
 
