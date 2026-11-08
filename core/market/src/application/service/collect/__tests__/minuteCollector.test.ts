@@ -105,6 +105,26 @@ describe("MinuteCollector 재개 정책", () => {
         expect([...minuteRepo.stored[D]].sort()).toEqual(["A", "B", "C"]);
     });
 
+    it("onDayDone 은 받은 날의 실패까지 알려 주고, 던지면 수집이 멈춘다", async () => {
+        const E = "2026-06-29";
+        const { collector, minuteProvider } = makeCollector({ [D]: [daily("A", D, BIG)], [E]: [daily("A", E, BIG)] });
+        minuteProvider.failCodes.add("A");
+        const seen: string[] = [];
+        await expect(
+            collector.collect(
+                { from: D, to: E },
+                {
+                    onDayDone: (r) => {
+                        seen.push(`${r.date}:${r.failed.map((f) => f.stockCode).join()}`);
+                        throw new Error("중단");
+                    },
+                },
+            ),
+        ).rejects.toThrow("중단");
+        expect(seen).toEqual([`${D}:A`]);
+        expect(minuteProvider.fetched).toEqual(["A"]);
+    });
+
     it("후보 없는 날(전부 프루닝)은 완료로 skip", async () => {
         const { collector, minuteProvider } = makeCollector({ [D]: [daily("A", D, SMALL)] });
         const r = await collector.collect({ from: D, to: D });

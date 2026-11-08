@@ -3,6 +3,7 @@
 //   backfill [일수=5] [--overwrite]              일상 한방: 어제까지 N일 캔들·뉴스·일별속성 + 공모가 (오늘 제외·영역별 격리)
 //   backfill-candles <from> [to] [--overwrite]   일봉+분봉 (과거 시딩은 --overwrite)
 //   backfill-daily <from> [to]                   일봉만(딥 히스토리) — 받은 구간 그대로, to 생략=어제
+//   backfill-minutes-toss <from> [to]            옛 분봉만(토스, 2025-07 앞) — 키가 개발 폴더에만 있어 거기서 돌린다
 //   daily-stats <from> [to]                      일별 종목 속성(KRX): 시총·상장주식수·소속부
 //   backfill-news <from> [to]                    시황 뉴스 헤드라인
 //   backfill-ipo                                 최근 1년 상장 공모가 enrichment
@@ -20,6 +21,7 @@ import {
     type ChannelMessage,
     type ChannelMessageStore,
 } from "@trade-data-manager/market";
+import { TOSS_BROKEN_MINUTE_DATES } from "@trade-data-manager/broker";
 import { NEWS_CHANNELS, type TelegramChannel } from "@trade-data-manager/telegram";
 import { createIngestRuntime, type IngestRuntime } from "./composition.js";
 
@@ -151,8 +153,15 @@ function minusDays(date: string, days: number): string {
     return d.toISOString().slice(0, 10);
 }
 
+/** 토스로 채운 구간의 끝(이 날까지는 --overwrite 금지). */
+const OLDEST_KIWOOM_REPLACEABLE_BEFORE = "2025-06-30";
+
 /** 캔들(일봉+분봉) 백필. */
 async function runBackfillCandles(rt: IngestRuntime, range: DateRange, overwrite: boolean): Promise<void> {
+    // overwrite 는 그날 분봉을 먼저 지우는데, 키움은 옛 날짜를 안 준다 — 토스로 넣은 분봉이 복구 없이 사라진다.
+    if (overwrite && range.from <= OLDEST_KIWOOM_REPLACEABLE_BEFORE) {
+        throw new Error(`--overwrite 불가: ${OLDEST_KIWOOM_REPLACEABLE_BEFORE} 이전 분봉은 키움으로 다시 받을 수 없다 — from 을 그 뒤로`);
+    }
     console.log(`▶ 캔들 백필: ${range.from} ~ ${range.to}${overwrite ? " (overwrite)" : ""}`);
     printCollectResult(await rt.collector.backfill(range, collectOptions(overwrite)));
 }
@@ -162,6 +171,69 @@ async function runBackfillDaily(rt: IngestRuntime, range: DateRange): Promise<vo
     console.log(`▶ 일봉 백필: ${range.from} ~ ${range.to}`);
     const r = await rt.collector.backfillDaily(range, collectOptions(false));
     console.log(`  ✓ 유니버스 ${r.universeCount} · 일봉 수집`);
+}
+
+/** 토스 1분봉 바닥(실측) ~ 키움 분봉 시작 전날. 이 뒤로 돌리면 키움이 넣은 KRX 칸이 null 로 덮인다. */
+const TOSS_MINUTE_FROM = "2022-11-23";
+const TOSS_MINUTE_UNTIL = "2025-06-30";
+const TOSS_MINUTE_CONCURRENCY = 16; // 간격은 클라이언트가 지킨다 — 응답 대기로 놀지 않을 만큼만
+const TOSS_ABORT_FAILURES = 5;
+
+/** 옛 분봉 백필(토스). 재실행 = 빠진 종목만 이어받기. 상폐 종목은 토스에 없어 매번 실패로 세지만 정상이다. */
+async function runBackfillMinutesToss(rt: IngestRuntime, range: DateRange): Promise<void> {
+    if (range.from < TOSS_MINUTE_FROM || range.to > TOSS_MINUTE_UNTIL || range.from > range.to) {
+        throw new Error(`토스 분봉 백필 범위는 ${TOSS_MINUTE_FROM} ~ ${TOSS_MINUTE_UNTIL} 안이어야 함: ${range.from} ~ ${range.to}`);
+    }
+    console.log(`▶ 분봉 백필(토스): ${range.from} ~ ${range.to}`);
+    // 토스 거래량이 깨진 날은 빼고 앞뒤 구간만 돈다(어댑터도 그날을 거절하지만, 그러면 실패로 세져 중단 판정에 걸린다).
+    const broken = [...TOSS_BROKEN_MINUTE_DATES].filter((d) => d >= range.from && d <= range.to).sort();
+    if (broken.length) console.log(`  건너뜀(토스 분봉 거래량 깨짐): ${broken.join(", ")}`);
+    let notFound = 0;
+    let otherFailed = 0;
+    let empty = 0;
+    const r = { tradingDays: 0, skippedDays: 0, totalStored: 0 };
+    for (const segment of rangesAround(range, broken)) {
+        const part = await rt.tossMinuteCollector().collect(segment, {
+            concurrency: TOSS_MINUTE_CONCURRENCY,
+            onDayDone: (day) => {
+                const other = day.failed.filter((f) => !f.error.includes("stock-not-found"));
+                const dayEmpty = day.fetched - day.stored; // 받았는데 체결 봉이 없다 — 후보(200억·10%)면 그 자체로 이상 신호
+                notFound += day.failed.length - other.length;
+                otherFailed += other.length;
+                empty += dayEmpty;
+                console.log(
+                    `  ${day.date} 대상 ${day.poolSize} · 저장 ${day.stored} · 빈 응답 ${dayEmpty} · 상폐 ${day.failed.length - other.length} · 실패 ${other.length}` +
+                        (other.length ? ` — ${other.slice(0, 5).map((f) => f.stockCode).join(",")}: ${other[0].error}` : ""),
+                );
+                // 받은 게 없고 실패가 몰렸다 = 키·IP·장애 — 몇 시간 헛돌지 않게 멈춘다(재실행하면 이어받는다).
+                // 상폐 수와 무관하게 판정하고, 재실행 때 재현성 실패 몇 개로는 멈추지 않는다.
+                if (day.stored === 0 && other.length >= TOSS_ABORT_FAILURES) {
+                    throw new Error(`${day.date} 저장 0 · 실패 ${other.length} — 중단: ${other[0].error}`);
+                }
+            },
+        });
+        r.tradingDays += part.tradingDays;
+        r.skippedDays += part.skippedDays;
+        r.totalStored += part.totalStored;
+    }
+    console.log(`  ✓ 받은 날 ${r.tradingDays} · 건너뜀 ${r.skippedDays} · 저장 ${r.totalStored}종목·일 · 빈 응답 ${empty} · 상폐 ${notFound} · 실패 ${otherFailed}`);
+}
+
+/** [from,to] 에서 뺄 날(오름차순)을 도려낸 구간들. */
+function rangesAround(range: DateRange, excluded: string[]): DateRange[] {
+    const shift = (date: string, days: number): string => {
+        const t = new Date(`${date}T00:00:00Z`);
+        t.setUTCDate(t.getUTCDate() + days);
+        return t.toISOString().slice(0, 10);
+    };
+    const out: DateRange[] = [];
+    let from = range.from;
+    for (const d of excluded) {
+        if (from < d) out.push({ from, to: shift(d, -1) });
+        from = shift(d, 1);
+    }
+    if (from <= range.to) out.push({ from, to: range.to });
+    return out;
 }
 
 /** 일별 종목 속성 수집(KRX) — 시총·상장주식수·소속부. 백필과 당일이 같은 진입점(범위 길이만 다름). */
@@ -292,6 +364,7 @@ const USAGE =
     "  backfill [일수=5] [--overwrite]              일상 한방: 어제까지 N일 캔들·뉴스·일별속성 + 공모가 (오늘 제외, skip-if-present)\n" +
     "  backfill-candles <from> [to] [--overwrite]   일봉+분봉 (to 생략=하루, 과거 시딩은 --overwrite)\n" +
     "  backfill-daily <from> [to]                   일봉만(분봉 없이) — 받은 구간 그대로 전 종목, to 생략=어제\n" +
+    "  backfill-minutes-toss <from> [to]            옛 분봉만(토스, 2025-07 앞) — 일봉 후보 그대로, 재실행=이어받기(to 생략=하루)\n" +
     "  daily-stats <from> [to]                      일별 종목 속성(KRX) — 시총·상장주식수·소속부(to 생략=하루)\n" +
     "  backfill-news <from> [to]                     시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
     "  backfill-ipo                                  최근 1년 상장 종목 공모가 enrichment(null만)\n" +
@@ -342,6 +415,15 @@ async function main(): Promise<void> {
                 if (a1 > to) throw new Error(`from(${a1}) 이 to(${to}) 보다 뒤 — 오늘 봉은 다음 일상 수집이 받는다`);
                 if (overwrite) console.log("  (backfill-daily 는 항상 받는다 — --overwrite 무시)");
                 await runBackfillDaily(rt, { from: a1, to });
+                break;
+            }
+            case "backfill-minutes-toss": {
+                if (!a1) throw new Error("사용법: backfill-minutes-toss <from> [to]");
+                if (overwrite) throw new Error("backfill-minutes-toss 는 --overwrite 를 받지 않는다 — 재실행이 곧 이어받기");
+                assertDate(a1, "from");
+                const to = a2 ?? a1;
+                assertDate(to, "to");
+                await runBackfillMinutesToss(rt, { from: a1, to });
                 break;
             }
             case "daily-stats": {

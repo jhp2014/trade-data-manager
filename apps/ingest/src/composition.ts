@@ -3,10 +3,12 @@
 import { createKiwoom } from "@trade-data-manager/kiwoom";
 import { createKis } from "@trade-data-manager/kis";
 import { createKrx } from "@trade-data-manager/krx";
+import { createToss, silentLogger } from "@trade-data-manager/toss";
 import { createTelegram, NEWS_CHANNELS, type Telegram, type TelegramChannel } from "@trade-data-manager/telegram";
 import {
     KiwoomDailyAdapter,
     KiwoomMinuteAdapter,
+    TossMinuteAdapter,
     KiwoomStockListAdapter,
     KisListInfoAdapter,
     KrxDailyStatsAdapter,
@@ -72,6 +74,11 @@ export interface IngestRuntime {
      */
     /** channels 생략 = 등록 방(NEWS_CHANNELS) 전부. 백필을 일부 방만 더 깊이 내릴 때 넘긴다. */
     channelArchive: (store?: ChannelMessageStore, channels?: readonly TelegramChannel[]) => Promise<ChannelArchiveCollector>;
+    /**
+     * 옛 분봉 백필(Command) — 키움이 못 주는 2025-07 앞을 토스로. 후보 계산·재개는 일상 수집기 그대로, 공급자만 토스.
+     * lazy — 토스 키는 개발 폴더에만 있어(토큰이 클라이언트당 하나) 다른 명령이 키를 요구하면 안 된다.
+     */
+    tossMinuteCollector: () => MinuteCollector;
     /** 보유 리소스(pg 풀·telegram) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -154,6 +161,12 @@ export function createIngestRuntime(): IngestRuntime {
             channels: channels ?? NEWS_CHANNELS,
         });
 
+    const tossMinuteCollector = (): MinuteCollector => {
+        const minuteProvider = new TossMinuteAdapter(createToss({ logger: silentLogger }).rest);
+        const minuteSweep = new MinuteSweepService({ scanRepo: dailyRepo, minuteProvider, minuteRepo });
+        return new MinuteCollector({ scanRepo: dailyRepo, minuteSweep, minuteRepo });
+    };
+
     return {
         collector,
         dailyStatCollector,
@@ -161,6 +174,7 @@ export function createIngestRuntime(): IngestRuntime {
         newsBackfiller,
         newsSearcher,
         channelArchive,
+        tossMinuteCollector,
         close: async () => {
             if (telegram) await telegram.disconnect();
             await pool.end();

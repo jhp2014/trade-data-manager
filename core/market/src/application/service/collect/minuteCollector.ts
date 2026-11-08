@@ -4,7 +4,7 @@
 // (거래일 달력·throw 불필요). collect()는 [today,today], backfill 은 구간 range 를 넘긴다.
 import type { DateRange } from "#domain";
 import type { DailyScanRepository, MinuteCandleStore } from "#port/collect";
-import type { MinuteSweepService } from "./minuteSweepService.js";
+import type { MinuteSweepResult, MinuteSweepService } from "./minuteSweepService.js";
 
 export interface MinuteCollectResult {
     /** 분봉을 (부분 재개 포함) 수집한 거래일 수. */
@@ -20,6 +20,8 @@ export interface MinuteCollectOptions {
     poolLimit?: number;
     concurrency?: number;
     onFetch?: (date: string, done: number, total: number) => void;
+    /** 하루를 받을 때마다(건너뛴 날 제외). 종목 실패가 격리되는 만큼 긴 백필은 여기서 실패를 봐야 한다 — 던지면 수집이 멈춘다. */
+    onDayDone?: (result: MinuteSweepResult) => void;
 }
 
 export interface MinuteCollectorDeps {
@@ -70,6 +72,7 @@ export class MinuteCollector {
             });
             tradingDays++;
             totalStored += r.stored;
+            options.onDayDone?.(r);
         }
         return { tradingDays, skippedDays, totalStored };
     }
