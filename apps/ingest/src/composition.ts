@@ -4,11 +4,13 @@ import { createKiwoom } from "@trade-data-manager/kiwoom";
 import { createKis } from "@trade-data-manager/kis";
 import { createKrx } from "@trade-data-manager/krx";
 import { createToss, silentLogger } from "@trade-data-manager/toss";
+import { createDaishinRaw, rawDirFromEnv, type DaishinRaw } from "@trade-data-manager/daishin";
 import { createTelegram, NEWS_CHANNELS, type Telegram, type TelegramChannel } from "@trade-data-manager/telegram";
 import {
     KiwoomDailyAdapter,
     KiwoomMinuteAdapter,
     TossMinuteAdapter,
+    DaishinMinuteAdapter,
     KiwoomStockListAdapter,
     KisListInfoAdapter,
     KrxDailyStatsAdapter,
@@ -51,6 +53,7 @@ import {
     MinuteSweepService,
     DailyCollector,
     MinuteCollector,
+    MinuteRepairService,
     IpoPriceBackfillService,
 } from "@trade-data-manager/market/internal";
 
@@ -79,6 +82,11 @@ export interface IngestRuntime {
      * lazy — 토스 키는 개발 폴더에만 있어(토큰이 클라이언트당 하나) 다른 명령이 키를 요구하면 안 된다.
      */
     tossMinuteCollector: () => MinuteCollector;
+    /**
+     * 옛 분봉 수리(Command) — 토스 바탕 분봉 중 NXT 를 잃은 종목-날을 대신 원천 파일로 통째 교체.
+     * raw = 원천 파일 계층(대상 목록을 써서 수집기에 넘긴다). lazy — DAISHIN_RAW_DIR 을 다른 명령이 요구하지 않게.
+     */
+    daishinMinuteRepair: () => { service: MinuteRepairService; raw: DaishinRaw };
     /** 보유 리소스(pg 풀·telegram) 정리. 프로세스 종료 전 호출. */
     close: () => Promise<void>;
 }
@@ -167,6 +175,11 @@ export function createIngestRuntime(): IngestRuntime {
         return new MinuteCollector({ scanRepo: dailyRepo, minuteSweep, minuteRepo });
     };
 
+    const daishinMinuteRepair = (): { service: MinuteRepairService; raw: DaishinRaw } => {
+        const raw = createDaishinRaw(rawDirFromEnv());
+        return { service: new MinuteRepairService({ store: minuteRepo, minuteProvider: new DaishinMinuteAdapter(raw) }), raw };
+    };
+
     return {
         collector,
         dailyStatCollector,
@@ -175,6 +188,7 @@ export function createIngestRuntime(): IngestRuntime {
         newsSearcher,
         channelArchive,
         tossMinuteCollector,
+        daishinMinuteRepair,
         close: async () => {
             if (telegram) await telegram.disconnect();
             await pool.end();

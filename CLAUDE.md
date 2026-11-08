@@ -16,6 +16,7 @@ trade-data-manager — 한국 주식 데이터 수집·큐레이션·실시간 �
 - **공유 자원 — 개발 쪽에서 금지**: market 로컬 Postgres 는 한 벌이다. `ingest backfill`·`db-ops backup` 실행 금지(사용자 데이터가 바뀐다), drizzle 마이그레이션 금지(스키마 변경 작업은 사용자가 사용을 멈추고 진행하기로 합의). curation(Supabase)·live 알람 설정은 **읽기만**.
 - 야간 스케줄러(20:30 collect→backup)는 사용자 폴더 고정.
 - 토스 키(`infra/toss/.env`)는 개발 폴더에만 둔다 — 클라이언트당 유효 토큰이 하나라, 다른 곳에서 발급하면 먼저 받은 토큰이 죽는다. 같은 이유로 토스 recon 은 동시에 돌리지 않는다.
+- 대신(CYBOS Plus) 원천 분봉 폴더(`infra/daishin/.env` 의 `DAISHIN_RAW_DIR` = `C:\Users\whdgn\TradingData\daishin-minutes`)는 사용·개발 공용 보관본이다 — 대신 1분봉 창이 약 2년이라 지우면 다시 못 받는다. 수집은 개발 폴더에서만(CYBOS 관리자 로그인 필요).
 - worktree 신설 시 git 추적 밖 물건을 수동 복사: `.env` 7개(`infra/persistence·kis·kiwoom·krx·dart·google·telegram`), `apps/workbench/.env.local`(`API_PROXY_TARGET=http://localhost:3011`)·`apps/lab/.env.local`(`API_PROXY_TARGET=http://localhost:3011` + `LAB_API_PROXY_TARGET=http://127.0.0.1:3310`), `apps/api/.env`(`VAULT_DIR` — 복기 노트 [탐색], 사용자 폴더 반영 때도 수동 생성), `apps/lab-api/.env`(`TDM_AI_DIR` — 판단 작업장 tdm-ai 경로 · `CHART_LINES_DIR` — lab 저장 선 폴더, 사용 `C:\Users\whdgn\TradingData\chart-lines` / 개발 `…\chart-lines-dev`, 사용자 폴더 반영 때도 수동 생성), `apps/api/.cache`(~760MB, 안 하면 격자·순위 재굽기).
 - 반영은 사용자가 요청할 때 사용자 폴더에서 fast-forward + 앱 재시작. 브랜치는 한 줄 유지(머지 커밋 금지).
 ## 구조 (헥사고날)

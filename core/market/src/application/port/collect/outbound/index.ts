@@ -8,6 +8,7 @@ export * from "./listInfoProvider.js";
 export * from "./newsSource.js";
 export * from "./dailyScanRepository.js";
 export * from "./candleStore.js";
+export * from "./minuteRepairStore.js";
 export * from "./rawDailyStore.js";
 export * from "./dailyStockStatsProvider.js";
 export * from "./marketCapStore.js";

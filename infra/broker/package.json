@@ -26,7 +26,8 @@
         "@trade-data-manager/telegram": "workspace:*",
         "@trade-data-manager/google": "workspace:*",
         "@trade-data-manager/krx": "workspace:*",
-        "@trade-data-manager/toss": "workspace:*"
+        "@trade-data-manager/toss": "workspace:*",
+        "@trade-data-manager/daishin": "workspace:*"
     },
     "devDependencies": {
         "@types/node": "^22.10.0",

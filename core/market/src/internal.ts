@@ -8,4 +8,5 @@ export * from "./application/service/collect/rawDailyIngestService.js";
 export * from "./application/service/collect/stockMasterIngestService.js";
 export * from "./application/service/collect/dailySweepService.js";
 export * from "./application/service/collect/minuteSweepService.js";
+export * from "./application/service/collect/minuteRepairService.js";
 export * from "./application/service/marketcap/ipoPriceBackfillService.js";

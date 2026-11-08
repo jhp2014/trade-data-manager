@@ -4,6 +4,8 @@
 //   backfill-candles <from> [to] [--overwrite]   일봉+분봉 (과거 시딩은 --overwrite)
 //   backfill-daily <from> [to]                   일봉만(딥 히스토리) — 받은 구간 그대로, to 생략=어제
 //   backfill-minutes-toss <from> [to]            옛 분봉만(토스, 2025-07 앞) — 키가 개발 폴더에만 있어 거기서 돌린다
+//   daishin-targets <from> [to]                  옛 분봉 수리 대상(NXT 를 잃은 토스 종목-날) → 대신 수집기 대상 목록
+//   repair-minutes-daishin <from> [to] [--dry-run]  그 대상을 대신 원천 파일로 종목-날 통째 교체
 //   daily-stats <from> [to]                      일별 종목 속성(KRX): 시총·상장주식수·소속부
 //   backfill-news <from> [to]                    시황 뉴스 헤드라인
 //   backfill-ipo                                 최근 1년 상장 공모가 enrichment
@@ -21,9 +23,10 @@ import {
     type ChannelMessage,
     type ChannelMessageStore,
 } from "@trade-data-manager/market";
-import { TOSS_BROKEN_MINUTE_DATES } from "@trade-data-manager/broker";
+import { DAISHIN_RAW_MISSING, TOSS_BROKEN_MINUTE_DATES } from "@trade-data-manager/broker";
 import { NEWS_CHANNELS, type TelegramChannel } from "@trade-data-manager/telegram";
 import { createIngestRuntime, type IngestRuntime } from "./composition.js";
+import { clearApiDayCaches } from "./apiCache.js";
 
 /** 절대시간 → "MM-DD HH:MM"(Asia/Seoul). 검색결과 표시용. */
 function seoulStamp(at: Date): string {
@@ -219,6 +222,58 @@ async function runBackfillMinutesToss(rt: IngestRuntime, range: DateRange): Prom
     console.log(`  ✓ 받은 날 ${r.tradingDays} · 건너뜀 ${r.skippedDays} · 저장 ${r.totalStored}종목·일 · 빈 응답 ${empty} · 상폐 ${notFound} · 실패 ${otherFailed}`);
 }
 
+/** 대신 수리 구간 = NXT 출범 ~ 토스 바탕의 끝(그 뒤는 키움이 통합을 제대로 받았다). */
+const DAISHIN_REPAIR_FROM = "2025-03-04";
+const DAISHIN_REPAIR_UNTIL = TOSS_MINUTE_UNTIL;
+
+function assertDaishinRange(range: DateRange): void {
+    if (range.from < DAISHIN_REPAIR_FROM || range.to > DAISHIN_REPAIR_UNTIL || range.from > range.to) {
+        throw new Error(`대신 분봉 수리 범위는 ${DAISHIN_REPAIR_FROM} ~ ${DAISHIN_REPAIR_UNTIL} 안이어야 함: ${range.from} ~ ${range.to}`);
+    }
+}
+
+/** 수리 대상(NXT 를 잃은 토스 종목-날)을 찾아 대신 수집기의 대상 목록으로 쓴다. DB 는 읽기만. */
+async function runDaishinTargets(rt: IngestRuntime, range: DateRange): Promise<void> {
+    assertDaishinRange(range);
+    const { service, raw } = rt.daishinMinuteRepair();
+    const targets = await service.findTargets(range);
+    const file = await raw.writeTargets(targets);
+    const stocks = new Set(targets.map((t) => t.stockCode)).size;
+    const dates = new Set(targets.map((t) => t.date)).size;
+    console.log(`▶ 대신 수리 대상: ${range.from} ~ ${range.to} — ${targets.length}종목-날 · ${stocks}종목 · ${dates}거래일`);
+    console.log(`  대상 목록 → ${file}`);
+    console.log("  다음: CYBOS Plus 를 관리자로 로그인하고 powershell -File infra/daishin/collector/collect.ps1 (UAC 1회, 이어받기 가능)");
+}
+
+/** 수리 대상을 대신 원천 파일로 종목-날 통째 교체. 재실행 = 남은 것만(고친 종목-날은 보통 대상에서 빠진다). */
+async function runRepairMinutesDaishin(rt: IngestRuntime, range: DateRange, dryRun: boolean): Promise<void> {
+    assertDaishinRange(range);
+    const { service } = rt.daishinMinuteRepair();
+    const targets = await service.findTargets(range);
+    console.log(`▶ 대신 분봉 수리${dryRun ? "(dry-run — 쓰지 않음)" : ""}: ${range.from} ~ ${range.to} — 대상 ${targets.length}종목-날`);
+    // 캐시는 바꾸기 전·후 두 번 지운다 — 전: 도중에 끊겨도 이미 바꾼 날(다음 실행엔 대상이 아니다)의 옛 캐시가 남지 않게,
+    // 후: 도중에 api 가 그 날을 반쯤 바뀐 상태로 구웠을 수 있어서.
+    const clear = async (): Promise<number> => clearApiDayCaches(new Set(targets.map((t) => t.date)));
+    if (!dryRun) await clear();
+    const r = await service.repair(targets, {
+        dryRun,
+        onDone: (done, total) => {
+            if (done % 200 === 0 || done === total) console.log(`  [${done}/${total}]`);
+        },
+    });
+    const isNoFile = (error: string): boolean => error.includes(DAISHIN_RAW_MISSING);
+    const noFile = r.failed.filter((f) => isNoFile(f.error)).length;
+    console.log(`  ✓ ${dryRun ? "교체 가능" : "교체"} ${r.replaced.length} · 원천 파일 없음 ${noFile} · 그 밖 실패 ${r.failed.length - noFile}`);
+    for (const f of r.failed.filter((f) => !isNoFile(f.error)).slice(0, 10)) {
+        console.log(`    ${f.stockCode} ${f.date}: ${f.error}`);
+    }
+    if (dryRun) return;
+    const dates = new Set(targets.map((t) => t.date)).size;
+    console.log(`  api 파일 캐시 ${await clear()}개 삭제(${dates}거래일, 이 폴더만 — 사용 폴더는 반영 때 따로)`);
+    const left = await service.findTargets(range);
+    console.log(`  남은 대상 ${left.length}종목-날${left.length ? " — 원천 파일이 없거나 실패했거나, 대신에도 NXT 체결이 정규장 안뿐인 날" : ""}`);
+}
+
 /** [from,to] 에서 뺄 날(오름차순)을 도려낸 구간들. */
 function rangesAround(range: DateRange, excluded: string[]): DateRange[] {
     const shift = (date: string, days: number): string => {
@@ -365,6 +420,8 @@ const USAGE =
     "  backfill-candles <from> [to] [--overwrite]   일봉+분봉 (to 생략=하루, 과거 시딩은 --overwrite)\n" +
     "  backfill-daily <from> [to]                   일봉만(분봉 없이) — 받은 구간 그대로 전 종목, to 생략=어제\n" +
     "  backfill-minutes-toss <from> [to]            옛 분봉만(토스, 2025-07 앞) — 일봉 후보 그대로, 재실행=이어받기(to 생략=하루)\n" +
+    "  daishin-targets <from> [to]                  옛 분봉 수리 대상(2025-03-04~06-30, NXT 를 잃은 토스 종목-날) → 대신 수집기 대상 목록\n" +
+    "  repair-minutes-daishin <from> [to] [--dry-run]  그 대상을 대신 원천 파일로 종목-날 통째 교체(재실행=남은 것만)\n" +
     "  daily-stats <from> [to]                      일별 종목 속성(KRX) — 시총·상장주식수·소속부(to 생략=하루)\n" +
     "  backfill-news <from> [to]                     시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +
     "  backfill-ipo                                  최근 1년 상장 종목 공모가 enrichment(null만)\n" +
@@ -424,6 +481,17 @@ async function main(): Promise<void> {
                 const to = a2 ?? a1;
                 assertDate(to, "to");
                 await runBackfillMinutesToss(rt, { from: a1, to });
+                break;
+            }
+            case "daishin-targets":
+            case "repair-minutes-daishin": {
+                if (!a1) throw new Error(`사용법: ${cmd} <from> [to]`);
+                if (overwrite) throw new Error(`${cmd} 는 --overwrite 를 받지 않는다`);
+                assertDate(a1, "from");
+                const to = a2 ?? a1;
+                assertDate(to, "to");
+                if (cmd === "daishin-targets") await runDaishinTargets(rt, { from: a1, to });
+                else await runRepairMinutesDaishin(rt, { from: a1, to }, dryRun);
                 break;
             }
             case "daily-stats": {
