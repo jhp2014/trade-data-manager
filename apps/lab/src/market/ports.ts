@@ -1,6 +1,6 @@
 // 시장 데이터 창구 — 패널·훅은 이 인터페이스만 안다(fetch·URL 은 구현 몫).
 // 쓰는 쪽이 필요한 것만 의존하도록 종류별로 나눈다. 구현(tdm.ts / 테스트 가짜)은 여럿을 한 번에 구현해도 된다.
-import type { DayFlow, HtsCursor, HtsNewsItem, LabChartLine, LabDailyCandle, LabMinuteDay, StockMarketCapPoint, StockMeta, StockMoves, TelegramArchivePage } from "./types.js";
+import type { DayFlow, HtsCursor, HtsNewsItem, LabChartLine, LabDailyCandle, LabMinuteDay, StockMarketCapPoint, StockMeta, LabReplayDay, TelegramArchivePage } from "./types.js";
 
 export interface ChartData {
     /** 수정주가 일봉 [from, to](날짜 오름차순) + 유령 보정(unFix, 보정된 날만). */
@@ -31,8 +31,8 @@ export interface CalendarData {
 export interface ThemeData {
     /** 그날 전 종목의 분당 시계열(/day-flow — 테마 소속 없음, 소속은 소비하는 쪽이 입힌다). 과거 날짜는 서버 LRU, 미스는 직계산(~3초). */
     dayFlow(date: string, signal?: AbortSignal): Promise<DayFlow>;
-    /** 그 종목의 움직인 날(tdm-ai 이력). asOf = 그날까지만(당일 포함, 사후정보 차단은 서버 몫). 이력 없는 종목은 404(ApiError). */
-    stockMoves(code: string, asOf?: string, signal?: AbortSignal): Promise<StockMoves>;
+    /** 그날 장중 복기 분류(tdm-ai 장부 — 종목별 이름표 + 보이기 시작하는 때). 장부 없는 날은 404(ApiError — isNoLedger 로 가른다). */
+    replayDay(date: string, signal?: AbortSignal): Promise<LabReplayDay>;
 }
 
 export interface NewsData {

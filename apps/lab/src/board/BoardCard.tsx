@@ -3,14 +3,13 @@
 import { useState } from "react";
 import { ScrollRow } from "../ui/ScrollRow.js";
 import { StockRow } from "./StockRow.js";
-import type { BoardStock, ListMode, OnInspect, RelatedInfo } from "./boardTypes.js";
+import type { BoardStock, ListMode, RelatedInfo } from "./boardTypes.js";
 
 export function ThemeCard({
     theme,
     stocks,
     focusCode,
     onPick,
-    onInspect,
     related,
     onGoto,
     showRank = true,
@@ -20,7 +19,6 @@ export function ThemeCard({
     stocks: BoardStock[];
     focusCode: string;
     onPick: (code: string) => void;
-    onInspect?: OnInspect;
     showRank?: boolean; // 개별/미분류 카드는 순위 미표시
     related?: RelatedInfo[]; // 하단 관련 테마(카드에만, 개별/미분류 없음)
     onGoto?: (theme: string) => void; // 관련 테마 클릭 = 이동
@@ -60,11 +58,11 @@ export function ThemeCard({
                 {mode === "open" && (
                     <div style={{ paddingBottom: 2 }}>
                         {movers.map((s) => (
-                            <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} onInspect={onInspect} home={theme} inCard />
+                            <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} home={theme} inCard />
                         ))}
                         {movers.length > 0 && rest.length > 0 && <div data-boundary style={{ height: 6 }} />}
                         {rest.map((s) => (
-                            <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} onInspect={onInspect} home={theme} inCard />
+                            <StockRow key={s.code} s={s} rank={showRank ? rankOf.get(s.code)! : null} selected={s.code === focusCode} onPick={onPick} home={theme} inCard />
                         ))}
                     </div>
                 )}

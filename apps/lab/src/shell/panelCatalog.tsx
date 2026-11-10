@@ -22,7 +22,7 @@ export const PANEL_TYPES: PanelType[] = [
     // 은퇴한 base 둘 — 저장 배치에 남은 패널은 sanitize(부팅 때 대장 정리)가 조용히 걷는다:
     //   "theme"(옛 시트 테마, 2026-10-16 — /day-flow 전환으로 시트 소속 소멸)
     //   "htheme"(이력 기반 테마, 2026-10-17 — judgment 읽기 은퇴)
-    // "board" 가 그 후계의 골격 — 소속 공급원(등록부 기반 판정)이 생기기 전까지 전 종목 미분류.
+    // "board" 가 그 후계 — 소속 공급원은 tdm-ai 장중 복기 분류 장부(/replay/day, 그날 하루).
     { base: "board", title: "테마 보드", render: (id) => <BoardPanel panelId={id} /> },
     { base: "hts", title: "HTS뉴스", render: (id) => <HtsNewsPanel panelId={id} /> },
     { base: "telegram", title: "텔레그램", render: (id) => <TelegramPanel panelId={id} /> },

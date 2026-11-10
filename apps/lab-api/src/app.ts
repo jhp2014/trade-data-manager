@@ -1,5 +1,5 @@
-// lab 이 대면하는 백엔드(Hono) — 시장 읽기 전용 + lab 저장 선(/chart-lines, 파일)만 쓰기. 옛 /judgment(trade-judgment 판단 저장소 읽기)는 2026-10-17 은퇴 —
-// 등록부 기반 새 조회가 후계(tdm-ai, 결정 로그 「판단·AI 가공의 작업장」).
+// lab 이 대면하는 백엔드(Hono) — 시장 읽기 전용 + lab 저장 선(/chart-lines, 파일)만 쓰기. 옛 /judgment(trade-judgment 판단 저장소 읽기)는 2026-10-17 은퇴,
+// 그 후계였던 등록부·종목 이력 조회(/theme/registry · /theme/stocks)는 2026-11-10 은퇴 — 테마 소속은 tdm-ai 장중 복기 분류 장부(/replay/day)가 댄다.
 // 경로 규칙: 「누구냐」(정적 정보)는 /stocks, 「날짜별로 얼마냐」(시계열)는 /<무엇>?code=&from=&to=(/daily·/minutes·/marketcap).
 //   GET /dates                                        → string[](YYYY-MM-DD 오름차순) · tdm api GET /dates 와 같은 경로·꼴(lab 프록시가 /api 만 떼고 넘긴다)
 //   GET /stocks                                       → LabStockRow[](이름표 + 상장일 listedAt, 코드 오름차순 전량) · lab-api 부터 바뀐 경로·꼴(tdm api 는 /stocks/master 그대로), 캐시 없이 직쿼리
@@ -9,14 +9,13 @@
 //   GET /minutes?code=&date=                          → LabMinuteDay(그 날 dense 분봉 원주가 + % 기준가 + 수정주가 환산비) · 조립은 market/labChart.ts
 //   GET /news/hts?date=[&code=&q=&before…]            → HtsNewsItem[](최신순) · 조립은 market/htsNews.ts
 //   GET /day-flow?date=                               → DayFlow(그날 universe 전부의 분당 원값 — 표현(%·누적)은 클라) · lab 전용 계약, 조립은 market/dayFlow.ts
-//   GET /theme/registry                               → ThemeKeyword[](tdm-ai 등록부 그대로) · 계약은 wire/labTheme.ts
 //   GET|POST|DELETE /chart-lines                     → LabChartLine[] · lab 저장 선(파일 — lines/chartLines.ts). GET ?code=[&date=] · POST/DELETE body {code, line} → 그 차트의 선
-//   GET /theme/stocks/:code?asOf=                     → StockMoves(움직인 날) · asOf 있으면 date <= asOf 만(사후정보 차단은 서버 몫), 없는 종목 404
+//   GET /replay/day?date=                             → LabReplayDay(그날 장중 복기 분류 — 종목별 이름표 + 보이기 시작하는 때) · 장부 없는 날 404 · 조립은 replay/day.ts, 계약은 wire/labReplay.ts
 import { Hono } from "hono";
 import type { DataDate } from "@trade-data-manager/wire";
 import { parseLine, type ChartLineStore } from "./lines/chartLines.js";
 import type { StockNewsReader } from "@trade-data-manager/market";
-import type { ThemeStore } from "./theme/store.js";
+import type { ReplayDayReader } from "./replay/day.js";
 import type { DailyWithFix, MinutesByDate } from "./market/labChart.js";
 import type { DayFlowBody } from "./market/dayFlowCache.js";
 import type { ListStocks, MarketCapSeries } from "./market/stocks.js";
@@ -43,8 +42,8 @@ export interface AppOptions {
     dayFlowBody: DayFlowBody;
     /** /chart-lines 의 저장소 — lab 저장 선 파일(lines/chartLines.ts). null = CHART_LINES_DIR 미설정 → 요청마다 500. */
     chartLines: ChartLineStore | null;
-    /** GET /theme/* 의 데이터 — tdm-ai 테마 저장소(theme/store.ts). null = TDM_AI_DIR 미설정/적재 실패 → 요청마다 500(market DB 미설정과 같은 결). */
-    theme: Pick<ThemeStore, "keywords" | "movesByCode"> | null;
+    /** GET /replay/day 의 데이터 — tdm-ai 장중 복기 분류 장부(replay/day.ts). null = TDM_AI_DIR 미설정 → 요청마다 500(market DB 미설정과 같은 결). */
+    replayDay: ReplayDayReader | null;
     /** 예상 밖 오류(500) 로깅 — BadRequest 같은 요청 쪽 잘못은 안 온다. */
     onError?: (e: unknown) => void;
 }
@@ -59,7 +58,7 @@ export function createApp({
     stockNews,
     dayFlowBody,
     chartLines,
-    theme,
+    replayDay,
     onError = () => undefined,
 }: AppOptions): Hono {
     const app = new Hono();
@@ -120,7 +119,7 @@ export function createApp({
         ),
     );
 
-    // lab 저장 선 — 미설정이면 원인 메시지로 throw → onError 로그 + 500(테마 저장소와 같은 결).
+    // lab 저장 선 — 미설정이면 원인 메시지로 throw → onError 로그 + 500(복기 분류 장부와 같은 결).
     const requireLines = (): ChartLineStore => {
         if (!chartLines) throw new Error("lab 저장 선 폴더 미설정(CHART_LINES_DIR)");
         return chartLines;
@@ -149,21 +148,14 @@ export function createApp({
         return c.json(await requireLines().remove(code, line));
     });
 
-    // 테마 저장소가 비면(miswiring 아님 — TDM_AI_DIR 미설정/적재 실패) 원인 메시지로 throw → onError 로그 + 500.
-    const requireTheme = () => {
-        if (!theme) throw new Error("테마 저장소 미적재(TDM_AI_DIR 미설정 또는 적재 실패)");
-        return theme;
-    };
-    app.get("/theme/registry", (c) => c.json(requireTheme().keywords));
-    app.get("/theme/stocks/:code", (c) => {
-        const store = requireTheme();
-        const code = assertStockCode(c.req.param("code"));
-        const asOfRaw = c.req.query("asOf");
-        const asOf = asOfRaw === undefined ? undefined : assertYmd(asOfRaw, "asOf");
-        const moves = store.movesByCode.get(code);
-        // 이력 없는 종목은 빈 issues 가 아니라 404 — "기록이 없다"와 "움직인 날이 없다"를 섞지 않는다.
-        if (!moves) return c.json({ error: `이력 없는 종목: ${code}` }, 404);
-        return c.json(asOf === undefined ? moves : { ...moves, issues: moves.issues.filter((i) => i.date <= asOf) });
+    // 복기 분류 장부 — 미설정(TDM_AI_DIR)이면 원인 메시지로 throw → onError 로그 + 500. 장부 없는 날은 404 — "아직 분류 안 한 날"이지 오류가 아니다.
+    // body.error 는 "분류 없는 날"로 시작한다 — 배선 오류 404("없는 경로")와 가르는 판별 문자열(lab market/queries 가 본다. 바꾸면 양쪽 함께).
+    app.get("/replay/day", async (c) => {
+        const date = assertYmd(c.req.query("date"));
+        if (!replayDay) throw new Error("복기 분류 장부 미설정(TDM_AI_DIR)");
+        const day = await replayDay(date);
+        if (!day) return c.json({ error: `분류 없는 날: ${date}` }, 404);
+        return c.json(day);
     });
 
     app.notFound((c) => c.json({ error: `없는 경로: ${new URL(c.req.url).pathname}` }, 404));

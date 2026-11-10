@@ -1,6 +1,10 @@
 // 경로 · 상태 코드를 본다(계산은 market/* 테스트). Hono 라 서버 없이 app.request 로 부른다.
-import { describe, expect, it } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
+import { makeReplayDayReader } from "./replay/day.js";
 
 type Ports = Partial<Parameters<typeof createApp>[0]>;
 function make(ports: Ports = {}) {
@@ -14,7 +18,7 @@ function make(ports: Ports = {}) {
         stockNews: { getHeadlines: async () => [], feedHeadlines: async () => [] },
         dayFlowBody: async (date) => JSON.stringify({ date, stocks: [] }),
         chartLines: null,
-        theme: null,
+        replayDay: null,
         ...ports,
     });
     return async (path: string, method = "GET", body?: unknown) => {
@@ -183,58 +187,70 @@ describe("day-flow", () => {
     });
 });
 
-describe("theme", () => {
-    const issue = (date: string) => ({
-        date,
-        themes: ["이차전지"],
-        issue: `${date} 사유`,
-        evidence: [{ src: "tg", date, time: "09:00", title: "제목", ref: "p#1" }],
+describe("replay/day", () => {
+    // 작은 tdm-ai 모양 — 장부 하루 + 이름 바꾸기. 계산(이름 바꾸기·합치기·from)의 세부는 replay/day.test.ts.
+    let dir: string;
+    beforeAll(async () => {
+        dir = await mkdtemp(join(tmpdir(), "replay-app-"));
+        await mkdir(join(dir, "theme/replay/curated"), { recursive: true });
+        const rows = [
+            {
+                date: "2023-01-05", code: "002990", name: "금호건설",
+                pre: [{ theme: "건설", basis: ["base"] }],
+                close: [{ theme: "건설", sub: "두바이 투자", basis: ["issue", "base"], since: "14:11" }],
+                evidence: ["g1"], why: "두바이 투자 소식에 상한가.", unsure: "x", closing: "사후", brief: "b", reviewed: "opus", by: "ai",
+            },
+        ];
+        await writeFile(join(dir, "theme/replay/curated/2023-01-05.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+        await writeFile(join(dir, "theme/replay/renames.jsonl"), JSON.stringify({ from: "두바이 투자", to: "중동 투자", by: "user" }) + "\n");
     });
-    const moves = { code: "000001", name: "알파", from: "2023-01-02", to: "2026-10-17", issues: [issue("2025-01-02"), issue("2025-01-03"), issue("2025-02-03")] };
-    const store = {
-        keywords: [{ theme: "2차전지", kind: "standing" as const, aliases: ["이차전지"], criteria: "배터리 셀·소재·장비." }],
-        movesByCode: new Map([["000001", moves]]),
-    };
+    afterAll(async () => {
+        await rm(dir, { recursive: true, force: true });
+    });
 
-    it("registry — 주입된 keywords 를 그대로 배열로", async () => {
-        const call = make({ theme: store });
-        const r = await call("/theme/registry");
+    it("그날 장부 → 이름표(이름 바꾸기 겹침 · from) — 작업 메모(closing·unsure·brief·reviewed·evidence·by)는 안 싣는다", async () => {
+        const call = make({ replayDay: makeReplayDayReader(dir) });
+        const r = await call("/replay/day?date=2023-01-05");
         expect(r.status).toBe(200);
-        expect(r.json).toEqual(store.keywords);
+        expect(r.json).toEqual({
+            date: "2023-01-05",
+            rows: [
+                {
+                    code: "002990",
+                    name: "금호건설",
+                    labels: [
+                        { theme: "건설", sub: "중동 투자", basis: ["issue", "base"], from: "14:11" },
+                        { theme: "건설", basis: ["base"], from: "open" },
+                    ],
+                    why: "두바이 투자 소식에 상한가.",
+                },
+            ],
+        });
     });
-    it("stocks/:code — 전체, asOf 는 date <= asOf(당일 포함)로 서버가 자른다", async () => {
-        const call = make({ theme: store });
-        const all = await call("/theme/stocks/000001");
-        expect(all.status).toBe(200);
-        expect(all.json).toEqual(moves);
-        const cut = await call("/theme/stocks/000001?asOf=2025-01-03");
-        expect(cut.json).toEqual({ ...moves, issues: [issue("2025-01-02"), issue("2025-01-03")] });
-    });
-    it("stocks/:code — 이력 없는 종목은 빈 issues 가 아니라 404", async () => {
-        const call = make({ theme: store });
-        const r = await call("/theme/stocks/999999");
+    it("장부 없는 날 = 404 {error: 분류 없는 날…} — 배선 오류 404(없는 경로)와 문구로 갈린다", async () => {
+        const call = make({ replayDay: makeReplayDayReader(dir) });
+        const r = await call("/replay/day?date=2023-01-06");
         expect(r.status).toBe(404);
-        expect(r.json).toEqual({ error: "이력 없는 종목: 999999" });
+        expect(r.json).toEqual({ error: "분류 없는 날: 2023-01-06" });
     });
-    it("stocks/:code — code 형식·asOf 불량은 400", async () => {
-        const call = make({ theme: store });
-        const badCode = await call("/theme/stocks/5930");
-        expect(badCode.status).toBe(400);
-        expect(badCode.json).toEqual({ message: "code 형식(6자리 영숫자): 5930", error: "Bad Request", statusCode: 400 });
-        const badAsOf = await call("/theme/stocks/000001?asOf=2025-02-30");
-        expect(badAsOf.status).toBe(400);
-        expect(badAsOf.json).toEqual({ message: "asOf 가 유효한 날짜가 아님: 2025-02-30", error: "Bad Request", statusCode: 400 });
+    it("date 빠짐·불량 = 400", async () => {
+        const call = make({ replayDay: makeReplayDayReader(dir) });
+        expect((await call("/replay/day")).json).toMatchObject({ message: "date 필수(YYYY-MM-DD)", statusCode: 400 });
+        expect((await call("/replay/day?date=2023-02-30")).json).toMatchObject({ message: "date 가 유효한 날짜가 아님: 2023-02-30" });
     });
-    it("저장소 미적재(theme=null) = NestJS 꼴 500 + onError — market DB 미설정과 같은 결", async () => {
+    it("TDM_AI_DIR 미설정(replayDay=null) = NestJS 꼴 500 + onError — market DB 미설정과 같은 결", async () => {
         const seen: unknown[] = [];
-        const call = make({ onError: (e) => seen.push(e) }); // 기본 theme: null
-        for (const path of ["/theme/registry", "/theme/stocks/000001"]) {
-            const r = await call(path);
-            expect(r.status).toBe(500);
-            expect(r.json).toEqual({ statusCode: 500, message: "Internal server error" });
-        }
-        expect(seen).toHaveLength(2);
+        const call = make({ onError: (e) => seen.push(e) }); // 기본 replayDay: null
+        const r = await call("/replay/day?date=2023-01-05");
+        expect(r.status).toBe(500);
+        expect(r.json).toEqual({ statusCode: 500, message: "Internal server error" });
+        expect(seen).toHaveLength(1);
         expect((seen[0] as Error).message).toContain("TDM_AI_DIR");
+    });
+    it("은퇴한 /theme/registry · /theme/stocks 는 그냥 404", async () => {
+        const call = make({ replayDay: makeReplayDayReader(dir) });
+        expect((await call("/theme/registry")).json).toEqual({ error: "없는 경로: /theme/registry" });
+        expect((await call("/theme/stocks/000001")).status).toBe(404);
     });
 });
 

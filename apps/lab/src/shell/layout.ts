@@ -68,7 +68,7 @@ export function destroyPanel(api: DockviewApi, panelId: string): void {
 
 /**
  * 기본 배치 — 차트 A | 차트 B / HTS뉴스 | 텔레그램(활성). (옛 테마 판(htheme)은 2026-10-17 은퇴 —
- * 등록부 기반 새 테마 패널이 오면 다시 자리를 잡는다.)
+ * 후계 「테마 보드」(board)는 아직 기본 배치에 없다.)
  * A·B 경로가 없으면(사용자가 지웠으면) 활성으로 건다. 이 배치에 없던 패널은 최소화로 남는다.
  */
 export function buildDefaultLayout(api: DockviewApi): void {

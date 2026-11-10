@@ -11,7 +11,7 @@ import { ThemeCard } from "./BoardCard.js";
 import { Center } from "../ui/chrome.js";
 import { relatedThemes, type Grouped, type ThemeGroup } from "./domain.js";
 import { focusPlace } from "./viewModel.js";
-import type { BoardStock, OnInspect, RelatedInfo } from "./boardTypes.js";
+import type { BoardStock, RelatedInfo } from "./boardTypes.js";
 
 // 꼬리 카드(개별·미분류) — 머리 문구와 스크롤 주소를 갈라 둔다(같은 이름의 진짜 테마가 있으면 주소가 겹친다).
 const INDIVIDUAL_CARD = "개별 종목";
@@ -27,7 +27,6 @@ export function BoardLayout({
     focusCode,
     onPick,
     isSelfPick,
-    onInspect,
     unclassifiedName = UNCLASSIFIED_CARD,
 }: {
     grouped: Grouped<BoardStock>;
@@ -36,8 +35,6 @@ export function BoardLayout({
     onPick: (code: string) => void;
     /** 지금 종목이 이 보드에서 직접 고른 것인가 — 그렇다면 승격·스크롤하지 않는다(제자리). */
     isSelfPick: (code: string) => boolean;
-    /** 종목 줄 우클릭 — 있으면 브라우저 메뉴 대신 이것을 부른다. */
-    onInspect?: OnInspect;
     /** 미분류 꼬리 카드 이름 — 소속 출처가 정한다(안 주면 「미분류」). */
     unclassifiedName?: string;
 }): JSX.Element {
@@ -113,7 +110,6 @@ export function BoardLayout({
                 stocks={g.stocks}
                 focusCode={focusCode}
                 onPick={onPick}
-                onInspect={onInspect}
                 related={relatedOf(g)}
                 onGoto={gotoTheme}
                 initialMode={promotedCard ? "open" : "collapsed"}
@@ -139,13 +135,13 @@ export function BoardLayout({
                     {restCards.map((g) => renderCard(g))}
                     {grouped.individuals.length > 0 && (
                         <div key={`ind-${focusInIndividuals}`} ref={(el) => register(INDIVIDUAL_REF, el)} style={{ scrollMarginTop: 8 }}>
-                            <ThemeCard theme={INDIVIDUAL_CARD} stocks={grouped.individuals} focusCode={focusCode} onPick={onPick} onInspect={onInspect} showRank={false} initialMode={focusInIndividuals ? "open" : "collapsed"} />
+                            <ThemeCard theme={INDIVIDUAL_CARD} stocks={grouped.individuals} focusCode={focusCode} onPick={onPick} showRank={false} initialMode={focusInIndividuals ? "open" : "collapsed"} />
                         </div>
                     )}
                     {grouped.unclassified.length > 0 && (
                         <div key={`unc-${focusInUnclassified}`} ref={(el) => register(UNCLASSIFIED_REF, el)} style={{ scrollMarginTop: 8 }}>
                             {/* 테마 카드가 하나도 없으면(소속 공급원 없음) 미분류가 판의 전부 — 접힌 채 시작할 이유가 없다. */}
-                            <ThemeCard theme={unclassifiedName} stocks={grouped.unclassified} focusCode={focusCode} onPick={onPick} onInspect={onInspect} showRank={false} initialMode={focusInUnclassified || grouped.themes.length === 0 ? "open" : "collapsed"} />
+                            <ThemeCard theme={unclassifiedName} stocks={grouped.unclassified} focusCode={focusCode} onPick={onPick} showRank={false} initialMode={focusInUnclassified || grouped.themes.length === 0 ? "open" : "collapsed"} />
                         </div>
                     )}
                     {empty && <Center>표시할 종목 없음</Center>}

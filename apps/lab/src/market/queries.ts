@@ -17,7 +17,7 @@ import { kstToday } from "./domain.js";
 import { addDays, shiftYears } from "../lib/date.js";
 import { ApiError } from "./http.js";
 import { useCalendarData, useChartData, useLineData, useStockData, useThemeData } from "./MarketProvider.js";
-import type { DayFlow, LabChartLine, LabDailyCandle, LabMinuteDay, StockMarketCapPoint, StockMoves } from "./types.js";
+import type { DayFlow, LabChartLine, LabDailyCandle, LabMinuteDay, LabReplayDay, StockMarketCapPoint } from "./types.js";
 import type { ChartData } from "./ports.js";
 
 const TODAY_STALE = 60_000; // 오늘 시세는 수집이 채우는 중일 수 있다 — 1분 뒤 재조회 허용
@@ -179,18 +179,31 @@ export function useMorningCap(code: string, date: string): string | null {
 }
 
 /**
- * 그 종목의 움직인 날(tdm-ai 이력, /theme/stocks). asOf 를 주면 서버가 date <= asOf(당일 포함)로 자른다.
- * 이력 없는 종목은 404(ApiError) — 오류가 아니라 "이력 없음"이므로 재시도하지 않고, 소비 쪽이 status 로 가른다.
- * 저장소는 lab-api 재시작 때만 바뀐다 — 마스터와 같은 주기면 충분.
+ * 장부 없는 날의 404 인가 — lab-api 가 body.error 를 "분류 없는 날"로 시작한다(apps/lab-api app.ts — 바꾸면 양쪽 함께).
+ * 배선 오류 404(프록시가 엉뚱한 서버로 보내 "없는 경로" 등)는 오류로 남긴다 — "아직 분류 없음"으로 삼키지 않게.
  */
-export function useStockMoves(code: string, asOf?: string): UseQueryResult<StockMoves, Error> {
+export function isNoLedger(e: unknown): boolean {
+    if (!(e instanceof ApiError) || e.status !== 404) return false;
+    try {
+        const error = (JSON.parse(e.body) as { error?: unknown }).error;
+        return typeof error === "string" && error.startsWith("분류 없는 날");
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * 그날 장중 복기 분류(tdm-ai 장부, /replay/day). 장부 없는 날은 404 — 오류가 아니라 "아직 분류 없음"이라 재시도하지 않고,
+ * 소비 쪽이 isNoLedger 로 가른다. 장부는 분류하면서 고쳐지고 lab-api 가 요청마다 읽는다 — 1분 뒤 다시 물을 수 있게.
+ */
+export function useReplayDay(date: string): UseQueryResult<LabReplayDay, Error> {
     const port = useThemeData();
     return useQuery({
-        queryKey: ["stock-moves", code, asOf ?? ""],
-        queryFn: ({ signal }) => port.stockMoves(code, asOf, signal),
-        enabled: code !== "",
-        staleTime: META_STALE,
-        retry: (count, e) => !(e instanceof ApiError && e.status === 404) && count < 1,
+        queryKey: ["replay-day", date],
+        queryFn: ({ signal }) => port.replayDay(date, signal),
+        enabled: date !== "",
+        staleTime: TODAY_STALE,
+        retry: (count, e) => !isNoLedger(e) && count < 1,
     });
 }
 

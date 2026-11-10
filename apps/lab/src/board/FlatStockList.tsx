@@ -2,15 +2,14 @@
 import { useMemo } from "react";
 import { StockRow } from "./StockRow.js";
 import { Center } from "../ui/chrome.js";
-import type { BoardStock, OnInspect } from "./boardTypes.js";
+import type { BoardStock } from "./boardTypes.js";
 
 export type BoardSort = "amount" | "rate";
 
-export function FlatStockList({ stocks, code, onPick, onInspect, sort }: {
+export function FlatStockList({ stocks, code, onPick, sort }: {
     stocks: BoardStock[];
     code: string;
     onPick: (code: string) => void;
-    onInspect?: OnInspect;
     sort: BoardSort;
 }): JSX.Element {
     const rows = useMemo(
@@ -22,7 +21,7 @@ export function FlatStockList({ stocks, code, onPick, onInspect, sort }: {
         // 줄이 길고 많다 — 한 줄 건너 옅은 바탕(.stock-list-striped)으로 이름과 숫자를 눈으로 잇는다.
         <div className="stock-list-striped" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
             {rows.map((s, i) => (
-                <StockRow key={s.code} s={s} rank={i + 1} selected={s.code === code} onPick={onPick} onInspect={onInspect} />
+                <StockRow key={s.code} s={s} rank={i + 1} selected={s.code === code} onPick={onPick} />
             ))}
         </div>
     );

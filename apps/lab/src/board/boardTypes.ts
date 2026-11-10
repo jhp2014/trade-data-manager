@@ -15,14 +15,13 @@ export interface RelatedInfo {
     total: number;
 }
 
-/** 종목 줄 우클릭 — 그 종목과 누른 자리(화면 좌표). */
-export type OnInspect = (code: string, at: { x: number; y: number }) => void;
-
 /** 보드의 종목 한 줄 — 그 시각의 값. 이름은 마스터 조인(useStockNameOf), 테마는 소속(membership)이 입힌 것. */
 export interface BoardStock {
     code: string;
     name: string;
     themes: string[];
+    /** 줄 툴팁(title) 글 — 소속 공급원이 줄 때만(복기 분류 「사후 보기」의 이유). */
+    note?: string;
     changeRate: number;
     openPct: number;
     highPct: number;

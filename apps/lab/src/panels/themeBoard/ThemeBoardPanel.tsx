@@ -1,6 +1,6 @@
 // 테마 보드 패널의 몸 — 경로의 (날짜, 시각)의 테마 단면. 시각이 없으면 장 마감(15:30).
 // 시계열(/day-flow)에는 소속이 없다 — 테마는 언제나 membership 이 입힌다(공급원은 호스트 판 몫 —
-// 옛 judgment 이력 소속은 은퇴, 지금은 빈 소속뿐이고 등록부 기반 판정이 후계).
+// 지금은 BoardPanel 이 tdm-ai 장중 복기 분류 장부(/replay/day)로 입힌다).
 // 종목 줄 클릭 = 경로의 종목, 테마 머리 클릭 = 그 카드 접기/펼치기(경로에 테마는 없다).
 // 이 패널에서 고른 종목은 판을 움직이지 않고, 다른 곳에서 바뀐 종목은 그 테마들을 맨 위로 올린다.
 import { useCallback, useMemo, type ReactNode } from "react";
@@ -14,9 +14,9 @@ import { DEFAULT_UNIVERSE, buildThemeBoard, focusPlace, type ThemedStock } from 
 import { BoardLayout } from "../../board/BoardLayout.js";
 import { useSelfPick } from "../../board/useSelfPick.js";
 import { FlatStockList } from "../../board/FlatStockList.js";
-import type { OnInspect } from "../../board/boardTypes.js";
 import { Center, NumberField } from "../../ui/chrome.js";
 import { usePanelHeader } from "../../header/registry.js";
+import type { ControlSpec } from "../../header/spec.js";
 
 type BoardView = "group" | "amount" | "rate";
 const VIEW_VALUES: readonly { v: BoardView; label: string }[] = [
@@ -42,15 +42,16 @@ export interface Membership {
     unclassified: string;
     /** 헤더에 붙일 소속 알림(공급원이 그 날짜를 다 덮지 못할 때 등). 없으면 null. */
     note: string | null;
+    /** 종목 → 줄 툴팁(title) 글 — 공급원이 보일 때만 준다(사후정보를 숨기는 판단은 공급원 몫). */
+    notes?: ReadonlyMap<string, string>;
 }
 
-export function ThemeBoardPanel({ panelId, membership, onInspect, children }: {
+export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
     panelId: string;
     /** 종목 → 테마 소속(필수 — 시계열에는 소속이 없다). */
     membership: Membership;
-    onInspect?: OnInspect;
-    /** 판 위에 덧붙일 것(우클릭 창 등). */
-    children?: ReactNode;
+    /** 공급원(호스트 판)의 컨트롤 — 보드 컨트롤 뒤에 붙는다(헤더 선언은 패널당 하나라 이 몸이 모아 게시한다). */
+    controls?: readonly ControlSpec[];
 }): JSX.Element {
     const { path, write } = usePanelPath(panelId);
     const { code, date, time } = path.s;
@@ -64,13 +65,14 @@ export function ThemeBoardPanel({ panelId, membership, onInspect, children }: {
     // 날짜가 바뀌는 동안엔 직전 날의 데이터가 온다 — 시각은 **받은 데이터의 날짜**로 잰다(다른 날 시각을 섞지 않게).
     const flow = q.data;
     const themes = membership.themes;
+    const notes = membership.notes;
     const index = useMemo(() => {
         if (!flow || !themes) return null;
         // 원값 → % 파생(deriveFlow — flow 객체당 한 벌 공유) + 테마 입히기. 보드는 % 공간(ThemedStock)만 본다.
         const entries: [string, ThemedStock][] = [];
-        for (const d of deriveFlow(flow).values()) entries.push([d.code, { ...d, themes: themes.get(d.code) ?? [] }]);
+        for (const d of deriveFlow(flow).values()) entries.push([d.code, { ...d, themes: themes.get(d.code) ?? [], note: notes?.get(d.code) }]);
         return new Map(entries);
-    }, [flow, themes]);
+    }, [flow, themes, notes]);
     const shownTime = time || CLOSE_TIME;
     const tUnix = flow ? kstToUnix(flow.date, `${shownTime}:00`) : 0;
     const board = useMemo(
@@ -109,6 +111,7 @@ export function ThemeBoardPanel({ panelId, membership, onInspect, children }: {
                 renderPopover: () => <div style={{ padding: "8px 12px" }}>{universe}</div>,
                 renderLine: () => universe,
             },
+            ...controls,
         ],
     });
 
@@ -127,16 +130,14 @@ export function ThemeBoardPanel({ panelId, membership, onInspect, children }: {
                 focusCode={code}
                 onPick={pick}
                 isSelfPick={isSelfPick}
-                onInspect={onInspect}
                 unclassifiedName={membership.unclassified}
             />
         );
-    else body = <FlatStockList stocks={board.stocks} code={code} onPick={pick} onInspect={onInspect} sort={view} />;
+    else body = <FlatStockList stocks={board.stocks} code={code} onPick={pick} sort={view} />;
 
     return (
         <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--surface)" }}>
             {body}
-            {children}
         </div>
     );
 }

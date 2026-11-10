@@ -69,10 +69,10 @@ export type { StockMarketCapPoint } from "@trade-data-manager/wire";
 export type { DayFlow, DayFlowStock } from "@trade-data-manager/wire";
 
 /**
- * GET /theme/stocks/{code}?asOf — 그 종목의 움직인 날(tdm-ai 이력, lab-api 서빙 — contracts/wire 의
- * labTheme 계약을 그대로 쓴다). asOf 를 주면 서버가 date <= asOf(당일 포함)로 자른다. 이력 없는 종목은 404.
+ * GET /replay/day?date — 그날 장중 복기 분류(tdm-ai 장부, lab-api 서빙 — contracts/wire 의 labReplay 계약을 그대로 쓴다).
+ * 종목별 이름표(상위·세부) + 보이기 시작하는 때(from: "open" | "HH:MM") + 이유(why — 사후정보). 장부 없는 날은 404.
  */
-export type { MoveEvidence, MoveIssue, StockMoves } from "@trade-data-manager/wire";
+export type { LabReplayDay, LabReplayLabel, LabReplayStock } from "@trade-data-manager/wire";
 
 /** GET /news/hts 한 건 — HTS(시황) 헤드라인. 응답은 늘 최신순. */
 export interface HtsNewsItem {

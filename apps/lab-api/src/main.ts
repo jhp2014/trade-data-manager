@@ -1,6 +1,6 @@
 // 기동 — 포트는 LAB_API_PORT(사용 3300 / 개발 3310, launch.json lab-api-dev).
 // market DB 는 읽기만. /dates 는 파일 물화(.cache/data-dates.json) + 꼬리 증분(market/dataDates.ts).
-// 테마 저장소는 TDM_AI_DIR(판단 작업장 tdm-ai 경로)를 읽기만 — 기동 1회 적재, reload 없음(반영 = 재시작, theme/store.ts).
+// 장중 복기 분류 장부는 TDM_AI_DIR(판단 작업장 tdm-ai 경로)를 읽기만 — 요청마다 읽고 mtime 이 같으면 지난 결과(replay/day.ts, 재시작 불요).
 // TDM_AI_DIR 는 자급 .env(apps/lab-api/.env — git 밖, 수동 생성)에 둔다 — apps/api 의 VAULT_DIR 와 같은 패턴.
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,7 +28,7 @@ import { MaterializedDataDates } from "./market/dataDates.js";
 import { makeDayFlowByDate } from "./market/dayFlow.js";
 import { makeListStocks, makeMarketCapSeries } from "./market/stocks.js";
 import { makeCachedDayFlowBody } from "./market/dayFlowCache.js";
-import { loadThemeStore, type ThemeStore } from "./theme/store.js";
+import { makeReplayDayReader } from "./replay/day.js";
 import { makeChartLineStore } from "./lines/chartLines.js";
 
 // 자급 .env 1회 로드(없으면 조용히 넘어간다) — 이미 있는 process.env 는 덮지 않는다(dotenv 기본).
@@ -104,25 +104,11 @@ function wireMarket(): MarketPorts & { closePool: () => void } {
 }
 const { closePool, ...market } = wireMarket();
 
-// 테마 저장소(tdm-ai 읽기 전용) — 미설정·적재 실패여도 서버는 뜬다(시장 경로와 무관). null 이면 /theme/* 가 요청마다 500.
-async function wireTheme(): Promise<ThemeStore | null> {
-    const dir = process.env.TDM_AI_DIR;
-    if (!dir) {
-        console.warn("[lab-api] TDM_AI_DIR 미설정 — 테마 저장소 적재 생략");
-        return null;
-    }
-    try {
-        const store = await loadThemeStore(dir);
-        console.log(
-            `[lab-api] 테마 저장소 적재 — 키워드 ${store.keywords.length} · 종목 ${store.movesByCode.size} · 테마 ${store.rostersByTheme.size} (반영은 재시작)`,
-        );
-        return store;
-    } catch (e) {
-        console.warn("[lab-api] 테마 저장소 적재 실패 — 테마 쪽은 비활성:", e instanceof Error ? e.message : e);
-        return null;
-    }
-}
-const themeStore = await wireTheme();
+// 장중 복기 분류 장부(tdm-ai 읽기 전용) — 미설정이어도 서버는 뜬다(시장 경로와 무관). null 이면 /replay/day 가 요청마다 500.
+const tdmAiDir = process.env.TDM_AI_DIR;
+if (tdmAiDir) console.log(`[lab-api] 복기 분류 장부 — ${tdmAiDir}`);
+else console.warn("[lab-api] TDM_AI_DIR 미설정 — /replay/day 는 500");
+const replayDay = tdmAiDir ? makeReplayDayReader(tdmAiDir) : null;
 
 // lab 저장 선 폴더(CHART_LINES_DIR — 사용 TradingData/chart-lines, 개발 chart-lines-dev). 미설정이면 /chart-lines 만 500.
 const linesDir = process.env.CHART_LINES_DIR;
@@ -130,7 +116,7 @@ if (linesDir) console.log(`[lab-api] lab 저장 선 폴더 — ${linesDir}`);
 else console.warn("[lab-api] CHART_LINES_DIR 미설정 — /chart-lines 는 500");
 const chartLines = linesDir ? makeChartLineStore(linesDir) : null;
 
-const app = createApp({ ...market, chartLines, theme: themeStore, onError: (e) => console.error("[lab-api]", e) });
+const app = createApp({ ...market, chartLines, replayDay, onError: (e) => console.error("[lab-api]", e) });
 
 // loopback 에만 붙는다 — 소비자가 같은 기기의 Vite 프록시뿐이다.
 const server = serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, (info) => {

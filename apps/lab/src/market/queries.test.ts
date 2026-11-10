@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
-import { keepSameStock, morningCapOf, pruneDayFlows } from "./queries.js";
+import { isNoLedger, keepSameStock, morningCapOf, pruneDayFlows } from "./queries.js";
+import { ApiError } from "./http.js";
 
 const dates = (qc: QueryClient) =>
     qc
@@ -66,5 +67,17 @@ describe("keepSameStock", () => {
         expect(keepSameStock("005930")(prev, { queryKey: ["daily", "005930", "2026-05-28"] })).toBe(prev);
         expect(keepSameStock("000660")(prev, { queryKey: ["daily", "005930", "2026-05-28"] })).toBeUndefined();
         expect(keepSameStock("005930")(undefined, undefined)).toBeUndefined();
+    });
+});
+
+describe("isNoLedger — 장부 없는 날(404 「분류 없는 날」)만 가른다", () => {
+    it("lab-api 의 장부 없음 404 → true", () => {
+        expect(isNoLedger(new ApiError("x", 404, JSON.stringify({ error: "분류 없는 날: 2026-11-10" })))).toBe(true);
+    });
+    it("배선 404(없는 경로) · 다른 상태 · JSON 아닌 본문 · ApiError 아님 → false(오류로 보인다)", () => {
+        expect(isNoLedger(new ApiError("x", 404, JSON.stringify({ error: "없는 경로: /replay/day" })))).toBe(false);
+        expect(isNoLedger(new ApiError("x", 500, JSON.stringify({ error: "분류 없는 날: 2026-11-10" })))).toBe(false);
+        expect(isNoLedger(new ApiError("x", 404, "<html>not found</html>"))).toBe(false);
+        expect(isNoLedger(new Error("분류 없는 날"))).toBe(false);
     });
 });

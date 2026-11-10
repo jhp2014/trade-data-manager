@@ -3,14 +3,13 @@
 // 줄 사이 구분선은 없다 — 바탕(hover·선택·평면 목록 줄무늬)은 styles.css 의 .stock-row 가 칠한다.
 // workbench components/board/StockRow.tsx 에서 옮겼다(테마 배정 우클릭·제외 사유·구간 막대 툴팁·큐레이션 표시는 뺐다).
 import { fmtEok } from "../lib/format.js";
-import { fmtRate1, type BoardStock, type OnInspect } from "./boardTypes.js";
+import { fmtRate1, type BoardStock } from "./boardTypes.js";
 
 export function StockRow({
     s,
     rank,
     selected,
     onPick,
-    onInspect,
     home,
     inCard = false,
 }: {
@@ -18,7 +17,6 @@ export function StockRow({
     rank: number | null; // null = 순위 미표시(개별/미분류)
     selected: boolean;
     onPick: (code: string) => void;
-    onInspect?: OnInspect; // 우클릭 — 있으면 브라우저 메뉴 대신
     home?: string; // 카드의 테마(칩에서 뺀다). 없으면 모든 테마 칩.
     inCard?: boolean; // 테마 카드 안 — 왼쪽 선택 바를 안 그린다(카드가 이미 제 왼쪽 변을 가졌다)
 }): JSX.Element {
@@ -29,14 +27,7 @@ export function StockRow({
             className="stock-row"
             data-selected={selected || undefined}
             onClick={() => onPick(s.code)}
-            onContextMenu={
-                onInspect
-                    ? (e) => {
-                          e.preventDefault();
-                          onInspect(s.code, { x: e.clientX, y: e.clientY });
-                      }
-                    : undefined
-            }
+            title={s.note}
             style={{
                 display: "grid",
                 gridTemplateColumns: "minmax(0, 1fr) 48px 46px",

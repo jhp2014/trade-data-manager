@@ -17,7 +17,7 @@ export function fakeMarket<T extends Partial<Market>>(stubs: T): Market & T {
         marketCaps: async () => [],
         tradingDays: notStubbed("tradingDays"),
         dayFlow: notStubbed("dayFlow"),
-        stockMoves: notStubbed("stockMoves"),
+        replayDay: notStubbed("replayDay"),
         htsNews: notStubbed("htsNews"),
         telegramArchive: notStubbed("telegramArchive"),
         ...stubs,

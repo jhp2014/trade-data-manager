@@ -5,5 +5,5 @@
 
 - 독립 저장소 `jhp2014/trade-lab` 에서 2026-10-16 `apps/lab` 으로 편입(squash import). 그 전 이력은 원 저장소의 `moved-to-tdm` 태그까지.
 - 시장 데이터는 `apps/lab-api`(읽기 전용 GET)에서 `/api/*` 프록시로 가져온다.
-- 판단·AI 가공은 별도 작업장 `tdm-ai`(로컬 git)에 — lab 의 judgment 읽기는 2026-10-17 은퇴, 등록부 기반 새 조회·새 패널이 후계(decisions.md 「판단·AI 가공의 작업장」).
+- 판단·AI 가공은 별도 작업장 `tdm-ai`(로컬 git)에 — lab 의 judgment 읽기는 2026-10-17 은퇴(decisions.md 「판단·AI 가공의 작업장」). lab-api 가 tdm-ai 에서 읽는 것은 장중 복기 분류 장부(`/replay/day` — 테마 보드의 소속)뿐.
 - 설계 문서: [DESIGN.md](./DESIGN.md)

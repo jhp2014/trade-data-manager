@@ -1,10 +1,10 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
-// 화면은 src/. 시장 읽기 경로(/api/day-flow·dates·stocks·marketcap·daily·minutes·chart-lines(lab 저장 선)·news/hts·news/telegram/archive·theme/registry·theme/stocks)는
+// 화면은 src/. 시장 읽기 경로(/api/day-flow·dates·stocks·marketcap·daily·minutes·chart-lines(lab 저장 선)·news/hts·news/telegram/archive·replay/day)는
 // lab-api 로, 나머지 /api 기본 항목만 tdm api(지금 소비자 0 — 장래 큐레이션 계통용). 이식 경로는 /api 보다
-// 먼저 선언한다(선언 순서 매칭) — strangler. 키는 정확 매칭 정규식(^…(\?|$)): 맨 prefix 로 두면 /api/theme 이
-// /api/theme/members 같은 api 잔류 경로까지 삼킨다. (옛 /judgment 프록시는 2026-10-17 judgment 읽기 은퇴로 제거.)
+// 먼저 선언한다(선언 순서 매칭) — strangler. 키는 정확 매칭 정규식(^…(\?|$)): 맨 prefix 로 두면 /api/news 가
+// /api/news/telegram 같은 api 잔류 경로까지 삼킨다. (옛 /judgment 프록시는 2026-10-17, /theme/registry·/theme/stocks 는 2026-11-10 은퇴로 제거.)
 // 포트: 사용(trade-data-manager) 3200 / 개발(tdm-work) 3210(--port 로 올림, launch.json lab-dev).
 // 프록시 타겟 기본은 사용 포트(:3001 · :3300) — 개발 워크트리는 .env.local 의 *_PROXY_TARGET 으로 :3011 · :3310 을 가리킨다.
 export default defineConfig(({ mode }) => {
@@ -55,13 +55,8 @@ export default defineConfig(({ mode }) => {
                     changeOrigin: true,
                     rewrite: stripApi,
                 },
-                // theme 하위도 정확 분기 — 옛 workbench /theme/members(tdm api)와 섞이지 않게 lab-api 경로만.
-                "^/api/theme/registry(\\?|$)": {
-                    target: labApiTarget,
-                    changeOrigin: true,
-                    rewrite: stripApi,
-                },
-                "^/api/theme/stocks/": {
+                // 장중 복기 분류(tdm-ai 장부, 그날 하루) — 테마 보드의 소속
+                "^/api/replay/day(\\?|$)": {
                     target: labApiTarget,
                     changeOrigin: true,
                     rewrite: stripApi,
