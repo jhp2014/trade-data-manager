@@ -52,6 +52,18 @@ export function formatState(code: string, date: string, sorted: readonly { line:
     return [`${code}@${date}`, ...sorted.map((x, i) => `${lineRef(x.line)}${i < k ? "▲" : "▼"}`)].join("@");
 }
 
+/**
+ * 지금 구간의 두 경계 선 → ▲▼ — 낮은 선부터 정렬된 선(sortLines)에서 k-1 번째 = ▲(가장 높은 ▲) · k 번째 = ▼(가장 낮은 ▼).
+ * 곁 선은 없다. 구간을 모르거나(null·선 수보다 큼) 가격을 모르는 선이 끼면(순서를 못 믿는다) 빈 Map.
+ */
+export function zoneBoundarySides(sorted: readonly { ref: string; price: number | null }[], zone: number | null): Map<string, Side> {
+    const out = new Map<string, Side>();
+    if (zone === null || zone < 0 || zone > sorted.length || sorted.some((x) => x.price == null)) return out;
+    if (zone > 0) out.set(sorted[zone - 1].ref, "▲");
+    if (zone < sorted.length) out.set(sorted[zone].ref, "▼");
+    return out;
+}
+
 export interface ParsedState {
     code: string;
     date: string;

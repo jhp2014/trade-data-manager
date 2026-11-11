@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findStateTokens, lineCells, formatState, lineRef, parseStateToken, toggleLine, type DailyLine } from "./stateToken.js";
+import { findStateTokens, lineCells, formatState, lineRef, parseStateToken, toggleLine, zoneBoundarySides, type DailyLine } from "./stateToken.js";
 import { priceLines, zonesOf } from "../chart/stateCopy.js";
 import type { DailyCandle } from "../market/types.js";
 
@@ -137,5 +137,32 @@ describe("선을 칸으로", () => {
         expect(cells("402340@2026-07-31@251203H▼", days)).toEqual([["25/12/03", "", null]]);
         expect(cells("402340@2026-07-31")).toEqual([]);
         expect(cells("402340@2026-07-31 09:44")).toEqual([]);
+    });
+});
+
+describe("구간 경계 ▲▼", () => {
+    const L = [{ ref: "a", price: 100 }, { ref: "b", price: 120 }, { ref: "c", price: 140 }];
+    const sides = (xs: readonly { ref: string; price: number | null }[], z: number | null) => Object.fromEntries(zoneBoundarySides(xs, z));
+    it("가운데 = 가장 높은 ▲ 와 가장 낮은 ▼ 둘만(곁 선 없음)", () => {
+        expect(sides(L, 1)).toEqual({ a: "▲", b: "▼" });
+        expect(sides(L, 2)).toEqual({ b: "▲", c: "▼" });
+    });
+    it("0 = 맨 아래 선만 ▼ · n = 맨 위 선만 ▲", () => {
+        expect(sides(L, 0)).toEqual({ a: "▼" });
+        expect(sides(L, 3)).toEqual({ c: "▲" });
+    });
+    it("선 하나", () => {
+        expect(sides(L.slice(0, 1), 0)).toEqual({ a: "▼" });
+        expect(sides(L.slice(0, 1), 1)).toEqual({ a: "▲" });
+    });
+    it("구간 모름·선 없음·선 수 넘침·가격 모르는 선 = 없음", () => {
+        expect(sides(L, null)).toEqual({});
+        expect(sides([], 0)).toEqual({});
+        expect(sides(L, 4)).toEqual({});
+        expect(sides([...L.slice(0, 2), { ref: "c", price: null }], 1)).toEqual({});
+    });
+    it("임시 선만의 구간 — priceLines 순서(가격 낮은 순)로 고른다", () => {
+        const priced = priceLines(daily, [H0715, H0701]); // 150, 130 → 낮은 것부터 0701·0715
+        expect(sides(priced, 1)).toEqual({ "260701H": "▲", "260715H": "▼" });
     });
 });

@@ -20,7 +20,7 @@ import { DailyChart } from "../chart/DailyChart.js";
 import { MinuteChart } from "../chart/MinuteChart.js";
 import type { MinuteAxis } from "../chart/minuteSeries.js";
 import { Center } from "../ui/chrome.js";
-import { FIELD_LABEL, linePrice, lineRef, toggleLine, type LineField } from "../lib/stateToken.js";
+import { FIELD_LABEL, linePrice, lineRef, toggleLine, zoneBoundarySides, type LineField } from "../lib/stateToken.js";
 import { priceLines, StateCopyMenu, zonesOf, type Zone } from "../chart/stateCopy.js";
 import { usePanelHeader } from "../header/registry.js";
 
@@ -131,6 +131,8 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     // 한 화면의 % 가 다 같은 기준 — 십자선 가격 라벨 옆 % 도 같은 기준). 값(OHLC)·시장·거리는 칩 카드 한 줄에.
     const prevClose = useMemo(() => daily.filter((p) => p.time < date).at(-1)?.close ?? null, [daily, date]);
     const dayIndex = useMemo(() => new Map((tradingDays ?? []).map((d, i) => [d, i])), [tradingDays]);
+    // 지금 구간의 두 경계(가장 높은 ▲ · 가장 낮은 ▼)만 % 앞에 그 글자 — 구간은 임시 선(토큰)끼리의 것, 저장만인 선·곁 선은 그대로
+    const boundary = useMemo(() => zoneBoundarySides(priced, zone), [priced, zone]);
     const chartLines = useMemo(
         (): LineMark[] =>
             dailyPriced.flatMap((l) => {
@@ -142,14 +144,14 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                 return [{
                     key: l.ref, time: l.item.date, price: l.price, kind: l.kind,
                     short: l.item.date.slice(5).replace("-", "/"),
-                    note: pctText ?? undefined,
+                    note: pctText === null ? undefined : boundary.has(l.ref) ? `${boundary.get(l.ref)} ${pctText}` : pctText,
                     info: {
                         head: [l.item.field, l.item.venue === "krx" ? "KRX" : "UN*", at !== undefined && i !== undefined ? `${at - i}거래일 전` : ""].filter(Boolean).join(" · "),
                         hint: l.item.date >= date ? "같은 날 봉 — 토큰에 못 넣음" : undefined,
                     },
                 }];
             }),
-        [dailyPriced, prevClose, dayIndex, date],
+        [dailyPriced, prevClose, dayIndex, date, boundary],
     );
     // 선이 있는데 일봉이 지금 경로의 것이 아니면(불러오는 중·오류) 구간을 못 만든다 — 열린 판이 「선 없음」으로 바뀌어 선을 뺀 토큰이 복사되지 않게 비운다
     const zones = useMemo(() => (code && date && (dailyCurrent || lines.length === 0) ? zonesOf(code, date, priced) : []), [code, date, dailyCurrent, lines.length, priced]);
