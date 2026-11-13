@@ -14,7 +14,7 @@ const candle = (stockCode: string, date: string, time = "09:00:00"): MinuteCandl
 class FakeStore implements MinuteRepairStore {
     replaced = new Map<string, MinuteCandle[]>();
     constructor(private targets: MinuteStockDay[]) {}
-    async listNxtLostMinuteDays(_range: DateRange): Promise<MinuteStockDay[]> {
+    async listKrxlessMinuteDays(_range: DateRange): Promise<MinuteStockDay[]> {
         return this.targets;
     }
     async replaceMinuteCandlesOfDay(stockCode: string, date: string, candles: MinuteCandle[]): Promise<void> {

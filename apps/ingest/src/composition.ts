@@ -83,7 +83,7 @@ export interface IngestRuntime {
      */
     tossMinuteCollector: () => MinuteCollector;
     /**
-     * 옛 분봉 수리(Command) — 토스 바탕 분봉 중 NXT 를 잃은 종목-날을 대신 원천 파일로 통째 교체.
+     * 옛 분봉 수리(Command) — NXT 출범 뒤 토스분(KRX 칸이 빈 종목-날)을 대신 원천 파일로 통째 교체.
      * raw = 원천 파일 계층(대상 목록을 써서 수집기에 넘긴다). lazy — DAISHIN_RAW_DIR 을 다른 명령이 요구하지 않게.
      */
     daishinMinuteRepair: () => { service: MinuteRepairService; raw: DaishinRaw };

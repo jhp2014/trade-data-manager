@@ -1,6 +1,6 @@
-// 옛 분봉 수리 — 바탕 소스(토스)가 틀린 종목-날만 골라 다른 소스로 통째 바꾼다.
-// 대상 = MinuteRepairStore.listNxtLostMinuteDays(분봉에 NXT 봉이 없는데 일봉엔 NXT 체결이 있던 날). 고치면 보통 대상에서 빠지므로
-// 재실행 = 남은 것만 이어받기(NXT 체결이 정규장 안뿐이던 날은 남아 다시 바뀐다 — 같은 값이라 무해). 종목-날 실패는 격리하고 모아서 돌려준다. 결정 = decisions 「옛 분봉 — 토스 바탕 + 대신 수리」.
+// 옛 분봉 수리 — 바탕 소스(토스)가 넣은 종목-날을 골라 다른 소스로 통째 바꾼다.
+// 대상 = MinuteRepairStore.listKrxlessMinuteDays(분봉 KRX 칸이 전부 빈 날 = NXT 출범 뒤 토스분). 고치면 KRX 칸이 차서 대상에서 빠지므로
+// 재실행 = 남은 것만 이어받기. 종목-날 실패는 격리하고 모아서 돌려준다. 결정 = decisions 「옛 분봉 — 토스 바탕 + 대신 수리」.
 import type { DateRange } from "#domain";
 import type { MinuteCandleProvider, MinuteRepairStore, MinuteStockDay } from "#port/collect";
 import { mapWithConcurrency } from "../../concurrency.js";
@@ -28,7 +28,7 @@ export class MinuteRepairService {
     constructor(private readonly deps: MinuteRepairDeps) {}
 
     findTargets(range: DateRange): Promise<MinuteStockDay[]> {
-        return this.deps.store.listNxtLostMinuteDays(range);
+        return this.deps.store.listKrxlessMinuteDays(range);
     }
 
     async repair(targets: readonly MinuteStockDay[], options: MinuteRepairOptions = {}): Promise<MinuteRepairResult> {

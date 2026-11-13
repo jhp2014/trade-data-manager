@@ -1,5 +1,5 @@
 // infra/broker/minute/daishinMinuteAdapter — 대신 MinuteCandleProvider. 원천 파일(infra/daishin)을 읽는다 — COM 은 수집기 몫.
-// 쓰임 = 토스 바탕 분봉 중 NXT 를 잃은 종목-날 수리(decisions 「옛 분봉 — 토스 바탕 + 대신 수리」).
+// 쓰임 = NXT 출범 뒤 토스분(KRX 칸이 빈 종목-날)을 대신으로 교체(decisions 「옛 분봉 — 토스 바탕 + 대신 수리」).
 // 대신 → 도메인 차이를 여기서 흡수한다(실측 = infra/daishin 머리말·recon):
 //  · KRX(K)·NXT(N) 를 따로 받는다. 대신 통합('A')은 지금 NXT 여부로 걸러 쓰지 않고 우리가 합성한다:
 //    거래량 합 · 고가 max · 저가 min · 시가/종가 KRX 우선(두 시장 다 체결되고 값이 다를 때 키움과 맞는 쪽이 KRX 약 78%).

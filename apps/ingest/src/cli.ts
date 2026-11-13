@@ -4,7 +4,7 @@
 //   backfill-candles <from> [to] [--overwrite]   일봉+분봉 (과거 시딩은 --overwrite)
 //   backfill-daily <from> [to]                   일봉만(딥 히스토리) — 받은 구간 그대로, to 생략=어제
 //   backfill-minutes-toss <from> [to]            옛 분봉만(토스, 2025-07 앞) — 키가 개발 폴더에만 있어 거기서 돌린다
-//   daishin-targets <from> [to]                  옛 분봉 수리 대상(NXT 를 잃은 토스 종목-날) → 대신 수집기 대상 목록
+//   daishin-targets <from> [to]                  옛 분봉 수리 대상(KRX 칸이 빈 토스 종목-날) → 대신 수집기 대상 목록
 //   repair-minutes-daishin <from> [to] [--dry-run]  그 대상을 대신 원천 파일로 종목-날 통째 교체
 //   daily-stats <from> [to]                      일별 종목 속성(KRX): 시총·상장주식수·소속부
 //   backfill-news <from> [to]                    시황 뉴스 헤드라인
@@ -232,7 +232,7 @@ function assertDaishinRange(range: DateRange): void {
     }
 }
 
-/** 수리 대상(NXT 를 잃은 토스 종목-날)을 찾아 대신 수집기의 대상 목록으로 쓴다. DB 는 읽기만. */
+/** 수리 대상(KRX 칸이 빈 토스 종목-날)을 찾아 대신 수집기의 대상 목록으로 쓴다. DB 는 읽기만. */
 async function runDaishinTargets(rt: IngestRuntime, range: DateRange): Promise<void> {
     assertDaishinRange(range);
     const { service, raw } = rt.daishinMinuteRepair();
@@ -245,7 +245,7 @@ async function runDaishinTargets(rt: IngestRuntime, range: DateRange): Promise<v
     console.log("  다음: CYBOS Plus 를 관리자로 로그인하고 powershell -File infra/daishin/collector/collect.ps1 (UAC 1회, 이어받기 가능)");
 }
 
-/** 수리 대상을 대신 원천 파일로 종목-날 통째 교체. 재실행 = 남은 것만(고친 종목-날은 보통 대상에서 빠진다). */
+/** 수리 대상을 대신 원천 파일로 종목-날 통째 교체. 재실행 = 남은 것만(고친 종목-날은 KRX 칸이 차서 대상에서 빠진다). */
 async function runRepairMinutesDaishin(rt: IngestRuntime, range: DateRange, dryRun: boolean): Promise<void> {
     assertDaishinRange(range);
     const { service } = rt.daishinMinuteRepair();
@@ -271,7 +271,7 @@ async function runRepairMinutesDaishin(rt: IngestRuntime, range: DateRange, dryR
     const dates = new Set(targets.map((t) => t.date)).size;
     console.log(`  api 파일 캐시 ${await clear()}개 삭제(${dates}거래일, 이 폴더만 — 사용 폴더는 반영 때 따로)`);
     const left = await service.findTargets(range);
-    console.log(`  남은 대상 ${left.length}종목-날${left.length ? " — 원천 파일이 없거나 실패했거나, 대신에도 NXT 체결이 정규장 안뿐인 날" : ""}`);
+    console.log(`  남은 대상 ${left.length}종목-날${left.length ? " — 원천 파일이 없거나 실패했거나, 그날 KRX 체결이 없던 날" : ""}`);
 }
 
 /** [from,to] 에서 뺄 날(오름차순)을 도려낸 구간들. */
@@ -420,7 +420,7 @@ const USAGE =
     "  backfill-candles <from> [to] [--overwrite]   일봉+분봉 (to 생략=하루, 과거 시딩은 --overwrite)\n" +
     "  backfill-daily <from> [to]                   일봉만(분봉 없이) — 받은 구간 그대로 전 종목, to 생략=어제\n" +
     "  backfill-minutes-toss <from> [to]            옛 분봉만(토스, 2025-07 앞) — 일봉 후보 그대로, 재실행=이어받기(to 생략=하루)\n" +
-    "  daishin-targets <from> [to]                  옛 분봉 수리 대상(2025-03-04~06-30, NXT 를 잃은 토스 종목-날) → 대신 수집기 대상 목록\n" +
+    "  daishin-targets <from> [to]                  옛 분봉 수리 대상(2025-03-04~06-30, KRX 칸이 빈 토스 종목-날) → 대신 수집기 대상 목록\n" +
     "  repair-minutes-daishin <from> [to] [--dry-run]  그 대상을 대신 원천 파일로 종목-날 통째 교체(재실행=남은 것만)\n" +
     "  daily-stats <from> [to]                      일별 종목 속성(KRX) — 시총·상장주식수·소속부(to 생략=하루)\n" +
     "  backfill-news <from> [to]                     시황 뉴스 헤드라인 백필(to 생략=오늘)\n" +

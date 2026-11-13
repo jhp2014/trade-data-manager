@@ -29,18 +29,14 @@ export class DrizzleMinuteCandleRepository implements MinuteCandleStore, MinuteR
 
     // --- MinuteRepairStore (옛 분봉 수리 — decisions 「옛 분봉 — 토스 바탕 + 대신 수리」) ---
 
-    async listNxtLostMinuteDays(range: DateRange): Promise<MinuteStockDay[]> {
-        // NXT 단독 봉 = KRX 칸이 빈 정규장(09:00~15:30) 밖 봉. 키움의 15:35 KRX 시간외 봉은 KRX 칸이 차 있어 안 센다.
-        // 일봉 raw 의 통합 ≠ KRX 거래량 = 그날 NXT 체결이 있었다. 둘이 어긋나면 분봉이 NXT 를 잃은 것이다.
+    async listKrxlessMinuteDays(range: DateRange): Promise<MinuteStockDay[]> {
+        // KRX 칸은 봉 단위로 함께 차거나 빈다 — 거래량 칸 하나로 본다.
         const res = await this.db.execute<{ stock_code: string; trade_date: string }>(sql`
             SELECT m."stock_code", to_char(m."trade_date", 'YYYY-MM-DD') AS "trade_date"
               FROM "market"."minute_candles" m
-              JOIN "market"."daily_candles_raw" d
-                ON d."stock_code" = m."stock_code" AND d."trade_date" = m."trade_date"
              WHERE m."trade_date" BETWEEN ${range.from} AND ${range.to}
-               AND d."volume_un" <> d."volume_krx"
              GROUP BY m."stock_code", m."trade_date"
-            HAVING NOT bool_or(m."volume_krx" IS NULL AND (m."trade_time" < '09:00' OR m."trade_time" > '15:30'))
+            HAVING bool_and(m."volume_krx" IS NULL)
              ORDER BY m."trade_date", m."stock_code"
         `);
         return res.rows.map((r) => ({ stockCode: r.stock_code, date: r.trade_date }));
