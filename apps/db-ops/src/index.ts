@@ -3,6 +3,7 @@ import path from "node:path";
 import { config } from "./config";
 import { createLogger } from "./logger";
 import { runBackup } from "./runBackup";
+import { parseRebaselineMonths } from "./rebaseline";
 import { syncCuration } from "./syncCuration";
 import { restore } from "./restore";
 import { setup } from "./setup";
@@ -41,9 +42,13 @@ async function main(): Promise<void> {
 
     switch (cmd ?? "backup") {
         // 전체 백업: sync(미러) pre-step → 로컬 덤프 → 복원검증 → Drive.
-        case "backup":
-            await runBackup();
+        // --rebaseline 2025-03..2025-06 = 일부러 바꾼 분봉 과거월을 이번 한 번 새 기준으로(③ 불감소 비교 건너뜀).
+        case "backup": {
+            const spec = flags["rebaseline"];
+            if (spec === true) throw new Error("--rebaseline 에 달을 줘야 한다 (예: 2025-03..2025-06)");
+            await runBackup({ rebaseline: spec ? parseRebaselineMonths(spec) : undefined });
             break;
+        }
         // curation 미러: Supabase→로컬 단방향 전체교체(백업 없이 로컬 curation 만 최신화).
         case "sync":
             fs.mkdirSync(config.localDir, { recursive: true });

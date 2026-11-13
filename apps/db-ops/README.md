@@ -28,14 +28,18 @@ pnpm --filter @trade-data-manager/google login
 ```
 
 ## 흐름
-1. **변경 감지** — 직전 백업 이후 핵심 테이블 count / `minute_candles.max(id)` 동일하면 새 덤프 생략.
+1. **변경 감지** — 직전 백업 이후 전 테이블 count / `minute_candles.max(trade_date)` 동일하면 새 덤프 생략(`--rebaseline` 이 있으면 강제 덤프).
 2. **덤프 생성** — `pg_dump -Fc` → `BACKUP_LOCAL_DIR`.
 3. **검증** — 임시 DB(`trade_data_manager_restore_test`) 삭제→생성→`pg_restore`:
    - ① restore 성공
    - ②a 원본 == 복구본 count (전 핵심 테이블)
    - ②b append-only 테이블(daily/minute/feature) 행수 **불감소**
-   - ③ 분봉 과거월 raw 집계 지문(count + 시고저종합 + 거래량합 + 거래대금합) **불감소**
+   - ③ 분봉 과거월 raw 집계 지문(count + 시고저종합 + 거래량합) **불감소**
      (값/행이 줄면 손상·유실로 간주. 신규 append 는 허용. rate·feature 등 재계산 컬럼은 제외)
+   - **과거 분봉을 일부러 바꿨으면**(소스 교체·수리) 그 달을 한 번 재기준한다:
+     `pnpm --filter @trade-data-manager/db-ops backup --rebaseline 2025-03..2025-06`(쉼표 나열도 가능).
+     그 달만 ③ 비교를 건너뛰고 바뀐 폭을 로그에 남기며, ②b minute_candles 는 그 달에서 준 행수만큼만 감소를 허용한다.
+     기준값(manifest)에 없는 달은 거절(미러·덤프 전에). 변경 감지와 무관하게 덤프한다. 통과하면 지금 값이 새 기준이 되고, 다음 실행부터는 평소대로 지킨다.
    - ④ 덤프 파일 SHA-256 기록
 4. **로컬 확정** — 검증 통과 시 로컬 보관정책 적용 + manifest 갱신.
 5. **Drive 동기화(reconcile)** — *매 실행마다* 수행(직전 업로드 실패도 자동 재시도):

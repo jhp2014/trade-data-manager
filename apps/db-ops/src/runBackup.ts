@@ -14,6 +14,7 @@ import {
 } from "./manifest";
 import { createDump, dumpFileName, md5, sha256 } from "./backup";
 import { verifyBackup } from "./verify";
+import { assertRebaselineKnown } from "./rebaseline";
 import { applyDriveRetention, applyLocalRetention, listLocalDumpNames } from "./retention";
 import * as gdrive from "./gdrive";
 
@@ -29,13 +30,22 @@ function sameCounts(a: Record<string, string>, b: Record<string, string>): boole
 /**
  * 전체 백업(db-ops `backup` 커맨드): curation 미러(Supabase→로컬) → 로컬 전체 덤프 →
  * 복원검증(임시DB) → Drive 업로드 → 보관정리. 자기 오류는 내부에서 잡아 실패 마커 + exitCode 로 처리.
+ * rebaseline = 일부러 바꾼 분봉 과거월(YYYY-MM) — 이번 실행만 ③ 불감소 비교를 건너뛰고 지금 값을 새 기준으로 삼는다.
  */
-export async function runBackup(): Promise<void> {
+export async function runBackup(options: { rebaseline?: ReadonlySet<string> } = {}): Promise<void> {
+    const rebaseline = options.rebaseline ?? new Set<string>();
     fs.mkdirSync(config.localDir, { recursive: true });
     const log = createLogger(path.join(config.localDir, "logs"));
     const markerPath = path.join(config.localDir, FAILED_MARKER);
 
     log.info(`=== DB 백업 시작: ${sourceDbName()} ===`);
+
+    // manifest 는 로컬 파일뿐 — 재기준 오타는 미러(Supabase egress)·덤프 전에 거절한다.
+    const manifest = readManifest();
+    if (rebaseline.size > 0) {
+        assertRebaselineKnown(rebaseline, manifest.minuteMonthly);
+        log.info(`분봉 과거월 재기준 요청: ${[...rebaseline].sort().join(", ")} (변경 감지와 무관하게 덤프·검증)`);
+    }
 
     // curation 미러(Supabase→로컬) 먼저 — 실패해도 market 백업은 계속(curation 은 Supabase 자체가 원본 내구).
     try {
@@ -44,15 +54,15 @@ export async function runBackup(): Promise<void> {
         log.error(`curation 미러 실패(백업은 계속 진행): ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    const manifest = readManifest();
-
     // 0. 현재 원본 상태 스냅샷 (변경 감지 + ②a 정합성 기준)
     const { sourceCounts, minuteMaxDate } = await withClient(sourceDbName(), async (c) => ({
         sourceCounts: await tableCounts(c, await listBaseTables(c)),
         minuteMaxDate: await minuteMaxTradeDate(c),
     }));
 
+    // 재기준 = "값을 바꿨다"는 선언 — 행수가 그대로인 값 교체는 변경 감지가 못 보므로 덤프를 강제한다.
     const unchanged =
+        rebaseline.size === 0 &&
         manifest.lastSuccessAt !== null &&
         manifest.lastMinuteMaxDate === minuteMaxDate &&
         sameCounts(manifest.lastCounts, sourceCounts);
@@ -72,7 +82,7 @@ export async function runBackup(): Promise<void> {
             log.info(`덤프 생성: ${fileName} (${sizeMb} MB)`);
 
             // 2. 검증 (실패 시 throw)
-            const verify = await verifyBackup(newDumpPath, sourceCounts, manifest, log);
+            const verify = await verifyBackup(newDumpPath, sourceCounts, manifest, log, rebaseline);
             accepted = true; // 로컬 검증 통과 = 유효 백업 확정
 
             // 3. 로컬 확정: SHA-256 + 보관정리 + manifest 갱신
