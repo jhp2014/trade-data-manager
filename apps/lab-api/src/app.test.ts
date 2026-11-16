@@ -192,7 +192,7 @@ describe("replay/day", () => {
     let dir: string;
     beforeAll(async () => {
         dir = await mkdtemp(join(tmpdir(), "replay-app-"));
-        await mkdir(join(dir, "theme/replay/curated"), { recursive: true });
+        await mkdir(join(dir, "vault/theme/replay/curated"), { recursive: true });
         const rows = [
             {
                 date: "2023-01-05", code: "002990", name: "금호건설",
@@ -201,8 +201,8 @@ describe("replay/day", () => {
                 evidence: ["g1"], why: "두바이 투자 소식에 상한가.", unsure: "x", closing: "사후", brief: "b", reviewed: "opus", by: "ai",
             },
         ];
-        await writeFile(join(dir, "theme/replay/curated/2023-01-05.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
-        await writeFile(join(dir, "theme/replay/renames.jsonl"), JSON.stringify({ from: "두바이 투자", to: "중동 투자", by: "user" }) + "\n");
+        await writeFile(join(dir, "vault/theme/replay/curated/2023-01-05.jsonl"), rows.map((r) => JSON.stringify(r)).join("\n") + "\n");
+        await writeFile(join(dir, "vault/theme/replay/renames.jsonl"), JSON.stringify({ from: "두바이 투자", to: "중동 투자", by: "user" }) + "\n");
     });
     afterAll(async () => {
         await rm(dir, { recursive: true, force: true });

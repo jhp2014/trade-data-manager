@@ -1,6 +1,6 @@
-// 장중 복기 분류의 하루 — 판단 작업장 tdm-ai(경로는 env TDM_AI_DIR)의 장부를 **읽기만** 한다.
-//   theme/replay/curated/<YYYY-MM-DD>.jsonl — 한 줄이 종목 하나(꼴·칸 뜻은 tdm-ai theme/replay/replay.md 「저장과 고치는 법」)
-//   theme/replay/renames.jsonl              — 이름 바꾸기 {from, to}(by:user). 지난 날짜를 고쳐 쓰지 않고 **읽을 때 겹쳐 쓴다**
+// 장중 복기 분류의 하루 — 판단 작업장 tdm-ai(경로는 env TDM_AI_DIR = 저장소 루트)의 장부를 **읽기만** 한다. 데이터는 그 아래 vault/.
+//   vault/theme/replay/curated/<YYYY-MM-DD>.jsonl — 한 줄이 종목 하나(꼴·칸 뜻은 tdm-ai vault/theme/replay/replay.md 「저장과 고치는 법」)
+//   vault/theme/replay/renames.jsonl              — 이름 바꾸기 {from, to}(by:user). 지난 날짜를 고쳐 쓰지 않고 **읽을 때 겹쳐 쓴다**
 // 요청마다 읽되 파일 mtime 이 같으면 지난 결과를 쓴다(파일이 작다 — 장부를 고치면 다음 요청에 바로 보인다, 재시작 불요).
 // 이름 바꾸기 · 같은 이름표 합치기의 뜻은 tdm-ai tools/analyze/replay-lib.mjs(label · tag · parts)와 replay-review.mjs(merged)를 옮겼다
 // — 저장소를 건너 import 하지 않는다(그쪽이 바뀌면 여기도 함께).
@@ -138,8 +138,8 @@ const CACHE_MAX = 64;
 
 /** tdm-ai 작업장 경로 → 그날 장부 읽기. 장부 · 이름 바꾸기 둘 다 mtime 이 같으면 지난 결과를 그대로 쓴다. */
 export function makeReplayDayReader(tdmAiDir: string): ReplayDayReader {
-    const ledgerDir = path.join(tdmAiDir, "theme/replay/curated");
-    const renamesFile = path.join(tdmAiDir, "theme/replay/renames.jsonl");
+    const ledgerDir = path.join(tdmAiDir, "vault/theme/replay/curated");
+    const renamesFile = path.join(tdmAiDir, "vault/theme/replay/renames.jsonl");
     const cache = new Map<string, { key: string; day: LabReplayDay }>();
     let renames: { mtime: number | null; tagOf: (e: { theme: string; sub?: string }) => string } | null = null;
 

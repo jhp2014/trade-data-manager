@@ -89,11 +89,11 @@ describe("normalizeRow", () => {
 
 describe("makeReplayDayReader", () => {
     let dir: string;
-    const ledger = () => join(dir, "theme/replay/curated/2023-01-05.jsonl");
-    const renames = () => join(dir, "theme/replay/renames.jsonl");
+    const ledger = () => join(dir, "vault/theme/replay/curated/2023-01-05.jsonl");
+    const renames = () => join(dir, "vault/theme/replay/renames.jsonl");
     beforeEach(async () => {
         dir = await mkdtemp(join(tmpdir(), "replay-day-"));
-        await mkdir(join(dir, "theme/replay/curated"), { recursive: true });
+        await mkdir(join(dir, "vault/theme/replay/curated"), { recursive: true });
     });
     afterEach(async () => {
         await rm(dir, { recursive: true, force: true });
