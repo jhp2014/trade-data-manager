@@ -18,8 +18,10 @@
   오케스트레이션 흐름만 nightly.log 에 남긴다.
 #>
 param(
-    # 기본값 = db-ops 백업 로그와 같은 폴더(머신 이동 시 $HOME 로 자연 이동).
-    [string]$LogDir = (Join-Path $HOME 'TradingData\db-backup-local\logs')
+    # 데이터 보관 폴더(git 밖 — 백업 · 대신 원천 분봉 · lab 저장 선). db-ops BACKUP_LOCAL_DIR 이 그 아래 db-backup-local.
+    [string]$DataRoot = (Join-Path $HOME 'Dev\TradingData'),
+    # 기본값 = db-ops 백업 로그와 같은 폴더.
+    [string]$LogDir = (Join-Path $DataRoot 'db-backup-local\logs')
 )
 
 $ErrorActionPreference = 'Continue'  # 한 스텝이 던져도 다음 스텝(backup)까지 진행
@@ -64,7 +66,7 @@ $collect = Invoke-Step 'collect (ingest backfill)' @('--filter', '@trade-data-ma
 $telegram = Invoke-Step 'telegram (ingest telegram-sync)' @('--filter', '@trade-data-manager/ingest', 'start', 'telegram-sync')
 
 # lab 저장 선 하루치 커밋 — 폴더가 git 이 아니면(옮기기 전) 넘어간다. 바뀐 게 없으면 커밋하지 않는다.
-$LinesDir = Join-Path $HOME 'TradingData\chart-lines'
+$LinesDir = Join-Path $DataRoot 'chart-lines'
 function Invoke-LinesCommit {
     if (-not (Test-Path (Join-Path $LinesDir '.git'))) { Write-Log "- lines: $LinesDir 가 git 이 아니다 — 넘어감"; return 0 }
     Write-Log '▶ lines (chart-lines 커밋) 시작'
