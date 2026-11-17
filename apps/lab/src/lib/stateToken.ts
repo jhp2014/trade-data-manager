@@ -67,7 +67,7 @@ export function zoneBoundarySides(sorted: readonly { ref: string; price: number 
 export interface ParsedState {
     code: string;
     date: string;
-    /** `종목@날짜 HH:MM`·`종목@날짜THH:MM` 꼴이면 그 시각. 일봉 상태 토큰엔 없다. */
+    /** `종목@날짜 HH:MM`·`종목@날짜THH:MM` 꼴이면 그 시각(뒤에 선이 붙어도 된다). 일봉 상태 토큰엔 없다. */
     time: string | null;
     lines: DailyLine[];
     /** ▲ 의 수 = 구간 k(토큰은 낮은 선부터 적으니). 선이 없으면 0. */
@@ -76,8 +76,8 @@ export interface ParsedState {
 
 const LINE = /(\d{2})(\d{2})(\d{2})([OHLC])(:KRX)?([▲▼])/g;
 // 선 칸은 꼴 그대로 좁게 잡는다(글 속 괄호·굵게·조사에 붙어도 읽히게). 선 뒤에 또 `@` 가 이어지면(틀린 선) 토큰째 거절 —
-// 틀린 선을 조용히 버리지 않는다.
-const TOKEN = /(\d{6})@(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2})|((?:@\d{6}[OHLC](?::KRX)?[▲▼])*))(@?)/;
+// 틀린 선을 조용히 버리지 않는다. 시각과 선은 함께 올 수 있다(`종목@날짜THH:MM@선▼` — 분봉 타점 + 그 선, points/breakout).
+const TOKEN = /(\d{6})@(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?((?:@\d{6}[OHLC](?::KRX)?[▲▼])*)(@?)/;
 
 const TOKEN_ALL = new RegExp(TOKEN.source, "g");
 
@@ -85,7 +85,6 @@ const TOKEN_ALL = new RegExp(TOKEN.source, "g");
 function readToken(m: RegExpExecArray | RegExpMatchArray): ParsedState | null {
     const [, code, date, time, lineText = "", trailing] = m;
     if (trailing) return null;
-    if (time) return { code, date, time, lines: [], zone: 0 };
     const lines: DailyLine[] = [];
     let zone = 0;
     for (const [, yy, mm, dd, f, krx, side] of lineText.matchAll(LINE)) {
@@ -98,7 +97,7 @@ function readToken(m: RegExpExecArray | RegExpMatchArray): ParsedState | null {
         if (side === "▲") zone++;
     }
     if (lines.length > MAX_LINES) return null;
-    return { code, date, time: null, lines, zone };
+    return { code, date, time: time ?? null, lines, zone };
 }
 
 /** 글 속 첫 토큰을 읽는다(앞뒤 글·따옴표·백틱은 무시). 꼴이 틀리면 null. */
@@ -136,10 +135,9 @@ export interface LineCell {
 
 /**
  * 선을 칸으로 — 먼 것(옛 날)부터. 구간(▲▼)은 말하지 않는다(고르기는 판단이 아니다).
- * 시각 꼴·선 없는 토큰은 빈 배열(판이 「선 없음」·시각을 따로 쓴다).
+ * 선 없는 토큰은 빈 배열(판이 「선 없음」·시각을 따로 쓴다). 시각이 함께 있어도 선은 칸으로 낸다.
  */
 export function lineCells(s: ParsedState, dayIndex?: ReadonlyMap<string, number>): LineCell[] {
-    if (s.time) return [];
     const at = dayIndex?.get(s.date);
     return [...s.lines]
         .sort((a, b) => a.date.localeCompare(b.date))

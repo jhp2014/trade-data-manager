@@ -48,12 +48,12 @@ export function TokenHistoryButton(): JSX.Element {
 }
 
 /**
- * 활성 경로가 지금 이 토큰의 상태인가 — 종목·날짜·선(집합 — 경로는 그은 순서, 토큰은 가격순)·구간, 시각 꼴이면 시각(선 없이).
+ * 활성 경로가 지금 이 토큰의 상태인가 — 종목·날짜·선(집합 — 경로는 그은 순서, 토큰은 가격순)·구간, 시각 꼴이면 시각도.
  * 구간 k 는 양쪽 다 가격순이라(복사 판 · 토큰) 그대로 견준다.
  */
 function isHere(s: Situation | undefined, t: ParsedState): boolean {
     if (!s || s.code !== t.code || s.date !== t.date) return false;
-    if (t.time) return s.time === t.time && s.lines.length === 0;
+    if (t.time && s.time !== t.time) return false;
     const refs = (ls: readonly DailyLine[]): string => ls.map(lineRef).sort().join(",");
     if (refs(s.lines) !== refs(t.lines)) return false;
     return t.lines.length === 0 || s.zone === t.zone;
@@ -146,7 +146,10 @@ function TokenHistoryMenu(): JSX.Element {
                                             <span style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{nameOf(t.code) ?? t.code}</span>
                                             <span className="tabular" style={MUTED}>{t.code}</span>
                                             <span style={{ flex: 1 }} />
-                                            <span className="tabular" style={{ color: "var(--text-2)", flexShrink: 0 }}>{dateLabel(t.date)}</span>
+                                            <span className="tabular" style={{ color: "var(--text-2)", flexShrink: 0 }}>
+                                                {dateLabel(t.date)}
+                                                {t.time && t.lines.length > 0 && ` ${t.time}`}
+                                            </span>
                                         </>
                                     ) : (
                                         <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis" }}>{e.token}</span>
@@ -191,7 +194,8 @@ const CELL_LINE = 16;
 /** 선 칸 셋 한 줄 — 칸 폭·줄 높이는 선이 몇 개든(없어도) 같다. 칸 = 「26/01/07 (35일)」(+덧말). */
 function LineCells({ t, dayIndex }: { t: ParsedState | null; dayIndex: ReadonlyMap<string, number> }): JSX.Element {
     const cells = t ? lineCells(t, dayIndex) : [];
-    const empty = !t ? "" : t.time ? t.time : cells.length === 0 ? "선 없음" : null;
+    // 시각만인 토큰은 시각, 선이 있으면 선 칸(시각은 날짜 옆에)
+    const empty = !t ? "" : cells.length > 0 ? null : t.time ? t.time : "선 없음";
     return (
         <div className="tabular" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", columnGap: 8, paddingLeft: 14, lineHeight: `${CELL_LINE}px`, height: CELL_LINE }}>
             {empty !== null ? (

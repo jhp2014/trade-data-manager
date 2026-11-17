@@ -22,6 +22,10 @@ describe("토큰 붙여넣기", () => {
         expect(usePaths.getState().paths[0].s).toMatchObject({ time: "09:44", lines: [], zone: null });
         expect(pasteState("hello")).toBe(false);
     });
+    it("시각 + 선 꼴은 시각 · 선 · 구간을 함께 쓴다", () => {
+        expect(pasteState("`005950@2026-04-29T10:10@260428H▼` 대금 30억")).toBe(true);
+        expect(usePaths.getState().paths[0].s).toEqual({ code: "005950", date: "2026-04-29", time: "10:10", lines: [{ date: "2026-04-28", field: "H", venue: "un" }], zone: 0 });
+    });
     it("글 속 토큰은 전부 토큰 기록에 쌓이고(글 속 순서), 화면은 첫 토큰", () => {
         expect(pasteState("초안 402340@2026-07-31@260715H▼ · 고침 402340@2026-07-31@260715H▲ · 틀림 402340@2026-07-31@260731H▲")).toBe(true);
         expect(useTokenHistory.getState().entries.map((e) => e.token)).toEqual(["402340@2026-07-31@260715H▼", "402340@2026-07-31@260715H▲"]);
