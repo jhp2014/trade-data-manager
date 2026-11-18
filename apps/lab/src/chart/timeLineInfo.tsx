@@ -83,8 +83,8 @@ export function TimeLineInfo({ chartRef, value, gen }: { chartRef: RefObject<ICh
                 background: "var(--surface)", border: "1px solid rgba(37,99,235,0.35)", borderRadius: 3,
             }}
         >
-            {rate("고", value.high)}
-            {rate("종", value.close)}
+            {rate("H", value.high)}
+            {rate("C", value.close)}
             <span style={{ color: "var(--text-secondary)" }}>{fmtEok(value.amount)}</span>
             {value.baseFallback === true && <span style={{ color: "var(--warning)", fontWeight: 400 }}>첫 시가 기준</span>}
         </div>
