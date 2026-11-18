@@ -41,14 +41,13 @@ export function ThemeCard({
     const headRef = useRef<HTMLDivElement>(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const { movers, rest } = cardSections(stocks);
-    const hot = stocks.some((s) => s.signal); // 1분 신호 종목이 있으면 카드 테두리가 깜빡인다
     const hasFocus = stocks.some((s) => s.code === focusCode);
     const rankOf = new Map(stocks.map((s, i) => [s.code, i + 1]));
     const toggle = (): void => setMode((m) => (m === "collapsed" ? "open" : "collapsed"));
     // 왼쪽 띠 = 상태: 현재 종목 포함 → 액센트 / 그 외(개별·미분류 포함) → 회색 실선.
     const railBg = hasFocus ? "var(--accent-primary)" : "var(--border-strong)";
     return (
-        <div className={hot ? "board-blink" : undefined} style={{ display: "flex", background: "var(--bg-primary)", overflow: "hidden" }}>
+        <div style={{ display: "flex", background: "var(--bg-primary)", overflow: "hidden" }}>
             <div style={{ flexShrink: 0, width: 3, alignSelf: "stretch", background: railBg }} />
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div

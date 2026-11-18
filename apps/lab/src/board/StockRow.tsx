@@ -73,8 +73,7 @@ export function StockRow({
             <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", color: up ? "var(--rise)" : "var(--fall)", fontWeight: 600, fontSize: 11 }}>
                 {fmtRate1(s.changeRate)}
             </span>
-            {/* 1분 신호면 값은 그대로 두고 색·굵기만 켠다. */}
-            <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 11, fontWeight: s.signal ? 600 : 400, color: s.signal ? "var(--rise)" : "var(--text-tertiary)" }}>
+            <span className="tabular" style={{ textAlign: "right", whiteSpace: "nowrap", fontSize: 11, color: "var(--text-tertiary)" }}>
                 {fmtEok(s.amount)}
             </span>
         </button>

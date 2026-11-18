@@ -3,11 +3,12 @@
 //   · 복기 필터 — "매물대" 조건이 그날 마감 고가(trailingHighs[0])를 읽어 사후 정보가 섞인다.
 //   · 큐레이션 표시(annotated) — tdm 큐레이션 피드에 기대고, trade-lab 라벨과는 다른 계통이다.
 //   · 거래대금 구간 카운트(hover 막대) — 쓰는 화면을 가져오지 않았다.
-// 남은 계산은 전부 t 까지의 값만 쓴다(snapshotAt = t 이하 마지막 분, 신호 = t−60초).
+//   · 1분 신호(직전 1분 급등 + 대금 → 승격·카드 깜빡임) — 2026-11-18 은퇴(평범하게 나열).
+// 남은 계산은 전부 t 까지의 값만 쓴다(snapshotAt = t 이하 마지막 분).
 import type { DerivedFlowStock } from "../market/flowDerive.js";
 import type { PriceMode } from "../market/types.js";
 import type { BoardStock } from "./boardTypes.js";
-import { evaluateSignal, groupStocks, isMover, rebasePct, selectHotUniverse, snapshotAt, stocksByTheme, themeParents, type Grouped } from "./domain.js";
+import { groupStocks, isMover, rebasePct, selectHotUniverse, snapshotAt, stocksByTheme, themeParents, type Grouped } from "./domain.js";
 
 /** 보드 입력 종목 — /day-flow 를 % 공간으로 파생한 것(flowDerive)에 소속(membership)이 입힌 테마(+ 줄 툴팁 글)를 얹은 것. */
 export type ThemedStock = DerivedFlowStock & { themes: string[]; note?: string };
@@ -24,7 +25,7 @@ export interface ThemeBoard {
 }
 
 /**
- * 유니버스 선정·주도주·1분 신호는 통합(UN) % 로 잰다(잣대 고정). market = "krx" 면 화면에 보이는 % 만
+ * 유니버스 선정·주도주는 통합(UN) % 로 잰다(잣대 고정). market = "krx" 면 화면에 보이는 % 만
  * KRX 기준가로 바꾼다(기준가가 없으면 UN 그대로).
  */
 export function buildThemeBoard(
@@ -47,7 +48,6 @@ export function buildThemeBoard(
         if (!hot.has(snap.code)) continue;
         const s = index.get(snap.code);
         if (!s) continue;
-        const prev = snapshotAt(s, tUnix - 60);
         const un = s.basePrice.un;
         const krx = s.basePrice.krx;
         const view = (p: number): number => (market === "krx" && un !== null && krx !== null ? rebasePct(p, un, krx) : p);
@@ -62,7 +62,6 @@ export function buildThemeBoard(
             lowPct: view(snap.lowPct),
             amount: snap.amount,
             isMover: isMover(s.marketCap ? Number(s.marketCap) / 1e8 : null, snap.changeRate),
-            signal: prev ? evaluateSignal(snap.changeRate - prev.rate, snap.amount - prev.cumAmount) : null,
         });
     }
     const byTheme = stocksByTheme(stocks);

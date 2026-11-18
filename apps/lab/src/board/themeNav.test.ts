@@ -3,7 +3,7 @@ import { NAV_OFF, cardOrder, navCard, stepInCard, stepTheme } from "./themeNav.j
 import type { Grouped } from "./domain.js";
 import type { BoardStock } from "./boardTypes.js";
 
-const st = (code: string, isMover = false): BoardStock => ({ code, isMover, signal: null }) as unknown as BoardStock;
+const st = (code: string, isMover = false): BoardStock => ({ code, isMover }) as unknown as BoardStock;
 const grouped = (themes: Record<string, string[]>): Grouped<BoardStock> =>
     ({ themes: Object.entries(themes).map(([theme, codes]) => ({ theme, stocks: codes.map((c) => st(c)) })), individuals: [], unclassified: [] }) as Grouped<BoardStock>;
 

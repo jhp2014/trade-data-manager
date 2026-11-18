@@ -1,6 +1,6 @@
 // 테마 보드 순수 계산 — tdm-work core/market/src/domain 에서 보드가 쓰는 것만 옮겨 왔다.
 //   board/ranking.ts(유니버스) · board/roster.ts(테마 로스터·포함관계·관련 테마) · board/grouping.ts(카드 묶기)
-//   board/signals.ts(주도주·1분 신호) · replay/rankSection.ts(lastIndexAtOrBefore)
+//   board/signals.ts(주도주 — 1분 신호는 2026-11-18 은퇴) · replay/rankSection.ts(lastIndexAtOrBefore)
 // 예외: % 수식(rebasePct)만은 복사가 아니라 core 재수출 — /day-flow 가격 전환으로 % 파생이 core 단일 출처가 되면서.
 import type { DerivedFlowStock } from "../market/flowDerive.js";
 
@@ -55,7 +55,7 @@ export function selectHotUniverse<T extends { code: string; changeRate: number; 
     return hot;
 }
 
-// ── 주도주 · 1분 신호 ─────────────────────────────────────────
+// ── 주도주 ───────────────────────────────────────────────────
 
 /** 시총 구간별 "이 등락률을 넘어야 주도주". minCap 큰 순 첫 매칭(억원 / %). */
 const SUMMARIZE_TIERS: { minCapEok: number; maxRate: number }[] = [
@@ -68,17 +68,6 @@ export function isMover(marketCapEok: number | null, changeRate: number): boolea
     const cap = marketCapEok ?? 0;
     const tier = SUMMARIZE_TIERS.find((t) => cap >= t.minCapEok) ?? SUMMARIZE_TIERS[SUMMARIZE_TIERS.length - 1];
     return changeRate > tier.maxRate;
-}
-
-export interface DeltaHit {
-    label: string;
-    rateDelta: number; // %p
-    tvDelta: number; // 원(최근 1분 거래대금)
-}
-
-/** 1분 신호 — 1분 사이 등락률 +0.6%p 이상이면서 거래대금 60억 이상. */
-export function evaluateSignal(rateDelta: number, tvDeltaKrw: number): DeltaHit | null {
-    return rateDelta >= 0.6 && tvDeltaKrw >= 6_000_000_000 ? { label: "1분", rateDelta, tvDelta: tvDeltaKrw } : null;
 }
 
 // ── 테마 로스터 · 포함관계 · 관련 테마 ─────────────────────────

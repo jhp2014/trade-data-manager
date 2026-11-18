@@ -58,17 +58,6 @@ describe("buildThemeBoard", () => {
         expect(b.stocks.map((s) => s.name).sort()).toEqual(["B", "알파"]);
     });
 
-    it("1분 신호 — 직전 1분 등락률 +0.6%p 이상 그리고 거래대금 60억 이상", () => {
-        const EOK = 1e8;
-        const idx = indexOf(
-            rstock("HOT", { times: [100, 160], rate: [3, 4], cumAmount: [0, 70 * EOK] }),
-            rstock("SLOW", { times: [100, 160], rate: [3, 4], cumAmount: [0, 50 * EOK] }),
-        );
-        const b = buildThemeBoard(idx, 160, "un", { amountN: 5, rateN: 5 });
-        expect(b.stocks.find((s) => s.code === "HOT")?.signal).not.toBeNull();
-        expect(b.stocks.find((s) => s.code === "SLOW")?.signal).toBeNull();
-    });
-
     it("카드 = 멤버 2개 이상 테마, 나머지는 개별·미분류. 포함관계는 parents", () => {
         const idx = indexOf(
             rstock("A", { themes: ["반도체", "HBM"], rate: [1, 9] }),

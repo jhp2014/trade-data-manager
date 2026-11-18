@@ -1,5 +1,5 @@
 // 테마 보드 공용 타입·상수·포맷.
-import type { DeltaHit, RelationKind } from "./domain.js";
+import type { RelationKind } from "./domain.js";
 import { fmtPct } from "../lib/format.js";
 
 /** 카드 종목 표시 — 접힘(머리·관련 테마만) / 펼침(주도주 · 나머지 전부). */
@@ -29,8 +29,6 @@ export interface BoardStock {
     /** 그 시각까지 누적 거래대금(원) */
     amount: number;
     isMover: boolean;
-    /** 1분 신호(직전 1분 급등 + 거래대금). */
-    signal: DeltaHit | null;
 }
 
 /** 보드 등락률 — 소수 1자리(부호 포함). */

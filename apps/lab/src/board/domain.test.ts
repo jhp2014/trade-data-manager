@@ -1,13 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateSignal, isMover, relatedThemes, stocksByTheme, themeParents } from "./domain.js";
-
-describe("1분 신호 경계", () => {
-    it("정확히 +0.6%p · 정확히 60억이면 신호, 하나라도 모자라면 아니다", () => {
-        expect(evaluateSignal(0.6, 6_000_000_000)).not.toBeNull();
-        expect(evaluateSignal(0.59, 6_000_000_000)).toBeNull();
-        expect(evaluateSignal(0.6, 5_999_999_999)).toBeNull();
-    });
-});
+import { isMover, relatedThemes, stocksByTheme, themeParents } from "./domain.js";
 
 describe("주도주 경계", () => {
     it("시총 5조 이상은 3% 초과, 미만(또는 미상)은 5% 초과", () => {
