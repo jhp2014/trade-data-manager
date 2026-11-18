@@ -9,12 +9,15 @@ import { usePanelUi } from "../store/panelUi.js";
 import { isNoLedger, useDayFlow, useReplayDay } from "../market/queries.js";
 import { replayMembership } from "../board/replayMembership.js";
 import { ThemeBoardPanel, type Membership } from "./themeBoard/ThemeBoardPanel.js";
+import { useShownMoment } from "./themeBoard/useShownMoment.js";
 
 const HINDSIGHT = ["off", "on"] as const;
 const UNCLASSIFIED = "미분류 — 이름표 없음";
 
 export function BoardPanel({ panelId }: { panelId: string }): JSX.Element {
-    const { date, time } = usePanelPath(panelId).path.s;
+    const { date } = usePanelPath(panelId).path.s;
+    // 시각은 판이 그리는 순간의 것 — 새 날짜를 받는 동안엔 직전 판의 시각(새 시각을 옛 날 이름표에 입히지 않게).
+    const { time } = useShownMoment(panelId);
     const [hindsight, setHindsight] = usePanelUi(panelId, "hindsight", HINDSIGHT, "off");
     const after = hindsight === "on";
     // 소속은 **보드가 지금 그리는 시계열의 날짜**로 받는다 — 날짜가 바뀌는 동안 보드는 직전 날 시계열을 그리므로(placeholder),

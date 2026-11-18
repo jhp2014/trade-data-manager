@@ -3,6 +3,8 @@
 // 지금은 BoardPanel 이 tdm-ai 장중 복기 분류 장부(/replay/day)로 입힌다).
 // 종목 줄 클릭 = 경로의 종목, 테마 머리 클릭 = 그 카드 접기/펼치기(경로에 테마는 없다).
 // 이 패널에서 고른 종목은 판을 움직이지 않고, 다른 곳에서 바뀐 종목은 그 테마들을 맨 위로 올린다.
+// 새 날짜를 받는 동안엔 직전 판을 그 판의 (종목, 시각) 그대로 흐리게 두고 가운데 카드로 알린다(useShownMoment) —
+// 새 종목을 옛 날 판에 먼저 올리면 「다 받았다」로 읽힌다.
 import { useCallback, useMemo, type ReactNode } from "react";
 import { CLOSE_TIME, usePanelPath } from "../../store/paths.js";
 import { usePanelUi, usePanelUiNumber } from "../../store/panelUi.js";
@@ -13,6 +15,7 @@ import type { PriceMode } from "../../market/types.js";
 import { DEFAULT_UNIVERSE, buildThemeBoard, focusPlace, type ThemedStock } from "../../board/viewModel.js";
 import { BoardLayout } from "../../board/BoardLayout.js";
 import { useSelfPick } from "../../board/useSelfPick.js";
+import { useShownMoment } from "./useShownMoment.js";
 import { FlatStockList } from "../../board/FlatStockList.js";
 import { Center, NumberField } from "../../ui/chrome.js";
 import { usePanelHeader } from "../../header/registry.js";
@@ -54,7 +57,9 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
     controls?: readonly ControlSpec[];
 }): JSX.Element {
     const { path, write } = usePanelPath(panelId);
-    const { code, date, time } = path.s;
+    const { date } = path.s;
+    // 판이 입는 종목·시각 — 새 날짜를 받는 동안엔 직전 판의 것(useShownMoment). 받는 중인 경로 상황은 pending.
+    const { code, time, pending } = useShownMoment(panelId);
     const [view, setView] = usePanelUi(panelId, "view", VIEWS, "group");
     const [market, setMarket] = usePanelUi(panelId, "market", MARKETS, "un");
     const [amountN, setAmountN] = usePanelUiNumber(panelId, "amountN", UNIVERSE_RANGE, DEFAULT_UNIVERSE.amountN);
@@ -64,6 +69,8 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
 
     // 날짜가 바뀌는 동안엔 직전 날의 데이터가 온다 — 시각은 **받은 데이터의 날짜**로 잰다(다른 날 시각을 섞지 않게).
     const flow = q.data;
+    /** 판이 그리는 날짜 — 대기 중엔 직전 날(헤더도 판이 그리는 것을 말한다). */
+    const shownDate = flow?.date ?? date;
     const themes = membership.themes;
     const notes = membership.notes;
     const index = useMemo(() => {
@@ -80,13 +87,13 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
         [index, tUnix, market, amountN, rateN, nameOf],
     );
 
-    // 이 패널에서 고른 종목 — 그 종목으로 바뀐 것은 판을 움직이지 않는다(제자리).
-    const { pick, isSelfPick } = useSelfPick(code, useCallback((c: string) => write({ code: c }), [write]));
+    // 이 패널에서 고른 종목 — 그 종목으로 바뀐 것은 판을 움직이지 않는다(제자리). 기억 지우기는 경로의 종목으로 잰다.
+    const { pick, isSelfPick } = useSelfPick(path.s.code, useCallback((c: string) => write({ code: c }), [write]));
 
     const universe = <UniverseFields amountN={amountN} rateN={rateN} setAmountN={setAmountN} setRateN={setRateN} />;
     usePanelHeader(panelId, {
         info: [
-            { id: "when", name: "날짜·시각", tabular: true, text: () => (date ? `${date} ${time || `${CLOSE_TIME} 마감`}` : null) },
+            { id: "when", name: "날짜·시각", help: "판이 그리는 날짜·시각 — 새 날짜를 받는 동안엔 직전 판의 것", tabular: true, text: () => (date ? momentLabel(shownDate, time) : null) },
             // 현재 종목이 테마 카드 밖이면 그 자리 — 카드에 들었으면 판이 그 카드를 맨 위로 올리므로 따로 안 보인다.
             // 미분류·개별은 테마 보기에서만(평면 목록엔 꼬리 카드가 없고 종목이 목록에 그대로 있다). 랭킹 밖은 어느 보기든.
             {
@@ -99,8 +106,7 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
             },
             { id: "membership", name: "소속 알림", help: "소속 출처가 이 날짜를 다 덮지 못할 때", text: () => membership.note },
             { id: "count", name: "종목 수", tabular: true, help: "지금 유니버스의 종목 수", text: () => (board ? `${board.stocks.length}종목` : null) },
-            // 날짜가 바뀌는 동안엔 직전 날의 판을 그대로 두므로 알림만.
-            { id: "loading", name: "불러오는 중", transient: true, tone: "accent", text: () => (q.isPlaceholderData && q.isFetching ? "불러오는 중…" : null) },
+            // 새 날짜를 받는 동안의 알림은 헤더 칩이 아니라 본문 가운데 카드(PendingCard) — 흐린 판 위에서 놓치지 않게.
         ],
         controls: [
             { kind: "choice", id: "view", name: "보기", values: VIEW_VALUES, value: view, set: (v) => setView(v as BoardView) },
@@ -135,9 +141,52 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
         );
     else body = <FlatStockList stocks={board.stocks} code={code} onPick={pick} sort={view} />;
 
+    // 대기 중 = 직전 날 판을 흐리게(클릭 막음) + 가운데 카드. 감싸는 div 는 늘 같은 자리에 둔다 — 대기 시작·끝에 판이
+    // 다시 마운트되면(승격·스크롤 초기화) 기다리는 사이 판이 한 번 더 움직인다.
+    const waiting = pending !== null && flow !== undefined;
     return (
-        <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--surface)" }}>
-            {body}
+        <div style={{ height: "100%", position: "relative", display: "flex", flexDirection: "column", background: "var(--surface)" }}>
+            <div
+                data-stale={waiting ? "" : undefined}
+                aria-hidden={waiting ? true : undefined}
+                style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", ...(waiting ? { opacity: 0.35, filter: "grayscale(1)", pointerEvents: "none" } : {}) }}
+            >
+                {body}
+            </div>
+            {waiting && (
+                <PendingCard
+                    target={momentLabel(pending.date, pending.time)}
+                    shown={momentLabel(shownDate, time)}
+                    // 새 날짜 소속은 아직 모른다 — 「테마를 위로」처럼 결과를 단정하지 않는다(미분류·랭킹 밖일 수 있다).
+                    next={pending.code !== "" && pending.code !== code ? `${nameOf(pending.code) ?? pending.code} 자리로` : null}
+                />
+            )}
+        </div>
+    );
+}
+
+/** 날짜 + 시각(없으면 장 마감) — 헤더 "날짜·시각"과 대기 카드가 같은 꼴로 말한다. */
+function momentLabel(date: string, time: string): string {
+    return `${date} ${time || `${CLOSE_TIME} 마감`}`;
+}
+
+/** 새 날짜를 받는 동안 흐린 판 위 가운데 카드 — 받는 것 · 지금 흐린 판 · 도착하면 바뀔 것. 읽는 것이라 클릭을 받지 않는다. */
+function PendingCard({ target, shown, next }: { target: string; shown: string; next: string | null }): JSX.Element {
+    return (
+        <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+            <div
+                role="status"
+                data-pending-card=""
+                style={{ background: "var(--surface)", border: "1px solid rgba(22,121,111,0.4)", borderRadius: 8, padding: "10px 18px", textAlign: "center", maxWidth: "calc(100% - 32px)", boxSizing: "border-box" }}
+            >
+                <div className="tabular" style={{ fontSize: 14, fontWeight: 600, color: "var(--accent-hover)" }}>
+                    {target} 불러오는 중…
+                </div>
+                <div className="tabular" style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                    흐린 판 = {shown}
+                </div>
+                {next !== null && <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>도착하면 {next}</div>}
+            </div>
         </div>
     );
 }
