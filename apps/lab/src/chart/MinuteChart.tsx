@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CrosshairMode, LineStyle } from "lightweight-charts";
 import { kstHHmm } from "./chartUtils.js";
 import { barIndexAt, baseChartOptions, centerOnIndex, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
@@ -14,7 +14,7 @@ import { useCandlePrimaryClick } from "./candleInteraction.js";
 import type { MinutePoint } from "./derive.js";
 import { TimeLineInfo, type TimeLineInfoValue } from "./timeLineInfo.js";
 
-// 분봉 차트 — 캔들(당일 % 또는 수정주가 원) pane + 거래대금(억) pane + 시각 세로선(시간축 라벨) + 왼쪽 위 시각선 정보 칸 + 크로스헤어 OHLC 툴팁.
+// 분봉 차트 — 캔들(당일 % 또는 수정주가 원) pane + 거래대금(억) pane + 시각 세로선(시간축 라벨) + 오른쪽 위 시각선 정보 칸 + 크로스헤어 OHLC 툴팁.
 // 봉 ctrl(⌘)+클릭 또는 더블클릭 = 그 봉 선택(날짜·시각 — 가격 축은 여러 날이라 다른 날일 수 있다, 맨 좌클릭은 팬).
 // 가격 축에서 첫 봉을 넘어 왼쪽으로 끌면 onNeedOlder — 앞 날이 붙어도 화면은 제자리(lightweight-charts 몫). 명령형 배선은 minuteSeries·minuteFraming.
 export function MinuteChart({
@@ -37,7 +37,7 @@ export function MinuteChart({
     frameKey: string;
     /** 시각 세로선(unix초). null = 없음. */
     markerTime?: number | null;
-    /** 시각선 봉의 값(C·H·H-L 당일 %, 분봉·누적 거래대금) — 왼쪽 위 정보 칸. null = 칸 없음. */
+    /** 시각선 봉의 값(현재·변동폭 당일 %, 분봉·누적 거래대금) — 오른쪽 위 정보 칸. null = 칸 없음. */
     markerInfo?: TimeLineInfoValue | null;
     /** f 줌 — 켜면 anchorTime(unix초, null = 마지막 봉)을 가운데로 bars 봉. null = 세션 기본 뷰. */
     zoom?: { bars: number; anchorTime: number | null } | null;
@@ -75,6 +75,26 @@ export function MinuteChart({
     }));
 
     const series = useMinuteSeries(chartRef);
+    // 오른쪽 가격 축 폭 — 시각선 정보 칸을 그 바로 왼쪽에 둔다(축 글자 폭이 숫자 자릿수·축 전환으로 바뀐다).
+    const [priceScaleW, setPriceScaleW] = useState(0);
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart) return;
+        let raf: number | null = null;
+        const measure = (): void => {
+            raf = null;
+            setPriceScaleW(chart.priceScale("right").width());
+        };
+        const schedule = (): void => {
+            if (raf === null) raf = requestAnimationFrame(measure);
+        };
+        schedule();
+        chart.timeScale().subscribeSizeChange(schedule); // 가격 축 폭이 바뀌면 시간축 폭이 바뀐다
+        return () => {
+            chart.timeScale().unsubscribeSizeChange(schedule);
+            if (raf !== null) cancelAnimationFrame(raf);
+        };
+    }, [chartRef, series.gen]);
     const pointMapRef = useMinuteSeriesData(series, points, showAmountMarkers);
     useMinuteAxis(chartRef, series, axis);
     usePriceLevels(series.candleRef, series.gen, levels);
@@ -118,7 +138,7 @@ export function MinuteChart({
     return (
         <div ref={containerRef} onMouseMove={onCursorMove} onContextMenu={onContextMenu} style={{ position: "relative", width: "100%", height: "100%" }}>
             <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={marks} gen={series.gen} dataKey={points} onGoTo={goTo} onToggle={(m, ch) => onChipToggle?.(m, ch)} />
-            <TimeLineInfo value={markerInfo} />
+            <TimeLineInfo value={markerInfo} right={priceScaleW + 8} />
             {tip.visible && (
                 <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>
                     {tip.content}

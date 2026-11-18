@@ -118,7 +118,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const dayFirstTime = minute?.points.find((p) => p.date === date)?.time;
     const pathTime = minuteCurrent && time ? kstToUnix(date, `${time}:00`) : null;
     const markerTime = pathTime !== null && dayFirstTime !== undefined && pathTime >= dayFirstTime ? pathTime : null;
-    // 시각선 정보(왼쪽 위 칸) — 축이 「가격」이어도 등락률(그날 기준가 %)로 읽는다. 시각선과 같은 봉(그 시각 이하 마지막 봉).
+    // 시각선 정보(오른쪽 위 칸) — 축이 「가격」이어도 등락률(그날 기준가 %)로 읽는다. 시각선과 같은 봉(그 시각 이하 마지막 봉).
     const markerInfo = useMemo((): TimeLineInfoValue | null => {
         const day = mq.data;
         if (markerTime === null || !day || !minuteCurrent) return null;
@@ -311,7 +311,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         body = (
             <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
                 {showDaily && (
-                    <Pane label="일봉">
+                    <Pane>
                         {daily.length > 0 ? (
                             <DailyChart
                                 points={daily}
@@ -330,7 +330,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
                     </Pane>
                 )}
                 {showMinute && (
-                    <Pane label="분봉" divider={showDaily}>
+                    <Pane divider={showDaily}>
                         {mq.isError ? (
                             <Center>분봉 오류: {mq.error.message}</Center>
                         ) : minute && minute.points.length > 0 ? (
@@ -360,10 +360,10 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     return <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--surface)" }}>{body}</div>;
 }
 
-function Pane({ label, divider = false, children }: { label: string; divider?: boolean; children: ReactNode }): JSX.Element {
+/** 일봉·분봉 칸 — 「일봉」「분봉」 이름표는 2026-11-18 뺐다(두 칸이 모양으로 갈린다). */
+function Pane({ divider = false, children }: { divider?: boolean; children: ReactNode }): JSX.Element {
     return (
         <div style={{ flex: 1, minHeight: 0, position: "relative", borderTop: divider ? "1px solid var(--border)" : undefined }}>
-            <span style={{ position: "absolute", left: 8, top: 4, zIndex: 5, fontSize: 11, color: "var(--text-3)", pointerEvents: "none" }}>{label}</span>
             {children}
         </div>
     );
