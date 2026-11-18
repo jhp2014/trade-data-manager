@@ -169,12 +169,12 @@ textarea {
 .menu-item {
     background: transparent;
 }
-.menu-item:not(:disabled):hover {
+.menu-item:not(:disabled):not([aria-disabled]):hover {
     background: var(--bg-tertiary);
 }
 .menu-item[data-selected] {
     background: var(--accent-soft);
 }
-.menu-item[data-selected]:not(:disabled):hover {
+.menu-item[data-selected]:not(:disabled):not([aria-disabled]):hover {
     background: color-mix(in srgb, var(--accent-soft), var(--accent-primary) 8%);
 }

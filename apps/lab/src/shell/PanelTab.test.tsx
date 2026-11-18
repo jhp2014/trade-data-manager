@@ -1,8 +1,9 @@
 // 패널 탭 — 경로 칩은 경로 이름만(점선 = 활성을 따라감, 실선 채움 = 고정), 복제 버튼 없음, 최소화는 마우스를 올릴 때만.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { IDockviewPanelHeaderProps } from "dockview-react";
 import { usePaths } from "../store/paths.js";
+import { useRowNav } from "../store/rowNav.js";
 import { PanelTab } from "./PanelTab.js";
 
 let closed = 0;
@@ -17,6 +18,7 @@ beforeEach(() => {
     closed = 0;
     localStorage.clear();
     usePaths.setState(usePaths.getInitialState(), true);
+    useRowNav.setState({ attached: null });
 });
 afterEach(cleanup);
 
@@ -58,4 +60,56 @@ describe("PanelTab", () => {
         fireEvent.click(min);
         expect(closed).toBe(1);
     });
+
+    it("탭 우클릭 → 「w/s 부착」 켜기/끄기 — 부착된 판 탭엔 ● 하나, 부착은 늘 하나", () => {
+        render(<PanelTab {...props("board-1")} />);
+        expect(document.querySelector("[data-walk-mark]")).toBeNull();
+        fireEvent.contextMenu(screen.getByText("테마 보드 (1)"));
+        fireEvent.click(screen.getByRole("menuitem", { name: /w\/s 부착/ }));
+        expect(useRowNav.getState().attached).toBe("board-1");
+        expect(document.querySelector("[data-walk-mark]")?.textContent).toBe("●");
+        expect(screen.queryByRole("menuitem")).toBeNull(); // 누르면 닫힌다
+        act(() => useRowNav.getState().attach("board-2")); // 다른 판을 부착하면 이 판은 꺼진다
+        expect(document.querySelector("[data-walk-mark]")).toBeNull();
+        act(() => useRowNav.getState().attach("board-1"));
+        fireEvent.contextMenu(screen.getByText("테마 보드 (1)"));
+        fireEvent.click(screen.getByRole("menuitem", { name: /w\/s 부착/ }));
+        expect(useRowNav.getState().attached).toBeNull();
+    });
+
+    it("걸을 수 없는 판은 메뉴 줄이 흐리고 눌러도 부착되지 않는다", () => {
+        render(<PanelTab {...props("chart-1")} />);
+        fireEvent.contextMenu(screen.getByText("차트 (1)"));
+        const item = screen.getByRole("menuitem", { name: /w\/s 부착/ });
+        expect(item.getAttribute("aria-disabled")).toBe("true");
+        fireEvent.click(item);
+        expect(useRowNav.getState().attached).toBeNull();
+    });
+
+    it("우클릭은 활성 경로를 바꾸지 않고, 메뉴가 열린 채 탭을 누르면 메뉴만 닫힌다", () => {
+        usePaths.getState().bind("board-1", "B");
+        render(<PanelTab {...props("board-1")} />);
+        const tab = screen.getByText("테마 보드 (1)");
+        fireEvent.pointerDown(tab, { button: 2 });
+        fireEvent.contextMenu(tab);
+        expect(usePaths.getState().active).toBe("A");
+        expect(screen.getByRole("menuitem", { name: /w\/s 부착/ })).toBeTruthy();
+        fireEvent.pointerDown(tab, { button: 0 });
+        expect(screen.queryByRole("menuitem", { name: /w\/s 부착/ })).toBeNull();
+        expect(usePaths.getState().active).toBe("B"); // 왼쪽 누름은 여전히 고르기
+    });
+
+    it("경로 메뉴 위 우클릭은 탭 메뉴를 겹쳐 열지 않는다", () => {
+        render(<PanelTab {...props("board-1")} />);
+        fireEvent.click(screen.getByTitle("활성을 따라감 — 지금 A"));
+        fireEvent.contextMenu(screen.getByText("경로 B"));
+        expect(screen.queryByRole("menuitem", { name: /w\/s 부착/ })).toBeNull();
+    });
+
+    it("넘침 목록(드롭다운) 속 탭은 우클릭 메뉴를 열지 않는다", () => {
+        render(<PanelTab {...({ ...props("board-1"), tabLocation: "headerOverflow" } as IDockviewPanelHeaderProps)} />);
+        fireEvent.contextMenu(screen.getByText("테마 보드 (1)"));
+        expect(screen.queryByRole("menuitem", { name: /w\/s 부착/ })).toBeNull();
+    });
 });
+

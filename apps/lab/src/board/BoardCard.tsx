@@ -1,4 +1,4 @@
-// 테마 카드 — 머리(테마명·종목 수) + 종목 줄 + 관련 테마 줄. 테마 이름 클릭 = w/s 선택 테마 + 판 부착, 머리 나머지 클릭 = 접기/펼치기.
+// 테마 카드 — 머리(테마명·종목 수) + 종목 줄 + 관련 테마 줄. 머리 클릭 = 접기/펼치기, w/s 부착 판에선 테마 이름 클릭 = w/s 선택 테마.
 // workbench components/board/BoardCard.tsx 에서 옮겼다(즐겨찾기·수동 숨김·드래그는 뺐다).
 import { useState } from "react";
 import { ScrollRow } from "../ui/ScrollRow.js";
@@ -28,7 +28,7 @@ export function ThemeCard({
     initialMode?: ListMode; // 처음 펼침(기본 접힘). 현재 종목이 든 승격 카드는 펼쳐 연다.
     /** w/s 가 걷는 선택 테마인가 — 이름을 채운 알약으로(부착된 판에서만 켠다). */
     navSelected?: boolean;
-    /** 테마 이름 클릭 = 이 테마를 w/s 선택 테마로 + 판 부착. 없으면 이름도 머리처럼 접기다(꼬리 카드). */
+    /** 테마 이름 클릭 = 이 테마를 w/s 선택 테마로(부착 판에서만 준다). 없으면 이름도 머리처럼 접기다. */
     onNavSelect?: () => void;
 }): JSX.Element {
     const [mode, setMode] = useState<ListMode>(initialMode);
@@ -60,7 +60,7 @@ export function ThemeCard({
                         onClick={
                             onNavSelect
                                 ? (e) => {
-                                      e.stopPropagation(); // 이름 = 선택·부착, 머리 나머지 = 접기
+                                      e.stopPropagation(); // 부착 판에서 이름 = 선택, 머리 나머지 = 접기
                                       onNavSelect();
                                   }
                                 : undefined

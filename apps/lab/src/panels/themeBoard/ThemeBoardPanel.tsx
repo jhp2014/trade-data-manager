@@ -1,15 +1,15 @@
 // 테마 보드 패널의 몸 — 경로의 (날짜, 시각)의 테마 단면. 시각이 없으면 장 마감(15:30).
 // 시계열(/day-flow)에는 소속이 없다 — 테마는 언제나 membership 이 입힌다(공급원은 호스트 판 몫 —
 // 지금은 BoardPanel 이 tdm-ai 장중 복기 분류 장부(/replay/day)로 입힌다).
-// 종목 줄 클릭 = 경로의 종목, 테마 이름 클릭 = w/s 선택 테마 + 이 판 부착(store/rowNav — 선택 테마는 판의 커서라 경로에 없다),
-// 머리 나머지 클릭 = 그 카드 접기/펼치기.
+// 종목 줄 클릭 = 경로의 종목, 머리 클릭 = 그 카드 접기/펼치기. w/s 부착(탭 우클릭, store/rowNav)된 판에서만
+// 테마 이름 클릭 = w/s 선택 테마(판의 커서라 경로에 없다) — 이름은 채운 알약.
 // 이 패널에서 고른 종목은 판을 움직이지 않고, 다른 곳에서 바뀐 종목은 그 테마들을 맨 위로 올린다.
 // 새 날짜를 받는 동안엔 직전 판을 그 판의 (종목, 시각) 그대로 흐리게 두고 가운데 카드로 알린다(useShownMoment) —
 // 새 종목을 옛 날 판에 먼저 올리면 「다 받았다」로 읽힌다.
 import { useCallback, useMemo, type ReactNode } from "react";
 import { CLOSE_TIME, usePanelPath } from "../../store/paths.js";
 import { usePanelUi, usePanelUiNumber, usePanelUiText } from "../../store/panelUi.js";
-import { useIsAttached, useNavTarget, useRowNav, type NavTarget } from "../../store/rowNav.js";
+import { useIsAttached, useNavTarget, type NavTarget } from "../../store/rowNav.js";
 import { cardOrder, navCard, stepInCard, stepTheme, themesOf } from "../../board/themeNav.js";
 import { useDayFlow, useStockNameOf } from "../../market/queries.js";
 import { kstToUnix } from "../../market/domain.js";
@@ -113,16 +113,16 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
         };
     }, [walking, board, card, code, write, setPrefTheme]);
     useNavTarget(panelId, navTarget);
-    // 테마 이름 클릭 = 그 테마를 선택 + 이 판 부착. 현재 종목이 그 테마에 없으면 그 테마 첫 줄로 — 고른 테마를 바로 걷는다.
+    // 부착 판의 테마 이름 클릭 = 그 테마를 선택. 현재 종목이 그 테마에 없으면 그 테마 첫 줄로 — 고른 테마를 바로 걷는다.
+    // 부착은 탭 우클릭 몫이다(손 하나) — 부착 안 된 판에선 이름도 머리처럼 접기다.
     const selectNavTheme = useCallback(
         (theme: string) => {
-            useRowNav.getState().attach(panelId);
             setPrefTheme(theme);
             const g = board?.grouped.themes.find((x) => x.theme === theme);
             const first = g && !g.stocks.some((s) => s.code === code) ? cardOrder(g.stocks)[0] : undefined;
             if (first) write({ code: first.code });
         },
-        [panelId, setPrefTheme, board, code, write],
+        [setPrefTheme, board, code, write],
     );
 
     const universe = <UniverseFields amountN={amountN} rateN={rateN} setAmountN={setAmountN} setRateN={setRateN} />;
@@ -173,7 +173,7 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
                 isSelfPick={isSelfPick}
                 unclassifiedName={membership.unclassified}
                 navTheme={attached ? (card?.theme ?? null) : null}
-                onNavSelect={selectNavTheme}
+                onNavSelect={attached ? selectNavTheme : undefined}
             />
         );
     else body = <FlatStockList stocks={board.stocks} code={code} onPick={pick} sort={view} />;

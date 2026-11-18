@@ -15,6 +15,8 @@ export interface PanelType {
     base: string;
     title: string;
     render: (panelId: string) => JSX.Element;
+    /** w/s 로 걸을 수 있는 판인가(store/rowNav 에 순회 대상을 등록한다) — 탭 우클릭 「w/s 부착」이 이 판에서만 켜진다. */
+    walkable?: boolean;
 }
 
 export const PANEL_TYPES: PanelType[] = [
@@ -23,7 +25,7 @@ export const PANEL_TYPES: PanelType[] = [
     //   "theme"(옛 시트 테마, 2026-10-16 — /day-flow 전환으로 시트 소속 소멸)
     //   "htheme"(이력 기반 테마, 2026-10-17 — judgment 읽기 은퇴)
     // "board" 가 그 후계 — 소속 공급원은 tdm-ai 장중 복기 분류 장부(/replay/day, 그날 하루).
-    { base: "board", title: "테마 보드", render: (id) => <BoardPanel panelId={id} /> },
+    { base: "board", title: "테마 보드", render: (id) => <BoardPanel panelId={id} />, walkable: true },
     { base: "hts", title: "HTS뉴스", render: (id) => <HtsNewsPanel panelId={id} /> },
     { base: "telegram", title: "텔레그램", render: (id) => <TelegramPanel panelId={id} /> },
 ];
@@ -32,6 +34,12 @@ const BY_BASE = new Map(PANEL_TYPES.map((t) => [t.base, t]));
 
 export function panelType(base: string): PanelType | undefined {
     return BY_BASE.get(base);
+}
+
+/** 그 패널이 w/s 로 걸을 수 있는 종류인가 — 실행 중 등록이 아니라 종류로 잰다(로딩 때마다 깜빡이지 않게). */
+export function isWalkable(panelId: string): boolean {
+    const slot = parseSlot(panelId);
+    return slot ? BY_BASE.get(slot.base)?.walkable === true : false;
 }
 
 /** 패널 이름 — 늘 번호를 붙인다("차트 (1)"). 1번만 번호가 없으면 2번과 나란히 놓였을 때 비대칭이다. */

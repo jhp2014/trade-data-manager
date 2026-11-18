@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 /** 메뉴를 담는 판의 padding — 줄이 좌우 4px 를 제 margin 으로 가지므로 위아래만. */
 export const MENU_PAD = "4px 0";
 
-export function MenuItem({ onClick, children, mark, on = false, selected = false, title }: {
+export function MenuItem({ onClick, children, mark, on = false, selected = false, title, disabled = false }: {
     onClick: () => void;
     children: ReactNode;
     /** 왼쪽 표식 칸 — radio = 하나 고르기(●○). 없으면 칸도 없다. */
@@ -15,19 +15,22 @@ export function MenuItem({ onClick, children, mark, on = false, selected = false
     /** 지금 고른 것 — 옅은 청록 면. */
     selected?: boolean;
     title?: string;
+    /** 이 판에서 할 수 없는 일 — 흐리게, 누름 없음(왜인지는 title 이 말한다). */
+    disabled?: boolean;
 }): JSX.Element {
     return (
         <button
             className="menu-item"
             role="menuitem"
-            onClick={onClick}
+            onClick={disabled ? undefined : onClick}
             title={title}
+            aria-disabled={disabled || undefined}
             {...(selected ? { "data-selected": "" } : {})}
             style={{
                 display: "flex", alignItems: "center", gap: 6,
                 width: "calc(100% - 8px)", margin: "0 4px", padding: "4px 8px", borderRadius: 5,
-                textAlign: "left", border: "none", fontSize: 11.5, lineHeight: 1.45, cursor: "pointer",
-                color: selected ? "var(--accent-hover)" : "var(--text-primary)",
+                textAlign: "left", border: "none", fontSize: 11.5, lineHeight: 1.45, cursor: disabled ? "default" : "pointer",
+                color: disabled ? "var(--text-3)" : selected ? "var(--accent-hover)" : "var(--text-primary)",
             }}
         >
             {mark && (

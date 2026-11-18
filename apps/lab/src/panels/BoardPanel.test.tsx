@@ -176,22 +176,31 @@ const pathCode = (): string => usePaths.getState().paths.find((p) => p.id === us
 const press = (key: string, shiftKey = false): void => {
     fireEvent.keyDown(window, { key, shiftKey });
 };
-/** 띠(현재 종목)에서 그 테마 이름 — 누르면 선택 + 부착. */
+/** 띠(현재 종목)에서 그 테마 이름 — 부착 판에선 누르면 선택, 아니면 접기. */
 const bandThemeName = (theme: string): HTMLElement => document.querySelector<HTMLElement>(`[data-band="current"] [data-theme-name="${theme}"]`)!;
+/** 탭 우클릭 「w/s 부착」과 같은 일. */
+const attachBoard = (): void => act(() => useRowNav.getState().attach("board-1"));
 const selectedTheme = (): string | null => document.querySelector('[data-nav-theme="selected"]')?.textContent ?? null;
 
 describe("BoardPanel — w/s 순회", () => {
-    it("부착 전엔 w/s 가 아무것도 안 하고, 선택 테마도 안 보인다", async () => {
+    it("부착 전엔 w/s 가 아무것도 안 하고, 선택 테마도 안 보이고, 이름 클릭은 머리처럼 접기다", async () => {
         await mountReady(market());
         expect(selectedTheme()).toBeNull();
         press("s");
         expect(pathCode()).toBe("000003");
+        const card = bandThemeName("HBM").closest('[data-band="current"]')!;
+        const rowsBefore = card.querySelectorAll("button").length;
+        fireEvent.click(bandThemeName("HBM"));
+        expect(selectedTheme()).toBeNull();
+        expect(useRowNav.getState().attached).toBeNull();
+        expect(card.querySelectorAll("button").length).toBeLessThan(rowsBefore); // 접혔다
     });
 
-    it("테마 이름을 누르면 부착 + 알약 — w/s 가 그 테마 안을 돌고, 끝에서 처음으로", async () => {
+    it("부착하면 현재 종목 첫 테마가 알약 — 이름 클릭으로 테마를 고르고, w/s 가 그 안을 돌고, 끝에서 처음으로", async () => {
         await mountReady(market());
+        attachBoard();
+        await waitFor(() => expect(selectedTheme()).toBe(document.querySelector('[data-band="current"] [data-theme-name]')?.textContent)); // 부착만으로 띠 첫 테마가 알약
         fireEvent.click(bandThemeName("HBM"));
-        expect(useRowNav.getState().attached).toBe("board-1");
         expect(selectedTheme()).toBe("HBM");
         expect(pathCode()).toBe("000003"); // 현재 종목이 든 테마라 종목은 그대로
         press("s");
@@ -205,6 +214,7 @@ describe("BoardPanel — w/s 순회", () => {
 
     it("shift+w/s 는 현재 종목의 테마들 사이에서 선택을 바꾼다 — 그 뒤 w/s 는 새 테마 안", async () => {
         await mountReady(market());
+        attachBoard();
         fireEvent.click(bandThemeName("반도체"));
         expect(selectedTheme()).toBe("반도체");
         press("S", true);
@@ -218,6 +228,7 @@ describe("BoardPanel — w/s 순회", () => {
     it("새 날짜를 받는 동안엔 걷지 않는다", async () => {
         const m = market();
         await mountReady(m);
+        attachBoard();
         fireEvent.click(bandThemeName("반도체"));
         m.hold = true;
         write({ date: "2026-11-14" });
@@ -233,6 +244,7 @@ describe("BoardPanel — w/s 순회", () => {
 
     it("띠 밖 테마 이름을 누르면 그 테마 첫 줄로 가서 걷기 시작한다", async () => {
         await mountReady(market());
+        attachBoard();
         fireEvent.click(document.querySelector<HTMLElement>('[data-theme-name="조선"]')!);
         expect(["000001", "000002"]).toContain(pathCode());
         await waitFor(() => expect(selectedTheme()).toBe("조선"));
@@ -243,6 +255,7 @@ describe("BoardPanel — w/s 순회", () => {
 
     it("평면 목록 보기에선 걷지 않는다", async () => {
         await mountReady(market());
+        attachBoard();
         fireEvent.click(bandThemeName("반도체"));
         act(() => usePanelUiStore.getState().set("board-1", "view", "amount"));
         press("s");
@@ -251,6 +264,7 @@ describe("BoardPanel — w/s 순회", () => {
 
     it("걸으면 선택 카드 안의 현재 종목 줄을 화면으로 데려온다", async () => {
         await mountReady(market());
+        attachBoard();
         fireEvent.click(bandThemeName("반도체"));
         const seen: Element[] = [];
         const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
@@ -263,6 +277,7 @@ describe("BoardPanel — w/s 순회", () => {
 
     it("띠 카드에서 종목을 직접 고르면 선택 테마가 바뀌어도 판은 제자리", async () => {
         await mountReady(market());
+        attachBoard();
         fireEvent.click(bandThemeName("반도체"));
         const spy = vi.spyOn(Element.prototype, "scrollIntoView");
         const hbmCard = bandThemeName("HBM").closest('[data-band="current"]')!;
@@ -276,6 +291,7 @@ describe("BoardPanel — w/s 순회", () => {
 
     it("shift+w/s 로 테마만 바꾸면 그 카드로 스크롤한다", async () => {
         await mountReady(market());
+        attachBoard();
         fireEvent.click(bandThemeName("반도체"));
         const seen: Element[] = [];
         const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {

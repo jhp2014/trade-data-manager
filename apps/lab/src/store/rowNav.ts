@@ -1,6 +1,6 @@
 // w/s 순회 — 판이 순회 대상을 등록하고, **부착된 판 하나**가 w/s(step)·shift+w/s(stepGroup)를 받는다
 // (decisions 「lab w/s 순회 — 판을 부착한다」). 키는 정적 커맨드 한 벌(keymap/registry)이 이 모듈로 보낸다 —
-// 걷고 싶은 판은 useNavTarget 으로 대상을 등록하고, 부착 손(테마 보드라면 테마 이름 클릭)에서 attach 를 부른다.
+// 걷고 싶은 판은 useNavTarget 으로 대상을 등록하고 카탈로그에 walkable 을 켠다. 부착 손 = 탭 우클릭 「w/s 부착」(shell/PanelTab) 하나.
 // 부착은 영속(배치처럼 다시 열어도 남는다). 등록 안 된 부착 판(닫힘·본문 없음)이면 w/s 는 조용히 쉰다.
 import { useEffect } from "react";
 import { create } from "zustand";
@@ -61,7 +61,7 @@ export function useNavTarget(panelId: string, target: NavTarget | null): void {
     }, [panelId, target]);
 }
 
-/** 이 판이 부착돼 있나 — 부착 표시(선택 커서 강조)를 그릴지. */
+/** 이 판이 부착돼 있나 — 탭의 ● · 판 안 선택 커서 강조(부착 판에서만)를 그릴지. */
 export function useIsAttached(panelId: string): boolean {
     return useRowNav((st) => st.attached === panelId);
 }
