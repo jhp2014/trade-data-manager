@@ -12,7 +12,7 @@ import { usePanelUiStore } from "../store/panelUi.js";
 import { Framed, headerLine, openControls, pinToLine, resetHeaderLedger } from "../test/framed.js";
 import { ChartPanel } from "./ChartPanel.js";
 
-const seen = vi.hoisted(() => ({ daily: [] as { onPickDate: (d: string) => void; frameKey: string; onNeedOlder?: () => void }[], minute: [] as { onPickTime: (d: string, t: string) => void; markerTime: number | null; markerInfo?: { time: number; high: number; close: number; amount: number; baseFallback?: boolean } | null; axis?: string }[] }));
+const seen = vi.hoisted(() => ({ daily: [] as { onPickDate: (d: string) => void; frameKey: string; onNeedOlder?: () => void }[], minute: [] as { onPickTime: (d: string, t: string) => void; markerTime: number | null; markerInfo?: { time: number; open: number; high: number; low: number; close: number; amount: number; cumAmount: number; baseFallback?: boolean } | null; axis?: string }[] }));
 vi.mock("../chart/DailyChart.js", () => ({
     DailyChart: (p: { onPickDate: (d: string) => void; frameKey: string; onNeedOlder?: () => void }) => {
         seen.daily.push(p);

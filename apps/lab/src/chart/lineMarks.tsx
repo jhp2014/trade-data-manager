@@ -51,6 +51,8 @@ const HALO = { paintOrder: "stroke", stroke: "var(--surface)", strokeWidth: 3, s
  * 비율 고정(0.06)이면 pane 이 낮을 때 신고가 봉이 칩과 겹친다. 상한 0.4 — pane 이 아주 낮으면 봉 자리를 다 내주지 않는다.
  */
 const HEADROOM_PX = CHIP_Y + CHIP_H + 6;
+/** 칩 띠 높이(px) — 차트 맨 위에서 이만큼은 칩(◀▶ 포함) 자리다. 그 아래에 고정 글자를 둘 때(시각선 정보 칸). */
+export const CHIP_BAND_PX = HEADROOM_PX;
 export const HEADROOM_MAX = 0.4;
 export function chipHeadroom(paneH: number): number {
     return paneH > 0 ? Math.min(HEADROOM_MAX, HEADROOM_PX / paneH) : HEADROOM_MAX;
@@ -201,7 +203,6 @@ export function LineMarkLayer({
     dataKey,
     onGoTo,
     onToggle,
-    onHoverChange,
 }: {
     chartRef: RefObject<IChartApi | null>;
     candleRef: RefObject<ISeriesApi<"Candlestick"> | null>;
@@ -214,16 +215,12 @@ export function LineMarkLayer({
     onGoTo: (time: string | number) => void;
     /** 점 클릭 — 그 채널(왼쪽 = 토큰, 오른쪽 = 저장)을 켜고 끈다. */
     onToggle: (mark: LineMark, channel: ChipChannel) => void;
-    /** 칩에 마우스가 올라갔나 — 같은 띠의 시각선 정보 칸이 그동안 칩 뒤로 물러난다(timeLineInfo). */
-    onHoverChange?: (hovering: boolean) => void;
 }): JSX.Element | null {
     useChipHeadroom(chartRef, candleRef, gen); // 칩이 없어도 늘 — 선을 그을 때마다 세로 스케일이 튀지 않게
     const { width, inView, offLeft, offRight } = useLineMarkLayout(chartRef, candleRef, marks, gen, dataKey);
     const [hover, setHover] = useState<{ key: string | null; x: number; y: number; info: LineInfo } | null>(null);
     // 선이 바뀌면(점으로 지움 등) 칩이 마우스를 떠나지 않고 사라질 수 있다 — 떠 있던 카드를 걷는다
     useEffect(() => setHover(null), [marks]);
-    const hovering = hover !== null;
-    useEffect(() => onHoverChange?.(hovering), [hovering, onHoverChange]);
     const cursorX = useCursorX(chartRef, gen);
     if (inView.length === 0 && offLeft.length === 0 && offRight.length === 0) return null;
     const hoverOn = (key: string | null, x: number, y: number, info: LineInfo) => ({ onMouseEnter: () => setHover({ key, x, y, info }), onMouseLeave: () => setHover(null) });
@@ -283,8 +280,7 @@ export function LineMarkLayer({
                         >
                             <rect
                                 x={x - CHIP_W / 2 - 3} y={chipY} width={CHIP_W + 6} height={CHIP_H} rx={3}
-                                // 앞 칩이 다른 칩을 덮거나 마우스가 올라가 있으면 바탕을 깐다 — 뒤로 물러난 정보 칸 글자가 비치지 않게
-                                fill={mark.key === front && (frontCovers || mark.key === hover?.key) ? "var(--surface)" : "transparent"} fillOpacity={0.94}
+                                fill={mark.key === front && frontCovers ? "var(--surface)" : "transparent"} fillOpacity={0.94}
                             />
                             <text className="tabular" x={x} y={chipY + 12} textAnchor="middle" style={{ fontSize: 12, fontWeight: 600, fill: "var(--text)", ...HALO }}>
                                 {mark.short}

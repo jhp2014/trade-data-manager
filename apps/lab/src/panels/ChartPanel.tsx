@@ -118,7 +118,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
     const dayFirstTime = minute?.points.find((p) => p.date === date)?.time;
     const pathTime = minuteCurrent && time ? kstToUnix(date, `${time}:00`) : null;
     const markerTime = pathTime !== null && dayFirstTime !== undefined && pathTime >= dayFirstTime ? pathTime : null;
-    // 시각선 꼭대기 정보 — 축이 「가격」이어도 등락률(그날 기준가 %)로 읽는다. 시각선과 같은 봉(그 시각 이하 마지막 봉).
+    // 시각선 정보(왼쪽 위 칸) — 축이 「가격」이어도 등락률(그날 기준가 %)로 읽는다. 시각선과 같은 봉(그 시각 이하 마지막 봉).
     const markerInfo = useMemo((): TimeLineInfoValue | null => {
         const day = mq.data;
         if (markerTime === null || !day || !minuteCurrent) return null;
@@ -126,7 +126,7 @@ export function ChartPanel({ panelId }: { panelId: string }): JSX.Element {
         const view = axis === "pct" && minute ? minute : deriveMinuteView(day, venue);
         const t = snapToBar(view.points, markerTime);
         const p = t === null ? undefined : view.points.find((x) => x.time === t);
-        return p ? { time: p.time, high: p.high, close: p.close, amount: p.amount, baseFallback: view.baseFallback } : null;
+        return p ? { time: p.time, open: p.open, high: p.high, low: p.low, close: p.close, amount: p.amount, cumAmount: p.cumAmount, baseFallback: view.baseFallback } : null;
     }, [markerTime, mq.data, minuteCurrent, axis, minute, venue]);
 
     // 일봉 선 = 임시(경로의 선 — 토큰의 손잡이) ∪ 저장(lab 저장소 — 이 차트의 것). 같은 선은 칩 하나(종류로 가른다).
