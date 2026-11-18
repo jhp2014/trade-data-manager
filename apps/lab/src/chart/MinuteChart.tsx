@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { CrosshairMode, LineStyle } from "lightweight-charts";
 import { kstHHmm } from "./chartUtils.js";
 import { barIndexAt, baseChartOptions, centerOnIndex, useChartShell, useCrosshairTooltip, useRafCursor } from "./chartShell.js";
@@ -57,6 +57,7 @@ export function MinuteChart({
     onNeedOlder?: () => void;
 }): JSX.Element {
     const containerRef = useRef<HTMLDivElement>(null);
+    const [chipHover, setChipHover] = useState(false); // 분봉 선 칩에 마우스 — 시각선 정보 칸이 칩 뒤로
     const chartRef = useChartShell(containerRef, () => ({
         ...baseChartOptions(),
         crosshair: {
@@ -117,8 +118,8 @@ export function MinuteChart({
 
     return (
         <div ref={containerRef} onMouseMove={onCursorMove} onContextMenu={onContextMenu} style={{ position: "relative", width: "100%", height: "100%" }}>
-            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={marks} gen={series.gen} dataKey={points} onGoTo={goTo} onToggle={(m, ch) => onChipToggle?.(m, ch)} />
-            <TimeLineInfo chartRef={chartRef} value={markerInfo} gen={series.gen} />
+            <LineMarkLayer chartRef={chartRef} candleRef={series.candleRef} marks={marks} gen={series.gen} dataKey={points} onGoTo={goTo} onToggle={(m, ch) => onChipToggle?.(m, ch)} onHoverChange={setChipHover} />
+            <TimeLineInfo chartRef={chartRef} value={markerInfo} gen={series.gen} behind={chipHover} />
             {tip.visible && (
                 <FloatingTooltip x={cursor.x} y={cursor.y} containerRef={containerRef}>
                     {tip.content}

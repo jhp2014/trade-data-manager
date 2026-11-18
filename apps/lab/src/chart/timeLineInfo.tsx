@@ -1,6 +1,7 @@
 // 분봉 시각선 꼭대기 정보 칸 — 그 봉의 고가·종가 등락률(당일 %)과 분봉 거래대금. 시각은 시간축 라벨이 말한다(vertLine).
 // 캔들 pane 맨 위, 선 오른쪽에 붙고 오른쪽 끝에 닿으면 왼쪽으로 넘긴다. 분봉 선 칩(LineMarkLayer)과 같은 띠라 그 위에
-// 바탕색 상자로 그린다 — 시각선이 그 자리에 있는 동안만 칩이 가려진다. 읽는 것이라 누름을 받지 않는다.
+// 바탕색 상자로 그린다 — 시각선이 그 자리에 있는 동안만 칩이 가려지고, 칩에 마우스를 올리면(behind) 칩 뒤로 물러난다.
+// 읽는 것이라 누름을 받지 않는다(가려진 칩에도 마우스가 닿는다).
 // 자리는 칩 층과 같은 수법으로 잰다 — 가로 범위·크기가 바뀔 때 rAF 하나로.
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { IChartApi, Time } from "lightweight-charts";
@@ -27,7 +28,13 @@ export function infoBoxLeft(x: number, boxW: number, paneW: number): number {
     return right + boxW <= paneW || x - GAP - boxW < 0 ? right : x - GAP - boxW;
 }
 
-export function TimeLineInfo({ chartRef, value, gen }: { chartRef: RefObject<IChartApi | null>; value: TimeLineInfoValue | null; gen: number }): JSX.Element | null {
+export function TimeLineInfo({ chartRef, value, gen, behind = false }: {
+    chartRef: RefObject<IChartApi | null>;
+    value: TimeLineInfoValue | null;
+    gen: number;
+    /** 칩에 마우스가 올라가 있다 — 칩 층(4) 뒤로 물러난다. */
+    behind?: boolean;
+}): JSX.Element | null {
     const [place, setPlace] = useState<{ x: number; w: number } | null>(null);
     const time = value?.time ?? null;
     useEffect(() => {
@@ -77,7 +84,7 @@ export function TimeLineInfo({ chartRef, value, gen }: { chartRef: RefObject<ICh
             data-time-line-info=""
             className="tabular"
             style={{
-                position: "absolute", top: TOP, left: infoBoxLeft(place.x, boxW, place.w), zIndex: 5, pointerEvents: "none", // 칩 층(4) 위 · 칩 설명 카드(6) 아래
+                position: "absolute", top: TOP, left: infoBoxLeft(place.x, boxW, place.w), zIndex: behind ? 3 : 5, pointerEvents: "none", // 칩 층(4) 위 · 칩 설명 카드(6) 아래, 칩 hover 동안은 칩 뒤
                 display: "flex", gap: 8, alignItems: "center", whiteSpace: "nowrap",
                 padding: "2px 6px", fontSize: 11, fontWeight: 600, lineHeight: "16px",
                 background: "var(--surface)", border: "1px solid rgba(37,99,235,0.35)", borderRadius: 3,
