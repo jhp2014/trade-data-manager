@@ -242,16 +242,6 @@ describe("BoardPanel — w/s 순회", () => {
         expect(pathCode()).toBe("000004");
     });
 
-    it("띠 밖 테마 이름을 누르면 그 테마 첫 줄로 가서 걷기 시작한다", async () => {
-        await mountReady(market());
-        attachBoard();
-        fireEvent.click(document.querySelector<HTMLElement>('[data-theme-name="조선"]')!);
-        expect(["000001", "000002"]).toContain(pathCode());
-        await waitFor(() => expect(selectedTheme()).toBe("조선"));
-        const first = pathCode();
-        press("s");
-        expect(pathCode()).toBe(first === "000001" ? "000002" : "000001");
-    });
 
     it("평면 목록 보기에선 걷지 않는다", async () => {
         await mountReady(market());
@@ -302,33 +292,71 @@ describe("BoardPanel — w/s 순회", () => {
         spy.mockRestore();
     });
 
-    it("부착 판 카드 머리 우클릭 = 현재 종목의 테마들 중 고르기(지금 선택에 ●)", async () => {
+
+
+
+    it("띠 밖(현재 종목이 없는) 테마 이름 클릭은 선택이 아니라 접기다", async () => {
         await mountReady(market());
         attachBoard();
-        fireEvent.click(bandThemeName("HBM"));
-        fireEvent.contextMenu(bandThemeName("반도체").parentElement!);
-        const menu = document.querySelector("[data-nav-menu]")!;
-        const items = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].map((b) => b.textContent);
-        expect(items.map((t) => t?.replace(/^[●○]/, ""))).toEqual(expect.arrayContaining(["반도체", "HBM"]));
-        expect(items.find((t) => t?.includes("HBM"))?.startsWith("●")).toBe(true);
-        fireEvent.click([...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((b) => b.textContent?.includes("반도체"))!);
         await waitFor(() => expect(selectedTheme()).toBe("반도체"));
+        fireEvent.click(document.querySelector<HTMLElement>('[data-theme-name="조선"]')!);
+        expect(selectedTheme()).toBe("반도체");
         expect(pathCode()).toBe("000003");
-        expect(document.querySelector("[data-nav-menu]")).toBeNull();
     });
 
-    it("띠 밖 카드 머리 우클릭엔 「이 테마로 옮겨 걷기」 — 그 테마 첫 줄로", async () => {
+    const headOf = (theme: string): HTMLElement => document.querySelector<HTMLElement>(`[data-theme-name="${theme}"]`)!.parentElement!;
+    const navItem = (): HTMLElement | null => document.querySelector<HTMLElement>('[data-nav-menu] [role="menuitem"]');
+
+    it("카드 머리 우클릭 「테마 선택」 ON/OFF — 끄면 알약 없음·w/s 쉼, shift+s 로 다시 켠다", async () => {
         await mountReady(market());
         attachBoard();
-        fireEvent.contextMenu(document.querySelector<HTMLElement>('[data-theme-name="조선"]')!.parentElement!);
-        fireEvent.click(screen.getByRole("menuitem", { name: /조선」 테마로 옮겨 걷기/ }));
-        expect(["000001", "000002"]).toContain(pathCode());
-        await waitFor(() => expect(selectedTheme()).toBe("조선"));
+        fireEvent.contextMenu(headOf("HBM"));
+        expect(navItem()?.textContent).toBe("○테마 선택");
+        fireEvent.click(navItem()!);
+        await waitFor(() => expect(selectedTheme()).toBe("HBM"));
+        expect(navItem()).toBeNull(); // 누르면 닫힌다
+        fireEvent.contextMenu(headOf("HBM"));
+        expect(navItem()?.textContent).toBe("●테마 선택");
+        fireEvent.click(navItem()!);
+        await waitFor(() => expect(selectedTheme()).toBeNull());
+        press("s");
+        expect(pathCode()).toBe("000003"); // 꺼 두면 걷지 않는다
+        press("S", true);
+        await waitFor(() => expect(selectedTheme()).not.toBeNull()); // shift+s 로 다시 켠다
+    });
+
+    it("현재 종목이 없는 테마에선 「테마 선택」이 흐리고 눌러도 그대로", async () => {
+        await mountReady(market());
+        attachBoard();
+        await waitFor(() => expect(selectedTheme()).toBe("반도체"));
+        fireEvent.contextMenu(headOf("조선"));
+        expect(navItem()?.getAttribute("aria-disabled")).toBe("true");
+        fireEvent.click(navItem()!);
+        expect(selectedTheme()).toBe("반도체");
+    });
+
+    it("메뉴는 같은 머리 다시 우클릭·머리 클릭·바깥 누름으로 닫힌다(머리 클릭은 접지 않고 닫기만)", async () => {
+        await mountReady(market());
+        attachBoard();
+        const head = headOf("반도체");
+        fireEvent.contextMenu(head);
+        expect(navItem()).not.toBeNull();
+        fireEvent.contextMenu(head);
+        expect(navItem()).toBeNull();
+        fireEvent.contextMenu(head);
+        const title = head.title;
+        fireEvent.click(head);
+        expect(navItem()).toBeNull();
+        expect(head.title).toBe(title); // 접히지 않았다
+        fireEvent.contextMenu(head);
+        await new Promise((r) => setTimeout(r, 0)); // 막 연 판은 한 틱 뒤에 바깥 누름에 무장한다(공용 층)
+        fireEvent.mouseDown(document.body);
+        expect(navItem()).toBeNull();
     });
 
     it("부착 안 된 판에선 머리 우클릭 메뉴가 없다", async () => {
         await mountReady(market());
-        fireEvent.contextMenu(bandThemeName("반도체").parentElement!);
+        fireEvent.contextMenu(headOf("반도체"));
         expect(document.querySelector("[data-nav-menu]")).toBeNull();
     });
 });

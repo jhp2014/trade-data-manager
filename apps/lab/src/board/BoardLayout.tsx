@@ -34,6 +34,7 @@ export function BoardLayout({
     unclassifiedName = UNCLASSIFIED_CARD,
     navTheme = null,
     onNavSelect,
+    onNavToggle,
 }: {
     grouped: Grouped<BoardStock>;
     parents: Map<string, string[]>;
@@ -47,6 +48,8 @@ export function BoardLayout({
     navTheme?: string | null;
     /** 테마 이름 클릭 = 그 테마를 w/s 선택 테마로 — 부착 판에서만 준다. 테마 카드에만(꼬리 카드엔 없다). */
     onNavSelect?: (theme: string) => void;
+    /** 머리 우클릭 메뉴 「테마 선택」 ON/OFF — 부착 판에서만. 현재 종목이 든 테마에서만 켜진다(아니면 흐림). */
+    onNavToggle?: (theme: string) => void;
 }): JSX.Element {
     const cardRefs = useRef(new Map<string, HTMLElement>());
     const [promoted, setPromoted] = useState<string[]>([]); // 다른 곳에서 바뀐 종목의 테마들(맨 위 띠)
@@ -134,8 +137,8 @@ export function BoardLayout({
             return { theme: r.theme, kind: r.kind, common: g.stocks.filter((s) => s.themes.includes(r.theme)).length, total: roster.length };
         });
 
-    // 머리 우클릭 메뉴 — 현재 종목의 테마들(띠 순서 = shift+w/s 순서) 중 고르기. 부착 판(onNavSelect 를 받을 때)에서만.
-    const navMenu = onNavSelect ? { themes: focusThemes(), current: navTheme, pick: onNavSelect } : undefined;
+    // 이름 클릭 선택·우클릭 「테마 선택」 켜기는 현재 종목이 든 테마에서만 — 다른 테마로 커서를 옮기는 손은 없다(종목이 먼저).
+    const memberThemes = new Set(focusThemes());
 
     // 띠 카드는 펼쳐 현재 종목이 보이게 한다. key 를 갈라 띠 진입·이탈 때 다시 마운트(펼침 반영).
     const renderCard = (g: ThemeGroup<BoardStock>, promotedCard = false): JSX.Element => (
@@ -149,8 +152,8 @@ export function BoardLayout({
                 onGoto={gotoTheme}
                 initialMode={promotedCard ? "open" : "collapsed"}
                 navSelected={g.theme === navTheme}
-                onNavSelect={onNavSelect ? () => onNavSelect(g.theme) : undefined}
-                navMenu={navMenu}
+                onNavSelect={onNavSelect && memberThemes.has(g.theme) ? () => onNavSelect(g.theme) : undefined}
+                navMenu={onNavToggle ? { on: g.theme === navTheme, enabled: memberThemes.has(g.theme), toggle: () => onNavToggle(g.theme) } : undefined}
             />
         </div>
     );

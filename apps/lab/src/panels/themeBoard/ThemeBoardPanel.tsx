@@ -10,7 +10,7 @@ import { useCallback, useMemo, type ReactNode } from "react";
 import { CLOSE_TIME, usePanelPath } from "../../store/paths.js";
 import { usePanelUi, usePanelUiNumber, usePanelUiText } from "../../store/panelUi.js";
 import { useIsAttached, useNavTarget, type NavTarget } from "../../store/rowNav.js";
-import { cardOrder, navCard, stepInCard, stepTheme, themesOf } from "../../board/themeNav.js";
+import { NAV_OFF, navCard, stepInCard, stepTheme, themesOf } from "../../board/themeNav.js";
 import { useDayFlow, useStockNameOf } from "../../market/queries.js";
 import { kstToUnix } from "../../market/domain.js";
 import { deriveFlow } from "../../market/flowDerive.js";
@@ -113,17 +113,10 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
         };
     }, [walking, board, card, code, write, setPrefTheme]);
     useNavTarget(panelId, navTarget);
-    // 부착 판의 테마 이름 클릭 = 그 테마를 선택. 현재 종목이 그 테마에 없으면 그 테마 첫 줄로 — 고른 테마를 바로 걷는다.
-    // 부착은 탭 우클릭 몫이다(손 하나) — 부착 안 된 판에선 이름도 머리처럼 접기다.
-    const selectNavTheme = useCallback(
-        (theme: string) => {
-            setPrefTheme(theme);
-            const g = board?.grouped.themes.find((x) => x.theme === theme);
-            const first = g && !g.stocks.some((s) => s.code === code) ? cardOrder(g.stocks)[0] : undefined;
-            if (first) write({ code: first.code });
-        },
-        [setPrefTheme, board, code, write],
-    );
+    // 부착 판에서 현재 종목이 든 테마의 이름 클릭 = 그 테마를 선택(BoardLayout 이 그 카드에만 준다), 머리 우클릭 메뉴
+    // 「테마 선택」 = 그 테마 ON/OFF(OFF = 선택을 꺼 둠 — 알약 없음 · w/s 쉼). 부착은 탭 우클릭 몫이다(손 하나).
+    const selectNavTheme = setPrefTheme;
+    const toggleNavTheme = useCallback((theme: string) => setPrefTheme(card?.theme === theme ? NAV_OFF : theme), [card, setPrefTheme]);
 
     const universe = <UniverseFields amountN={amountN} rateN={rateN} setAmountN={setAmountN} setRateN={setRateN} />;
     usePanelHeader(panelId, {
@@ -174,6 +167,7 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
                 unclassifiedName={membership.unclassified}
                 navTheme={attached ? (card?.theme ?? null) : null}
                 onNavSelect={attached ? selectNavTheme : undefined}
+                onNavToggle={attached ? toggleNavTheme : undefined}
             />
         );
     else body = <FlatStockList stocks={board.stocks} code={code} onPick={pick} sort={view} />;

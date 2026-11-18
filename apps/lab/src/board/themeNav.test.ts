@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardOrder, navCard, stepInCard, stepTheme } from "./themeNav.js";
+import { NAV_OFF, cardOrder, navCard, stepInCard, stepTheme } from "./themeNav.js";
 import type { Grouped } from "./domain.js";
 import type { BoardStock } from "./boardTypes.js";
 
@@ -19,6 +19,7 @@ describe("navCard", () => {
     it("선택 테마가 현재 종목의 테마가 아니면 현재 종목의 첫 테마", () => expect(navCard(g, "1", "조선")?.theme).toBe("반도체"));
     it("현재 종목이 테마 밖이면 선택 테마 카드 그대로", () => expect(navCard(g, "9", "조선")?.theme).toBe("조선"));
     it("둘 다 없으면 null", () => expect(navCard(g, "9", "")).toBeNull());
+    it("선택을 꺼 두면 null", () => expect(navCard(g, "1", NAV_OFF)).toBeNull());
 });
 
 describe("stepInCard", () => {
@@ -41,9 +42,10 @@ describe("stepTheme", () => {
         expect(stepTheme(["A", "B", "C"], "A", -1)).toBe("C");
     });
     it("테마가 하나면 바꿀 것이 없다", () => expect(stepTheme(["A"], "A", 1)).toBeNull());
-    it("지금 테마가 목록 밖이면 바꾸지 않는다", () => {
-        expect(stepTheme(["A", "B"], null, 1)).toBeNull();
-        expect(stepTheme(["A", "B"], "Z", -1)).toBeNull();
+    it("지금 테마가 목록 밖이면 바꾸지 않는다", () => expect(stepTheme(["A", "B"], "Z", -1)).toBeNull());
+    it("선택을 꺼 뒀으면(null) s = 첫 테마 · w = 끝 테마로 켠다", () => {
+        expect(stepTheme(["A", "B"], null, 1)).toBe("A");
+        expect(stepTheme(["A", "B"], null, -1)).toBe("B");
     });
     it("테마가 없으면 null", () => expect(stepTheme([], null, 1)).toBeNull());
 });
