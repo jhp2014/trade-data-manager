@@ -1,4 +1,4 @@
-// 토큰 기록 판 — 줄이 뜻으로 보이고, 열린 동안 w/s·Space 가 판의 것이며, 다시 열기가 원래 선으로 되돌리는지.
+// 기록 판 — 토큰 기록(줄이 뜻으로 보이고, 열린 동안 w/s·Space 가 판의 것이며, 다시 열기가 원래 선으로 되돌리는지) · Tab 순환 · 탐색 기록.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -6,8 +6,9 @@ import { MarketProvider } from "../market/MarketProvider.js";
 import { fakeMarket } from "../market/testing.js";
 import { usePaths } from "../store/paths.js";
 import { useTokenHistory } from "../store/tokenHistory.js";
+import { useHistory } from "../store/history.js";
 import { useUi } from "../store/ui.js";
-import { TokenHistoryButton } from "./TokenHistory.js";
+import { HistoryButton } from "./TokenHistory.js";
 import { pasteState } from "./usePasteState.js";
 
 const T1 = "402340@2026-07-31@260701H▲@260715H▼";
@@ -25,7 +26,7 @@ function renderButton() {
     render(
         <QueryClientProvider client={qc}>
             <MarketProvider market={m}>
-                <TokenHistoryButton />
+                <HistoryButton />
                 <input aria-label="칸" />
             </MarketProvider>
         </QueryClientProvider>,
@@ -36,7 +37,8 @@ beforeEach(() => {
     localStorage.clear();
     usePaths.setState(usePaths.getInitialState(), true);
     useTokenHistory.setState({ entries: [] });
-    useUi.setState({ tokenHistoryOpen: false });
+    useUi.setState({ historyView: null });
+    useHistory.setState({ visits: [] });
 });
 afterEach(cleanup);
 
@@ -45,7 +47,7 @@ describe("토큰 기록 판", () => {
         pasteState(`${T1} ${T3}`);
         renderButton();
         // 실제 브라우저는 누른 버튼에 포커스를 준다 — jsdom 의 click 은 안 주므로 먼저 준다
-        const button = screen.getByRole("button", { name: "토큰 기록" });
+        const button = screen.getByRole("button", { name: "기록" });
         act(() => button.focus());
         expect(document.activeElement).toBe(button);
         fireEvent.click(button);
@@ -59,7 +61,7 @@ describe("토큰 기록 판", () => {
     it("w/s 로 고르고 Space 로 다시 연다 — 선을 바꾼 뒤에도 원래 선으로, 순서는 그대로", () => {
         pasteState(`${T1} ${T2} ${T3}`);
         renderButton();
-        act(() => useUi.getState().toggleTokenHistory());
+        act(() => useUi.getState().toggleHistory());
         press("s");
         expect(selected()).toBe(T2);
         press(" ");
@@ -74,11 +76,11 @@ describe("토큰 기록 판", () => {
     it("입력칸 포커스면 w/s·Space 를 가로채지 않는다 · 닫히면 키를 놓는다", () => {
         pasteState(`${T1} ${T2}`);
         renderButton();
-        act(() => useUi.getState().toggleTokenHistory());
+        act(() => useUi.getState().toggleHistory());
         const input = screen.getByRole("textbox", { name: "칸" });
         press("s", input);
         expect(selected()).toBe(T1);
-        act(() => useUi.getState().closeTokenHistory());
+        act(() => useUi.getState().closeHistory());
         const ev = new KeyboardEvent("keydown", { key: "s", bubbles: true, cancelable: true });
         act(() => void window.dispatchEvent(ev));
         expect(ev.defaultPrevented).toBe(false);
@@ -86,7 +88,7 @@ describe("토큰 기록 판", () => {
     it("고른 줄은 토큰으로 쥔다 — 위 줄을 지워도 그대로, 다시 붙여넣으면(첫 토큰이 같아도) 맨 위로", () => {
         pasteState(`${T1} ${T2} ${T3}`);
         renderButton();
-        act(() => useUi.getState().toggleTokenHistory());
+        act(() => useUi.getState().toggleHistory());
         press("s");
         press("s");
         expect(selected()).toBe(T3);
@@ -101,13 +103,13 @@ describe("토큰 기록 판", () => {
         act(() => void pasteState(T3)); // T3 가 맨 위, 열린 것은 T3
         act(() => useTokenHistory.getState().push([T2])); // 기록만 바꿔 맨 위 = T2(열린 것은 그대로 T3)
         renderButton();
-        act(() => useUi.getState().toggleTokenHistory());
+        act(() => useUi.getState().toggleHistory());
         expect(selected()).toBe(T3);
     });
     it("전체 지우기 — 확인 줄을 거쳐 지운다, 취소하면 그대로", () => {
         pasteState(`${T1} ${T2}`);
         renderButton();
-        act(() => useUi.getState().toggleTokenHistory());
+        act(() => useUi.getState().toggleHistory());
         fireEvent.click(screen.getByRole("button", { name: "전체 지우기" }));
         fireEvent.click(screen.getByRole("button", { name: "취소" }));
         expect(useTokenHistory.getState().entries).toHaveLength(2);
@@ -117,3 +119,55 @@ describe("토큰 기록 판", () => {
         expect(useTokenHistory.getState().entries).toHaveLength(0);
     });
 });
+
+describe("기록 판 — Tab 순환 · 탐색 기록", () => {
+    const view = () => document.querySelector('[data-history-tabs] [aria-pressed="true"]')?.textContent ?? null;
+    const visitSel = () => document.querySelector("[data-visit][data-selected]")?.getAttribute("data-visit");
+    const V = (code: string, date: string, time: string) => ({ code, date, time, at: 0 });
+
+    it("Tab(cycleHistory) = 닫힘 → 토큰 기록 → 탐색 기록 → 닫힘, 「기록」 버튼 = 닫혀 있으면 토큰·열려 있으면 닫기", () => {
+        renderButton();
+        expect(view()).toBeNull();
+        act(() => useUi.getState().cycleHistory());
+        expect(view()).toBe("토큰 기록");
+        act(() => useUi.getState().cycleHistory());
+        expect(view()).toBe("탐색 기록");
+        act(() => useUi.getState().cycleHistory());
+        expect(view()).toBeNull();
+        fireEvent.click(screen.getByRole("button", { name: "기록" }));
+        expect(view()).toBe("토큰 기록");
+        fireEvent.click(screen.getByRole("button", { name: "탐색 기록" })); // 판 머리 이름으로도 넘긴다
+        expect(view()).toBe("탐색 기록");
+        fireEvent.click(screen.getByRole("button", { name: "기록" }));
+        expect(view()).toBeNull();
+    });
+
+    it("탐색 기록 — 처음엔 활성 경로가 보는 줄, w/s 로 고르고 Space 로 활성 경로를 그 종목·날짜(마지막 시각)로, 순서는 그대로", () => {
+        useHistory.setState({ visits: [V("402340", "2026-07-31", "10:30"), V("009150", "2026-07-30", "09:05"), V("005930", "2026-07-29", "")] });
+        usePaths.getState().write("A", { code: "009150", date: "2026-07-30" });
+        renderButton();
+        act(() => useUi.getState().setHistoryView("visit"));
+        expect(visitSel()).toBe("009150@2026-07-30");
+        press("s");
+        expect(visitSel()).toBe("005930@2026-07-29");
+        press("s"); // 끝에서 멈춘다
+        press("w");
+        press("w");
+        expect(visitSel()).toBe("402340@2026-07-31");
+        press(" ");
+        expect(active()).toMatchObject({ code: "402340", date: "2026-07-31", time: "10:30" });
+        expect(useHistory.getState().visits.map((v) => v.code)).toEqual(["402340", "009150", "005930"]);
+        expect(view()).toBe("탐색 기록"); // 판은 열린 채
+    });
+
+    it("탐색 기록 줄을 누르면 활성 경로로 열고, × 는 그 줄만 지운다", () => {
+        useHistory.setState({ visits: [V("402340", "2026-07-31", "10:30"), V("009150", "2026-07-30", "09:05")] });
+        renderButton();
+        act(() => useUi.getState().setHistoryView("visit"));
+        fireEvent.click(document.querySelector<HTMLElement>('[data-visit="009150@2026-07-30"]')!);
+        expect(active()).toMatchObject({ code: "009150", date: "2026-07-30", time: "09:05" });
+        fireEvent.click(document.querySelector<HTMLElement>('[data-visit="402340@2026-07-31"] button')!);
+        expect(useHistory.getState().visits.map((v) => v.code)).toEqual(["009150"]);
+    });
+});
+
