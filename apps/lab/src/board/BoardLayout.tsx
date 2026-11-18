@@ -134,6 +134,9 @@ export function BoardLayout({
             return { theme: r.theme, kind: r.kind, common: g.stocks.filter((s) => s.themes.includes(r.theme)).length, total: roster.length };
         });
 
+    // 머리 우클릭 메뉴 — 현재 종목의 테마들(띠 순서 = shift+w/s 순서) 중 고르기. 부착 판(onNavSelect 를 받을 때)에서만.
+    const navMenu = onNavSelect ? { themes: focusThemes(), current: navTheme, pick: onNavSelect } : undefined;
+
     // 띠 카드는 펼쳐 현재 종목이 보이게 한다. key 를 갈라 띠 진입·이탈 때 다시 마운트(펼침 반영).
     const renderCard = (g: ThemeGroup<BoardStock>, promotedCard = false): JSX.Element => (
         <div key={`${g.theme}${promotedCard ? "-promoted" : ""}`} ref={(el) => register(g.theme, el)} data-band={promotedCard ? "current" : undefined} style={{ scrollMarginTop: 8 }}>
@@ -147,6 +150,7 @@ export function BoardLayout({
                 initialMode={promotedCard ? "open" : "collapsed"}
                 navSelected={g.theme === navTheme}
                 onNavSelect={onNavSelect ? () => onNavSelect(g.theme) : undefined}
+                navMenu={navMenu}
             />
         </div>
     );

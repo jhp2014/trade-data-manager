@@ -1,6 +1,9 @@
-// 테마 카드 — 머리(테마명·종목 수) + 종목 줄 + 관련 테마 줄. 머리 클릭 = 접기/펼치기, w/s 부착 판에선 테마 이름 클릭 = w/s 선택 테마.
+// 테마 카드 — 머리(테마명·종목 수) + 종목 줄 + 관련 테마 줄. 머리 클릭 = 접기/펼치기, w/s 부착 판에선 테마 이름 클릭 = w/s 선택 테마,
+// 머리 우클릭 = 선택 테마 고르기 메뉴(현재 종목의 테마들 + 이 카드가 그 밖이면 「이 테마로 옮겨 걷기」).
 // workbench components/board/BoardCard.tsx 에서 옮겼다(즐겨찾기·수동 숨김·드래그는 뺐다).
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { FloatingSurface } from "../ui/popover/FloatingSurface.js";
+import { MENU_PAD, MenuItem } from "../ui/popover/menu.js";
 import { ScrollRow } from "../ui/ScrollRow.js";
 import { StockRow } from "./StockRow.js";
 import { cardSections } from "./themeNav.js";
@@ -17,6 +20,7 @@ export function ThemeCard({
     initialMode = "collapsed",
     navSelected = false,
     onNavSelect,
+    navMenu,
 }: {
     theme: string;
     stocks: BoardStock[];
@@ -30,8 +34,12 @@ export function ThemeCard({
     navSelected?: boolean;
     /** 테마 이름 클릭 = 이 테마를 w/s 선택 테마로(부착 판에서만 준다). 없으면 이름도 머리처럼 접기다. */
     onNavSelect?: () => void;
+    /** 머리 우클릭 메뉴 — 현재 종목의 테마들(띠 순서)과 지금 선택, 고르기. 부착 판에서만 준다(없으면 우클릭은 브라우저 몫). */
+    navMenu?: { themes: readonly string[]; current: string | null; pick: (theme: string) => void };
 }): JSX.Element {
     const [mode, setMode] = useState<ListMode>(initialMode);
+    const headRef = useRef<HTMLDivElement>(null);
+    const [menuOpen, setMenuOpen] = useState(false);
     const { movers, rest } = cardSections(stocks);
     const hot = stocks.some((s) => s.signal); // 1분 신호 종목이 있으면 카드 테두리가 깜빡인다
     const hasFocus = stocks.some((s) => s.code === focusCode);
@@ -44,7 +52,16 @@ export function ThemeCard({
             <div style={{ flexShrink: 0, width: 3, alignSelf: "stretch", background: railBg }} />
             <div style={{ flex: 1, minWidth: 0 }}>
                 <div
+                    ref={headRef}
                     onClick={toggle}
+                    onContextMenu={
+                        navMenu
+                            ? (e) => {
+                                  e.preventDefault();
+                                  setMenuOpen(true);
+                              }
+                            : undefined
+                    }
                     title={mode === "open" ? "카드 접기" : "카드 펼치기"}
                     style={{
                         display: "flex",
@@ -82,6 +99,19 @@ export function ThemeCard({
                         {stocks.length}
                     </span>
                 </div>
+                {/* 메뉴는 머리 div 밖에 — portal 이어도 React 클릭이 머리(접기)로 버블하지 않게. */}
+                {menuOpen && navMenu && (
+                    <FloatingSurface anchorRef={headRef} place={{ side: "below", align: "start", gap: 2 }} onClose={() => setMenuOpen(false)} layout="column" width={220} padding={0}>
+                        <NavThemeMenu
+                            theme={theme}
+                            menu={navMenu}
+                            onPick={(t) => {
+                                navMenu.pick(t);
+                                setMenuOpen(false);
+                            }}
+                        />
+                    </FloatingSurface>
+                )}
 
                 {/* 주도주 | 나머지 — 선 대신 틈으로 가른다(줄 구분선을 뺀 것과 같은 결). */}
                 {mode === "open" && (
@@ -98,6 +128,25 @@ export function ThemeCard({
 
                 {related && related.length > 0 && onGoto && <InfoLine home={theme} homeTotal={stocks.length} related={related} onGoto={onGoto} />}
             </div>
+        </div>
+    );
+}
+
+/** 선택 테마 고르기 — 이 카드가 현재 종목의 테마 밖이면 맨 위에 「이 테마로 옮겨 걷기」(그 테마 첫 줄로 간다). */
+function NavThemeMenu({ theme, menu, onPick }: { theme: string; menu: { themes: readonly string[]; current: string | null }; onPick: (theme: string) => void }): JSX.Element {
+    const outside = !menu.themes.includes(theme);
+    return (
+        <div data-nav-menu="" style={{ padding: MENU_PAD, overflowY: "auto", maxHeight: 320 }}>
+            {outside && (
+                <MenuItem onClick={() => onPick(theme)} title="이 테마의 첫 종목으로 가서 w/s 로 걷는다">
+                    「{theme}」 테마로 옮겨 걷기
+                </MenuItem>
+            )}
+            {menu.themes.map((t) => (
+                <MenuItem key={t} mark="radio" on={t === menu.current} selected={t === menu.current} onClick={() => onPick(t)}>
+                    {t}
+                </MenuItem>
+            ))}
         </div>
     );
 }

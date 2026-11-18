@@ -301,5 +301,35 @@ describe("BoardPanel — w/s 순회", () => {
         await waitFor(() => expect(seen.some((el) => el.querySelector('[data-theme-name="HBM"]') !== null)).toBe(true));
         spy.mockRestore();
     });
+
+    it("부착 판 카드 머리 우클릭 = 현재 종목의 테마들 중 고르기(지금 선택에 ●)", async () => {
+        await mountReady(market());
+        attachBoard();
+        fireEvent.click(bandThemeName("HBM"));
+        fireEvent.contextMenu(bandThemeName("반도체").parentElement!);
+        const menu = document.querySelector("[data-nav-menu]")!;
+        const items = [...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].map((b) => b.textContent);
+        expect(items.map((t) => t?.replace(/^[●○]/, ""))).toEqual(expect.arrayContaining(["반도체", "HBM"]));
+        expect(items.find((t) => t?.includes("HBM"))?.startsWith("●")).toBe(true);
+        fireEvent.click([...menu.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((b) => b.textContent?.includes("반도체"))!);
+        await waitFor(() => expect(selectedTheme()).toBe("반도체"));
+        expect(pathCode()).toBe("000003");
+        expect(document.querySelector("[data-nav-menu]")).toBeNull();
+    });
+
+    it("띠 밖 카드 머리 우클릭엔 「이 테마로 옮겨 걷기」 — 그 테마 첫 줄로", async () => {
+        await mountReady(market());
+        attachBoard();
+        fireEvent.contextMenu(document.querySelector<HTMLElement>('[data-theme-name="조선"]')!.parentElement!);
+        fireEvent.click(screen.getByRole("menuitem", { name: /조선」 테마로 옮겨 걷기/ }));
+        expect(["000001", "000002"]).toContain(pathCode());
+        await waitFor(() => expect(selectedTheme()).toBe("조선"));
+    });
+
+    it("부착 안 된 판에선 머리 우클릭 메뉴가 없다", async () => {
+        await mountReady(market());
+        fireEvent.contextMenu(bandThemeName("반도체").parentElement!);
+        expect(document.querySelector("[data-nav-menu]")).toBeNull();
+    });
 });
 
