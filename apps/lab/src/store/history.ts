@@ -27,6 +27,8 @@ interface HistoryState {
     /** 같은 (종목, 날짜)의 시각만 갱신 — 자리는 그대로. 기록에 없으면 아무것도 안 한다. */
     touchTime: (code: string, date: string, time: string) => void;
     remove: (code: string, date: string) => void;
+    /** 전부 지운다(기록 판 「전체 지우기」 — 확인 줄을 거친다). */
+    clear: () => void;
 }
 
 export const useHistory = create<HistoryState>()(
@@ -46,6 +48,7 @@ export const useHistory = create<HistoryState>()(
                     return { visits: st.visits.map((v) => (keyOf(v) === k ? { ...v, time } : v)) };
                 }),
             remove: (code, date) => set((st) => ({ visits: st.visits.filter((v) => keyOf(v) !== keyOf({ code, date })) })),
+            clear: () => set({ visits: [] }),
         }),
         {
             name: "trade-lab.history",

@@ -1,12 +1,15 @@
 // 기록 판의 「탐색 기록」 화면 — 어느 경로에서든 본 (종목, 날짜)를 최신순으로(store/history). 옛 경로 우클릭 판의 「기록」을 옮겨 왔다.
 // 열기(누름 · Space) = **활성 경로**를 그 종목·날짜(마지막으로 본 시각)로 — 판은 열린 채, 기록 순서도 그대로(차례로 훑게).
-// w/s 고르기 · Space 열기는 토큰 기록과 같은 판 안 키(useListKeys). 줄의 × 는 마우스를 올릴 때만(.history-row, styles.css).
+// w/s 고르기 · Space 열기는 토큰 기록과 같은 판 안 키(useListKeys). 줄의 × 는 마우스를 올릴 때만(.history-row, styles.css),
+// 「전체 지우기」는 토큰 기록처럼 확인 줄을 거친다.
 import { useEffect, useRef, useState } from "react";
 import { usePaths } from "../store/paths.js";
 import { returnTo, useHistory, type Visit } from "../store/history.js";
 import { useStockNameOf } from "../market/queries.js";
 import { dateLabel } from "../lib/date.js";
 import { stockLabel } from "./pathSummary.js";
+import { useConfirm } from "../ui/ConfirmBar.js";
+import { smallButton } from "../ui/chrome.js";
 import { MUTED, Note, useListKeys } from "./historyList.js";
 
 const keyOf = (v: Pick<Visit, "code" | "date">): string => `${v.code}@${v.date}`;
@@ -14,6 +17,8 @@ const keyOf = (v: Pick<Visit, "code" | "date">): string => `${v.code}@${v.date}`
 export function VisitHistoryMenu(): JSX.Element {
     const visits = useHistory((st) => st.visits);
     const remove = useHistory((st) => st.remove);
+    const clear = useHistory((st) => st.clear);
+    const confirm = useConfirm();
     const nameOf = useStockNameOf();
     const activeId = usePaths((st) => st.active);
     const activeS = usePaths((st) => st.paths.find((p) => p.id === st.active)?.s);
@@ -79,7 +84,16 @@ export function VisitHistoryMenu(): JSX.Element {
                 </div>
             )}
             <div style={{ display: "flex", alignItems: "center", borderTop: "1px solid var(--border)", marginTop: 4, padding: "4px 8px 2px 12px", minHeight: 24 }}>
-                <Note style={{ flex: 1, fontSize: 10.5 }}>본 종목·날짜 · 최신순 — w/s 고르기 · Space 활성 경로로 열기</Note>
+                {confirm.bar("clear") ?? (
+                    <>
+                        <Note style={{ flex: 1, fontSize: 10.5 }}>본 종목·날짜 · 최신순 — w/s 고르기 · Space 활성 경로로 열기</Note>
+                        {visits.length > 0 && (
+                            <button style={{ ...smallButton, fontSize: 10.5 }} onClick={() => confirm.ask("clear", `탐색 기록 ${visits.length}줄을 전부 지울까?`, "전체 지우기", clear)}>
+                                전체 지우기
+                            </button>
+                        )}
+                    </>
+                )}
             </div>
         </div>
     );

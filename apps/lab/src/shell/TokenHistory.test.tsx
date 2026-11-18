@@ -169,5 +169,18 @@ describe("기록 판 — Tab 순환 · 탐색 기록", () => {
         fireEvent.click(document.querySelector<HTMLElement>('[data-visit="402340@2026-07-31"] button')!);
         expect(useHistory.getState().visits.map((v) => v.code)).toEqual(["009150"]);
     });
+
+    it("탐색 기록 전체 지우기 — 확인 줄을 거쳐 지운다, 취소하면 그대로", () => {
+        useHistory.setState({ visits: [V("402340", "2026-07-31", "10:30"), V("009150", "2026-07-30", "09:05")] });
+        renderButton();
+        act(() => useUi.getState().setHistoryView("visit"));
+        fireEvent.click(screen.getByRole("button", { name: "전체 지우기" }));
+        fireEvent.click(screen.getByRole("button", { name: "취소" }));
+        expect(useHistory.getState().visits).toHaveLength(2);
+        fireEvent.click(screen.getByRole("button", { name: "전체 지우기" }));
+        fireEvent.click(screen.getByRole("alertdialog").querySelector("button")!);
+        expect(useHistory.getState().visits).toHaveLength(0);
+        expect(screen.queryByRole("button", { name: "전체 지우기" })).toBeNull(); // 비면 버튼도 없다
+    });
 });
 
