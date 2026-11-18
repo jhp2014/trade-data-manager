@@ -12,7 +12,7 @@ import { usePanelUiStore } from "../store/panelUi.js";
 import { Framed, headerLine, openControls, pinToLine, resetHeaderLedger } from "../test/framed.js";
 import { ChartPanel } from "./ChartPanel.js";
 
-const seen = vi.hoisted(() => ({ daily: [] as { onPickDate: (d: string) => void; frameKey: string; onNeedOlder?: () => void }[], minute: [] as { onPickTime: (d: string, t: string) => void; markerTime: number | null }[] }));
+const seen = vi.hoisted(() => ({ daily: [] as { onPickDate: (d: string) => void; frameKey: string; onNeedOlder?: () => void }[], minute: [] as { onPickTime: (d: string, t: string) => void; markerTime: number | null; markerInfo?: { time: number; high: number; close: number; amount: number; baseFallback?: boolean } | null; axis?: string }[] }));
 vi.mock("../chart/DailyChart.js", () => ({
     DailyChart: (p: { onPickDate: (d: string) => void; frameKey: string; onNeedOlder?: () => void }) => {
         seen.daily.push(p);
@@ -141,6 +141,27 @@ describe("ChartPanel", () => {
         renderPanels(fakeMarket());
         await screen.findByTestId("minute");
         expect(seen.minute.at(-1)!.markerTime).toBe(Date.parse("2026-07-31T09:44:00+09:00") / 1000);
+    });
+
+    it("시각선 꼭대기 정보 = 그 시각 이하 마지막 봉의 고가·종가(당일 %)·거래대금 — 축이 「가격」이어도 %", async () => {
+        usePaths.getState().write("A", { code: "402340", date: "2026-07-31", time: "09:44" });
+        const bar0900 = Date.parse("2026-07-31T09:00:00+09:00") / 1000; // 가짜 분봉은 09:00 봉 하나(기준가 1000 = 종가 → 0%)
+        renderPanels(fakeMarket());
+        await screen.findByTestId("minute");
+        expect(seen.minute.at(-1)!.markerInfo).toMatchObject({ time: bar0900, high: 0, close: 0 });
+        act(() => usePanelUiStore.getState().set("chart-1", "minuteAxis", "price"));
+        await waitFor(() => {
+            const last = seen.minute.at(-1)!;
+            expect(last.axis).toBe("price"); // 직전(% 축) 렌더로 통과하지 않게 — 「가격」 축 렌더를 기다린다
+            expect(last.markerInfo).toMatchObject({ time: bar0900, high: 0, close: 0, baseFallback: false });
+        });
+    });
+
+    it("시각이 없으면(장 마감) 시각선도 정보 칸도 없다", async () => {
+        usePaths.getState().write("A", { code: "402340", date: "2026-07-31" });
+        renderPanels(fakeMarket());
+        await screen.findByTestId("minute");
+        expect(seen.minute.at(-1)!.markerInfo).toBeNull();
     });
 
     it("보기 설정은 패널마다 따로", async () => {

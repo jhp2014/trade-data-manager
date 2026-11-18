@@ -1,7 +1,8 @@
 // 분봉 차트 세로선 — lightweight-charts v5 는 네이티브 세로선이 없어 series primitive 로 구현.
 // 지정 시각(unix초)들에 pane 전체 높이를 가로지르는 선을 그린다(지금은 경로 시각선 하나).
 // 캔들 pane 과 거래대금 pane 두 series 에 각각 부착하면(같은 timeScale x 공유) 세로선이 아래까지 이어진다.
-import type { IChartApi, ISeriesPrimitive, Time, UTCTimestamp } from "lightweight-charts";
+// label 을 주면 시간축에 그 글자를 선 색 바탕으로 붙인다(크로스헤어 시간 라벨과 같은 자리·모양) — 시간축은 하나라 한 series 에만 줄 것.
+import type { IChartApi, ISeriesPrimitive, ISeriesPrimitiveAxisView, Time, UTCTimestamp } from "lightweight-charts";
 
 // fancy-canvas 타입이 lightweight-charts 에서 재노출되지 않아 최소 구조만 로컬 선언(우리가 쓰는 필드만).
 interface BitmapScope {
@@ -19,6 +20,8 @@ export interface VertLineSpec {
     color: string;
     width?: number; // px (기본 1)
     dashed?: boolean; // 기본 실선
+    /** 시간축 라벨(예: "10:32") — 없으면 라벨 없음. */
+    label?: string;
 }
 
 /** 화면 좌표로 해소된 선(x=null 이면 범위 밖 → 생략). */
@@ -82,10 +85,38 @@ class VertLinesPaneView {
     }
 }
 
+/** 시간축 라벨 하나 — 선 색 바탕 + 흰 글씨. 좌표는 updateAllViews 때 해소해 둔다. */
+class VertLineTimeAxisView implements ISeriesPrimitiveAxisView {
+    constructor(
+        private readonly _x: number,
+        private readonly _label: string,
+        private readonly _color: string,
+    ) {}
+    coordinate(): number {
+        return this._x;
+    }
+    text(): string {
+        return this._label;
+    }
+    textColor(): string {
+        return "#ffffff";
+    }
+    backColor(): string {
+        return this._color;
+    }
+    visible(): boolean {
+        return true;
+    }
+    tickVisible(): boolean {
+        return true;
+    }
+}
+
 export class VertLines {
     chart: IChartApi | null = null;
     lines: VertLineSpec[] = [];
     private readonly _paneViews: VertLinesPaneView[];
+    private _axisViews: VertLineTimeAxisView[] = [];
     private _requestUpdate?: () => void;
 
     constructor(lines: VertLineSpec[] = []) {
@@ -102,6 +133,18 @@ export class VertLines {
     }
     updateAllViews(): void {
         for (const v of this._paneViews) v.update();
+        const ts = this.chart?.timeScale();
+        const out: VertLineTimeAxisView[] = [];
+        if (ts)
+            for (const l of this.lines) {
+                if (l.label === undefined) continue;
+                const c = ts.timeToCoordinate(l.time);
+                if (c !== null) out.push(new VertLineTimeAxisView(c as number, l.label, l.color));
+            }
+        this._axisViews = out;
+    }
+    timeAxisViews(): VertLineTimeAxisView[] {
+        return this._axisViews;
     }
     paneViews(): VertLinesPaneView[] {
         return this._paneViews;

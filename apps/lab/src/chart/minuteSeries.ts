@@ -127,7 +127,8 @@ export function useTimeLine(series: MinuteSeries, points: MinutePoint[], markerT
     const snapped = useMemo(() => snapToBar(points, markerTime), [points, markerTime]);
     useEffect(() => {
         const specs: VertLineSpec[] = snapped == null ? [] : [{ time: snapped as UTCTimestamp, color: TIME_LINE_COLOR, width: 1, dashed: true }];
-        series.candleVertsRef.current?.setLines(specs);
+        // 시간축 라벨(그 봉의 HH:MM)은 캔들 쪽 선에만 — 시간축은 하나라 두 pane 에 다 주면 같은 자리에 두 번 그린다.
+        series.candleVertsRef.current?.setLines(specs.map((s) => ({ ...s, label: kstHHmm(s.time) })));
         series.amountVertsRef.current?.setLines(specs);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [snapped, series.gen]);

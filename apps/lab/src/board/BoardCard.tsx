@@ -68,9 +68,11 @@ export function ThemeCard({
                         title={onNavSelect ? (navSelected ? "w/s 로 걷는 테마 (shift+w/s = 테마 바꾸기)" : "이 테마를 w/s 로 걷기") : undefined}
                         style={{
                             fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
-                            // 선택 테마 = 채운 알약(진한 청록 + 흰 글씨). 패딩만큼 왼쪽으로 당겨 글자 자리는 그대로.
+                            // 선택 테마 = 채운 알약(진한 청록 + 흰 글씨) — 이름보다 한 단계 작게(12px · 줄 높이 18px)라 머리 줄에 위아래 틈이 남는다.
+                            // 이름 줄 높이(13px × 1.5 = 19.5px)와의 차이를 위아래 margin 으로 메워 머리 줄 높이는 그대로 — 선택이 옮겨 갈 때
+                            // 카드 높이가 바뀌면 그 아래가 흔들린다. 좌우 패딩만큼 왼쪽으로 당겨 글자 시작 자리도 그대로.
                             ...(navSelected
-                                ? { color: "#fff", background: "var(--accent-primary)", borderRadius: 4, padding: "1px 7px", margin: "-1px 0 -1px -7px" }
+                                ? { color: "#fff", background: "var(--accent-primary)", borderRadius: 3, padding: "0 6px", margin: "0.75px 0 0.75px -6px", fontSize: 12, lineHeight: "18px" }
                                 : { color: "var(--text-primary)" }),
                         }}
                     >
