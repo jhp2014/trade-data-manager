@@ -1,6 +1,6 @@
 // 테마 보드 판 — 새 날짜를 받는 동안: 직전 판을 흐리게(그 판의 종목 그대로) + 가운데 카드, 도착하면 새 종목 테마를 위로.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MarketProvider } from "../market/MarketProvider.js";
 import { fakeMarket } from "../market/testing.js";
@@ -8,10 +8,13 @@ import { kstToUnix } from "../market/domain.js";
 import type { DayFlow, LabReplayDay } from "../market/types.js";
 import { usePaths } from "../store/paths.js";
 import { usePanelUiStore } from "../store/panelUi.js";
+import { useRowNav } from "../store/rowNav.js";
+import { useKeymap } from "../keymap/useKeymap.js";
 import { Framed, resetHeaderLedger } from "../test/framed.js";
 import { BoardPanel } from "./BoardPanel.js";
 
-const THEMES: Record<string, string> = { "000001": "조선", "000002": "조선", "000003": "반도체", "000004": "반도체" };
+/** 종목 → 테마들. 000003 은 두 테마(반도체 · HBM) — shift+w/s 로 선택 테마를 바꾼다. */
+const THEMES: Record<string, string[]> = { "000001": ["조선"], "000002": ["조선"], "000003": ["반도체", "HBM"], "000004": ["반도체"], "000005": ["HBM"] };
 
 function flowOf(date: string): DayFlow {
     const t = kstToUnix(date, "09:00:00");
@@ -32,7 +35,7 @@ function flowOf(date: string): DayFlow {
 }
 
 function replayOf(date: string): LabReplayDay {
-    return { date, rows: Object.entries(THEMES).map(([code, theme]) => ({ code, name: code, labels: [{ theme, basis: ["issue"], from: "open" }], why: "" })) };
+    return { date, rows: Object.entries(THEMES).map(([code, themes]) => ({ code, name: code, labels: themes.map((theme) => ({ theme, basis: ["issue"], from: "open" })), why: "" })) };
 }
 
 /** hold 를 켜면 /day-flow 응답을 붙잡아 두었다가 release() 로 내보낸다. fail 에 든 날짜는 실패한다. */
@@ -64,11 +67,18 @@ beforeEach(() => {
     usePaths.setState(usePaths.getInitialState(), true);
     usePanelUiStore.setState({ ui: {} });
     resetHeaderLedger();
+    useRowNav.setState({ attached: null });
 });
 afterEach(cleanup);
 
 const stale = (): boolean => document.querySelector("[data-stale]") !== null;
 const pendingCard = (): Element | null => document.querySelector("[data-pending-card]");
+
+/** 앱처럼 전역 단축키 디스패처를 하나 건다. */
+function Keys(): null {
+    useKeymap();
+    return null;
+}
 
 /** 판을 띄우고 000003(반도체) @ 2026-11-12 14:05 가 다 그려질 때까지 기다린다. */
 async function mountReady(m: ReturnType<typeof market>): Promise<void> {
@@ -76,6 +86,7 @@ async function mountReady(m: ReturnType<typeof market>): Promise<void> {
     render(
         <QueryClientProvider client={qc}>
             <MarketProvider market={m}>
+                <Keys />
                 <Framed panelId="board-1">
                     <BoardPanel panelId="board-1" />
                 </Framed>
@@ -160,3 +171,119 @@ describe("BoardPanel — 새 날짜를 받는 동안", () => {
         expect(pendingCard()).toBeNull();
     });
 });
+
+const pathCode = (): string => usePaths.getState().paths.find((p) => p.id === usePaths.getState().active)!.s.code;
+const press = (key: string, shiftKey = false): void => {
+    fireEvent.keyDown(window, { key, shiftKey });
+};
+/** 띠(현재 종목)에서 그 테마 이름 — 누르면 선택 + 부착. */
+const bandThemeName = (theme: string): HTMLElement => document.querySelector<HTMLElement>(`[data-band="current"] [data-theme-name="${theme}"]`)!;
+const selectedTheme = (): string | null => document.querySelector('[data-nav-theme="selected"]')?.textContent ?? null;
+
+describe("BoardPanel — w/s 순회", () => {
+    it("부착 전엔 w/s 가 아무것도 안 하고, 선택 테마도 안 보인다", async () => {
+        await mountReady(market());
+        expect(selectedTheme()).toBeNull();
+        press("s");
+        expect(pathCode()).toBe("000003");
+    });
+
+    it("테마 이름을 누르면 부착 + 알약 — w/s 가 그 테마 안을 돌고, 끝에서 처음으로", async () => {
+        await mountReady(market());
+        fireEvent.click(bandThemeName("HBM"));
+        expect(useRowNav.getState().attached).toBe("board-1");
+        expect(selectedTheme()).toBe("HBM");
+        expect(pathCode()).toBe("000003"); // 현재 종목이 든 테마라 종목은 그대로
+        press("s");
+        expect(pathCode()).toBe("000005");
+        await waitFor(() => expect(selectedTheme()).toBe("HBM")); // 걸어도 선택 테마는 그대로(새 종목도 HBM)
+        press("s");
+        expect(pathCode()).toBe("000003"); // 순환
+        press("w");
+        expect(pathCode()).toBe("000005");
+    });
+
+    it("shift+w/s 는 현재 종목의 테마들 사이에서 선택을 바꾼다 — 그 뒤 w/s 는 새 테마 안", async () => {
+        await mountReady(market());
+        fireEvent.click(bandThemeName("반도체"));
+        expect(selectedTheme()).toBe("반도체");
+        press("S", true);
+        await waitFor(() => expect(selectedTheme()).toBe("HBM"));
+        press("S", true);
+        await waitFor(() => expect(selectedTheme()).toBe("반도체")); // 순환
+        press("s");
+        expect(pathCode()).toBe("000004");
+    });
+
+    it("새 날짜를 받는 동안엔 걷지 않는다", async () => {
+        const m = market();
+        await mountReady(m);
+        fireEvent.click(bandThemeName("반도체"));
+        m.hold = true;
+        write({ date: "2026-11-14" });
+        await waitFor(() => expect(pendingCard()).not.toBeNull());
+        press("s");
+        expect(pathCode()).toBe("000003");
+        act(() => m.release());
+        await waitFor(() => expect(pendingCard()).toBeNull());
+        await waitFor(() => expect(selectedTheme()).toBe("반도체"));
+        press("s");
+        expect(pathCode()).toBe("000004");
+    });
+
+    it("띠 밖 테마 이름을 누르면 그 테마 첫 줄로 가서 걷기 시작한다", async () => {
+        await mountReady(market());
+        fireEvent.click(document.querySelector<HTMLElement>('[data-theme-name="조선"]')!);
+        expect(["000001", "000002"]).toContain(pathCode());
+        await waitFor(() => expect(selectedTheme()).toBe("조선"));
+        const first = pathCode();
+        press("s");
+        expect(pathCode()).toBe(first === "000001" ? "000002" : "000001");
+    });
+
+    it("평면 목록 보기에선 걷지 않는다", async () => {
+        await mountReady(market());
+        fireEvent.click(bandThemeName("반도체"));
+        act(() => usePanelUiStore.getState().set("board-1", "view", "amount"));
+        press("s");
+        expect(pathCode()).toBe("000003");
+    });
+
+    it("걸으면 선택 카드 안의 현재 종목 줄을 화면으로 데려온다", async () => {
+        await mountReady(market());
+        fireEvent.click(bandThemeName("반도체"));
+        const seen: Element[] = [];
+        const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+            seen.push(this);
+        });
+        press("s");
+        await waitFor(() => expect(seen.some((el) => el.getAttribute("data-selected") === "true" && el.textContent?.includes("000004"))).toBe(true));
+        spy.mockRestore();
+    });
+
+    it("띠 카드에서 종목을 직접 고르면 선택 테마가 바뀌어도 판은 제자리", async () => {
+        await mountReady(market());
+        fireEvent.click(bandThemeName("반도체"));
+        const spy = vi.spyOn(Element.prototype, "scrollIntoView");
+        const hbmCard = bandThemeName("HBM").closest('[data-band="current"]')!;
+        const row = [...hbmCard.querySelectorAll<HTMLElement>("button")].find((b) => b.textContent?.includes("000005"))!;
+        fireEvent.click(row);
+        expect(pathCode()).toBe("000005");
+        await waitFor(() => expect(selectedTheme()).toBe("HBM")); // 000005 는 반도체에 없다 → 선택 테마가 HBM 으로
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+    });
+
+    it("shift+w/s 로 테마만 바꾸면 그 카드로 스크롤한다", async () => {
+        await mountReady(market());
+        fireEvent.click(bandThemeName("반도체"));
+        const seen: Element[] = [];
+        const spy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+            seen.push(this);
+        });
+        press("S", true);
+        await waitFor(() => expect(seen.some((el) => el.querySelector('[data-theme-name="HBM"]') !== null)).toBe(true));
+        spy.mockRestore();
+    });
+});
+

@@ -1,16 +1,18 @@
 // 테마 보드 본문 — 카드(현재 종목 띠 / 나머지 / 개별·미분류).
 // workbench components/board/BoardLayout.tsx 에서 옮겼다. 바뀐 점:
-//   · 테마 고르기(즐겨찾기·선택 강조)는 없다 — 머리 클릭 = 그 카드 접기/펼치기, 관련 테마 칩 클릭 = 그 카드로 스크롤.
+//   · 즐겨찾기는 없다 — 테마 이름 클릭 = w/s 선택 테마 + 판 부착(알약 강조는 부착 판에서만), 머리 나머지 클릭 = 그 카드
+//     접기/펼치기, 관련 테마 칩 클릭 = 그 카드로 스크롤. 부착 판에선 선택 카드와 그 안 현재 종목 줄을 화면에 둔다.
 //   · 승격 출처 — 이 보드에서 직접 고른 종목이면 제자리(isSelfPick), 다른 곳(경로 줄·차트·다른 패널)에서 바뀌면
 //     그 종목이 든 테마 카드들을 맨 위 "현재 종목" 띠로 올리고 스크롤한다.
 //   · 위 칩 줄(테마 바로가기·현재 종목 테마·1분 신호 테마)과 포함관계 자동 숨김은 뺐다 — 카드는 전부 보이고,
 //     1분 신호는 카드 테두리 깜빡임이, 현재 종목이 카드 밖인 자리는 쓰는 패널의 헤더 선언이 보인다.
-//   · 즐겨찾기·드래그·수동 숨김·w/s 순회·필터는 뺐다.
+//   · 드래그·수동 숨김·필터는 뺐다. w/s 순회는 workbench 의 소유자 선택이 아니라 부착(store/rowNav)으로 다시 들였다.
 import { useEffect, useRef, useState } from "react";
 import { ThemeCard } from "./BoardCard.js";
 import { Center } from "../ui/chrome.js";
 import { relatedThemes, type Grouped, type ThemeGroup } from "./domain.js";
 import { focusPlace } from "./viewModel.js";
+import { themesOf } from "./themeNav.js";
 import type { BoardStock, RelatedInfo } from "./boardTypes.js";
 
 // 꼬리 카드(개별·미분류) — 머리 문구와 스크롤 주소를 갈라 둔다(같은 이름의 진짜 테마가 있으면 주소가 겹친다).
@@ -20,6 +22,8 @@ const INDIVIDUAL_REF = "tail:individuals";
 const UNCLASSIFIED_REF = "tail:unclassified";
 /** "현재 종목" 띠 머리 — 띠로 스크롤할 땐 첫 카드가 아니라 여기로(띠 글자가 위로 가려지지 않게). */
 const BAND_REF = "band:current";
+/** w/s 선택 카드 — 머리를 위로 두고, 그 안 현재 종목 줄이 아래로 빠지면 줄이 보일 만큼만 더 내린다(즉시 — 누르고 있어도 따라오게). */
+const NAV_FOCUS = "nav:focus";
 
 export function BoardLayout({
     grouped,
@@ -28,6 +32,8 @@ export function BoardLayout({
     onPick,
     isSelfPick,
     unclassifiedName = UNCLASSIFIED_CARD,
+    navTheme = null,
+    onNavSelect,
 }: {
     grouped: Grouped<BoardStock>;
     parents: Map<string, string[]>;
@@ -37,6 +43,10 @@ export function BoardLayout({
     isSelfPick: (code: string) => boolean;
     /** 미분류 꼬리 카드 이름 — 소속 출처가 정한다(안 주면 「미분류」). */
     unclassifiedName?: string;
+    /** w/s 선택 테마 — 그 카드 이름을 알약으로(부착된 판에서만 준다). */
+    navTheme?: string | null;
+    /** 테마 이름 클릭 = 그 테마를 w/s 선택 테마로 + 판 부착. 테마 카드에만(꼬리 카드엔 없다). */
+    onNavSelect?: (theme: string) => void;
 }): JSX.Element {
     const cardRefs = useRef(new Map<string, HTMLElement>());
     const [promoted, setPromoted] = useState<string[]>([]); // 다른 곳에서 바뀐 종목의 테마들(맨 위 띠)
@@ -48,6 +58,15 @@ export function BoardLayout({
     };
     useEffect(() => {
         if (!scrollTarget) return;
+        if (scrollTarget === NAV_FOCUS) {
+            const card = navTheme ? cardRefs.current.get(navTheme) : undefined;
+            if (card) {
+                card.scrollIntoView({ block: "start" });
+                card.querySelector<HTMLElement>('[data-selected="true"]')?.scrollIntoView({ block: "nearest" });
+            }
+            setScrollTarget(null);
+            return;
+        }
         const el = cardRefs.current.get(scrollTarget);
         if (el) {
             el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -61,7 +80,10 @@ export function BoardLayout({
     const place = focusPlace(grouped, focusCode);
     const focusInIndividuals = place === "개별";
     const focusInUnclassified = place === "미분류";
-    const focusThemes = (): string[] => grouped.themes.filter((g) => g.stocks.some((s) => s.code === focusCode)).map((g) => g.theme);
+    // 띠 = 현재 종목이 든 테마들 — shift+w/s 의 순환 순서(themeNav)와 같은 함수로(둘이 엇갈리지 않게).
+    const focusThemes = (): string[] => themesOf(grouped, focusCode).map((g) => g.theme);
+    /** 띠로 스크롤할 자리 — 부착 판에서 선택 테마가 띠에 들면 그 카드·줄, 아니면 띠 머리. */
+    const bandTarget = (themes: string[]): string => (navTheme !== null && themes.includes(navTheme) ? NAV_FOCUS : BAND_REF);
 
     // 종목이 바뀌면 — 다른 곳에서 바꿨을 때만 그 종목의 테마 전부를 띠로 올리고 스크롤.
     useEffect(() => {
@@ -72,7 +94,7 @@ export function BoardLayout({
         if (isSelfPick(focusCode)) return;
         const themes = focusThemes();
         setPromoted(themes);
-        const target = themes.length > 0 ? BAND_REF : focusInIndividuals ? INDIVIDUAL_REF : focusInUnclassified ? UNCLASSIFIED_REF : null;
+        const target = themes.length > 0 ? bandTarget(themes) : focusInIndividuals ? INDIVIDUAL_REF : focusInUnclassified ? UNCLASSIFIED_REF : null;
         if (target) setScrollTarget(target);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focusCode]);
@@ -83,12 +105,22 @@ export function BoardLayout({
         const themes = focusThemes();
         if (themes.length > 0) {
             setPromoted(themes);
-            setScrollTarget(BAND_REF);
+            setScrollTarget(bandTarget(themes));
         } else if (focusInIndividuals || focusInUnclassified) {
             setScrollTarget(focusInIndividuals ? INDIVIDUAL_REF : UNCLASSIFIED_REF);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // 종목은 그대로인데 선택 테마만 바뀌면(shift+w/s · 같은 종목에서 이름 클릭) 그 카드로 — 띠가 길면 아래 카드가 화면 밖이다.
+    // 종목도 같이 바뀌었으면 위 종목 effect 몫이다 — 이 보드에서 직접 고른 종목이면 제자리(선택 테마가 따라 바뀌어도 판을 안 움직인다).
+    const prevFocus = useRef(focusCode);
+    useEffect(() => {
+        const codeChanged = prevFocus.current !== focusCode;
+        prevFocus.current = focusCode;
+        if (!codeChanged && navTheme !== null && promoted.includes(navTheme)) setScrollTarget(NAV_FOCUS);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [navTheme, focusCode]);
 
     const promotedCards = grouped.themes.filter((g) => promoted.includes(g.theme));
     const promotedSet = new Set(promotedCards.map((g) => g.theme));
@@ -113,6 +145,8 @@ export function BoardLayout({
                 related={relatedOf(g)}
                 onGoto={gotoTheme}
                 initialMode={promotedCard ? "open" : "collapsed"}
+                navSelected={g.theme === navTheme}
+                onNavSelect={onNavSelect ? () => onNavSelect(g.theme) : undefined}
             />
         </div>
     );

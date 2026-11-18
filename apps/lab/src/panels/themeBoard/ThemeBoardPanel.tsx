@@ -1,13 +1,16 @@
 // 테마 보드 패널의 몸 — 경로의 (날짜, 시각)의 테마 단면. 시각이 없으면 장 마감(15:30).
 // 시계열(/day-flow)에는 소속이 없다 — 테마는 언제나 membership 이 입힌다(공급원은 호스트 판 몫 —
 // 지금은 BoardPanel 이 tdm-ai 장중 복기 분류 장부(/replay/day)로 입힌다).
-// 종목 줄 클릭 = 경로의 종목, 테마 머리 클릭 = 그 카드 접기/펼치기(경로에 테마는 없다).
+// 종목 줄 클릭 = 경로의 종목, 테마 이름 클릭 = w/s 선택 테마 + 이 판 부착(store/rowNav — 선택 테마는 판의 커서라 경로에 없다),
+// 머리 나머지 클릭 = 그 카드 접기/펼치기.
 // 이 패널에서 고른 종목은 판을 움직이지 않고, 다른 곳에서 바뀐 종목은 그 테마들을 맨 위로 올린다.
 // 새 날짜를 받는 동안엔 직전 판을 그 판의 (종목, 시각) 그대로 흐리게 두고 가운데 카드로 알린다(useShownMoment) —
 // 새 종목을 옛 날 판에 먼저 올리면 「다 받았다」로 읽힌다.
 import { useCallback, useMemo, type ReactNode } from "react";
 import { CLOSE_TIME, usePanelPath } from "../../store/paths.js";
-import { usePanelUi, usePanelUiNumber } from "../../store/panelUi.js";
+import { usePanelUi, usePanelUiNumber, usePanelUiText } from "../../store/panelUi.js";
+import { useIsAttached, useNavTarget, useRowNav, type NavTarget } from "../../store/rowNav.js";
+import { cardOrder, navCard, stepInCard, stepTheme, themesOf } from "../../board/themeNav.js";
 import { useDayFlow, useStockNameOf } from "../../market/queries.js";
 import { kstToUnix } from "../../market/domain.js";
 import { deriveFlow } from "../../market/flowDerive.js";
@@ -90,6 +93,38 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
     // 이 패널에서 고른 종목 — 그 종목으로 바뀐 것은 판을 움직이지 않는다(제자리). 기억 지우기는 경로의 종목으로 잰다.
     const { pick, isSelfPick } = useSelfPick(path.s.code, useCallback((c: string) => write({ code: c }), [write]));
 
+    // w/s 순회(store/rowNav) — 선택 테마는 이 판의 커서다(경로·토큰에 없다). 걷기는 경로에 바깥 쓰기(write)라
+    // 도착 종목의 테마들이 띠로 올라온다. 테마 보기에서 본문을 그리는 동안만 대상을 등록한다(대기·오류·평면 목록엔 걷지 않음).
+    const attached = useIsAttached(panelId);
+    const [prefTheme, setPrefTheme] = usePanelUiText(panelId, "navTheme");
+    const walking = view === "group" && board !== null && date !== "" && !q.isError && !membership.error && pending === null;
+    const card = board ? navCard(board.grouped, code, prefTheme) : null;
+    const navTarget = useMemo<NavTarget | null>(() => {
+        if (!walking || !board) return null;
+        return {
+            step: (dir) => {
+                const next = card ? stepInCard(card.stocks, code, dir) : null;
+                if (next !== null && next !== code) write({ code: next });
+            },
+            stepGroup: (dir) => {
+                const next = stepTheme(themesOf(board.grouped, code).map((g) => g.theme), card?.theme ?? null, dir);
+                if (next !== null) setPrefTheme(next);
+            },
+        };
+    }, [walking, board, card, code, write, setPrefTheme]);
+    useNavTarget(panelId, navTarget);
+    // 테마 이름 클릭 = 그 테마를 선택 + 이 판 부착. 현재 종목이 그 테마에 없으면 그 테마 첫 줄로 — 고른 테마를 바로 걷는다.
+    const selectNavTheme = useCallback(
+        (theme: string) => {
+            useRowNav.getState().attach(panelId);
+            setPrefTheme(theme);
+            const g = board?.grouped.themes.find((x) => x.theme === theme);
+            const first = g && !g.stocks.some((s) => s.code === code) ? cardOrder(g.stocks)[0] : undefined;
+            if (first) write({ code: first.code });
+        },
+        [panelId, setPrefTheme, board, code, write],
+    );
+
     const universe = <UniverseFields amountN={amountN} rateN={rateN} setAmountN={setAmountN} setRateN={setRateN} />;
     usePanelHeader(panelId, {
         info: [
@@ -137,6 +172,8 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
                 onPick={pick}
                 isSelfPick={isSelfPick}
                 unclassifiedName={membership.unclassified}
+                navTheme={attached ? (card?.theme ?? null) : null}
+                onNavSelect={selectNavTheme}
             />
         );
     else body = <FlatStockList stocks={board.stocks} code={code} onPick={pick} sort={view} />;

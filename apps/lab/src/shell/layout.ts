@@ -5,6 +5,7 @@
 import type { DockviewApi, SerializedDockview } from "dockview-react";
 import { ACTIVE, usePaths, type PathRef } from "../store/paths.js";
 import { usePanelUiStore } from "../store/panelUi.js";
+import { useRowNav } from "../store/rowNav.js";
 import { useDock } from "../store/dock.js";
 import type { ScreenSnapshot } from "../store/screens.js";
 import { PANEL_TYPES, panelType, slotTitle } from "./panelCatalog.js";
@@ -36,6 +37,7 @@ function attach(api: DockviewApi, id: string, position?: PanelPosition): void {
 function addNew(api: DockviewApi, id: string, ref: PathRef, position?: PanelPosition): void {
     usePaths.getState().bind(id, ref);
     usePanelUiStore.getState().replace(id, undefined);
+    useRowNav.getState().detach(id);
     useDock.getState().register([id]);
     attach(api, id, position);
 }
@@ -64,6 +66,7 @@ export function destroyPanel(api: DockviewApi, panelId: string): void {
     useDock.getState().forget(panelId);
     usePaths.getState().unbind(panelId);
     usePanelUiStore.getState().replace(panelId, undefined);
+    useRowNav.getState().detach(panelId);
 }
 
 /**
@@ -173,6 +176,7 @@ export function restoreLayout(api: DockviewApi): void {
     const known = useDock.getState().slots;
     usePaths.getState().pruneBindings(known);
     usePanelUiStore.getState().prune(known);
+    useRowNav.getState().prune(known);
     api.onDidAddPanel(() => syncOpen(api));
     api.onDidRemovePanel(() => syncOpen(api));
     api.onDidLayoutChange(() => saveLastSoon(api));

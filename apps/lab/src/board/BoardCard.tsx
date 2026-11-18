@@ -1,8 +1,9 @@
-// 테마 카드 — 머리(테마명·종목 수) + 종목 줄 + 관련 테마 줄. 머리 클릭이 접기/펼치기다.
+// 테마 카드 — 머리(테마명·종목 수) + 종목 줄 + 관련 테마 줄. 테마 이름 클릭 = w/s 선택 테마 + 판 부착, 머리 나머지 클릭 = 접기/펼치기.
 // workbench components/board/BoardCard.tsx 에서 옮겼다(즐겨찾기·수동 숨김·드래그는 뺐다).
 import { useState } from "react";
 import { ScrollRow } from "../ui/ScrollRow.js";
 import { StockRow } from "./StockRow.js";
+import { cardSections } from "./themeNav.js";
 import type { BoardStock, ListMode, RelatedInfo } from "./boardTypes.js";
 
 export function ThemeCard({
@@ -14,6 +15,8 @@ export function ThemeCard({
     onGoto,
     showRank = true,
     initialMode = "collapsed",
+    navSelected = false,
+    onNavSelect,
 }: {
     theme: string;
     stocks: BoardStock[];
@@ -23,10 +26,13 @@ export function ThemeCard({
     related?: RelatedInfo[]; // 하단 관련 테마(카드에만, 개별/미분류 없음)
     onGoto?: (theme: string) => void; // 관련 테마 클릭 = 이동
     initialMode?: ListMode; // 처음 펼침(기본 접힘). 현재 종목이 든 승격 카드는 펼쳐 연다.
+    /** w/s 가 걷는 선택 테마인가 — 이름을 채운 알약으로(부착된 판에서만 켠다). */
+    navSelected?: boolean;
+    /** 테마 이름 클릭 = 이 테마를 w/s 선택 테마로 + 판 부착. 없으면 이름도 머리처럼 접기다(꼬리 카드). */
+    onNavSelect?: () => void;
 }): JSX.Element {
     const [mode, setMode] = useState<ListMode>(initialMode);
-    const movers = stocks.filter((s) => s.isMover || s.signal); // 신호 종목은 등락률 낮아도 주도주로 승격
-    const rest = stocks.filter((s) => !(s.isMover || s.signal));
+    const { movers, rest } = cardSections(stocks);
     const hot = stocks.some((s) => s.signal); // 1분 신호 종목이 있으면 카드 테두리가 깜빡인다
     const hasFocus = stocks.some((s) => s.code === focusCode);
     const rankOf = new Map(stocks.map((s, i) => [s.code, i + 1]));
@@ -48,7 +54,28 @@ export function ThemeCard({
                         cursor: "pointer",
                     }}
                 >
-                    <span style={{ fontWeight: 700, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{theme}</span>
+                    <span
+                        data-theme-name={theme}
+                        data-nav-theme={navSelected ? "selected" : undefined}
+                        onClick={
+                            onNavSelect
+                                ? (e) => {
+                                      e.stopPropagation(); // 이름 = 선택·부착, 머리 나머지 = 접기
+                                      onNavSelect();
+                                  }
+                                : undefined
+                        }
+                        title={onNavSelect ? (navSelected ? "w/s 로 걷는 테마 (shift+w/s = 테마 바꾸기)" : "이 테마를 w/s 로 걷기") : undefined}
+                        style={{
+                            fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
+                            // 선택 테마 = 채운 알약(진한 청록 + 흰 글씨). 패딩만큼 왼쪽으로 당겨 글자 자리는 그대로.
+                            ...(navSelected
+                                ? { color: "#fff", background: "var(--accent-primary)", borderRadius: 4, padding: "1px 7px", margin: "-1px 0 -1px -7px" }
+                                : { color: "var(--text-primary)" }),
+                        }}
+                    >
+                        {theme}
+                    </span>
                     <span className="tabular" style={{ color: "var(--text-tertiary)", fontSize: 12, flexShrink: 0 }} title="종목 수">
                         {stocks.length}
                     </span>
