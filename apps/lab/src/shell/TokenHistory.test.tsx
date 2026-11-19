@@ -7,6 +7,7 @@ import { fakeMarket } from "../market/testing.js";
 import { usePaths } from "../store/paths.js";
 import { useTokenHistory } from "../store/tokenHistory.js";
 import { useHistory } from "../store/history.js";
+import { resolveCommand } from "../keymap/registry.js";
 import { useUi } from "../store/ui.js";
 import { HistoryButton } from "./TokenHistory.js";
 import { pasteState } from "./usePasteState.js";
@@ -120,19 +121,23 @@ describe("토큰 기록 판", () => {
     });
 });
 
-describe("기록 판 — Tab 순환 · 탐색 기록", () => {
+describe("기록 판 — Tab 열기/닫기 · 탐색 기록", () => {
     const view = () => document.querySelector('[data-history-tabs] [aria-pressed="true"]')?.textContent ?? null;
     const visitSel = () => document.querySelector("[data-visit][data-selected]")?.getAttribute("data-visit");
     const V = (code: string, date: string, time: string) => ({ code, date, time, at: 0 });
 
-    it("Tab(cycleHistory) = 닫힘 → 토큰 기록 → 탐색 기록 → 닫힘, 「기록」 버튼 = 닫혀 있으면 토큰·열려 있으면 닫기", () => {
+    it("Tab = 닫혀 있으면 토큰 기록·열려 있으면(탐색 기록이어도) 한 번에 닫기, 탐색 기록은 판 머리 이름으로", () => {
+        const tab = () => act(() => resolveCommand("tab")!.run(new KeyboardEvent("keydown", { key: "Tab" }))); // 디스패처가 Tab 에 붙이는 그 커맨드
         renderButton();
         expect(view()).toBeNull();
-        act(() => useUi.getState().cycleHistory());
+        tab();
         expect(view()).toBe("토큰 기록");
-        act(() => useUi.getState().cycleHistory());
+        tab();
+        expect(view()).toBeNull();
+        tab();
+        fireEvent.click(screen.getByRole("button", { name: "탐색 기록" }));
         expect(view()).toBe("탐색 기록");
-        act(() => useUi.getState().cycleHistory());
+        tab();
         expect(view()).toBeNull();
         fireEvent.click(screen.getByRole("button", { name: "기록" }));
         expect(view()).toBe("토큰 기록");

@@ -12,7 +12,7 @@ export const staticCommands: Command[] = (
         { id: "app.settings", title: "설정 열기", category: "일반", keys: "ctrl+,", inDialog: true, run: () => useUi.getState().openSettings() },
         { id: "app.help", title: "단축키 도움말", category: "일반", keys: "?", inDialog: true, run: () => useUi.getState().openSettings("shortcuts") },
         // 판이 열린 동안 w/s(위아래)·Space(열기)는 판의 것 — 커맨드가 아니라 판 안 키 처리(shell/TokenHistory).
-        { id: "app.history", title: "기록 판 — 토큰 기록 → 탐색 기록 → 닫기 (판 안 w/s · Space)", category: "일반", keys: "tab", run: () => useUi.getState().cycleHistory() },
+        { id: "app.history", title: "기록 판 열기/닫기 — 탐색 기록은 판 머리에서 (판 안 w/s · Space)", category: "일반", keys: "tab", run: () => useUi.getState().toggleHistory() },
         // w/s = 부착된 판(탭 우클릭 「w/s 부착」, 탭 ●)이 걷는다(store/rowNav). 테마 보드 = 선택 테마 안 종목 / 테마 바꾸기.
         { id: "nav.prev", title: "부착된 판 — 위 줄 (테마 보드: 선택 테마 안 종목)", category: "순회", keys: "w", repeat: true, run: () => walk("step", -1) },
         { id: "nav.next", title: "부착된 판 — 아래 줄", category: "순회", keys: "s", repeat: true, run: () => walk("step", 1) },
