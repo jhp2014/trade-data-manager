@@ -6,7 +6,7 @@
 // 이 패널에서 고른 종목은 판을 움직이지 않고, 다른 곳에서 바뀐 종목은 그 테마들을 맨 위로 올린다.
 // 새 날짜를 받는 동안엔 직전 판을 그 판의 (종목, 시각) 그대로 흐리게 두고 가운데 카드로 알린다(useShownMoment) —
 // 새 종목을 옛 날 판에 먼저 올리면 「다 받았다」로 읽힌다.
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { CLOSE_TIME, usePanelPath } from "../../store/paths.js";
 import { usePanelUi, usePanelUiNumber, usePanelUiText } from "../../store/panelUi.js";
 import { useIsAttached, useNavTarget, type NavTarget } from "../../store/rowNav.js";
@@ -99,19 +99,26 @@ export function ThemeBoardPanel({ panelId, membership, controls = [] }: {
     const [prefTheme, setPrefTheme] = usePanelUiText(panelId, "navTheme");
     const walking = view === "group" && board !== null && date !== "" && !q.isError && !membership.error && pending === null;
     const card = board ? navCard(board.grouped, code, prefTheme) : null;
+    // 선택 = 보이는 알약 하나 — 저장값이 현재 종목에 안 맞아 첫 테마로 대신했으면 그 테마를 바로 저장한다(부착 판, 본문을 그릴 때).
+    // 안 굳히면 옛 선택이 숨어 있다가 그 테마에도 든 종목에 닿는 순간 되살아나 걷던 테마가 튄다(건설을 걷다 반도체로).
+    useEffect(() => {
+        if (attached && walking && card && prefTheme !== NAV_OFF && card.theme !== prefTheme) setPrefTheme(card.theme);
+    }, [attached, walking, card, prefTheme, setPrefTheme]);
     const navTarget = useMemo<NavTarget | null>(() => {
         if (!walking || !board) return null;
         return {
             step: (dir) => {
                 const next = card ? stepInCard(card.stocks, code, dir) : null;
-                if (next !== null && next !== code) write({ code: next });
+                if (next === null || next === code || !card) return;
+                if (card.theme !== prefTheme) setPrefTheme(card.theme); // 걷는 테마를 먼저 굳힌다(위 effect 가 아직 안 돌았어도)
+                write({ code: next });
             },
             stepGroup: (dir) => {
                 const next = stepTheme(themesOf(board.grouped, code).map((g) => g.theme), card?.theme ?? null, dir);
                 if (next !== null) setPrefTheme(next);
             },
         };
-    }, [walking, board, card, code, write, setPrefTheme]);
+    }, [walking, board, card, code, prefTheme, write, setPrefTheme]);
     useNavTarget(panelId, navTarget);
     // 부착 판에서 현재 종목이 든 테마의 이름 클릭 = 그 테마를 선택(BoardLayout 이 그 카드에만 준다), 머리 우클릭 메뉴
     // 「테마 선택」 = 그 테마 ON/OFF(OFF = 선택을 꺼 둠 — 알약 없음 · w/s 쉼). 부착은 탭 우클릭 몫이다(손 하나).

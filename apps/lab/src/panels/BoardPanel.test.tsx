@@ -359,5 +359,19 @@ describe("BoardPanel — w/s 순회", () => {
         fireEvent.contextMenu(headOf("반도체"));
         expect(document.querySelector("[data-nav-menu]")).toBeNull();
     });
+
+    it("숨은 옛 선택이 되살아나지 않는다 — 첫 테마로 대신한 테마를 굳혀, 옛 테마에도 든 종목에 닿아도 그대로", async () => {
+        await mountReady(market());
+        attachBoard();
+        fireEvent.click(bandThemeName("반도체")); // 000003 에서 반도체를 고른다
+        await waitFor(() => expect(selectedTheme()).toBe("반도체"));
+        write({ code: "000005" }); // 바깥에서 HBM 전용 종목으로 — 반도체가 안 맞아 HBM 으로 대신(굳힌다)
+        await waitFor(() => expect(selectedTheme()).toBe("HBM"));
+        write({ code: "000003" }); // 반도체이기도 한 종목 — 옛 선택(반도체)이 되살아나면 안 된다
+        await waitFor(() => expect(pathCode()).toBe("000003"));
+        expect(selectedTheme()).toBe("HBM");
+        press("s");
+        expect(pathCode()).toBe("000005"); // HBM 안을 그대로 걷는다
+    });
 });
 
